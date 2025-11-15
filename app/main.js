@@ -7,13 +7,14 @@ import { createMaterialRow } from './src/modules/materialRowTemplate.js'
 import { sha256Hex, constantTimeEquals } from './src/lib/sha256.js'
 import { ensureExportLibs, ensureZipLib, prefetchExportLibs } from './src/features/export/lazy-libs.js'
 import { setupNumpad } from './js/numpad.js'
-import { initA9Calc, openA9ForInput } from './js/a9-calc.js'
+// A9 calculator integration handled via external link
 import { exportMeta, setSlaebFormulaText } from './js/export-meta.js'
 import { createVirtualMaterialsList } from './src/modules/materialsVirtualList.js'
 import { initClickGuard } from './src/ui/Guards/ClickGuard.js'
 import { setAdminOk, restoreAdminState } from './src/state/admin.js'
 
 const IOS_INSTALL_PROMPT_DISMISSED_KEY = 'csmate.iosInstallPromptDismissed'
+const A9_CALCULATOR_URL = 'https://cala9.netlify.app/'
 let DEFAULT_ADMIN_CODE_HASH = ''
 let materialsVirtualListController = null
 
@@ -176,8 +177,6 @@ function setupGuideModal() {
 }
 
 function setupA9Integration() {
-  initA9Calc();
-
   const slaebInput = document.getElementById('slaebePct');
   const openBtn = document.getElementById('btnOpenA9');
 
@@ -186,8 +185,14 @@ function setupA9Integration() {
   }
 
   if (openBtn) {
-    openBtn.addEventListener('click', () => {
-      openA9ForInput(slaebInput);
+    const calcUrl = openBtn.getAttribute('data-calc-url') || A9_CALCULATOR_URL;
+    openBtn.addEventListener('click', event => {
+      event.preventDefault();
+      if (typeof window !== 'undefined' && typeof window.open === 'function') {
+        window.open(calcUrl, '_blank', 'noopener');
+      } else if (typeof location !== 'undefined') {
+        location.href = calcUrl;
+      }
     });
   }
 
@@ -201,12 +206,6 @@ function setupA9Integration() {
 
   slaebInput.addEventListener('input', handleManualUpdate);
   slaebInput.addEventListener('change', handleManualUpdate);
-
-  slaebInput.addEventListener('a9-commit', event => {
-    const formulaText = event?.detail?.formulaText || '';
-    setSlaebFormulaText(formulaText);
-    updateSlaebFormulaInfo(formulaText);
-  });
 
   updateSlaebFormulaInfo(exportMeta.slaebFormulaText);
 }
