@@ -1,3 +1,5 @@
+import { evaluateExpression } from './safe-eval.js';
+
 const DECIMAL_SEPARATOR = ',';
 
 export let lastCopiedFormulaText = '';
@@ -243,10 +245,9 @@ function queueOperator (operator) {
 function compute () {
   const expr = `${expression}${formatExpressionNumber(current)}`.trim();
   if (!expr) return;
-  const jsExpr = expr.replace(/×/g, '*').replace(/÷/g, '/').replace(/,/g, '.');
 
   try {
-    const result = Function('"use strict";return(' + jsExpr + ')')();
+    const result = evaluateExpression(expr);
     if (!Number.isFinite(result)) return;
 
     previous = expr;

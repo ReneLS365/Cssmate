@@ -1,4 +1,3 @@
-import './src/features/pctcalc/pctcalc.js'
 import { initMaterialsScrollLock } from './src/modules/materialsScrollLock.js'
 import { calculateTotals } from './src/modules/calculateTotals.js'
 import { normalizeKey } from './src/lib/string-utils.js'
@@ -1982,22 +1981,41 @@ function handleImportFile(file) {
 }
 
 // --- Authentication ---
-async function verifyAdminCodeInput(value) {
-  if (typeof value !== 'string') return false;
-  const trimmed = value.trim();
-  if (!trimmed) return false;
-  if (KNOWN_ADMIN_CODES.has(trimmed)) return true;
-  const hash = await sha256Hex(trimmed);
-  if (!hash) return false;
-  for (const knownHash of KNOWN_ADMIN_CODE_HASHES) {
-    if (typeof knownHash === 'string' && knownHash.length && constantTimeEquals(hash, knownHash)) {
-      return true;
+async function verifyAdminCodeInput(value, tenantConfig = null) {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (!trimmed) {
+    return { ok: false, reason: 'empty' };
+  }
+
+  const plainCandidates = new Set([
+    ...KNOWN_ADMIN_CODES,
+    ...(Array.isArray(tenantConfig?.KNOWN_ADMIN_CODES) ? tenantConfig.KNOWN_ADMIN_CODES : []),
+    ...(Array.isArray(tenantConfig?.admin_codes_plain) ? tenantConfig.admin_codes_plain : [])
+  ].filter(code => typeof code === 'string' && code.trim().length));
+
+  for (const code of plainCandidates) {
+    if (code === trimmed) {
+      return { ok: true, method: 'plaintext' };
     }
   }
-  if (DEFAULT_ADMIN_CODE_HASH) {
-    return constantTimeEquals(hash, DEFAULT_ADMIN_CODE_HASH);
+
+  const hashedCandidates = new Set([
+    ...KNOWN_ADMIN_CODE_HASHES,
+    DEFAULT_ADMIN_CODE_HASH,
+    tenantConfig?._meta?.admin_code,
+    ...(Array.isArray(tenantConfig?.HASHED_ADMIN_CODES) ? tenantConfig.HASHED_ADMIN_CODES : [])
+  ].filter(hash => typeof hash === 'string' && hash.length));
+
+  if (hashedCandidates.size > 0) {
+    const digest = await sha256Hex(trimmed);
+    for (const expected of hashedCandidates) {
+      if (constantTimeEquals(digest, expected)) {
+        return { ok: true, method: 'sha256' };
+      }
+    }
   }
-  return false;
+
+  return { ok: false, reason: 'no_match' };
 }
 
 async function login() {
@@ -2005,8 +2023,8 @@ async function login() {
   const feedback = document.getElementById('adminFeedback');
   if (!codeInput) return;
 
-  const isValid = await verifyAdminCodeInput(codeInput.value);
-  if (isValid) {
+  const validation = await verifyAdminCodeInput(codeInput.value);
+  if (validation.ok) {
     admin = true;
     setAdminOk(true); // Update admin state for click guard
     codeInput.value = '';

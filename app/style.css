@@ -33,7 +33,11 @@ html,body{margin:0;height:100%;width:100%;max-width:100vw;overflow-x:hidden;back
 .app-content{flex:1 1 auto;min-height:0;overflow:hidden}
 .materials-scroll{height:100%;overflow-y:auto;overscroll-behavior:contain;padding-bottom:0!important;-webkit-overflow-scrolling:touch}
 .materials-scroll>:last-child{margin-bottom:0!important}
-:root.np-open,:root.np-open body{overflow:hidden!important}
+:root.np-open,
+:root.np-open body{
+  overflow:hidden!important;
+  overscroll-behavior:contain;
+}
 @supports not (height: 100dvh){
   .app-shell{height:var(--app-vh,100vh)}
 }

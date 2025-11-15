@@ -1,3 +1,5 @@
+import { evaluateExpression } from './safe-eval.js'
+
 // js/numpad.js
 // Globalt numpad + simpel lommeregner til alle talfelter
 
@@ -139,6 +141,9 @@ function showNumpadForInput (input) {
 
   overlay.classList.remove('numpad-hidden')
   overlay.setAttribute('aria-hidden', 'false')
+  if (document?.documentElement) {
+    document.documentElement.classList.add('np-open')
+  }
 }
 
 function hideNumpad (commit) {
@@ -166,6 +171,9 @@ function hideNumpad (commit) {
   overlay.classList.add('numpad-hidden')
   overlay.setAttribute('aria-hidden', 'true')
   activeInput = null
+  if (document?.documentElement) {
+    document.documentElement.classList.remove('np-open')
+  }
 }
 
 /* Tast-logic */
@@ -229,17 +237,15 @@ function computeExpression () {
   const expr = (expression + (currentValue || '0')).trim()
   if (!expr) return
 
-  const safe = expr
-    .replace(/×/g, '*')
-    .replace(/÷/g, '/')
-
   try {
-    const result = Function('"use strict"; return (' + safe + ')')()
-    if (!Number.isFinite(result)) return
+    const result = evaluateExpression(expr)
+    if (!Number.isFinite(result)) {
+      throw new Error('Expression result is not finite')
+    }
     currentValue = String(result)
     expression = ''
-  } catch (e) {
-    expression = ''
+  } catch (error) {
+    console.warn('Invalid expression in numpad:', error)
   }
 }
 

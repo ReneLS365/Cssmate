@@ -45,6 +45,7 @@
   - Beskrivelse: `sha256Hex` returnerer en stribe nuller uanset input. Dermed kan ingen af de hashed admin-koder fra JSON/konstanter matches, og sikkerheden er i praksis slået fra (kun `KNOWN_ADMIN_CODES` med klartekst virker).【F:app/src/lib/sha256.js†L1-L9】
   - Risiko: Høj – admin-login virker ikke for tenants der forventer hash-match og stubben giver falsk sikkerhed.
   - Forslag: Udskift stubben med en rigtig `crypto.subtle.digest`-baseret SHA-256 implementering (med fallback) og behold `constantTimeEquals` for at undgå timing-angreb.
+  - Status: Fixed in Fix-pack A – rigtig SHA-256 (med Web Crypto + JS fallback) og asynkron adminvalidering er implementeret.
 
 - [J-02] Eksportlib-stubs giver `TypeError`
   - Filer: `app/src/features/export/lazy-libs.js`, `app/main.js`
@@ -52,6 +53,7 @@
   - Beskrivelse: `ensureExportLibs` og `ensureZipLib` returnerer `undefined`, men `exportPDFBlob` og `exportZip` destrukturerer `{ jsPDF, html2canvas }` og `{ JSZip }`. Når brugeren klikker “Eksportér PDF/ZIP” kaster koden straks en TypeError, før der vises feedback.【F:app/src/features/export/lazy-libs.js†L1-L9】【F:app/main.js†L2987-L3082】
   - Risiko: Høj – eksportfunktionerne kan slet ikke bruges.
   - Forslag: Implementér lazy import (`await import('jspdf')` osv.) og returnér et objekt med de forventede konstruktorer.
+  - Status: Fixed in Fix-pack A – eksportlibs og JSZip lazy-loades nu fra CDN og leverer de forventede objekter.
 
 - [J-03] Eval-baseret udregning i numpaden
   - Fil: `app/js/numpad.js`
@@ -59,6 +61,7 @@
   - Beskrivelse: `computeExpression()` evaluerer brugerinput via `Function('"use strict"; return (' + safe + ')')`, hvilket betyder at hvilket som helst tastatur-input bliver kørt som JavaScript-udtryk. Selvom tastaturet begrænser tegn, kan fejlkilder (fx `1e9999`) stadig få appen til at kaste eller returnere `Infinity`.【F:app/js/numpad.js†L228-L244】
   - Risiko: Middel – potentielle crashes samt dårlig forudsigelighed.
   - Forslag: Brug en lille parser eller en sikker evaluering (fx `mathjs` light, eller implementér et simpelt stack-baseret regneaggregat) i stedet for `Function`.
+  - Status: Fixed in Fix-pack A – numpaden bruger nu en valideret parser fra `safe-eval.js` uden direkte eval.
 
 - [J-04] Eval bruges også i A9-kalkulatoren
   - Fil: `app/js/a9-calc.js`
@@ -66,6 +69,7 @@
   - Beskrivelse: Den udvidede A9-beregner gør præcis det samme (`Function('"use strict";return(' + jsExpr + ')')`). Hvis man indsætter et langt udtryk eller `Infinity`, knækker hele kalkulatoren og clipboard-teksten bliver ugyldig.【F:app/js/a9-calc.js†L243-L259】
   - Risiko: Middel – fejl i slæb-procent beregningen kan give forkerte lønninger.
   - Forslag: Genbrug samme sikre parser som foreslået i [J-03].
+  - Status: Fixed in Fix-pack A – A9-kalkulatoren anvender samme sikre parser og håndterer NaN/Infinity defensivt.
 
 - [J-05] Scroll-lock klasse bliver aldrig sat
   - Filer: `app/js/numpad.js`, `app/style.css`
@@ -73,6 +77,7 @@
   - Beskrivelse: CSS forventer, at `<html>` får klassen `.np-open` for at låse scroll (`:root.np-open { overflow:hidden }`), men `showNumpadForInput`/`hideNumpad` tilføjer kun `.numpad-hidden` på overlægget. Resultat: baggrundens indhold kan stadig scrolles mens man taster på numpaden.【F:app/js/numpad.js†L131-L168】【F:app/style.css†L32-L37】
   - Risiko: Lav/middel – dårlig UX (især på iOS) og risiko for at brugeren mister kontekst.
   - Forslag: Toggle `document.documentElement.classList` i `showNumpadForInput`/`hideNumpad` (og sørg for cleanup).
+  - Status: Fixed in Fix-pack A – `.np-open` toggles og CSS låser scrolling når numpaden er åben.
 
 - [J-06] pctcalc-modulet er et tomt stub
   - Fil: `app/src/features/pctcalc/pctcalc.js`
@@ -80,17 +85,20 @@
   - Beskrivelse: `main.js` importerer modulet, men filen eksporterer en tom funktion. Det betyder en ekstra HTTP-request uden funktionalitet og gør det uklart om procent-regneren er implementeret eller ej.【F:app/src/features/pctcalc/pctcalc.js†L1-L3】
   - Risiko: Lav – men giver død kode og forvirring.
   - Forslag: Fjern importen indtil funktionen findes, eller implementér de forventede features.
+  - Status: Fixed in Fix-pack A – modulet er frakoblet fra `main.js` og markeret som TODO for at undgå død kode.
 
 ## Runtime – Console issues
 - [R-01] TypeError ved PDF-eksport
   - Besked: `TypeError: Cannot destructure property 'jsPDF' of 'undefined' as it is undefined.` når `ensureExportLibs()` returnerer `undefined` og `exportPDFBlob` forsøger at destructure.【F:app/src/features/export/lazy-libs.js†L1-L9】【F:app/main.js†L2987-L3034】
   - Hvornår: Klik på “Eksportér PDF” eller “Eksportér alt”.
   - Forslag: Implementér reel lazy import og returnér `{ jsPDF, html2canvas }`.
+  - Status: Fixed in Fix-pack A – lazy-loaderen indlæser nu jsPDF/html2canvas før eksporten starter.
 
 - [R-02] TypeError ved ZIP-eksport
   - Besked: `TypeError: Cannot destructure property 'JSZip' of 'undefined' as it is undefined.` når `exportZip()` kalder `ensureZipLib()` og dernæst bruger resultatet.【F:app/src/features/export/lazy-libs.js†L1-L9】【F:app/main.js†L3051-L3082】
   - Hvornår: Klik på “Eksportér ZIP”.
   - Forslag: Lazy-load JSZip (fx `await import('jszip')`) og returnér objektet.
+  - Status: Fixed in Fix-pack A – JSZip lazy-loades og bruges først når modulet er klar.
 
 ## Runtime – funktionelle bugs
 - [B-01] Admin-koder fra tenant-JSON kan ikke logges ind
@@ -100,6 +108,7 @@
     3. Forventet: Hash-match accepteres. Faktisk: Kun hardcodede klartekstkoder fungerer.
   - Fil(er): `app/src/lib/sha256.js`, `app/main.js` (`verifyAdminCodeInput`).【F:app/src/lib/sha256.js†L1-L9】【F:app/main.js†L1968-L2028】
   - Forslag: Implementér rigtig hashing eller distribuér klartekst-koder med passende sikkerhed.
+  - Status: Fixed in Fix-pack A – admin-login bruger nu ægte SHA-256 hashing og constant-time sammenligning.
 
 - [B-02] Body kan scrolles mens numpaden er åben
   - Repro:
@@ -108,6 +117,7 @@
     3. Forventet: Scroll låses mens modal er aktiv. Faktisk: Intet scroll-lock fordi `.np-open` aldrig bruges.
   - Fil(er): `app/js/numpad.js`, `app/style.css`.【F:app/js/numpad.js†L131-L168】【F:app/style.css†L32-L37】
   - Forslag: Tilføj/afmeld `.np-open` på `<html>` og/eller brug `body { overscroll-behavior: contain; }` når overlægget er aktivt.
+  - Status: Fixed in Fix-pack A – `.np-open` sættes nu ved åbning og CSS låser scroll/overscroll.
 
 ## Performance & struktur – optimeringsmuligheder
 - [P-01] Materialedata er duplikeret tre steder
@@ -169,3 +179,5 @@
 | U-01 | UX/responsivitet       | Høj      | Materialerækker klipper tekst på små skærme |
 | U-02 | UX/responsivitet       | Middel   | Skalering skader touch-oplevelsen |
 | U-03 | UX/visual              | Lav      | Numpad matcher ikke temaet |
+
+_Fix-pack A (admin + eksport + eval + numpad scroll-lock) er implementeret og testet manuelt i browser._
