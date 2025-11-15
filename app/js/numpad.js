@@ -1,6 +1,8 @@
 // js/numpad.js
 // Globalt numpad + simpel lommeregner til alle talfelter
 
+const NUMPAD_SELECTOR = 'input[data-numpad="true"]'
+
 let overlay, displayMem, displayExpr, displayCurrent
 let commitBtn, closeBtn
 let activeInput = null
@@ -8,6 +10,9 @@ let activeInput = null
 let memoryValue = 0
 let currentValue = '0'
 let expression = ''
+let mutationObserver = null
+let pendingBind = false
+const boundInputs = new WeakSet()
 
 function initNumpad () {
   overlay = document.getElementById('numpad-overlay')
@@ -37,32 +42,83 @@ function initNumpad () {
   closeBtn.addEventListener('click', () => hideNumpad(false))
 
   bindInputs()
+  observeNumpadInputs()
+}
+
+function handleNumpadFocus (event) {
+  const input = event.currentTarget
+  if (!(input instanceof HTMLInputElement)) return
+  if (input.value === '0' || input.value === '0,00') {
+    input.value = ''
+  }
+  showNumpadForInput(input)
+}
+
+function blockNativeInput (event) {
+  event.preventDefault()
 }
 
 function bindInputs () {
-  // Alle talfelter: type="number" eller med data-numpad="true"
-  const selector = 'input[type="number"]:not([data-numpad="off"]), input[data-numpad="true"]'
-  const inputs = document.querySelectorAll(selector)
-
+  const inputs = document.querySelectorAll(NUMPAD_SELECTOR)
   inputs.forEach(input => {
-    // Hint til mobil om at det er tal
+    if (!(input instanceof HTMLInputElement) || boundInputs.has(input)) return
+
     if (!input.hasAttribute('inputmode')) {
       input.setAttribute('inputmode', 'decimal')
     }
 
-    input.addEventListener('focus', () => {
-      // Fjern default 0 ved fokus
-      if (input.value === '0' || input.value === '0,00') {
-        input.value = ''
-      }
-      showNumpadForInput(input)
-    })
-
-    // Blokér browserens eget keyboard-input – vi styrer alt via numpad
-    input.addEventListener('beforeinput', (evt) => {
-      evt.preventDefault()
-    })
+    input.addEventListener('focus', handleNumpadFocus)
+    input.addEventListener('beforeinput', blockNativeInput)
+    boundInputs.add(input)
   })
+}
+
+function scheduleBind () {
+  if (pendingBind) return
+  pendingBind = true
+  const run = () => {
+    pendingBind = false
+    bindInputs()
+  }
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(run)
+  } else {
+    setTimeout(run, 0)
+  }
+}
+
+function observeNumpadInputs () {
+  if (mutationObserver || typeof MutationObserver === 'undefined') {
+    return
+  }
+  mutationObserver = new MutationObserver(mutations => {
+    for (const mutation of mutations) {
+      if (mutation.type === 'childList') {
+        for (const node of mutation.addedNodes) {
+          if (!(node instanceof HTMLElement)) continue
+          if (node.matches(NUMPAD_SELECTOR) || node.querySelector(NUMPAD_SELECTOR)) {
+            scheduleBind()
+            return
+          }
+        }
+      } else if (mutation.type === 'attributes') {
+        const target = mutation.target
+        if (target instanceof HTMLElement && target.matches(NUMPAD_SELECTOR)) {
+          scheduleBind()
+          return
+        }
+      }
+    }
+  })
+  const target = document.body || document.documentElement
+  if (target) {
+    mutationObserver.observe(target, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-numpad']
+    })
+  }
 }
 
 function showNumpadForInput (input) {

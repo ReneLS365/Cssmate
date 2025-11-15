@@ -7,13 +7,14 @@ import { createMaterialRow } from './src/modules/materialRowTemplate.js'
 import { sha256Hex, constantTimeEquals } from './src/lib/sha256.js'
 import { ensureExportLibs, ensureZipLib, prefetchExportLibs } from './src/features/export/lazy-libs.js'
 import { setupNumpad } from './js/numpad.js'
-import { initA9Calc, openA9ForInput } from './js/a9-calc.js'
+// A9 calculator integration handled via external link
 import { exportMeta, setSlaebFormulaText } from './js/export-meta.js'
 import { createVirtualMaterialsList } from './src/modules/materialsVirtualList.js'
 import { initClickGuard } from './src/ui/Guards/ClickGuard.js'
 import { setAdminOk, restoreAdminState } from './src/state/admin.js'
 
 const IOS_INSTALL_PROMPT_DISMISSED_KEY = 'csmate.iosInstallPromptDismissed'
+const A9_CALCULATOR_URL = 'https://cala9.netlify.app/'
 let DEFAULT_ADMIN_CODE_HASH = ''
 let materialsVirtualListController = null
 
@@ -176,8 +177,6 @@ function setupGuideModal() {
 }
 
 function setupA9Integration() {
-  initA9Calc();
-
   const slaebInput = document.getElementById('slaebePct');
   const openBtn = document.getElementById('btnOpenA9');
 
@@ -186,8 +185,14 @@ function setupA9Integration() {
   }
 
   if (openBtn) {
-    openBtn.addEventListener('click', () => {
-      openA9ForInput(slaebInput);
+    const calcUrl = openBtn.getAttribute('data-calc-url') || A9_CALCULATOR_URL;
+    openBtn.addEventListener('click', event => {
+      event.preventDefault();
+      if (typeof window !== 'undefined' && typeof window.open === 'function') {
+        window.open(calcUrl, '_blank', 'noopener');
+      } else if (typeof location !== 'undefined') {
+        location.href = calcUrl;
+      }
     });
   }
 
@@ -201,12 +206,6 @@ function setupA9Integration() {
 
   slaebInput.addEventListener('input', handleManualUpdate);
   slaebInput.addEventListener('change', handleManualUpdate);
-
-  slaebInput.addEventListener('a9-commit', event => {
-    const formulaText = event?.detail?.formulaText || '';
-    setSlaebFormulaText(formulaText);
-    updateSlaebFormulaInfo(formulaText);
-  });
 
   updateSlaebFormulaInfo(exportMeta.slaebFormulaText);
 }
@@ -271,7 +270,6 @@ let laborEntries = [];
 let lastLoensum = 0;
 let lastMaterialSum = 0;
 let lastEkompletData = null;
-let currentStatus = 'kladde';
 let recentCasesCache = [];
 let cachedDBPromise = null;
 const DEFAULT_ACTION_HINT = 'Udfyld Sagsinfo for at fortsætte.';
@@ -1225,7 +1223,6 @@ function collectSagsinfo() {
     kunde: document.getElementById('sagskunde')?.value.trim() || '',
     dato: document.getElementById('sagsdato')?.value || '',
     montoer: document.getElementById('sagsmontoer')?.value.trim() || '',
-    status: currentStatus,
   };
 }
 
@@ -1251,54 +1248,6 @@ function updateActionHint(message = '', variant = 'info') {
     hint.classList.add('success');
   }
   hint.style.display = '';
-}
-
-function formatStatusLabel(status) {
-  const normalized = (status || '').toLowerCase();
-  const labels = {
-    kladde: 'Kladde',
-    afventer: 'Afventer',
-    godkendt: 'Godkendt',
-    afvist: 'Afvist',
-  };
-  if (labels[normalized]) return labels[normalized];
-  if (!normalized) return 'Kladde';
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-}
-
-function syncStatusUI(status) {
-  const indicator = document.getElementById('statusIndicator');
-  if (indicator) {
-    indicator.textContent = formatStatusLabel(status);
-    indicator.dataset.status = status || 'kladde';
-  }
-  const select = document.getElementById('sagStatus');
-  if (select && (status ?? '') !== select.value) {
-    select.value = status || 'kladde';
-  }
-}
-
-function updateStatus(value, options = {}) {
-  const next = (value || '').toLowerCase() || 'kladde';
-  if (!admin && (next === 'godkendt' || next === 'afvist')) {
-    if (options?.source === 'control') {
-      syncStatusUI(currentStatus);
-    }
-    updateActionHint('Kun kontor kan godkende/afvise.', 'error');
-    return;
-  }
-  currentStatus = next;
-  syncStatusUI(currentStatus);
-}
-
-function initStatusControls() {
-  syncStatusUI(currentStatus);
-  const select = document.getElementById('sagStatus');
-  if (select) {
-    select.addEventListener('change', event => {
-      updateStatus(event.target.value, { source: 'control' });
-    });
-  }
 }
 
 function promisifyRequest(request) {
@@ -1458,7 +1407,6 @@ function collectProjectSnapshot() {
     : [];
   return {
     timestamp: Date.now(),
-    status: currentStatus,
     sagsinfo: collectSagsinfo(),
     systems: Array.from(selectedSystemKeys),
     materials,
@@ -1569,13 +1517,6 @@ function applyProjectSnapshot(snapshot, options = {}) {
   setSagsinfoField('sagskunde', info.kunde || '');
   setSagsinfoField('sagsdato', info.dato || '');
   setSagsinfoField('sagsmontoer', info.montoer || '');
-
-  if (info.status || snapshot.status) {
-    currentStatus = (info.status || snapshot.status || 'kladde').toLowerCase();
-    syncStatusUI(currentStatus);
-  } else {
-    syncStatusUI(currentStatus);
-  }
 
   applyMaterialsSnapshot(snapshot.materials, snapshot.systems);
   applyExtrasSnapshot(snapshot.extras);
@@ -2310,7 +2251,6 @@ function beregnLon() {
       { label: 'Navn', value: info.navn || '' },
       { label: 'Adresse', value: info.adresse || '' },
       { label: 'Dato', value: datoDisplay },
-      { label: 'Status', value: formatStatusLabel(info.status) },
     ];
 
     fields.forEach(({ label, value }) => {
@@ -2727,7 +2667,6 @@ function buildCSVPayload(customSagsnummer, options = {}) {
   lines.push(`Sagsinfo;Adresse;${escapeCSV(info.adresse)};;;`);
   lines.push(`Sagsinfo;Kunde;${escapeCSV(info.kunde)};;;`);
   lines.push(`Sagsinfo;Dato;${escapeCSV(info.dato)};;;`);
-  lines.push(`Sagsinfo;Status;${escapeCSV(formatStatusLabel(info.status))};;;`);
   const montorText = (info.montoer || '').replace(/\r?\n/g, ', ');
   lines.push(`Sagsinfo;Montørnavne;${escapeCSV(montorText)};;;`);
 
@@ -3003,7 +2942,6 @@ async function exportPDFBlob(customSagsnummer, options = {}) {
         <li><strong>Adresse:</strong> ${escapeHtml(info.adresse)}</li>
         <li><strong>Kunde:</strong> ${escapeHtml(info.kunde)}</li>
         <li><strong>Dato:</strong> ${escapeHtml(info.dato)}</li>
-        <li><strong>Status:</strong> ${escapeHtml(formatStatusLabel(info.status))}</li>
         <li><strong>Montørnavne:</strong> ${escapeHtml(info.montoer).replace(/\n/g, '<br>')}</li>
       </ul>
     </section>
@@ -3423,7 +3361,6 @@ function initApp() {
 
   setupCSVImport();
 
-  initStatusControls();
   populateRecentCases();
 
   setupGuideModal();
