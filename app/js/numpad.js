@@ -5,7 +5,7 @@ import { evaluateExpression } from './safe-eval.js'
 
 const NUMPAD_SELECTOR = 'input[type="number"], input[data-numpad="true"]'
 
-let overlay, displayExpr, displayCurrent
+let overlay, dialog, displayExpr, displayCurrent
 let commitBtn, closeBtn
 let activeInput = null
 let currentValue = '0'
@@ -13,10 +13,17 @@ let expression = ''
 let mutationObserver = null
 let pendingBind = false
 const boundInputs = new WeakSet()
+let lastFocusedInput = null
+
+function isNumpadOpen () {
+  return Boolean(overlay && !overlay.classList.contains('numpad-hidden'))
+}
 
 function initNumpad () {
-  overlay = document.getElementById('numpad-overlay')
+  overlay = document.querySelector('[data-numpad-overlay]') || document.getElementById('numpad-overlay')
   if (!overlay) return
+
+  dialog = overlay.querySelector('[data-numpad-dialog]') || overlay.querySelector('.numpad-panel')
 
   displayExpr = document.getElementById('numpad-display-expression')
   displayCurrent = document.getElementById('numpad-display-current')
@@ -39,6 +46,13 @@ function initNumpad () {
 
   commitBtn.addEventListener('click', () => hideNumpad(true))
   closeBtn.addEventListener('click', () => hideNumpad(false))
+
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && isNumpadOpen()) {
+      event.preventDefault()
+      hideNumpad(false)
+    }
+  })
 
   bindInputs()
   observeNumpadInputs()
@@ -131,9 +145,13 @@ function observeNumpadInputs () {
 }
 
 function showNumpadForInput (input) {
-  activeInput = input
+  if (!overlay) return
 
-  const initial = normalizeFromField(input.value)
+  activeInput = input instanceof HTMLInputElement ? input : null
+  lastFocusedInput = activeInput || (document.activeElement instanceof HTMLElement ? document.activeElement : null)
+
+  const inputValue = activeInput && typeof activeInput.value === 'string' ? activeInput.value : ''
+  const initial = normalizeFromField(inputValue)
   currentValue = initial === '' ? '0' : initial
   expression = ''
 
@@ -144,9 +162,14 @@ function showNumpadForInput (input) {
   if (document?.documentElement) {
     document.documentElement.classList.add('np-open')
   }
+  if (dialog && typeof dialog.focus === 'function') {
+    dialog.focus()
+  }
 }
 
 function hideNumpad (commit) {
+  if (!overlay) return
+
   if (commit && activeInput) {
     const fieldValue = formatForField(currentValue)
 
@@ -174,6 +197,10 @@ function hideNumpad (commit) {
   if (document?.documentElement) {
     document.documentElement.classList.remove('np-open')
   }
+  if (lastFocusedInput && typeof lastFocusedInput.focus === 'function') {
+    lastFocusedInput.focus()
+  }
+  lastFocusedInput = null
 }
 
 /* Tast-logic */

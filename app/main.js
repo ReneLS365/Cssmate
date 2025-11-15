@@ -97,17 +97,19 @@ function vis(id) {
   forEachNode(sections, section => {
     const isActive = section.id === activeId;
     section.classList.toggle('active', isActive);
-    section.style.display = isActive ? 'flex' : 'none';
     section.toggleAttribute('hidden', !isActive);
-    section.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+    if (section.style && section.style.display) {
+      section.style.removeProperty('display');
+    }
   });
 
-  const navButtons = document.querySelectorAll('header nav button[data-section]');
+  const navButtons = document.querySelectorAll('header nav button[data-section][role="tab"]');
   forEachNode(navButtons, btn => {
     const buttonTarget = resolveSectionId(btn.dataset.section);
     const isActive = buttonTarget === activeId;
     btn.classList.toggle('active', isActive);
-    btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    btn.setAttribute('tabindex', isActive ? '0' : '-1');
   });
 }
 
@@ -3347,20 +3349,12 @@ function initApp() {
 
   vis('sagsinfo');
 
-  const navConfig = [
-    { id: 'btnSagsinfo', section: 'sagsinfo' },
-    { id: 'btnOptaelling', section: 'optaelling' },
-    { id: 'btnLon', section: 'lon' },
-  ];
-
-  navConfig.forEach(({ id, section, onActivate }) => {
-    const button = document.getElementById(id);
-    if (!button) return;
+  const tabButtons = document.querySelectorAll('header nav button[data-section][role="tab"]');
+  forEachNode(tabButtons, button => {
+    const { section } = button.dataset;
+    if (!section) return;
     button.addEventListener('click', () => {
       vis(section);
-      if (typeof onActivate === 'function') {
-        onActivate();
-      }
     });
   });
 
