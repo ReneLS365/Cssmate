@@ -670,7 +670,69 @@ const manualMaterials = Array.from({ length: 3 }, (_, index) => ({
   manual: true,
 }));
 
-function hydrateMaterialListsFromJson() {
+const MATERIAL_SYSTEM_CATEGORIES = ['Bosta', 'HAKI', 'MODEX', 'Alfix'];
+
+// materials_list_update.json er reserveret til fremtidige prisopdateringer, så mergeBaseAndUpdate
+// kan kombinere en basisliste med kun de ændringer, der udgives senere på året.
+function mergeBaseAndUpdate(base, update) {
+  const baseData = (base && typeof base === 'object') ? base : {};
+  const updateData = (update && typeof update === 'object') ? update : {};
+  const sanitizeList = list => Array.isArray(list)
+    ? list
+        .map(entry => ({
+          beskrivelse: String(entry?.beskrivelse ?? entry?.navn ?? entry?.name ?? '').trim(),
+          pris: toNumber(entry?.pris ?? entry?.price ?? 0),
+        }))
+        .filter(item => Boolean(item.beskrivelse))
+    : [];
+
+  const merged = {};
+
+  MATERIAL_SYSTEM_CATEGORIES.forEach(systemKey => {
+    const baseList = sanitizeList(baseData[systemKey]);
+    const updateList = sanitizeList(updateData[systemKey]);
+    const updateMap = new Map(updateList.map(entry => [normalizeKey(entry.beskrivelse), entry]));
+    const usedUpdates = new Set();
+
+    const combined = baseList.map(entry => {
+      const normalized = normalizeKey(entry.beskrivelse);
+      const override = normalized ? updateMap.get(normalized) : undefined;
+      if (override) {
+        usedUpdates.add(normalized);
+        return {
+          beskrivelse: entry.beskrivelse,
+          pris: toNumber(override.pris),
+        };
+      }
+      return {
+        beskrivelse: entry.beskrivelse,
+        pris: toNumber(entry.pris),
+      };
+    });
+
+    updateList.forEach(entry => {
+      const normalized = normalizeKey(entry.beskrivelse);
+      if (!normalized || usedUpdates.has(normalized)) return;
+      combined.push({
+        beskrivelse: entry.beskrivelse,
+        pris: toNumber(entry.pris),
+      });
+    });
+
+    merged[systemKey] = combined;
+  });
+
+  const mergedYear = Number.isFinite(Number(updateData.year))
+    ? Number(updateData.year)
+    : Number(baseData.year);
+  if (Number.isFinite(mergedYear)) {
+    merged.year = mergedYear;
+  }
+
+  return merged;
+}
+
+async function hydrateMaterialListsFromJson() {
   const mapList = (target, entries, prefix) => {
     if (!Array.isArray(entries) || entries.length === 0) return false;
     const previous = new Map(
@@ -679,7 +741,7 @@ function hydrateMaterialListsFromJson() {
     const filteredEntries = entries.filter(entry => {
       const rawName = entry?.beskrivelse ?? entry?.navn ?? entry?.name ?? '';
       const key = normalizeKey(String(rawName).trim());
-      return !EXCLUDED_MATERIAL_KEYS.includes(key);
+      return key && !EXCLUDED_MATERIAL_KEYS.includes(key);
     });
 
     const next = filteredEntries.map((entry, index) => {
@@ -693,6 +755,7 @@ function hydrateMaterialListsFromJson() {
         name,
         price: toNumber(priceValue),
         quantity: previous.get(key) ?? 0,
+        manual: false,
       };
     });
     target.splice(0, target.length, ...next);
@@ -707,11 +770,10 @@ function hydrateMaterialListsFromJson() {
   ].map(({ target, prefix, sources }) => ({
     target,
     prefix,
-    normalizedSources: sources
-      .map(source => normalizeKey(source)),
+    normalizedSources: sources.map(source => normalizeKey(source)),
   }));
 
-  const applyLists = lists => {
+  const applyLists = (lists, sourceLabel = 'json') => {
     if (!lists || typeof lists !== 'object') return false;
     const normalizedLists = new Map();
     for (const [rawKey, value] of Object.entries(lists)) {
@@ -736,42 +798,35 @@ function hydrateMaterialListsFromJson() {
     if (hydrated) {
       renderOptaelling();
       updateTotals(true);
+      if (typeof lists.year !== 'undefined') {
+        console.info(`Materialelister (${sourceLabel}) indlæst for ${lists.year}.`);
+      }
     }
 
     return hydrated;
   };
 
-  const tryDatasetFallback = () => {
-    if (typeof fetch !== 'function') return Promise.resolve(false);
-
-    return fetch('./dataset.js')
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        return response.text();
-      })
-      .then(script => {
-        const factory = new Function(
-          `${script}; return {
-            BOSTA_DATA: typeof BOSTA_DATA !== 'undefined' ? BOSTA_DATA : undefined,
-            HAKI_DATA: typeof HAKI_DATA !== 'undefined' ? HAKI_DATA : undefined,
-            MODEX_DATA: typeof MODEX_DATA !== 'undefined' ? MODEX_DATA : undefined,
-            ALFIX_DATA: typeof ALFIX_DATA !== 'undefined' ? ALFIX_DATA : undefined,
-          };`
-        );
-        const data = factory();
-        return applyLists({
-          BOSTA_DATA: data?.BOSTA_DATA,
-          HAKI_DATA: data?.HAKI_DATA,
-          MODEX_DATA: data?.MODEX_DATA,
-          ALFIX_DATA: data?.ALFIX_DATA,
-        });
-      })
-      .catch(err => {
-        console.error('Kunne ikke indlæse fallback dataset.js', err);
-        return false;
-      });
+  const loadDatasetFallback = async () => {
+    try {
+      const mod = await import('./dataset.js');
+      const adapt = data => Array.isArray(data)
+        ? data
+            .map(entry => ({
+              beskrivelse: String(entry?.navn ?? entry?.name ?? '').trim(),
+              pris: toNumber(entry?.pris ?? entry?.price ?? 0),
+            }))
+            .filter(item => Boolean(item.beskrivelse))
+        : [];
+      return {
+        Bosta: adapt(mod.BOSTA_DATA),
+        HAKI: adapt(mod.HAKI_DATA),
+        MODEX: adapt(mod.MODEX_DATA),
+        Alfix: adapt(mod.ALFIX_DATA),
+      };
+    } catch (error) {
+      console.error('Kunne ikke indlæse fallback dataset.js', error);
+      return null;
+    }
   };
 
   if (typeof fetch !== 'function') {
@@ -779,36 +834,46 @@ function hydrateMaterialListsFromJson() {
     return;
   }
 
-  fetch('./src/data/complete_lists.json')
-    .then(response => {
+  const fetchJson = async (url, { optional = false } = {}) => {
+    try {
+      const response = await fetch(url, { cache: 'no-cache' });
       if (!response.ok) {
         const error = new Error(`HTTP ${response.status}`);
         error.status = response.status;
         error.statusText = response.statusText;
-        error.isHttpError = true;
         throw error;
       }
-      return response.json();
-    })
-    .then(lists => {
-      const hydrated = applyLists(lists);
+      return await response.json();
+    } catch (error) {
+      if (optional) {
+        console.info(`Materialeopdatering kunne ikke indlæses (${url}).`, error);
+        return null;
+      }
+      throw error;
+    }
+  };
+
+  const baseUrl = './src/data/materials_list_2025.json';
+  const updateUrl = './src/data/materials_list_update.json';
+
+  try {
+    const baseLists = await fetchJson(baseUrl);
+    const updateLists = await fetchJson(updateUrl, { optional: true });
+    const merged = mergeBaseAndUpdate(baseLists, updateLists);
+    const hydrated = applyLists(merged, 'materials_list_2025.json');
+    if (!hydrated) {
+      throw new Error('Materialelister fra JSON havde ikke forventet format.');
+    }
+  } catch (error) {
+    console.warn('Kunne ikke hente materialelister – forsøger dataset.js som fallback.', error);
+    const fallbackLists = await loadDatasetFallback();
+    if (fallbackLists) {
+      const hydrated = applyLists(fallbackLists, 'dataset.js');
       if (!hydrated) {
-        console.error('Materialelister fra JSON havde ikke forventet format.', lists);
+        console.error('Fallback dataset.js havde ikke forventet format.', fallbackLists);
       }
-    })
-    .catch(err => {
-      const isNetworkError = err?.name === 'TypeError' || err?.isNetworkError === true;
-      if (isNetworkError) {
-        console.warn('Netværksfejl ved hentning af materialelister – forsøger dataset.js som fallback.', err);
-        return tryDatasetFallback();
-      }
-      if (err?.isHttpError) {
-        console.error('Kunne ikke hente komplette materialelister (HTTP-fejl). Fallback er deaktiveret for at undgå forældede data.', err);
-        return false;
-      }
-      console.error('Kunne ikke hente komplette materialelister', err);
-      return false;
-    });
+    }
+  }
 }
 
 function getAllData(includeManual = true) {
@@ -838,10 +903,11 @@ function setupListSelectors() {
   const duplicateWarningId = 'systemDuplicateWarning';
   const optionsHtml = systemOptions
     .map(option => {
-      const checked = selectedSystemKeys.has(option.key) ? 'checked' : '';
+      const isChecked = selectedSystemKeys.has(option.key);
+      const activeClass = isChecked ? ' system-card--active' : '';
       return `
-        <label class="system-option">
-          <input type="checkbox" value="${option.key}" ${checked}>
+        <label class="system-option system-card${activeClass}" data-system-key="${option.key}">
+          <input type="checkbox" value="${option.key}" ${isChecked ? 'checked' : ''}>
           <span>${option.label}</span>
         </label>
       `;
@@ -873,6 +939,7 @@ function setupListSelectors() {
         warning?.removeAttribute('hidden');
         selectedSystemKeys.add(value);
         target.checked = true;
+        syncSystemSelectorState();
         updateActionHint('Vælg mindst ét system for at fortsætte optællingen.', 'error');
         return;
       }
@@ -883,6 +950,7 @@ function setupListSelectors() {
     if (hint && hint.textContent === 'Vælg mindst ét system for at fortsætte optællingen.') {
       updateActionHint('');
     }
+    syncSystemSelectorState();
     renderOptaelling();
     updateTotals(true);
   });
@@ -892,7 +960,12 @@ function syncSystemSelectorState() {
   const container = document.getElementById('listSelectors');
   if (!container) return;
   container.querySelectorAll('input[type="checkbox"]').forEach(input => {
-    input.checked = selectedSystemKeys.has(input.value);
+    const isChecked = selectedSystemKeys.has(input.value);
+    input.checked = isChecked;
+    const card = input.closest('.system-card');
+    if (card) {
+      card.classList.toggle('system-card--active', isChecked);
+    }
   });
 }
 
@@ -982,14 +1055,30 @@ function handleOptaellingInput(event) {
   }
 }
 
+const scheduleTotalsUpdate = debounce(() => updateTotals(), 160);
+
 function handleQuantityChange(event) {
-  const { id } = event.target.dataset;
-  updateQty(id, event.target.value);
+  const dataset = event.target?.dataset;
+  if (!dataset) return;
+  const updated = updateQty(dataset.id, event.target.value);
+  if (!updated) return;
+  if (event.type === 'change') {
+    updateTotals(true);
+  } else {
+    scheduleTotalsUpdate();
+  }
 }
 
 function handlePriceChange(event) {
-  const { id } = event.target.dataset;
-  updatePrice(id, event.target.value);
+  const dataset = event.target?.dataset;
+  if (!dataset) return;
+  const updated = updatePrice(dataset.id, event.target.value);
+  if (!updated) return;
+  if (event.type === 'change') {
+    updateTotals(true);
+  } else {
+    scheduleTotalsUpdate();
+  }
 }
 
 function handleManualNameChange(event) {
@@ -1009,19 +1098,19 @@ function findMaterialRowElement(id) {
 
 function updateQty(id, val) {
   const item = findMaterialById(id);
-  if (!item) return;
+  if (!item) return false;
   item.quantity = toNumber(val);
   refreshMaterialRowDisplay(id);
-  updateTotals();
+  return true;
 }
 
 function updatePrice(id, val) {
   const item = findMaterialById(id);
-  if (!item) return;
-  if (!item.manual && !admin) return;
+  if (!item) return false;
+  if (!item.manual && !admin) return false;
   item.price = toNumber(val);
   refreshMaterialRowDisplay(id);
-  updateTotals();
+  return true;
 }
 
 function refreshMaterialRowDisplay(id) {
