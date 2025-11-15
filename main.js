@@ -6,6 +6,7 @@ import { EXCLUDED_MATERIAL_KEYS, shouldExcludeMaterialEntry } from './src/lib/ma
 import { createMaterialRow } from './src/modules/materialRowTemplate.js'
 import { sha256Hex, constantTimeEquals } from './src/lib/sha256.js'
 import { ensureExportLibs, ensureZipLib, prefetchExportLibs } from './src/features/export/lazy-libs.js'
+import { buildExcelWorkbooks, prefetchExcelTemplates } from './src/features/export/excelTemplates.js'
 import { installLazyNumpad } from './src/ui/numpad.lazy.js'
 import { createVirtualMaterialsList } from './src/modules/materialsVirtualList.js'
 import { initClickGuard } from './src/ui/Guards/ClickGuard.js'
@@ -1622,7 +1623,7 @@ function validateSagsinfo() {
     el.classList.toggle('invalid', !fieldValid);
   });
 
-  ['btnExportCSV', 'btnExportAll', 'btnExportZip', 'btnPrint'].forEach(id => {
+  ['btnExportCSV', 'btnExportAll', 'btnExportZip', 'btnExportExcel', 'btnPrint'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) btn.disabled = !isValid;
   });
@@ -2788,6 +2789,20 @@ function generateCSVString(options = {}) {
   return payload ? payload.content : '';
 }
 
+function downloadBlobFile(blob, fileName) {
+  if (!blob) return false;
+  if (!fileName) fileName = 'download';
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  return true;
+}
+
 function buildExcelTemplatePayload(options = {}) {
   const payload = buildCSVPayload(options?.customSagsnummer ?? null, {
     ...options,
@@ -3205,6 +3220,20 @@ async function exportZip() {
     zip.file(csvPayload.fileName, csvPayload.content);
     zip.file(pdfPayload.fileName, pdfPayload.blob);
 
+    const excelPayload = buildExcelTemplatePayload({
+      customSagsnummer: csvPayload.originalName || csvPayload.baseName || null,
+      skipValidation: true,
+      skipBeregn: true,
+    });
+    if (excelPayload) {
+      const excelWorkbooks = await buildExcelWorkbooks(excelPayload);
+      excelWorkbooks.forEach(file => {
+        if (!file || !file.blob) return;
+        const folder = excelWorkbooks.length > 1 ? 'excel/' : '';
+        zip.file(`${folder}${file.fileName}`, file.blob);
+      });
+    }
+
     const zipBlob = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(zipBlob);
     const link = document.createElement('a');
@@ -3215,7 +3244,7 @@ async function exportZip() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    updateActionHint('ZIP med PDF og CSV er gemt.', 'success');
+    updateActionHint('ZIP med PDF, CSV og Excel er gemt.', 'success');
   } catch (error) {
     console.error('ZIP eksport fejlede', error);
     updateActionHint('ZIP eksport fejlede. Prøv igen.', 'error');
@@ -3233,6 +3262,51 @@ async function exportAll(customSagsnummer) {
   downloadCSV(sagsnummer, { skipBeregn: true, skipValidation: true });
   await exportPDF(sagsnummer, { skipBeregn: true });
   updateActionHint('Eksport af PDF og CSV er fuldført.', 'success');
+}
+
+async function exportExcel(customSagsnummer) {
+  if (!validateSagsinfo()) {
+    updateActionHint('Udfyld Sagsinfo for at eksportere.', 'error');
+    return;
+  }
+  try {
+    beregnLon();
+    const payload = buildExcelTemplatePayload({
+      customSagsnummer: customSagsnummer || null,
+      skipValidation: true,
+      skipBeregn: true,
+    });
+    if (!payload) {
+      updateActionHint('Ingen Excel-data tilgængelig.', 'error');
+      return;
+    }
+    const workbooks = await buildExcelWorkbooks(payload);
+    if (!Array.isArray(workbooks) || workbooks.length === 0) {
+      updateActionHint('Ingen Excel-skabeloner fundet.', 'error');
+      return;
+    }
+    if (workbooks.length === 1) {
+      const file = workbooks[0];
+      if (downloadBlobFile(file.blob, file.fileName)) {
+        updateActionHint('Excel er gemt til din enhed.', 'success');
+      }
+      return;
+    }
+    const { JSZip } = await ensureZipLib();
+    const zip = new JSZip();
+    const baseName = sanitizeFilename(payload.baseName || payload.originalName || 'akkordseddel');
+    workbooks.forEach(file => {
+      if (!file || !file.blob) return;
+      zip.file(file.fileName, file.blob);
+    });
+    const blob = await zip.generateAsync({ type: 'blob' });
+    if (downloadBlobFile(blob, `${baseName}-excel.zip`)) {
+      updateActionHint('Excel-skabeloner er gemt til din enhed.', 'success');
+    }
+  } catch (error) {
+    console.error('Excel eksport fejlede', error);
+    updateActionHint('Excel eksport fejlede. Prøv igen.', 'error');
+  }
 }
 
 // --- CSV-import for optælling ---
@@ -3537,10 +3611,17 @@ function initApp() {
     await exportZip();
   });
 
-  ['btnExportAll', 'btnExportZip'].forEach(id => {
+  document.getElementById('btnExportExcel')?.addEventListener('click', async () => {
+    await exportExcel();
+  });
+
+  ['btnExportAll', 'btnExportZip', 'btnExportExcel'].forEach(id => {
     const button = document.getElementById(id);
     if (!button) return;
-    const prime = () => prefetchExportLibs();
+    const prime = () => {
+      prefetchExportLibs();
+      prefetchExcelTemplates();
+    };
     button.addEventListener('pointerenter', prime, { once: true });
     button.addEventListener('focus', prime, { once: true });
   });
@@ -3605,6 +3686,11 @@ function initApp() {
 if (typeof window !== 'undefined') {
   window.sscaffExcel = {
     buildTemplatePayload: buildExcelTemplatePayload,
+    async buildWorkbooks(options = {}) {
+      const payload = buildExcelTemplatePayload(options);
+      if (!payload) return [];
+      return buildExcelWorkbooks(payload, options);
+    },
   };
 }
 

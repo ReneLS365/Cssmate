@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "templates": [
+    {
+      "id": "bosta",
+      "system": "bosta",
+      "label": "Bosta 70",
+      "file": "./src/data/excel/BOSTA.xlsx"
+    },
+    {
+      "id": "haki",
+      "system": "haki",
+      "label": "HAKI",
+      "file": "./src/data/excel/HAKI.xlsx"
+    },
+    {
+      "id": "modex",
+      "system": "modex",
+      "label": "MODEX",
+      "file": "./src/data/excel/MODEX.xlsx"
+    },
+    {
+      "id": "alfix",
+      "system": "alfix",
+      "label": "Alfix VARIO",
+      "file": "./src/data/excel/ALFIX.xlsx"
+    }
+  ]
+}
