@@ -43,6 +43,11 @@ header .ttl{font-weight:700}
 nav{display:flex;gap:6px;flex-wrap:wrap;padding:4px 0}
 nav button{background:#34353b;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:6px 12px;min-height:36px;font-size:0.95rem;line-height:1.2}
 nav button.active{outline:2px solid var(--accent)}
+@media (max-width:720px){
+  nav{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;margin:0 -10px;padding:4px 10px}
+  nav::-webkit-scrollbar{display:none}
+  nav button{flex:0 0 auto}
+}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .material-row input:focus-visible,.csm-row input:focus-visible{outline:2px solid var(--accent)}
 main{padding:var(--pad);display:flex;flex-direction:column;gap:var(--gap)}
@@ -211,7 +216,7 @@ round:rgba(255,255,255,0.03)}
   .status-bar{flex-direction:column;align-items:flex-start}
   .status-pill{min-width:0;width:100%;justify-content:flex-start;padding-inline:12px}
   .btn-group{flex-direction:column}
-  nav button{padding:6px 12px;min-height:38px}
+  nav button{padding:6px 12px;min-height:38px;font-size:0.9rem}
   .system-selector-options{gap:8px}
   .system-option{flex:1 1 calc(50% - 8px);justify-content:flex-start}
 }
@@ -242,7 +247,7 @@ round:rgba(255,255,255,0.03)}
 }
 
 @media print{
-  header,nav,.no-print,.csmate-numpad{display:none!important}
+  header,nav,.no-print,.sscaff-numpad{display:none!important}
   body{background:#fff;color:#000}
   fieldset{border-color:#000;background:#fff}
   .materials{max-height:none}
@@ -384,3 +389,5 @@ round:rgba(255,255,255,0.03)}
 .approval-badge[data-status="afventer"]{background:rgba(255,196,38,0.12);color:#ffd66c;border-color:rgba(255,196,38,0.4)}
 .approval-badge[data-status="godkendt"]{background:rgba(93,201,133,0.18);color:#8adbae;border-color:rgba(93,201,133,0.4)}
 .approval-badge[data-status="afvist"]{background:rgba(214,102,102,0.18);color:#ff9b9b;border-color:rgba(214,102,102,0.4)}
+.table-scroll,.responsive-scroll{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.table-scroll table,.responsive-scroll table{min-width:640px}

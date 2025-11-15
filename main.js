@@ -6,12 +6,13 @@ import { EXCLUDED_MATERIAL_KEYS, shouldExcludeMaterialEntry } from './src/lib/ma
 import { createMaterialRow } from './src/modules/materialRowTemplate.js'
 import { sha256Hex, constantTimeEquals } from './src/lib/sha256.js'
 import { ensureExportLibs, ensureZipLib, prefetchExportLibs } from './src/features/export/lazy-libs.js'
+import { buildExcelWorkbooks, prefetchExcelTemplates } from './src/features/export/excelTemplates.js'
 import { installLazyNumpad } from './src/ui/numpad.lazy.js'
 import { createVirtualMaterialsList } from './src/modules/materialsVirtualList.js'
 import { initClickGuard } from './src/ui/Guards/ClickGuard.js'
 import { setAdminOk, setLock } from './src/state/admin.js'
 
-const IOS_INSTALL_PROMPT_DISMISSED_KEY = 'csmate.iosInstallPromptDismissed'
+const IOS_INSTALL_PROMPT_DISMISSED_KEY = 'sscaff.iosInstallPromptDismissed'
 let DEFAULT_ADMIN_CODE_HASH = ''
 let materialsVirtualListController = null
 
@@ -223,7 +224,7 @@ let currentStatus = 'kladde';
 let recentCasesCache = [];
 let cachedDBPromise = null;
 const DEFAULT_ACTION_HINT = 'Udfyld Sagsinfo for at fortsætte.';
-const DB_NAME = 'csmate_projects';
+const DB_NAME = 'sscaff_projects';
 const DB_STORE = 'projects';
 const TRAELLE_RATE35 = 10.44;
 const TRAELLE_RATE50 = 14.62;
@@ -631,6 +632,36 @@ function aggregateSelectedSystemData() {
   return aggregated;
 }
 
+function buildSystemMaterialBreakdown() {
+  const breakdown = [];
+  const selected = getSelectedSystemKeys();
+  selected.forEach(key => {
+    const label = systemLabelMap.get(key) || key;
+    const groups = getDatasetForSelectedSystems([key]);
+    const items = [];
+    if (Array.isArray(groups)) {
+      groups.forEach(group => {
+        if (!Array.isArray(group)) return;
+        group.forEach(entry => {
+          if (!entry) return;
+          const quantity = toNumber(entry.quantity);
+          if (!Number.isFinite(quantity) || quantity <= 0) return;
+          items.push({
+            id: entry.id,
+            name: entry.name || '',
+            quantity,
+            price: toNumber(entry.price),
+          });
+        });
+      });
+    }
+    if (items.length) {
+      breakdown.push({ key, label, items });
+    }
+  });
+  return breakdown;
+}
+
 const manualMaterials = Array.from({ length: 3 }, (_, index) => ({
   id: `manual-${index + 1}`,
   name: '',
@@ -751,15 +782,32 @@ function hydrateMaterialListsFromJson() {
   fetch('./src/data/complete_lists.json')
     .then(response => {
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        const error = new Error(`HTTP ${response.status}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.isHttpError = true;
+        throw error;
       }
       return response.json();
     })
-    .then(applyLists)
-    .then(applied => applied || tryDatasetFallback())
+    .then(lists => {
+      const hydrated = applyLists(lists);
+      if (!hydrated) {
+        console.error('Materialelister fra JSON havde ikke forventet format.', lists);
+      }
+    })
     .catch(err => {
-      console.warn('Kunne ikke hente komplette materialelister', err);
-      return tryDatasetFallback();
+      const isNetworkError = err?.name === 'TypeError' || err?.isNetworkError === true;
+      if (isNetworkError) {
+        console.warn('Netværksfejl ved hentning af materialelister – forsøger dataset.js som fallback.', err);
+        return tryDatasetFallback();
+      }
+      if (err?.isHttpError) {
+        console.error('Kunne ikke hente komplette materialelister (HTTP-fejl). Fallback er deaktiveret for at undgå forældede data.', err);
+        return false;
+      }
+      console.error('Kunne ikke hente komplette materialelister', err);
+      return false;
     });
 }
 
@@ -1575,7 +1623,7 @@ function validateSagsinfo() {
     el.classList.toggle('invalid', !fieldValid);
   });
 
-  ['btnExportCSV', 'btnExportAll', 'btnExportZip', 'btnPrint'].forEach(id => {
+  ['btnExportCSV', 'btnExportAll', 'btnExportZip', 'btnExportExcel', 'btnPrint'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) btn.disabled = !isValid;
   });
@@ -2592,6 +2640,7 @@ function buildCSVPayload(customSagsnummer, options = {}) {
   }
   const cache = typeof window !== 'undefined' ? window.__beregnLonCache : null;
   const materials = getAllData().filter(item => toNumber(item.quantity) > 0);
+  const systemBreakdown = buildSystemMaterialBreakdown();
   const labor = Array.isArray(laborEntries) ? laborEntries : [];
   const tralleState = computeTraelleTotals();
   const tralleSum = tralleState && Number.isFinite(tralleState.sum) ? tralleState.sum : 0;
@@ -2738,6 +2787,129 @@ function downloadCSV(customSagsnummer, options = {}) {
 function generateCSVString(options = {}) {
   const payload = buildCSVPayload(options?.customSagsnummer, options);
   return payload ? payload.content : '';
+}
+
+function downloadBlobFile(blob, fileName) {
+  if (!blob) return false;
+  if (!fileName) fileName = 'download';
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  return true;
+}
+
+function buildExcelTemplatePayload(options = {}) {
+  const payload = buildCSVPayload(options?.customSagsnummer ?? null, {
+    ...options,
+    skipBeregn: options?.skipBeregn ?? false,
+    skipValidation: options?.skipValidation ?? true,
+  });
+  if (!payload) return null;
+
+  const lines = String(payload.content || '')
+    .split(/\r?\n/)
+    .map(line => line.trimEnd())
+    .filter(line => line.length > 0);
+
+  if (!lines.length) {
+    return {
+      baseName: payload.baseName,
+      csv: payload.content,
+      fileName: `${payload.baseName || 'akkordseddel'}.xlsx`,
+      rows: [],
+      sections: new Map(),
+      systemBreakdown: [],
+      toSheetData() { return []; },
+      toWorkbook() { return null; },
+    };
+  }
+
+  const rows = lines.map(line => line.split(';').map(cell => cell.trim()));
+  const headerRow = rows[0] || [];
+  const sectionHeader = headerRow.length > 1 ? headerRow.slice(1) : [];
+  const sections = new Map();
+  rows.slice(1).forEach(row => {
+    const section = row[0] || 'Sektion';
+    if (section === 'Sektion') return;
+    if (!sections.has(section)) {
+      sections.set(section, []);
+    }
+    sections.get(section).push(row.slice(1));
+  });
+
+  const systemBreakdown = buildSystemMaterialBreakdown();
+
+  const ensureUniqueSheetName = (workbook, name) => {
+    const clean = String(name || 'Data')
+      .replace(/[\\/?*\[\]:]/g, ' ')
+      .trim() || 'Data';
+    let sheetName = clean.slice(0, 28);
+    let suffix = 1;
+    while (workbook?.SheetNames?.includes(sheetName)) {
+      const next = `${clean.slice(0, 25)}_${suffix++}`;
+      sheetName = next.slice(0, 31);
+    }
+    return sheetName || 'Data';
+  };
+
+  return {
+    baseName: payload.baseName,
+    csv: payload.content,
+    fileName: `${payload.baseName || 'akkordseddel'}.xlsx`,
+    headerRow,
+    rows,
+    sections,
+    systemBreakdown,
+    toSheetData() {
+      return rows.map(row => row.slice());
+    },
+    toWorkbook() {
+      if (typeof window === 'undefined' || !window.XLSX || !window.XLSX.utils) {
+        return null;
+      }
+      const workbook = window.XLSX.utils.book_new();
+      const aoa = this.toSheetData();
+      if (aoa.length) {
+        const mainSheet = window.XLSX.utils.aoa_to_sheet(aoa);
+        window.XLSX.utils.book_append_sheet(workbook, mainSheet, ensureUniqueSheetName(workbook, 'Akkord'));
+      }
+
+      const sectionHeaderRow = sectionHeader.length ? sectionHeader : headerRow.slice(1);
+      sections.forEach((entries, section) => {
+        if (!entries.length) return;
+        const sheetRows = sectionHeaderRow.length ? [sectionHeaderRow, ...entries] : entries.map(entry => entry.slice());
+        const sheet = window.XLSX.utils.aoa_to_sheet(sheetRows);
+        window.XLSX.utils.book_append_sheet(workbook, sheet, ensureUniqueSheetName(workbook, section));
+      });
+
+      if (systemBreakdown.length) {
+        const systemRows = [['System', 'Id', 'Navn', 'Antal', 'Pris', 'Linjesum']];
+        systemBreakdown.forEach(system => {
+          system.items.forEach(item => {
+            const qty = toNumber(item.quantity);
+            const price = toNumber(item.price);
+            systemRows.push([
+              system.label,
+              item.id,
+              item.name,
+              formatNumberForCSV(qty),
+              formatNumberForCSV(price),
+              formatNumberForCSV(qty * price),
+            ]);
+          });
+        });
+        const systemSheet = window.XLSX.utils.aoa_to_sheet(systemRows);
+        window.XLSX.utils.book_append_sheet(workbook, systemSheet, ensureUniqueSheetName(workbook, 'Systemer'));
+      }
+
+      return workbook;
+    },
+  };
 }
 
 // --- PDF-eksport (html2canvas + jsPDF) ---
@@ -2940,6 +3112,27 @@ async function exportPDFBlob(customSagsnummer, options = {}) {
         </table>
       ` : '<p>Ingen materialer registreret.</p>'}
     </section>
+    ${systemBreakdown.length ? `
+    <section>
+      <h3>Systemoversigt</h3>
+      ${systemBreakdown.map(system => `
+        <h4>${escapeHtml(system.label)}</h4>
+        <table class="export-table">
+          <thead>
+            <tr><th>Id</th><th>Materiale</th><th>Antal</th><th>Pris</th><th>Linjesum</th></tr>
+          </thead>
+          <tbody>
+            ${system.items.map(item => {
+              const qty = toNumber(item.quantity);
+              const price = toNumber(item.price);
+              const total = qty * price;
+              return `<tr><td>${escapeHtml(item.id ?? '')}</td><td>${escapeHtml(item.name ?? '')}</td><td>${qty.toLocaleString('da-DK', { maximumFractionDigits: 2 })}</td><td>${formatCurrency(price)} kr</td><td>${formatCurrency(total)} kr</td></tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      `).join('')}
+    </section>
+    ` : ''}
     <section>
       <h3>Løn</h3>
       ${labor.length ? `
@@ -3027,6 +3220,20 @@ async function exportZip() {
     zip.file(csvPayload.fileName, csvPayload.content);
     zip.file(pdfPayload.fileName, pdfPayload.blob);
 
+    const excelPayload = buildExcelTemplatePayload({
+      customSagsnummer: csvPayload.originalName || csvPayload.baseName || null,
+      skipValidation: true,
+      skipBeregn: true,
+    });
+    if (excelPayload) {
+      const excelWorkbooks = await buildExcelWorkbooks(excelPayload);
+      excelWorkbooks.forEach(file => {
+        if (!file || !file.blob) return;
+        const folder = excelWorkbooks.length > 1 ? 'excel/' : '';
+        zip.file(`${folder}${file.fileName}`, file.blob);
+      });
+    }
+
     const zipBlob = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(zipBlob);
     const link = document.createElement('a');
@@ -3037,7 +3244,7 @@ async function exportZip() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    updateActionHint('ZIP med PDF og CSV er gemt.', 'success');
+    updateActionHint('ZIP med PDF, CSV og Excel er gemt.', 'success');
   } catch (error) {
     console.error('ZIP eksport fejlede', error);
     updateActionHint('ZIP eksport fejlede. Prøv igen.', 'error');
@@ -3055,6 +3262,51 @@ async function exportAll(customSagsnummer) {
   downloadCSV(sagsnummer, { skipBeregn: true, skipValidation: true });
   await exportPDF(sagsnummer, { skipBeregn: true });
   updateActionHint('Eksport af PDF og CSV er fuldført.', 'success');
+}
+
+async function exportExcel(customSagsnummer) {
+  if (!validateSagsinfo()) {
+    updateActionHint('Udfyld Sagsinfo for at eksportere.', 'error');
+    return;
+  }
+  try {
+    beregnLon();
+    const payload = buildExcelTemplatePayload({
+      customSagsnummer: customSagsnummer || null,
+      skipValidation: true,
+      skipBeregn: true,
+    });
+    if (!payload) {
+      updateActionHint('Ingen Excel-data tilgængelig.', 'error');
+      return;
+    }
+    const workbooks = await buildExcelWorkbooks(payload);
+    if (!Array.isArray(workbooks) || workbooks.length === 0) {
+      updateActionHint('Ingen Excel-skabeloner fundet.', 'error');
+      return;
+    }
+    if (workbooks.length === 1) {
+      const file = workbooks[0];
+      if (downloadBlobFile(file.blob, file.fileName)) {
+        updateActionHint('Excel er gemt til din enhed.', 'success');
+      }
+      return;
+    }
+    const { JSZip } = await ensureZipLib();
+    const zip = new JSZip();
+    const baseName = sanitizeFilename(payload.baseName || payload.originalName || 'akkordseddel');
+    workbooks.forEach(file => {
+      if (!file || !file.blob) return;
+      zip.file(file.fileName, file.blob);
+    });
+    const blob = await zip.generateAsync({ type: 'blob' });
+    if (downloadBlobFile(blob, `${baseName}-excel.zip`)) {
+      updateActionHint('Excel-skabeloner er gemt til din enhed.', 'success');
+    }
+  } catch (error) {
+    console.error('Excel eksport fejlede', error);
+    updateActionHint('Excel eksport fejlede. Prøv igen.', 'error');
+  }
 }
 
 // --- CSV-import for optælling ---
@@ -3359,10 +3611,17 @@ function initApp() {
     await exportZip();
   });
 
-  ['btnExportAll', 'btnExportZip'].forEach(id => {
+  document.getElementById('btnExportExcel')?.addEventListener('click', async () => {
+    await exportExcel();
+  });
+
+  ['btnExportAll', 'btnExportZip', 'btnExportExcel'].forEach(id => {
     const button = document.getElementById(id);
     if (!button) return;
-    const prime = () => prefetchExportLibs();
+    const prime = () => {
+      prefetchExportLibs();
+      prefetchExcelTemplates();
+    };
     button.addEventListener('pointerenter', prime, { once: true });
     button.addEventListener('focus', prime, { once: true });
   });
@@ -3422,6 +3681,17 @@ function initApp() {
       }
     });
   }
+}
+
+if (typeof window !== 'undefined') {
+  window.sscaffExcel = {
+    buildTemplatePayload: buildExcelTemplatePayload,
+    async buildWorkbooks(options = {}) {
+      const payload = buildExcelTemplatePayload(options);
+      if (!payload) return [];
+      return buildExcelWorkbooks(payload, options);
+    },
+  };
 }
 
 if (document.readyState === 'loading') {

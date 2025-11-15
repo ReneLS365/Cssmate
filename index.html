@@ -4,7 +4,7 @@
   
   <meta charset=utf-8>
   <meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name=description content="CSMate – stilladsoptælling, akkord og PWA til byggepladsen.">
+  <meta name=description content="Sscaff – stilladsoptælling, akkord og PWA til byggepladsen.">
   <meta name=theme-color content=#0f172a>
   <meta name=apple-mobile-web-app-capable content=yes>
   <meta name=apple-mobile-web-app-status-bar-style content=black-translucent>
@@ -16,12 +16,12 @@
   <link rel=stylesheet href=/css/pwa.css>
   <link rel=manifest href=/manifest.webmanifest crossorigin=anonymous>
   <link rel=apple-touch-icon href=/icons/icon-192.png>
-  <link rel=canonical href=https://csmate.netlify.app/ >
+  <link rel=canonical href=https://sscaff.netlify.app/ >
 </head>
 <body>
   <a class=skip-to-content href=#main>Spring til indhold</a>
   <div id=iosInstallPrompt class=ios-install-prompt role=region aria-live=polite hidden>
-    <p>Tilføj CSMate til hjemmeskærmen: Tryk på delingsknappen og vælg <strong>Føj til hjemmeskærm</strong>.</p>
+    <p>Tilføj Sscaff til hjemmeskærmen: Tryk på delingsknappen og vælg <strong>Føj til hjemmeskærm</strong>.</p>
     <button type=button id=iosInstallDismiss class=ios-install-dismiss aria-label="Skjul iOS installationshint">✕</button>
   </div>
   <div id=app class=app-shell>
@@ -139,11 +139,12 @@
       </div>
     </section>
 
-    <div class="row btn-group no-print">
-      <button id=btnExportCSV type=button disabled>Del til E‑komplet (CSV)</button>
-      <button id=btnExportAll type=button disabled>Eksportér PDF + CSV</button>
-      <button id=btnExportZip type=button disabled>Del til E‑komplet (ZIP)</button>
-    </div>
+      <div class="row btn-group no-print">
+        <button id=btnExportCSV type=button disabled>Del til E‑komplet (CSV)</button>
+        <button id=btnExportAll type=button disabled>Eksportér PDF + CSV</button>
+        <button id=btnExportExcel type=button disabled>Eksportér Excel-skabeloner</button>
+        <button id=btnExportZip type=button disabled>Del til E‑komplet (ZIP)</button>
+      </div>
     <p id=actionHint class="hint no-print">Udfyld Sagsinfo for at fortsætte.</p>
 
     <fieldset class=no-print data-allow-click>
@@ -253,7 +254,7 @@
     <div id=guideModal class=modal hidden aria-hidden=true>
       <div class=modal-content role=dialog aria-modal=true aria-labelledby=guideModalTitle tabindex=-1>
         <button type=button class=modal-close aria-label=Luk>×</button>
-        <h2 id=guideModalTitle>Guide til CSMate</h2>
+        <h2 id=guideModalTitle>Guide til Sscaff</h2>
         <p>
           Følg disse trin for at genskabe den stabile arbejdsgang:
         </p>
