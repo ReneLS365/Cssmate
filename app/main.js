@@ -7,14 +7,13 @@ import { createMaterialRow } from './src/modules/materialRowTemplate.js'
 import { sha256Hex, constantTimeEquals } from './src/lib/sha256.js'
 import { ensureExportLibs, ensureZipLib, prefetchExportLibs } from './src/features/export/lazy-libs.js'
 import { setupNumpad } from './js/numpad.js'
-// A9 calculator integration handled via external link
+import { openA9ForInput } from './js/a9-calc.js'
 import { exportMeta, setSlaebFormulaText } from './js/export-meta.js'
 import { createVirtualMaterialsList } from './src/modules/materialsVirtualList.js'
 import { initClickGuard } from './src/ui/Guards/ClickGuard.js'
 import { setAdminOk, restoreAdminState } from './src/state/admin.js'
 
 const IOS_INSTALL_PROMPT_DISMISSED_KEY = 'csmate.iosInstallPromptDismissed'
-const A9_CALCULATOR_URL = 'https://cala9.netlify.app/'
 let DEFAULT_ADMIN_CODE_HASH = ''
 let materialsVirtualListController = null
 
@@ -177,24 +176,37 @@ function setupGuideModal() {
 }
 
 function setupA9Integration() {
-  const slaebInput = document.getElementById('slaebePct');
+  const slaebInput = document.querySelector('input[data-a9-slaeb="true"]');
   const openBtn = document.getElementById('btnOpenA9');
 
   if (!slaebInput) {
     return;
   }
 
-  if (openBtn) {
-    const calcUrl = openBtn.getAttribute('data-calc-url') || A9_CALCULATOR_URL;
-    openBtn.addEventListener('click', event => {
+  const openOverlay = event => {
+    if (event) {
       event.preventDefault();
-      if (typeof window !== 'undefined' && typeof window.open === 'function') {
-        window.open(calcUrl, '_blank', 'noopener');
-      } else if (typeof location !== 'undefined') {
-        location.href = calcUrl;
-      }
-    });
+      event.stopPropagation();
+    }
+    openA9ForInput(slaebInput);
+  };
+
+  if (openBtn) {
+    openBtn.addEventListener('click', openOverlay);
   }
+
+  slaebInput.addEventListener('focus', event => {
+    event.stopPropagation();
+    openOverlay();
+  });
+
+  slaebInput.addEventListener('a9-commit', event => {
+    const formulaText = typeof event?.detail?.formulaText === 'string'
+      ? event.detail.formulaText
+      : '';
+    setSlaebFormulaText(formulaText);
+    updateSlaebFormulaInfo(formulaText);
+  });
 
   const handleManualUpdate = () => {
     if (slaebInput.dataset.a9Commit === '1') {
