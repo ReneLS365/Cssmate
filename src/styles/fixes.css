@@ -1,0 +1,120 @@
+/* Mobile-first refinements for the compact/simple build */
+.app-shell {
+  min-height: 100dvh;
+}
+
+.app-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.materials-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding-bottom: calc(env(safe-area-inset-bottom) + 120px);
+}
+
+/* Responsive grid for material rows */
+.material-row,
+.mat-row,
+.csm-mat-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(72px, 0.9fr) minmax(90px, 1fr) minmax(90px, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  margin-bottom: 8px;
+}
+
+.material-row input,
+.mat-row input,
+.csm-mat-row input {
+  min-height: 48px;
+  font-size: 1rem;
+  padding-inline: 12px;
+}
+
+.material-row .mat-qty,
+.mat-row .mat-qty,
+.csm-mat-row .mat-qty,
+.material-row .mat-price,
+.mat-row .mat-price,
+.csm-mat-row .mat-price,
+.material-row .mat-line,
+.mat-row .mat-line,
+.csm-mat-row .mat-line {
+  text-align: right;
+}
+
+.material-row .mat-line,
+.mat-row .mat-line,
+.csm-mat-row .mat-line {
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  header nav {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  header nav button {
+    flex: 1 1 auto;
+  }
+
+  .materials-scroll {
+    padding: 0 12px calc(env(safe-area-inset-bottom) + 140px);
+  }
+
+  .materials-scroll section,
+  .materials-scroll fieldset {
+    margin-bottom: 16px;
+  }
+
+  .material-row,
+  .mat-row,
+  .csm-mat-row {
+    grid-template-columns: minmax(0, 1.6fr) minmax(60px, 0.8fr) minmax(80px, 0.9fr) minmax(80px, 0.9fr);
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .grid-3,
+  .worker-grid {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .material-row,
+  .mat-row,
+  .csm-mat-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .material-row .mat-price,
+  .material-row .mat-line,
+  .mat-row .mat-price,
+  .mat-row .mat-line,
+  .csm-mat-row .mat-price,
+  .csm-mat-row .mat-line {
+    justify-self: end;
+  }
+
+  .material-row .mat-line,
+  .mat-row .mat-line,
+  .csm-mat-row .mat-line {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ensure floating buttons stay clear of the numpad */
+body.numpad-open .drop-area,
+body.numpad-open .btn-group,
+body.numpad-open .overview {
+  pointer-events: none;
+}
