@@ -2,10 +2,10 @@
 #numpad-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.55);
   display: flex;
-  align-items: flex-end;
   justify-content: center;
+  align-items: flex-end;
   z-index: 9999;
   transition: opacity 0.15s ease-out;
 }
@@ -18,125 +18,125 @@
 /* Panel */
 .numpad-panel {
   width: 100%;
-  max-width: 480px;
-  background: #16181d;
-  border-radius: 16px 16px 0 0;
-  padding: 8px 8px 12px;
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.5);
+  max-width: 420px;
+  margin: 0 auto 8px;
+  background: #121212;
+  border-radius: 16px;
+  padding: 8px 8px 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
   color: #f5f5f5;
   font-family: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-/* Luk-knap (rød X) */
+.numpad-topbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
 .numpad-close {
   background: transparent;
   border: none;
-  color: #ff6b6b;
-  font-size: 20px;
+  color: #f5f5f5;
+  font-size: 1.4rem;
+  line-height: 1;
   padding: 4px 8px;
-  align-self: flex-start;
+  cursor: pointer;
 }
 
 /* Display */
 .numpad-display {
-  background: #1f2229;
-  border-radius: 12px;
-  padding: 6px 10px;
-  margin: 4px 0 8px;
+  text-align: right;
+  font-size: 1.6rem;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #1c1c1c;
+  min-height: 48px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-height: 60px;
-}
-
-.numpad-display-memory {
-  font-size: 11px;
-  opacity: 0.7;
+  gap: 4px;
+  justify-content: center;
 }
 
 .numpad-display-expression {
-  font-size: 12px;
-  opacity: 0.8;
+  font-size: 0.85rem;
+  opacity: 0.75;
   min-height: 16px;
 }
 
 .numpad-display-current {
-  font-size: 22px;
-  text-align: right;
+  font-size: 1.8rem;
   font-variant-numeric: tabular-nums;
 }
 
 /* Grid */
 .numpad-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: 1fr;
   gap: 6px;
 }
 
-.numpad-key,
-.numpad-key-empty {
-  min-height: 44px;
-  border-radius: 12px;
-  border: none;
-  font-size: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .numpad-key {
-  background: #242731;
-  color: #f5f5f5;
+  border: none;
+  border-radius: 10px;
+  font-size: 1.2rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  background: #1f1f1f;
+  color: #f8f8f8;
+  aspect-ratio: 1 / 1;
+  min-height: 48px;
   touch-action: manipulation;
 }
 
 .numpad-key-op {
-  background: #2e3744;
+  background: #2a2a2a;
 }
 
 .numpad-key-func {
-  background: #3a2b33;
+  background: #242a31;
 }
 
 .numpad-key-eq {
-  background: #f28c3a;
-  color: #000;
+  background: #27ae60;
+  color: #fff;
   font-weight: 600;
 }
 
 .numpad-key:active {
   transform: translateY(1px);
-  filter: brightness(1.15);
+  filter: brightness(1.1);
 }
 
-.numpad-key-empty {
-  background: transparent;
+.numpad-grid .key-equal {
+  grid-column: 4 / 5;
+  grid-row: span 2;
+  aspect-ratio: auto;
 }
 
 /* Grøn commit-knap i bunden */
 .numpad-commit {
-  margin-top: 8px;
+  margin-top: 6px;
   width: 100%;
   border-radius: 999px;
   border: none;
-  min-height: 40px;
-  font-size: 22px;
+  padding: 10px 0;
+  font-size: 1.2rem;
   font-weight: 600;
   background: #18c153;
   color: #021003;
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
-/* Mobile fine-tuning */
-@media (max-width: 480px) {
+@media (min-width: 480px) {
   .numpad-panel {
-    border-radius: 14px 14px 0 0;
-    padding-bottom: 10px;
-  }
-  .numpad-key {
-    min-height: 48px;
-    font-size: 20px;
-  }
-  .numpad-display-current {
-    font-size: 24px;
+    margin-bottom: 16px;
   }
 }

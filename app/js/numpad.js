@@ -3,11 +3,9 @@
 
 const NUMPAD_SELECTOR = 'input[type="number"], input[data-numpad="true"], input[data-a9-slaeb="true"]'
 
-let overlay, displayMem, displayExpr, displayCurrent
+let overlay, displayExpr, displayCurrent
 let commitBtn, closeBtn
 let activeInput = null
-
-let memoryValue = 0
 let currentValue = '0'
 let expression = ''
 let mutationObserver = null
@@ -18,7 +16,6 @@ function initNumpad () {
   overlay = document.getElementById('numpad-overlay')
   if (!overlay) return
 
-  displayMem = document.getElementById('numpad-display-memory')
   displayExpr = document.getElementById('numpad-display-expression')
   displayCurrent = document.getElementById('numpad-display-current')
   commitBtn = document.getElementById('numpad-btn-commit')
@@ -250,7 +247,6 @@ function computeExpression () {
 
 function updateDisplays () {
   if (!displayCurrent) return
-  displayMem.textContent = 'M: ' + formatNumber(memoryValue)
   displayExpr.textContent = expression.replace(/\./g, ',')
   displayCurrent.textContent = formatNumber(currentValue)
 }
