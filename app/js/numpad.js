@@ -1,7 +1,7 @@
 // js/numpad.js
 // Globalt numpad + simpel lommeregner til alle talfelter
 
-const NUMPAD_SELECTOR = 'input[data-numpad="true"]'
+const NUMPAD_SELECTOR = 'input[type="number"], input[data-numpad="true"], input[data-a9-slaeb="true"]'
 
 let overlay, displayMem, displayExpr, displayCurrent
 let commitBtn, closeBtn
@@ -48,9 +48,14 @@ function initNumpad () {
 function handleNumpadFocus (event) {
   const input = event.currentTarget
   if (!(input instanceof HTMLInputElement)) return
-  if (input.value === '0' || input.value === '0,00') {
+
+  const rawValue = (input.value || '').trim()
+  const isZeroLike = rawValue === '' || rawValue === '0' || rawValue === '0,0' || rawValue === '0,00'
+
+  if (isZeroLike) {
     input.value = ''
   }
+
   showNumpadForInput(input)
 }
 
@@ -63,12 +68,17 @@ function bindInputs () {
   inputs.forEach(input => {
     if (!(input instanceof HTMLInputElement) || boundInputs.has(input)) return
 
-    if (!input.hasAttribute('inputmode')) {
-      input.setAttribute('inputmode', 'decimal')
+    input.setAttribute('readonly', 'readonly')
+    input.setAttribute('inputmode', 'none')
+    input.classList.add('numpad-readonly')
+
+    const wantsNumpad = input.dataset.numpad === 'true' || (input.type === 'number' && input.dataset.numpad !== 'off')
+
+    if (wantsNumpad) {
+      input.addEventListener('focus', handleNumpadFocus)
+      input.addEventListener('beforeinput', blockNativeInput)
     }
 
-    input.addEventListener('focus', handleNumpadFocus)
-    input.addEventListener('beforeinput', blockNativeInput)
     boundInputs.add(input)
   })
 }
@@ -116,7 +126,7 @@ function observeNumpadInputs () {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['data-numpad']
+      attributeFilter: ['data-numpad', 'data-a9-slaeb', 'type']
     })
   }
 }
