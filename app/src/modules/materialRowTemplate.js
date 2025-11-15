@@ -94,6 +94,7 @@ export function createMaterialRow (item, {
     priceInput.readOnly = false
     priceInput.value = hasPrice ? String(priceValue) : ''
   } else {
+    priceInput.dataset.requiresAdmin = 'true'
     const displayPrice = Number.isFinite(priceValue) ? priceValue.toFixed(2) : '0.00'
     priceInput.readOnly = !admin
     priceInput.value = displayPrice

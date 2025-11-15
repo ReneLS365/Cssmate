@@ -126,24 +126,6 @@
       </div>
     </section>
 
-    <section id=importer class="import-zone no-print">
-      <input id=csvFileInput type=file accept=.csv,text/csv,.json,application/json hidden>
-      <div id=dropArea class=drop-area role=button tabindex=0 aria-label="Træk en CSV eller JSON hertil eller klik for at vælge">
-        <p><strong>Importer fil</strong></p>
-        <p>Træk og slip din CSV/JSON her, eller klik for at vælge</p>
-      </div>
-      <div class=recent-cases>
-        <label for=recentCases class=sr-only>Seneste sager</label>
-        <select id=recentCases aria-label="Seneste sager"></select>
-        <button type=button id=btnLoadCase disabled>Indlæs sag</button>
-      </div>
-    </section>
-
-    <div class="row btn-group no-print">
-      <button id=btnExportCSV type=button disabled>Del til E‑komplet (CSV)</button>
-      <button id=btnExportAll type=button disabled>Eksportér PDF + CSV</button>
-      <button id=btnExportZip type=button disabled>Del til E‑komplet (ZIP)</button>
-    </div>
     <p id=actionHint class="hint no-print">Udfyld Sagsinfo for at fortsætte.</p>
 
     <fieldset class=no-print data-allow-click>
@@ -260,7 +242,7 @@
         <ol>
           <li>Udfyld <strong>Sagsinfo</strong> med de grundlæggende oplysninger.</li>
           <li>Vælg system i <strong>Optælling</strong> og indtast materialer.</li>
-          <li>Importer eller eksporter CSV efter behov og generér PDF.</li>
+          <li>Udskriv eller eksportér akkordsedlen fra <strong>Løn</strong> fanen.</li>
           <li>Tilføj medarbejdere under <strong>Løn</strong> og beregn akkord.</li>
         </ol>
         <p>

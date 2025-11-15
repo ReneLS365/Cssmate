@@ -162,12 +162,6 @@ round:rgba(255,255,255,0.03)}
 .totals div{display:flex;flex-direction:column;gap:4px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px}
 .totals span{color:var(--muted);font-size:0.85rem}
 .totals strong{font-size:1.25rem}
-.import-zone{background:var(--panel);border:1px dashed var(--border);border-radius:12px;padding:var(--pad)}
-.drop-area{border:2px dashed #aaa;border-radius:8px;padding:24px;text-align:center;display:flex;flex-direction:column;gap:6px;justify-content:center;align-items:center;min-height:140px;transition:all .2s ease}
-.drop-area.dragover{border-color:#333;background:rgba(255,255,255,0.05)}
-.recent-cases{margin-top:var(--gap);display:flex;gap:8px;flex-wrap:wrap}
-.recent-cases select{flex:1 1 200px;min-width:200px}
-.recent-cases button{flex:0 0 auto;min-width:140px}
 .hint{font-size:0.9rem;color:var(--muted);margin:0}
 .hint.error{color:#ff9b9b}
 .hint.success{color:#8adbae}
@@ -190,8 +184,6 @@ round:rgba(255,255,255,0.03)}
 .status-message{margin:6px 0 0;font-size:0.85rem}
 .status-message.success{color:#8adbae}
 .status-message.error{color:#ff9b9b}
-.ekomplet-actions{margin-top:16px;display:flex;flex-direction:column;gap:10px}
-.ekomplet-actions button{align-self:flex-start}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;padding:24px;z-index:999}
 .modal.open{display:flex}
 .modal[hidden]{display:none!important}
@@ -206,8 +198,6 @@ round:rgba(255,255,255,0.03)}
   .grid-2{grid-template-columns:1fr}
   .worker-grid{grid-template-columns:1fr}
   .totals{grid-template-columns:1fr}
-  .recent-cases{flex-direction:column}
-  .recent-cases button{width:100%}
   .status-bar{flex-direction:column;align-items:flex-start}
   .status-pill{min-width:0;width:100%;justify-content:flex-start;padding-inline:12px}
   .btn-group{flex-direction:column}
