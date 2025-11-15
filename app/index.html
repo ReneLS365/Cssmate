@@ -243,46 +243,46 @@
     </div>
   </div>
 
-  <div id="numpad-overlay" class="numpad-hidden" aria-hidden="true">
-    <div class="numpad-panel" role="dialog" aria-label="Numpad lommeregner">
-      <button type="button" class="numpad-close" id="numpad-btn-close">✕</button>
+    <div id="numpad-overlay" class="numpad-hidden" aria-hidden="true">
+      <div class="numpad-panel" role="dialog" aria-label="Numpad lommeregner">
+        <div class="numpad-topbar">
+          <button type="button" class="numpad-close" id="numpad-btn-close">✕</button>
+        </div>
 
-      <div class="numpad-display">
-        <div class="numpad-display-memory" id="numpad-display-memory">M: 0</div>
-        <div class="numpad-display-expression" id="numpad-display-expression"></div>
-        <div class="numpad-display-current" id="numpad-display-current">0</div>
+        <div class="numpad-display" aria-live="polite">
+          <div class="numpad-display-expression" id="numpad-display-expression"></div>
+          <div class="numpad-display-current" id="numpad-display-current">0</div>
+        </div>
+
+        <div class="numpad-grid">
+          <button data-key="C" class="numpad-key numpad-key-func">C</button>
+          <button data-key="÷" class="numpad-key numpad-key-op">÷</button>
+          <button data-key="×" class="numpad-key numpad-key-op">×</button>
+          <button data-key="BACK" class="numpad-key numpad-key-func">⌫</button>
+
+          <button data-key="7" class="numpad-key">7</button>
+          <button data-key="8" class="numpad-key">8</button>
+          <button data-key="9" class="numpad-key">9</button>
+          <button data-key="-" class="numpad-key numpad-key-op">-</button>
+
+          <button data-key="4" class="numpad-key">4</button>
+          <button data-key="5" class="numpad-key">5</button>
+          <button data-key="6" class="numpad-key">6</button>
+          <button data-key="+" class="numpad-key numpad-key-op">+</button>
+
+          <button data-key="1" class="numpad-key">1</button>
+          <button data-key="2" class="numpad-key">2</button>
+          <button data-key="3" class="numpad-key">3</button>
+          <button data-key="=" class="numpad-key numpad-key-eq key-equal">=</button>
+
+          <button data-key="%" class="numpad-key numpad-key-func">%</button>
+          <button data-key="0" class="numpad-key">0</button>
+          <button data-key="," class="numpad-key">,</button>
+        </div>
+
+        <button type="button" class="numpad-commit" id="numpad-btn-commit">✓</button>
       </div>
-
-      <div class="numpad-grid">
-        <button data-key="C" class="numpad-key numpad-key-func">C</button>
-        <button data-key="÷" class="numpad-key numpad-key-op">÷</button>
-        <button data-key="×" class="numpad-key numpad-key-op">×</button>
-        <button data-key="BACK" class="numpad-key numpad-key-func">⌫</button>
-
-        <button data-key="7" class="numpad-key">7</button>
-        <button data-key="8" class="numpad-key">8</button>
-        <button data-key="9" class="numpad-key">9</button>
-        <button data-key="-" class="numpad-key numpad-key-op">-</button>
-
-        <button data-key="4" class="numpad-key">4</button>
-        <button data-key="5" class="numpad-key">5</button>
-        <button data-key="6" class="numpad-key">6</button>
-        <button data-key="+" class="numpad-key numpad-key-op">+</button>
-
-        <button data-key="1" class="numpad-key">1</button>
-        <button data-key="2" class="numpad-key">2</button>
-        <button data-key="3" class="numpad-key">3</button>
-        <button data-key="=" class="numpad-key numpad-key-eq">=</button>
-
-        <button data-key="%" class="numpad-key numpad-key-func">%</button>
-        <button data-key="0" class="numpad-key">0</button>
-        <button data-key="," class="numpad-key">,</button>
-        <div class="numpad-key numpad-key-empty"></div>
-      </div>
-
-      <button type="button" class="numpad-commit" id="numpad-btn-commit">✓</button>
     </div>
-  </div>
 
   <div id=a9-overlay class=a9-hidden aria-hidden=true>
     <div class=a9-panel role=dialog aria-label="Slæb i % lommeregner" tabindex=-1>
