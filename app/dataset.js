@@ -1,4 +1,4 @@
-// Auto-generated dataset with full price lists for Bosta, HAKI and MODEX
+// Auto-generated dataset with full price lists for SSCaff systems
 const BOSTA_DATA = [
   { varenr: 'B001', navn: 'Spindelfod kort', enhed: 'stk', pris: 2.675425 },
   { varenr: 'B002', navn: 'Spindelfod lang', enhed: 'stk', pris: 2.675425 },
@@ -246,10 +246,72 @@ const MODEX_DATA = [
   { varenr: 'M067', navn: 'Stiger 2m & 3M', enhed: 'stk', pris: 4.51 },
   { varenr: 'M068', navn: 'Luk af hul', enhed: 'stk', pris: 3.45 },
   { varenr: 'M069', navn: 'Opskydeligt rækværk', enhed: 'stk', pris: 9.67 },
-  { varenr: 'M070', navn: 'Borring i beton', enhed: 'stk', pris: 11.49 },
-  { varenr: 'M071', navn: 'Huller', enhed: 'stk', pris: 4.7 },
-  { varenr: 'M072', navn: 'Km.', enhed: 'stk', pris: 2.12 },
-  { varenr: 'M073', navn: 'Udd. tillæg 1', enhed: 'stk', pris: 42.98 },
-  { varenr: 'M074', navn: 'Udd. tillæg 2', enhed: 'stk', pris: 49.38 },
-  { varenr: 'M075', navn: 'Mentortillæg', enhed: 'stk', pris: 22.26 },
 ];
+
+const ALFIX_DATA = [
+  { varenr: 'A001', navn: 'Kipdrager 4,5 m', enhed: 'stk', pris: 249.66 },
+  { varenr: 'A002', navn: 'Alu drager pr. m', enhed: 'm', pris: 17.12 },
+  { varenr: 'A003', navn: '4,5 m kederdrager', enhed: 'stk', pris: 175.68 },
+  { varenr: 'A004', navn: 'Samlerør til aludrager', enhed: 'stk', pris: 14.26 },
+  { varenr: 'A005', navn: '3 m kederdrager', enhed: 'stk', pris: 117.12 },
+  { varenr: 'A006', navn: '2,25 m kederdrager', enhed: 'stk', pris: 87.84 },
+  { varenr: 'A007', navn: '1,5 m kederdrager', enhed: 'stk', pris: 58.56 },
+  { varenr: 'A008', navn: 'Flapper/singel', enhed: 'stk', pris: 3.99 },
+  { varenr: 'A009', navn: 'Fastkobling', enhed: 'stk', pris: 3.99 },
+  { varenr: 'A010', navn: 'Horisontal/gelænder', enhed: 'stk', pris: 5.22 },
+  { varenr: 'A011', navn: 'Drejekobling', enhed: 'stk', pris: 3.99 },
+  { varenr: 'A012', navn: 'Diagonal', enhed: 'stk', pris: 9.4 },
+  { varenr: 'A013', navn: 'Kipfingerkobling', enhed: 'stk', pris: 3.99 },
+  { varenr: 'A014', navn: 'SK kobling', enhed: 'stk', pris: 3.99 },
+  { varenr: 'A015', navn: 'Keder-teltdug pr. m²', enhed: 'm2', pris: 6.42 },
+  { varenr: 'A016', navn: 'Rørsamler', enhed: 'stk', pris: 3.99 },
+  { varenr: 'A017', navn: 'Stilladsrør 1M', enhed: 'stk', pris: 5.51 },
+  { varenr: 'A018', navn: 'Stilladsrør 2M', enhed: 'stk', pris: 11.02 },
+  { varenr: 'A019', navn: 'Stilladsrør 3M', enhed: 'stk', pris: 16.53 },
+  { varenr: 'A020', navn: 'Stilladsrør 4M', enhed: 'stk', pris: 22.04 },
+  { varenr: 'A021', navn: 'Stilladsrør 5M', enhed: 'stk', pris: 27.55 },
+  { varenr: 'A022', navn: 'Stilladsrør 6M', enhed: 'stk', pris: 33.06 },
+  { varenr: 'A023', navn: 'Stilladsrør 6M alu', enhed: 'stk', pris: 23.94 },
+  { varenr: 'A024', navn: 'Dragestyr', enhed: 'stk', pris: 10.13 },
+  { varenr: 'A025', navn: 'Trekantdrager pr. m', enhed: 'm', pris: 35.53 },
+];
+
+function normalizeSystemItems(items = []) {
+  return items.map(item => ({
+    id: item.varenr || item.id,
+    name: item.navn || item.name || item.beskrivelse || '',
+    unit: item.enhed || item.unit || '',
+    price: Number(item.pris ?? item.price ?? 0) || 0,
+  }));
+}
+
+export const MATERIAL_SYSTEMS = {
+  bosta: {
+    id: 'bosta',
+    label: 'Bosta',
+    items: normalizeSystemItems(BOSTA_DATA),
+  },
+  haki: {
+    id: 'haki',
+    label: 'HAKI',
+    items: normalizeSystemItems(HAKI_DATA),
+  },
+  modex: {
+    id: 'modex',
+    label: 'MODEX',
+    items: normalizeSystemItems(MODEX_DATA),
+  },
+  alfix: {
+    id: 'alfix',
+    label: 'Alfix',
+    items: normalizeSystemItems(ALFIX_DATA),
+  },
+};
+
+export function getSystemList(systemId) {
+  return MATERIAL_SYSTEMS[systemId] || null;
+}
+
+export function getAllSystems() {
+  return Object.values(MATERIAL_SYSTEMS);
+}

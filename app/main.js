@@ -1,3 +1,4 @@
+import { MATERIAL_SYSTEMS, getSystemList, getAllSystems } from './dataset.js'
 import { initMaterialsScrollLock } from './src/modules/materialsScrollLock.js'
 import { calculateTotals } from './src/modules/calculateTotals.js'
 import { normalizeKey } from './src/lib/string-utils.js'
@@ -10,6 +11,7 @@ import { exportMeta, setSlaebFormulaText } from './js/export-meta.js'
 import { createVirtualMaterialsList } from './src/modules/materialsVirtualList.js'
 import { initClickGuard } from './src/ui/Guards/ClickGuard.js'
 import { setAdminOk, restoreAdminState } from './src/state/admin.js'
+import './boot-inline.js'
 
 const IOS_INSTALL_PROMPT_DISMISSED_KEY = 'csmate.iosInstallPromptDismissed'
 let DEFAULT_ADMIN_CODE_HASH = ''
@@ -292,296 +294,53 @@ const TILLAEG_UDD1 = 42.98;
 const TILLAEG_UDD2 = 49.38;
 
 // --- Scaffold Part Lists ---
-const dataBosta = [
-  { id: 1, name: "Spindelfod kort", price: 2.675425, quantity: 0 },
-  { id: 2, name: "Spindelfod lang", price: 2.675425, quantity: 0 },
-  { id: 3, name: "Vippefod", price: 4.4305038, quantity: 0 },
-  { id: 4, name: "Strø / trykudligner", price: 1.77, quantity: 0 },
-  { id: 5, name: "Ramme 200/70", price: 16.7053537, quantity: 0 },
-  { id: 6, name: "Ramme 150/70", price: 16.7053537, quantity: 0 },
-  { id: 7, name: "Ramme 100/70", price: 16.7053537, quantity: 0 },
-  { id: 8, name: "Ramme 80/70", price: 16.7053537, quantity: 0 },
-  { id: 9, name: "Ramme 66/70", price: 16.7053537, quantity: 0 },
-  { id: 10, name: "Gulvplade 300/70", price: 16.7053537, quantity: 0 },
-  { id: 11, name: "Gulvplade 250/70", price: 12.5316907, quantity: 0 },
-  { id: 12, name: "Gulvplade 200/70", price: 12.5316907, quantity: 0 },
-  { id: 13, name: "Gulvplade 150/70", price: 8.35, quantity: 0 },
-  { id: 14, name: "Gulvplade 125/70", price: 8.35, quantity: 0 },
-  { id: 15, name: "Gulvplade 70/70", price: 8.35, quantity: 0 },
-  { id: 16, name: "Gulvplade 300/35", price: 8.35, quantity: 0 },
-  { id: 17, name: "Gulvplade 250/35", price: 6.2604945, quantity: 0 },
-  { id: 18, name: "Gulvplade 200/35", price: 6.2604945, quantity: 0 },
-  { id: 19, name: "Gulvplade 150/35", price: 4.18, quantity: 0 },
-  { id: 20, name: "Gulvplade 125/35", price: 4.18, quantity: 0 },
-  { id: 21, name: "Stigedæk 300/70", price: 20.8790167, quantity: 0 },
-  { id: 22, name: "Stigedæk 250/70", price: 16.7053537, quantity: 0 },
-  { id: 23, name: "Stigedæk 200/70", price: 12.5316907, quantity: 0 },
-  { id: 24, name: "Ståldæk 300/35", price: 15.66, quantity: 0 },
-  { id: 25, name: "Ståldæk 250/35", price: 10.4448592, quantity: 0 },
-  { id: 26, name: "Ståldæk 200/35", price: 8.35, quantity: 0 },
-  { id: 27, name: "Stige 200", price: 4.5054157, quantity: 0 },
-  { id: 28, name: "Stige 300", price: 4.5054157, quantity: 0 },
-  { id: 29, name: "Stigestøtte", price: 2.8634, quantity: 0 },
-  { id: 30, name: "Diagonaler 200", price: 9.3960926, quantity: 0 },
-  { id: 31, name: "Diagonaler 203", price: 9.3960926, quantity: 0 },
-  { id: 32, name: "Gelænder 125", price: 3.13, quantity: 0 },
-  { id: 33, name: "Gelænder 150", price: 3.13, quantity: 0 },
-  { id: 34, name: "Gelænder 200", price: 3.9243, quantity: 0 },
-  { id: 35, name: "Gelænder 250", price: 3.9243, quantity: 0 },
-  { id: 36, name: "Gelænder 300", price: 5.2224296, quantity: 0 },
-  { id: 37, name: "Tvær Gel. 70", price: 3.13, quantity: 0 },
-  { id: 38, name: "Dob. Tværgelænder", price: 6.2604945, quantity: 0 },
-  { id: 39, name: "Dob. G", price: 16.7053537, quantity: 0 },
-  { id: 40, name: "L Rør", price: 16.7053537, quantity: 0 },
-  { id: 41, name: "B Rør", price: 8.35, quantity: 0 },
-  { id: 42, name: "Konsol 140", price: 27.5568775, quantity: 0 },
-  { id: 43, name: "Konsol 100", price: 19.2844634, quantity: 0 },
-  { id: 44, name: "Konsol 70", price: 15.1536072, quantity: 0 },
-  { id: 45, name: "Konsol 35", price: 11.03, quantity: 0 },
-  { id: 46, name: "Fodspark 300", price: 9.3960926, quantity: 0 },
-  { id: 47, name: "Fodspark 250", price: 8.35, quantity: 0 },
-  { id: 48, name: "Fodspark 200", price: 8.35, quantity: 0 },
-  { id: 49, name: "Fodspark 150", price: 6.2604945, quantity: 0 },
-  { id: 50, name: "Fodspark 125", price: 6.2604945, quantity: 0 },
-  { id: 51, name: "Kanthæk 300", price: 27.99, quantity: 0 },
-  { id: 52, name: "Kanthæk 250", price: 27.99, quantity: 0 },
-  { id: 53, name: "Kanthæk 200", price: 27.99, quantity: 0 },
-  { id: 54, name: "Kanthæk 70", price: 27.99, quantity: 0 },
-  { id: 55, name: "Tværprofil aludr.", price: 15.1536072, quantity: 0 },
-  { id: 56, name: "Alu. Drager pr. m.", price: 17.12, quantity: 0 },
-  { id: 57, name: "Gelændertvinge", price: 3.9917341, quantity: 0 },
-  { id: 58, name: "Tværprofin ram.", price: 15.1536072, quantity: 0 },
-  { id: 59, name: "Dæklås", price: 3.9917341, quantity: 0 },
-  { id: 60, name: "Samlerør til aludr.", price: 14.26, quantity: 0 },
-  { id: 61, name: "Flapper/Singel", price: 3.9917341, quantity: 0 },
-  { id: 62, name: "Fastkobling", price: 3.9917341, quantity: 0 },
-  { id: 63, name: "Drejekobling", price: 3.9917341, quantity: 0 },
-  { id: 64, name: "Kipfingerkobling", price: 3.9917341, quantity: 0 },
-  { id: 65, name: "SK Kobling", price: 3.9917341, quantity: 0 },
-  { id: 66, name: "Rørsamler", price: 3.9917341, quantity: 0 },
-  { id: 67, name: "Stilladsrør 1M", price: 5.5113755, quantity: 0 },
-  { id: 68, name: "Stilladsrør 2M", price: 11.022751, quantity: 0 },
-  { id: 69, name: "Stilladsrør 3M", price: 16.5341265, quantity: 0 },
-  { id: 70, name: "Stilladsrør 4M", price: 22.04, quantity: 0 },
-  { id: 71, name: "Stilladsrør 5M", price: 27.55, quantity: 0 },
-  { id: 72, name: "Stilladsrør 6M", price: 33.063, quantity: 0 },
-  { id: 73, name: "Stilladsrør 6M alu", price: 23.94, quantity: 0 },
-  { id: 74, name: "Bøjleanker", price: 14.6185222, quantity: 0 },
-  { id: 75, name: "Rør anker alu", price: 14.6185222, quantity: 0 },
-  { id: 76, name: "Rør anker stål", price: 18.7921852, quantity: 0 },
-  { id: 77, name: "Reklameskilt", price: 9.7335, quantity: 0 },
-  { id: 78, name: "Grøn skilt", price: 5.15, quantity: 0 },
-  { id: 79, name: "Startprofil til trappe", price: 4.1308562, quantity: 0 },
-  { id: 80, name: "Alu trappeløb", price: 51.2219, quantity: 0 },
-  { id: 81, name: "Gelænder trpl", price: 13.3878267, quantity: 0 },
-  { id: 82, name: "Dobb bundramme", price: 44.8615264, quantity: 0 },
-  { id: 83, name: "Tragt", price: 38.9862931, quantity: 0 },
-  { id: 84, name: "Skaktrør", price: 38.9855, quantity: 0 },
-  { id: 85, name: "Alu.bro pr. m", price: 15.1204, quantity: 0 },
-  { id: 86, name: "Net pr kvm", price: 2.8466522, quantity: 0 },
-  { id: 87, name: "Plast pr kvm", price: 6.8383863, quantity: 0 },
-  { id: 88, name: "Geda hejs", price: 303.0828457, quantity: 0 },
-  { id: 89, name: "El hejs", price: 153.07, quantity: 0 },
-  { id: 90, name: "Kegle u.fod", price: 6.1491, quantity: 0 },
-  { id: 91, name: "Kirkefod", price: 6.8276846, quantity: 0 },
-  { id: 92, name: "Plader pr kvm", price: 8.2082039, quantity: 0 },
-  { id: 93, name: "Planker    M", price: 12.26, quantity: 0 },
-  { id: 94, name: "Hjulkonsoller", price: 21.424, quantity: 0 },
-  { id: 95, name: "Kegle m. fod", price: 10.33, quantity: 0 },
-  { id: 96, name: "Bræt rød/hvid", price: 6.28, quantity: 0 },
-];
-
-// Trim statisk fallback-liste, hvis den stadig indeholder >96
-if (Array.isArray(dataBosta) && dataBosta.length > 96) {
-  dataBosta.splice(96, dataBosta.length - 96);
+function createSystemMaterialState(system) {
+  if (!system || !Array.isArray(system.items)) return [];
+  return system.items
+    .filter(item => {
+      const rawName = item?.name || item?.navn || item?.beskrivelse || '';
+      const key = normalizeKey(String(rawName).trim());
+      return key && !EXCLUDED_MATERIAL_KEYS.includes(key);
+    })
+    .map((item, index) => {
+      const baseName = item?.name || item?.navn || item?.beskrivelse || '';
+      const name = baseName?.trim() || `${system.id} materiale ${index + 1}`;
+      const idValue = item?.id || item?.varenr || `${system.id}-${index + 1}`;
+      return {
+        id: idValue,
+        name,
+        price: toNumber(item?.price ?? item?.pris ?? 0),
+        unit: item?.unit || item?.enhed || '',
+        quantity: 0,
+        systemKey: system.id,
+      };
+    });
 }
 
-const dataHaki = [
-  { id: 101, name: "Spindelfod kort", price: 2.68, quantity: 0 },
-  { id: 102, name: "BPF Fodsokkel", price: 3.04, quantity: 0 },
-  { id: 103, name: "Strø / trykudligner", price: 1.77, quantity: 0 },
-  { id: 104, name: "FS 3,0 m Søjle", price: 25.05, quantity: 0 },
-  { id: 105, name: "FS 2,0 m Søjle", price: 16.7, quantity: 0 },
-  { id: 106, name: "FS 1,5 m Søjle", price: 12.53, quantity: 0 },
-  { id: 107, name: "FS 1.0 m Søjle", price: 8.35, quantity: 0 },
-  { id: 108, name: "FS 0,5 m Søjle", price: 4.18, quantity: 0 },
-  { id: 109, name: "LB 3,0 m bjælke", price: 17.75, quantity: 0 },
-  { id: 110, name: "LB 2,5 m bjælke", price: 16.71, quantity: 0 },
-  { id: 111, name: "TB 1,9 m bjælke", price: 6.26, quantity: 0 },
-  { id: 112, name: "TB 1,6 m bjælke", price: 6.26, quantity: 0 },
-  { id: 113, name: "TB 1,2 m bjælke", price: 5.22, quantity: 0 },
-  { id: 114, name: "TB 1,0 m bjælke", price: 5.22, quantity: 0 },
-  { id: 115, name: "TB 0,5 m bjælke", price: 5.22, quantity: 0 },
-  { id: 116, name: "Net pr. m2", price: 2.85, quantity: 0 },
-  { id: 117, name: "Plastik pr. m2", price: 6.84, quantity: 0 },
-  { id: 118, name: "SKR 3.0 m rækværk", price: 5.22, quantity: 0 },
-  { id: 119, name: "SKR 1.9 m rækværk", price: 3.92, quantity: 0 },
-  { id: 120, name: "SKR 1.6 m rækværk", price: 3.92, quantity: 0 },
-  { id: 121, name: "SKR 1.2 m rækværk", price: 3.13, quantity: 0 },
-  { id: 122, name: "SKR 1.0 m rækværk", price: 3.13, quantity: 0 },
-  { id: 123, name: "Trappeløb", price: 51.35, quantity: 0 },
-  { id: 124, name: "Trappe gelænder", price: 13.39, quantity: 0 },
-  { id: 125, name: "Bøjleanker", price: 14.62, quantity: 0 },
-  { id: 126, name: "Røranker alu", price: 14.62, quantity: 0 },
-  { id: 127, name: "Røranker stål", price: 18.79, quantity: 0 },
-  { id: 128, name: "Stilladsrør 1M", price: 5.51, quantity: 0 },
-  { id: 129, name: "Stilladsrør 2M", price: 11.02, quantity: 0 },
-  { id: 130, name: "Stilladsrør 3M", price: 16.53, quantity: 0 },
-  { id: 131, name: "Stilladsrør 4M", price: 22.04, quantity: 0 },
-  { id: 132, name: "Stilladsrør 5M", price: 27.55, quantity: 0 },
-  { id: 133, name: "Stilladsrør 6M", price: 33.94, quantity: 0 },
-  { id: 134, name: "Stilladsrør 6M alu", price: 23.94, quantity: 0 },
-  { id: 135, name: "Alu.Drager pr. m.", price: 17.12, quantity: 0 },
-  { id: 136, name: "Diagonalstag 3.0 m", price: 9.4, quantity: 0 },
-  { id: 137, name: "Diagonalstag 1,6 m", price: 9.4, quantity: 0 },
-  { id: 138, name: "Traller 2.2 x 0.35m", price: 10.44, quantity: 0 },
-  { id: 139, name: "Traller 2.2 x 0.5m", price: 14.62, quantity: 0 },
-  { id: 140, name: "Traller 2,2 x 0,5m alu", price: 10.44, quantity: 0 },
-  { id: 141, name: "Kantbrædder", price: 9.4, quantity: 0 },
-  { id: 142, name: "Låsejern", price: 1.14, quantity: 0 },
-  { id: 143, name: "Stiger til 3m", price: 4.51, quantity: 0 },
-  { id: 144, name: "Skaktrør", price: 38.99, quantity: 0 },
-  { id: 145, name: "Tragt", price: 38.99, quantity: 0 },
-  { id: 146, name: "Koblinger fast", price: 3.99, quantity: 0 },
-  { id: 147, name: "Koblinger dreje", price: 3.99, quantity: 0 },
-  { id: 148, name: "Koblinger SK", price: 3.99, quantity: 0 },
-  { id: 149, name: "Koblinger Kipfinger", price: 3.99, quantity: 0 },
-  { id: 150, name: "Koblinger singel", price: 3.99, quantity: 0 },
-  { id: 151, name: "Koblinger samler", price: 3.99, quantity: 0 },
-  { id: 152, name: "Dobbelt tværgelænder", price: 6.26, quantity: 0 },
-  { id: 153, name: "Grønne skilte", price: 5.15, quantity: 0 },
-  { id: 154, name: "Reklameskilt", price: 9.73, quantity: 0 },
-  { id: 155, name: "Kegle uden fod", price: 6.15, quantity: 0 },
-  { id: 156, name: "Kegle med fod", price: 10.33, quantity: 0 },
-  { id: 157, name: "Bræt", price: 6.28, quantity: 0 },
-  { id: 158, name: "Geda hejs", price: 303.08, quantity: 0 },
-  { id: 159, name: "El hejs", price: 153.07, quantity: 0 },
-];
-
-const dataModex = [
-  { id: 161, name: "Spindelfod", price: 2.68, quantity: 0 },
-  { id: 162, name: "Begynderstykke", price: 4.18, quantity: 0 },
-  { id: 163, name: "Vertikalstander 300", price: 25.05, quantity: 0 },
-  { id: 164, name: "Vertikalstander 200", price: 16.7, quantity: 0 },
-  { id: 165, name: "Vertikalstander 150", price: 12.53, quantity: 0 },
-  { id: 166, name: "Vertikalstander 100", price: 8.35, quantity: 0 },
-  { id: 167, name: "Horisontalrør 300", price: 9.4, quantity: 0 },
-  { id: 168, name: "Horisontalrør 250", price: 6.26, quantity: 0 },
-  { id: 169, name: "Horisontalrør 200", price: 6.25, quantity: 0 },
-  { id: 170, name: "Horisontalrør 150", price: 5.23, quantity: 0 },
-  { id: 171, name: "Horisontalrør 125", price: 5.22, quantity: 0 },
-  { id: 172, name: "Horisontalrør 113", price: 5.22, quantity: 0 },
-  { id: 173, name: "Horisontalrør  74", price: 5.22, quantity: 0 },
-  { id: 174, name: "U-profil 150", price: 5.22, quantity: 0 },
-  { id: 175, name: "U-profil 113", price: 5.22, quantity: 0 },
-  { id: 176, name: "Løftesikring 113", price: 3.99, quantity: 0 },
-  { id: 177, name: "Løftesikring 150", price: 3.99, quantity: 0 },
-  { id: 178, name: "Diagonal 200/300", price: 9.4, quantity: 0 },
-  { id: 179, name: "Diagonal 200/250", price: 9.4, quantity: 0 },
-  { id: 180, name: "Diagonal 200/200", price: 9.4, quantity: 0 },
-  { id: 181, name: "Diagonal 200/150", price: 9.4, quantity: 0 },
-  { id: 182, name: "Diagonal 200/113", price: 9.4, quantity: 0 },
-  { id: 183, name: "Fodspark 300", price: 9.4, quantity: 0 },
-  { id: 184, name: "Fodspark 250", price: 8.35, quantity: 0 },
-  { id: 185, name: "Fodspark 200", price: 8.35, quantity: 0 },
-  { id: 186, name: "Fodspark 150", price: 6.26, quantity: 0 },
-  { id: 187, name: "Fodspark 125", price: 6.26, quantity: 0 },
-  { id: 188, name: "Stigedæk 3m", price: 20.88, quantity: 0 },
-  { id: 189, name: "Stigedæk 2,5m", price: 16.71, quantity: 0 },
-  { id: 190, name: "Stigedæk 2m ", price: 12.53, quantity: 0 },
-  { id: 191, name: "Profildæk 32/300", price: 15.66, quantity: 0 },
-  { id: 192, name: "Profildæk 32/250", price: 10.44, quantity: 0 },
-  { id: 193, name: "Profildæk 32/200", price: 8.35, quantity: 0 },
-  { id: 194, name: "Profildæk 32/150", price: 6.26, quantity: 0 },
-  { id: 195, name: "Profildæk 32/125", price: 6.26, quantity: 0 },
-  { id: 196, name: "Profildæk 32/74", price: 6.26, quantity: 0 },
-  { id: 197, name: "Profildæk 70/300", price: 16.71, quantity: 0 },
-  { id: 198, name: "Profildæk 70/250", price: 12.53, quantity: 0 },
-  { id: 199, name: "Profildæk 70/200", price: 12.53, quantity: 0 },
-  { id: 200, name: "Profildæk 70/150", price: 8.35, quantity: 0 },
-  { id: 201, name: "Profildæk 70/125", price: 8.35, quantity: 0 },
-  { id: 202, name: "Profildæk 70/70", price: 8.35, quantity: 0 },
-  { id: 203, name: "Stilladsrør 1M", price: 5.51, quantity: 0 },
-  { id: 204, name: "Stilladsrør 2M", price: 11.02, quantity: 0 },
-  { id: 205, name: "Stilladsrør 3M", price: 16.53, quantity: 0 },
-  { id: 206, name: "Stilladsrør 4M", price: 22.04, quantity: 0 },
-  { id: 207, name: "Stilladsrør 5M", price: 27.55, quantity: 0 },
-  { id: 208, name: "Stilladsrør 6M", price: 33.06, quantity: 0 },
-  { id: 209, name: "Stilladsrør 6M alu", price: 23.94, quantity: 0 },
-  { id: 211, name: "Klodæk 300/70", price: 16.71, quantity: 0 },
-  { id: 212, name: "Klodæk 250/70", price: 12.53, quantity: 0 },
-  { id: 213, name: "Alutrappe 2m", price: 51.33, quantity: 0 },
-  { id: 214, name: "Gelænder til trappe", price: 13.39, quantity: 0 },
-  { id: 215, name: "Koblinger fast", price: 3.99, quantity: 0 },
-  { id: 216, name: "Koblinger dreje", price: 3.99, quantity: 0 },
-  { id: 217, name: "Koblinger SK", price: 3.99, quantity: 0 },
-  { id: 218, name: "Koblinger Kipfinger", price: 3.99, quantity: 0 },
-  { id: 219, name: "Koblinger singel", price: 3.99, quantity: 0 },
-  { id: 220, name: "Koblinger samler", price: 3.99, quantity: 0 },
-  { id: 221, name: "Bøjleanker", price: 14.62, quantity: 0 },
-  { id: 222, name: "Røranker alu", price: 14.62, quantity: 0 },
-  { id: 223, name: "Røranker stål", price: 18.79, quantity: 0 },
-  { id: 224, name: "Strø / trykudligner", price: 1.77, quantity: 0 },
-  { id: 225, name: "Alu. Drager pr. m.", price: 17.12, quantity: 0 },
-  { id: 226, name: "Grønne skilte", price: 5.15, quantity: 0 },
-  { id: 227, name: "Reklameskilt", price: 9.73, quantity: 0 },
-  { id: 228, name: "Stiger 2m & 3M", price: 4.51, quantity: 0 },
-];
-
-// Additional system: Alfix overdækning 2025
-// The Alfix list contains a small set of components sourced from the provided Excel sheet.  Each item gets a
-// consecutive id following the existing datasets to avoid collisions.  The MODEX items above currently top out
-// at id 228, so the Alfix entries continue from 229 onward to remain distinct.
-const dataAlfix = [
-  { id: 229, name: 'Kipdrager 4,5 m', price: 249.66, quantity: 0 },
-  { id: 230, name: 'Alu drager pr. m', price: 17.12, quantity: 0 },
-  { id: 231, name: '4,5 m kederdrager', price: 175.68, quantity: 0 },
-  { id: 232, name: 'Samlerør til aludrager', price: 14.26, quantity: 0 },
-  { id: 233, name: '3 m kededrager', price: 117.12, quantity: 0 },
-  { id: 234, name: '2,25 m kederdrager', price: 87.84, quantity: 0 },
-  { id: 235, name: '1,5 m kederdrager', price: 58.56, quantity: 0 },
-  { id: 236, name: 'Flapper/singel', price: 3.99, quantity: 0 },
-  { id: 237, name: 'Fastkobling', price: 3.99, quantity: 0 },
-  { id: 238, name: 'Horisontal/gelænder', price: 5.22, quantity: 0 },
-  { id: 239, name: 'Drejekobling', price: 3.99, quantity: 0 },
-  { id: 240, name: 'Diagonal', price: 9.40, quantity: 0 },
-  { id: 241, name: 'Kipfingerkobling', price: 3.99, quantity: 0 },
-  { id: 242, name: 'SK kobling', price: 3.99, quantity: 0 },
-  { id: 243, name: 'Keder-teltdug pr. m²', price: 6.42, quantity: 0 },
-  { id: 244, name: 'Rørsamler', price: 3.99, quantity: 0 },
-  { id: 245, name: 'Stilladsrør 1M', price: 5.51, quantity: 0 },
-  { id: 246, name: 'Stilladsrør 2M', price: 11.02, quantity: 0 },
-  { id: 247, name: 'Stilladsrør 3M', price: 16.53, quantity: 0 },
-  { id: 248, name: 'Stilladsrør 4M', price: 22.04, quantity: 0 },
-  { id: 249, name: 'Stilladsrør 5M', price: 27.55, quantity: 0 },
-  { id: 250, name: 'Stilladsrør 6M', price: 33.06, quantity: 0 },
-  { id: 251, name: 'Stilladsrør 6M alu', price: 23.94, quantity: 0 },
-  { id: 252, name: 'Dragestyr', price: 10.13, quantity: 0 },
-  { id: 253, name: 'Trekantdrager pr. m', price: 35.53, quantity: 0 },
-];
-dataAlfix.forEach(item => {
-  if (item && typeof item === 'object') {
-    item.systemKey = 'alfix';
-  }
-});
-
-const systemOptions = [
-  { key: 'bosta', label: 'Bosta', dataset: dataBosta },
-  { key: 'haki', label: 'HAKI', dataset: dataHaki },
-  { key: 'modex', label: 'MODEX', dataset: dataModex },
-  { key: 'alfix', label: 'Alfix', dataset: dataAlfix },
-];
-
-systemOptions.forEach(option => {
-  if (!Array.isArray(option.dataset)) return;
-  option.dataset.forEach(item => {
-    if (item && typeof item === 'object') {
-      item.systemKey = option.key;
-    }
+function buildSystemDatasets() {
+  const datasets = {};
+  getAllSystems().forEach(system => {
+    datasets[system.id] = createSystemMaterialState(system);
   });
-});
+  return datasets;
+}
 
-const systemLabelMap = new Map(systemOptions.map(option => [option.key, option.label]));
+const systemDatasets = buildSystemDatasets();
+const dataBosta = systemDatasets.bosta ?? [];
+const dataHaki = systemDatasets.haki ?? [];
+const dataModex = systemDatasets.modex ?? [];
+const dataAlfix = systemDatasets.alfix ?? [];
+
+const systemOptions = getAllSystems().map(system => ({
+  key: system.id,
+  label: system.label,
+  dataset: systemDatasets[system.id] ?? [],
+}));
+
+const systemLabelMap = new Map(Object.keys(MATERIAL_SYSTEMS).map(key => {
+  const system = getSystemList(key);
+  return [key, system?.label ?? key];
+}));
 
 const selectedSystemKeys = new Set(systemOptions.length ? [systemOptions[0].key] : []);
 
@@ -695,130 +454,6 @@ const manualMaterials = Array.from({ length: 3 }, (_, index) => ({
   quantity: 0,
   manual: true,
 }));
-
-function hydrateMaterialListsFromJson() {
-  const mapList = (target, entries, prefix) => {
-    if (!Array.isArray(entries) || entries.length === 0) return false;
-    const previous = new Map(
-      target.map(item => [normalizeKey(item.name || ''), item.quantity || 0])
-    );
-    const filteredEntries = entries.filter(entry => {
-      const rawName = entry?.beskrivelse ?? entry?.navn ?? entry?.name ?? '';
-      const key = normalizeKey(String(rawName).trim());
-      return !EXCLUDED_MATERIAL_KEYS.includes(key);
-    });
-
-    const next = filteredEntries.map((entry, index) => {
-      const rawName = entry?.beskrivelse ?? entry?.navn ?? entry?.name ?? '';
-      const baseName = String(rawName).trim();
-      const name = baseName || `${prefix} materiale ${index + 1}`;
-      const key = normalizeKey(name);
-      const priceValue = entry?.pris ?? entry?.price ?? 0;
-      return {
-        id: `${prefix}-${index + 1}`,
-        name,
-        price: toNumber(priceValue),
-        quantity: previous.get(key) ?? 0,
-      };
-    });
-    target.splice(0, target.length, ...next);
-    return true;
-  };
-
-  const candidateSources = [
-    { target: dataBosta, prefix: 'B', sources: ['Bosta', 'bosta', 'BOSTA', 'BOSTA_DATA'] },
-    { target: dataHaki, prefix: 'H', sources: ['HAKI', 'haki', 'HAKI_DATA'] },
-    { target: dataModex, prefix: 'M', sources: ['MODEX', 'modex', 'MODEX_DATA'] },
-    { target: dataAlfix, prefix: 'A', sources: ['Alfix', 'alfix', 'ALFIX', 'ALFIX_DATA'] },
-  ].map(({ target, prefix, sources }) => ({
-    target,
-    prefix,
-    normalizedSources: sources
-      .map(source => normalizeKey(source)),
-  }));
-
-  const applyLists = lists => {
-    if (!lists || typeof lists !== 'object') return false;
-    const normalizedLists = new Map();
-    for (const [rawKey, value] of Object.entries(lists)) {
-      const normalizedKey = normalizeKey(rawKey);
-      if (normalizedKey) {
-        normalizedLists.set(normalizedKey, value);
-      }
-    }
-
-    let hydrated = false;
-    for (const { target, prefix, normalizedSources } of candidateSources) {
-      for (const candidateKey of normalizedSources) {
-        if (!normalizedLists.has(candidateKey)) continue;
-        const entries = normalizedLists.get(candidateKey);
-        if (mapList(target, entries, prefix)) {
-          hydrated = true;
-          break;
-        }
-      }
-    }
-
-    if (hydrated) {
-      renderOptaelling();
-      updateTotals(true);
-    }
-
-    return hydrated;
-  };
-
-  const tryDatasetFallback = () => {
-    if (typeof fetch !== 'function') return Promise.resolve(false);
-
-    return fetch('./dataset.js')
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        return response.text();
-      })
-      .then(script => {
-        const factory = new Function(
-          `${script}; return {
-            BOSTA_DATA: typeof BOSTA_DATA !== 'undefined' ? BOSTA_DATA : undefined,
-            HAKI_DATA: typeof HAKI_DATA !== 'undefined' ? HAKI_DATA : undefined,
-            MODEX_DATA: typeof MODEX_DATA !== 'undefined' ? MODEX_DATA : undefined,
-            ALFIX_DATA: typeof ALFIX_DATA !== 'undefined' ? ALFIX_DATA : undefined,
-          };`
-        );
-        const data = factory();
-        return applyLists({
-          BOSTA_DATA: data?.BOSTA_DATA,
-          HAKI_DATA: data?.HAKI_DATA,
-          MODEX_DATA: data?.MODEX_DATA,
-          ALFIX_DATA: data?.ALFIX_DATA,
-        });
-      })
-      .catch(err => {
-        console.error('Kunne ikke indlæse fallback dataset.js', err);
-        return false;
-      });
-  };
-
-  if (typeof fetch !== 'function') {
-    applyLists(typeof window !== 'undefined' ? window.COMPLETE_LISTS : undefined);
-    return;
-  }
-
-  fetch('./complete_lists.json')
-    .then(response => {
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      return response.json();
-    })
-    .then(applyLists)
-    .then(applied => applied || tryDatasetFallback())
-    .catch(err => {
-      console.warn('Kunne ikke hente komplette materialelister', err);
-      return tryDatasetFallback();
-    });
-}
 
 function getAllData(includeManual = true) {
   const combined = aggregateSelectedSystemData();
@@ -3371,7 +3006,6 @@ function initApp() {
     });
   }
 
-  hydrateMaterialListsFromJson();
   setupListSelectors();
   renderOptaelling();
   addWorker();
