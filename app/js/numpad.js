@@ -3,7 +3,7 @@ import { evaluateExpression } from './safe-eval.js'
 // js/numpad.js
 // Globalt numpad + simpel lommeregner til alle talfelter
 
-const NUMPAD_SELECTOR = 'input[type="number"], input[data-numpad="true"], input[data-a9-slaeb="true"]'
+const NUMPAD_SELECTOR = 'input[type="number"], input[data-numpad="true"]'
 
 let overlay, displayExpr, displayCurrent
 let commitBtn, closeBtn
@@ -125,7 +125,7 @@ function observeNumpadInputs () {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['data-numpad', 'data-a9-slaeb', 'type']
+      attributeFilter: ['data-numpad', 'type']
     })
   }
 }
