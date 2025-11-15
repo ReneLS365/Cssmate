@@ -128,18 +128,21 @@
   - Beskrivelse: De samme BOSTA/HAKI/MODEX arrays ligger som gigantiske konstante i `main.js` (ca. linje 300+), i `dataset.js` og igen i JSON-filerne. Det øger bundle-størrelsen betragteligt og gør det svært at vedligeholde priser ét sted.【F:app/main.js†L300-L360】【F:app/dataset.js†L1-L40】
   - Forslag: Hold datasæt i én JSON/JS-modul og importér dem derfra.
   - Forventet gevinst: Mindre JS, hurtigere indlæsning og mindre vedligehold.
+  - Status: Løst i Fix-pack D (dataset.js er nu den eneste runtime-kilde til materialer).
 
 - [P-02] Stor inline-scriptblok i index.html
   - Fil: `app/index.html`
   - Beskrivelse: Der ligger et minificeret `<script>` direkte i HTML'en som gentager logik for `.mat-row`, eksporterer globale funktioner mv.【F:app/index.html†L332-L339】 Det kan ikke cache-bustes uafhængigt og blander forretningslogik ind i HTML.
   - Forslag: Flyt scriptet ind i `main.js` (som modul) og fjern globale sideeffekter.
   - Forventet gevinst: Klarere arkitektur og mulighed for tree-shaking.
+  - Status: Løst i Fix-pack D (koden er flyttet til `boot-inline.js` og importeres som modul).
 
 - [P-03] Placeholder-moduler loader uden at lave noget
   - Filer: `app/src/features/pctcalc/pctcalc.js`, `app/src/features/export/lazy-libs.js`
   - Beskrivelse: Begge filer eksportere kun stubs, men importeres stadig på første sideindlæsning. Det giver ekstra bytes/requests uden funktionalitet og gør det sværere at se hvad der mangler.
   - Forslag: Enten implementér funktionerne eller fjern importerne indtil de er klar.
   - Forventet gevinst: Mindre JS, klarere TODO-liste.
+  - Status: Løst i Fix-pack D (pctcalc er parkeret med note og frakoblet runtime).
 
 ## UX & responsivitet – issues
 - [U-01] Materialerækker klipper tekst på små telefoner
@@ -188,3 +191,4 @@
 
 _Fix-pack A (admin + eksport + eval + numpad scroll-lock) er implementeret og testet manuelt i browser._
 _Fix-pack B (CSS/responsivitet + numpad-tema) er implementeret og testet på 320–414 px viewport bredde._
+_Fix-pack D har samlet materialedata i dataset.js, flyttet inline script til boot-inline.js og frakoblet pctcalc-stubben fra runtime._

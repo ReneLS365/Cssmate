@@ -283,12 +283,6 @@
     "M067": 4.51,
     "M068": 3.45,
     "M069": 9.67,
-    "M070": 11.49,
-    "M071": 4.7,
-    "M072": 2.12,
-    "M073": 42.98,
-    "M074": 49.38,
-    "M075": 22.26,
     "A001": 0,
     "A002": 0,
     "A003": 0,
@@ -1980,48 +1974,6 @@
       "name": "Opskydeligt rækværk",
       "unit": "stk",
       "price": 9.67
-    },
-    {
-      "code": "M070",
-      "system": "MODEX",
-      "name": "Borring i beton",
-      "unit": "stk",
-      "price": 11.49
-    },
-    {
-      "code": "M071",
-      "system": "MODEX",
-      "name": "Huller",
-      "unit": "stk",
-      "price": 4.7
-    },
-    {
-      "code": "M072",
-      "system": "MODEX",
-      "name": "Km.",
-      "unit": "stk",
-      "price": 2.12
-    },
-    {
-      "code": "M073",
-      "system": "MODEX",
-      "name": "Udd. tillæg 1",
-      "unit": "stk",
-      "price": 42.98
-    },
-    {
-      "code": "M074",
-      "system": "MODEX",
-      "name": "Udd. tillæg 2",
-      "unit": "stk",
-      "price": 49.38
-    },
-    {
-      "code": "M075",
-      "system": "MODEX",
-      "name": "Mentortillæg",
-      "unit": "stk",
-      "price": 22.26
     },
     {
       "code": "A001",

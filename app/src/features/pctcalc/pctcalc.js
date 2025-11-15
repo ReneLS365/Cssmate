@@ -1,6 +1,6 @@
-// TODO(J-06): Implement pctcalc feature.
-// Modul er midlertidigt frakoblet fra main.js for at undgå død kode,
-// men eksporten bevares så fremtidige imports ikke bryder builds.
+// NOTE:
+//  Denne feature (pctcalc) er bevidst frakoblet fra runtime i Fix-pack D.
+//  Implementér og hook den op igen, når procent-lommeregneren skal bygges.
 export function initPctCalc () {
   // placeholder
 }
