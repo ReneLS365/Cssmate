@@ -480,14 +480,14 @@ const dataAlfix = [
   { id: 202, name: 'Alu drager pr. m', price: 17.12, quantity: 0 },
   { id: 203, name: '4,5 m kederdrager', price: 175.68, quantity: 0 },
   { id: 204, name: 'Samlerør til aludrager', price: 14.26, quantity: 0 },
-  { id: 205, name: '3 m kededrager', price: 117.12, quantity: 0 },
+  { id: 205, name: '3 m kederdrager', price: 117.12, quantity: 0 },
   { id: 206, name: '2,25 m kederdrager', price: 87.84, quantity: 0 },
   { id: 207, name: '1,5 m kederdrager', price: 58.56, quantity: 0 },
   { id: 208, name: 'Flapper/singel', price: 3.99, quantity: 0 },
   { id: 209, name: 'Fastkobling', price: 3.99, quantity: 0 },
   { id: 210, name: 'Horisontal/gelænder', price: 5.22, quantity: 0 },
   { id: 211, name: 'Drejekobling', price: 3.99, quantity: 0 },
-  { id: 212, name: 'Diagonal', price: 9.40, quantity: 0 },
+  { id: 212, name: 'Diagonal', price: 9.4, quantity: 0 },
   { id: 213, name: 'Kipfingerkobling', price: 3.99, quantity: 0 },
   { id: 214, name: 'SK kobling', price: 3.99, quantity: 0 },
   { id: 215, name: 'Keder-teltdug pr. m²', price: 6.42, quantity: 0 },
@@ -557,10 +557,10 @@ function getDatasetForSelectedSystems(selected) {
     }
   };
 
-  addIfSelected(['bosta', 'bostadata'], dataBosta);
-  addIfSelected(['haki', 'hakidata'], dataHaki);
-  addIfSelected(['modex', 'modexdata'], dataModex);
-  addIfSelected(['alfix', 'alfixdata'], dataAlfix);
+  addIfSelected(['bosta', 'BOSTA', 'BOSTA_DATA'], dataBosta);
+  addIfSelected(['haki', 'HAKI', 'HAKI_DATA'], dataHaki);
+  addIfSelected(['modex', 'MODEX', 'MODEX_DATA'], dataModex);
+  addIfSelected(['alfix', 'ALFIX', 'ALFIX_DATA'], dataAlfix);
 
   return lists.flat();
 }
