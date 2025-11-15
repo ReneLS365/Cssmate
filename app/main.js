@@ -6,7 +6,7 @@ import { EXCLUDED_MATERIAL_KEYS, shouldExcludeMaterialEntry } from './src/lib/ma
 import { createMaterialRow } from './src/modules/materialRowTemplate.js'
 import { sha256Hex, constantTimeEquals } from './src/lib/sha256.js'
 import { ensureExportLibs, ensureZipLib, prefetchExportLibs } from './src/features/export/lazy-libs.js'
-import { installLazyNumpad } from './src/ui/numpad.lazy.js'
+import { setupNumpad } from './js/numpad.js'
 import { createVirtualMaterialsList } from './src/modules/materialsVirtualList.js'
 import { initClickGuard } from './src/ui/Guards/ClickGuard.js'
 import { setAdminOk, restoreAdminState } from './src/state/admin.js'
@@ -3415,7 +3415,7 @@ function initApp() {
 
   validateSagsinfo();
   updateTotals(true);
-  installLazyNumpad();
+  setupNumpad();
   setupMobileKeyboardDismissal();
   setupServiceWorkerMessaging();
   setupPWAInstallPrompt();

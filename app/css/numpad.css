@@ -1,0 +1,142 @@
+/* Overlay */
+#numpad-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 9999;
+  transition: opacity 0.15s ease-out;
+}
+
+#numpad-overlay.numpad-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Panel */
+.numpad-panel {
+  width: 100%;
+  max-width: 480px;
+  background: #16181d;
+  border-radius: 16px 16px 0 0;
+  padding: 8px 8px 12px;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.5);
+  color: #f5f5f5;
+  font-family: inherit;
+}
+
+/* Luk-knap (rød X) */
+.numpad-close {
+  background: transparent;
+  border: none;
+  color: #ff6b6b;
+  font-size: 20px;
+  padding: 4px 8px;
+  align-self: flex-start;
+}
+
+/* Display */
+.numpad-display {
+  background: #1f2229;
+  border-radius: 12px;
+  padding: 6px 10px;
+  margin: 4px 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 60px;
+}
+
+.numpad-display-memory {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.numpad-display-expression {
+  font-size: 12px;
+  opacity: 0.8;
+  min-height: 16px;
+}
+
+.numpad-display-current {
+  font-size: 22px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Grid */
+.numpad-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.numpad-key,
+.numpad-key-empty {
+  min-height: 44px;
+  border-radius: 12px;
+  border: none;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.numpad-key {
+  background: #242731;
+  color: #f5f5f5;
+  touch-action: manipulation;
+}
+
+.numpad-key-op {
+  background: #2e3744;
+}
+
+.numpad-key-func {
+  background: #3a2b33;
+}
+
+.numpad-key-eq {
+  background: #f28c3a;
+  color: #000;
+  font-weight: 600;
+}
+
+.numpad-key:active {
+  transform: translateY(1px);
+  filter: brightness(1.15);
+}
+
+.numpad-key-empty {
+  background: transparent;
+}
+
+/* Grøn commit-knap i bunden */
+.numpad-commit {
+  margin-top: 8px;
+  width: 100%;
+  border-radius: 999px;
+  border: none;
+  min-height: 40px;
+  font-size: 22px;
+  font-weight: 600;
+  background: #18c153;
+  color: #021003;
+}
+
+/* Mobile fine-tuning */
+@media (max-width: 480px) {
+  .numpad-panel {
+    border-radius: 14px 14px 0 0;
+    padding-bottom: 10px;
+  }
+  .numpad-key {
+    min-height: 48px;
+    font-size: 20px;
+  }
+  .numpad-display-current {
+    font-size: 24px;
+  }
+}

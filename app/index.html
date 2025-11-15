@@ -10,7 +10,7 @@
   <meta name=apple-mobile-web-app-status-bar-style content=black-translucent>
   <title>akkordseddel</title>
   <link rel=stylesheet href=style.css>
-  <link rel=stylesheet href=src/ui/numpad.css>
+  <link rel=stylesheet href=css/numpad.css>
   <link rel=stylesheet href=print.css media=print>
   <link rel=stylesheet href=src/styles/fixes.css>
   <link rel=stylesheet href=/css/pwa.css>
@@ -253,32 +253,44 @@
     </div>
   </div>
 
-  <div class=csm-np-overlay id=npOverlay aria-hidden=true data-testid=numpad-backdrop data-allow-click>
-    <div class=csm-np role=dialog aria-modal=true aria-label=Tal-tastatur tabindex=-1 data-testid=numpad-dialog>
-      <div class=csm-np-topbar>
-        <button type=button class=csm-np-close data-key=close aria-label="Luk tastatur" data-testid=numpad-close>×</button>
-        <div class=csm-np-screen id=npScreen aria-live=polite>0</div>
+  <div id="numpad-overlay" class="numpad-hidden" aria-hidden="true">
+    <div class="numpad-panel" role="dialog" aria-label="Numpad lommeregner">
+      <button type="button" class="numpad-close" id="numpad-btn-close">✕</button>
+
+      <div class="numpad-display">
+        <div class="numpad-display-memory" id="numpad-display-memory">M: 0</div>
+        <div class="numpad-display-expression" id="numpad-display-expression"></div>
+        <div class="numpad-display-current" id="numpad-display-current">0</div>
       </div>
-      <div class=csm-np-grid>
-        <button type=button data-key=7 aria-label=7>7</button>
-        <button type=button data-key=8 aria-label=8>8</button>
-        <button type=button data-key=9 aria-label=9>9</button>
-        <button type=button data-key=× aria-label=gange class=csm-np-operator>×</button>
-        <button type=button data-key=4 aria-label=4>4</button>
-        <button type=button data-key=5 aria-label=5>5</button>
-        <button type=button data-key=6 aria-label=6>6</button>
-        <button type=button data-key=÷ aria-label=divider class=csm-np-operator>÷</button>
-        <button type=button data-key=1 aria-label=1>1</button>
-        <button type=button data-key=2 aria-label=2>2</button>
-        <button type=button data-key=3 aria-label=3>3</button>
-        <button type=button data-key=- aria-label=minus class=csm-np-operator>-</button>
-        <button type=button data-key=0 aria-label=0>0</button>
-        <button type=button data-key=, aria-label=komma>,</button>
-        <button type=button data-key=C aria-label=clear class=csm-np-operator>C</button>
-        <button type=button data-key=+ aria-label=plus class=csm-np-operator>+</button>
+
+      <div class="numpad-grid">
+        <button data-key="C" class="numpad-key numpad-key-func">C</button>
+        <button data-key="÷" class="numpad-key numpad-key-op">÷</button>
+        <button data-key="×" class="numpad-key numpad-key-op">×</button>
+        <button data-key="BACK" class="numpad-key numpad-key-func">⌫</button>
+
+        <button data-key="7" class="numpad-key">7</button>
+        <button data-key="8" class="numpad-key">8</button>
+        <button data-key="9" class="numpad-key">9</button>
+        <button data-key="-" class="numpad-key numpad-key-op">-</button>
+
+        <button data-key="4" class="numpad-key">4</button>
+        <button data-key="5" class="numpad-key">5</button>
+        <button data-key="6" class="numpad-key">6</button>
+        <button data-key="+" class="numpad-key numpad-key-op">+</button>
+
+        <button data-key="1" class="numpad-key">1</button>
+        <button data-key="2" class="numpad-key">2</button>
+        <button data-key="3" class="numpad-key">3</button>
+        <button data-key="=" class="numpad-key numpad-key-eq">=</button>
+
+        <button data-key="%" class="numpad-key numpad-key-func">%</button>
+        <button data-key="0" class="numpad-key">0</button>
+        <button data-key="," class="numpad-key">,</button>
+        <div class="numpad-key numpad-key-empty"></div>
       </div>
-      <button type=button class=csm-np-equals data-key="=" aria-label=equals>=</button>
-      <button type=button class=csm-np-enter data-key=enter>Enter</button>
+
+      <button type="button" class="numpad-commit" id="numpad-btn-commit">✓</button>
     </div>
   </div>
 
