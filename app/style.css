@@ -161,8 +161,7 @@ button{cursor:pointer}
 .csm-row--custom { all: unset; }
 .csm-row--custom * { all: unset; }
 
-.empty-state{margin:0;padding:16px;border:1px dashed var(--border);border-radius:12px;text-align:center;color:var(--muted);backg
-round:rgba(255,255,255,0.03)}
+.empty-state{margin:0;padding:16px;border:1px dashed var(--border);border-radius:12px;text-align:center;color:var(--muted);background:rgba(255,255,255,0.03)}
 
 .overview{background:var(--elev);border:1px solid var(--border);border-radius:12px;padding:var(--pad)}
 .totals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--gap)}
