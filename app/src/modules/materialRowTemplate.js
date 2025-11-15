@@ -1,174 +1,162 @@
-function normalizeNumber(value) {
-  if (typeof value === 'number') {
-    return Number.isFinite(value) ? value : 0;
-  }
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return 0;
-    const normalized = trimmed
-      .replace(/\s+/g, '')
-      .replace(/'/g, '')
-      .replace(/(?!^)-/g, '')
-      .replace(/,(?=[^,]*,)/g, '')
-      .replace(/,(?=[^,]*$)/, '.')
-      .replace(/\.(?=.*\.)/g, '');
-    const num = Number.parseFloat(normalized);
-    return Number.isFinite(num) ? num : 0;
-  }
-  return 0;
-}
-
-function resolveFormatCurrency(formatCurrency) {
-  if (typeof formatCurrency === 'function') {
-    return formatCurrency;
-  }
-  return value => {
-    const formatter = new Intl.NumberFormat('da-DK', {
+/**
+ * @purpose Provide a reusable renderer for materials rows with consistent markup.
+ * @inputs item {id, name, price, quantity, manual, systemKey}
+ *          options {admin, toNumber, formatCurrency, systemLabelMap}
+ * @outputs {row, nameInput, qtyInput, priceInput, sumElement}
+ */
+export function createMaterialRow (item, {
+  admin = false,
+  toNumber = value => {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+    if (value == null) return 0
+    const str = String(value).trim().replace(/\s+/g, '').replace(',', '.')
+    const parsed = Number.parseFloat(str)
+    return Number.isFinite(parsed) ? parsed : 0
+  },
+  formatCurrency = value => {
+    const number = Number.isFinite(value) ? value : 0
+    return new Intl.NumberFormat('da-DK', {
       minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-    return formatter.format(Number.isFinite(value) ? value : 0);
-  };
-}
-
-function resolveToNumber(toNumber) {
-  if (typeof toNumber === 'function') return toNumber;
-  return normalizeNumber;
-}
-
-function createNameCell(item, options, id) {
-  const cell = document.createElement('div');
-  cell.className = 'csm-name material-name';
-
-  if (item.manual) {
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'manual-name';
-    input.placeholder = 'Manuelt materiale';
-    input.value = item.name || '';
-    input.dataset.id = id;
-    cell.appendChild(input);
-  } else {
-    const label = document.createElement('span');
-    label.className = 'material-label';
-    label.textContent = item.name || '';
-    cell.appendChild(label);
-
-    const badge = document.createElement('span');
-    badge.className = 'system-badge';
-    if (options?.systemLabelMap instanceof Map) {
-      badge.textContent = options.systemLabelMap.get(item.systemKey) || '';
-    }
-    if (!badge.textContent && item.systemKey) {
-      badge.textContent = String(item.systemKey).toUpperCase();
-    }
-    if (badge.textContent) {
-      cell.appendChild(badge);
-    }
+      maximumFractionDigits: 2
+    }).format(number)
+  },
+  systemLabelMap
+} = {}) {
+  if (!item || !item.id) {
+    throw new Error('Item with valid id is required')
   }
 
-  return cell;
-}
-
-function createQuantityInput(item, toNumber, id) {
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'qty mat-qty';
-  input.inputMode = 'decimal';
-  input.autocomplete = 'off';
-  input.dataset.id = id;
-  input.setAttribute('data-numpad', 'true');
-  input.setAttribute('data-decimal', 'comma');
-  input.setAttribute('data-numpad-field', `material-qty-${id}`);
-
-  if (item.manual) {
-    input.placeholder = '0';
-    if (item.quantity != null && item.quantity !== 0 && item.quantity !== '') {
-      input.value = String(item.quantity);
-    } else {
-      input.value = '';
-    }
-  } else {
-    const quantity = toNumber(item.quantity);
-    input.value = String(Number.isFinite(quantity) ? quantity : 0);
-  }
-
-  return input;
-}
-
-function createPriceInput(item, options, toNumber, id) {
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'price mat-price';
-  input.inputMode = 'decimal';
-  input.autocomplete = 'off';
-  input.dataset.id = id;
-  input.placeholder = '0,00';
-  input.setAttribute('data-numpad', 'true');
-  input.setAttribute('data-decimal', 'comma');
-  input.setAttribute('data-numpad-field', `material-price-${id}`);
-
-  const priceValue = toNumber(item.price);
-  const isManual = !!item.manual;
-  const isEditable = isManual || !!options?.admin;
-
-  if (isManual) {
-    input.value = priceValue > 0 ? priceValue.toFixed(2) : '';
-  } else {
-    input.value = Number.isFinite(priceValue) ? priceValue.toFixed(2) : '0.00';
-  }
-
-  input.readOnly = !isEditable;
-  if (priceValue > 0) {
-    input.dataset.price = String(priceValue);
-  } else {
-    input.dataset.price = '';
-  }
-
-  return input;
-}
-
-function createLineTotal(item, toNumber, formatCurrency) {
-  const span = document.createElement('span');
-  span.className = 'mat-line mat-sum';
-  const price = toNumber(item.price);
-  const qty = toNumber(item.quantity);
-  const total = price * qty;
-  span.textContent = `${formatCurrency(total)} kr`;
-  return span;
-}
-
-export function createMaterialRow(item, options = {}) {
-  if (typeof document === 'undefined') return null;
-
-  const toNumber = resolveToNumber(options.toNumber);
-  const formatCurrency = resolveFormatCurrency(options.formatCurrency);
-
-  const id = item?.id != null ? String(item.id) : '';
-  const row = document.createElement('div');
-  row.className = 'material-row mat-row';
-  if (item.manual) {
-    row.classList.add('manual');
-  }
+  const row = document.createElement('div')
+  row.className = `material-row mat-row csm-row${item.manual ? ' manual' : ''}`
+  row.dataset.itemId = item.id
   if (item.systemKey) {
-    row.dataset.system = String(item.systemKey);
-  }
-  if (id) {
-    row.dataset.id = id;
+    row.dataset.system = item.systemKey
   }
 
-  row.appendChild(createNameCell(item, options, id));
-  row.appendChild(createQuantityInput(item, toNumber, id));
-  row.appendChild(createPriceInput(item, options, toNumber, id));
-  row.appendChild(createLineTotal(item, toNumber, formatCurrency));
+  const sanitizedId = String(item.id).replace(/[^a-zA-Z0-9_-]+/g, '-')
+  const qtyInputId = `qty-${sanitizedId}`
 
-  if (typeof window !== 'undefined' && typeof window.updateMaterialLine === 'function') {
-    window.requestAnimationFrame(() => {
-      try {
-        window.updateMaterialLine(row);
-      } catch {}
-    });
+  const nameInput = document.createElement('input')
+  nameInput.type = 'text'
+  nameInput.className = `csm-name mat-name${item.manual ? ' manual-name' : ''}`
+  nameInput.dataset.id = item.id
+  nameInput.placeholder = 'Materiale'
+  nameInput.setAttribute('aria-label', 'Materialenavn')
+  const baseName = item.name || ''
+  if (item.manual) {
+    nameInput.value = baseName
+  } else {
+    const systemLabel = item.systemKey ? (systemLabelMap?.get(item.systemKey) || item.systemKey) : ''
+    const displayName = systemLabel ? `${baseName} (${systemLabel})` : baseName
+    nameInput.value = displayName
+    nameInput.readOnly = true
+    nameInput.tabIndex = -1
+    nameInput.title = `Varenr. ${item.id}`
+    nameInput.id = `name-${sanitizedId}`
+    nameInput.setAttribute('aria-readonly', 'true')
   }
 
-  return { row };
+  const qtyInput = document.createElement('input')
+  qtyInput.type = 'number'
+  qtyInput.className = 'csm-qty qty mat-qty'
+  qtyInput.dataset.id = item.id
+  qtyInput.id = qtyInputId
+  qtyInput.name = `qty[${item.id}]`
+  qtyInput.inputMode = 'decimal'
+  qtyInput.autocomplete = 'off'
+  qtyInput.step = '0.01'
+  qtyInput.dataset.numpad = 'true'
+  qtyInput.dataset.numpadField = qtyInputId
+  qtyInput.setAttribute('data-numpad-field', qtyInputId)
+  qtyInput.placeholder = '0'
+  qtyInput.setAttribute('aria-label', 'Antal')
+  const qtyValue = item.quantity != null && item.quantity !== '' ? toNumber(item.quantity) : 0
+  qtyInput.value = item.manual && qtyValue === 0 ? '' : String(qtyValue)
+
+  const priceInput = document.createElement('input')
+  priceInput.type = 'number'
+  priceInput.className = 'csm-price price mat-price'
+  priceInput.dataset.id = item.id
+  priceInput.id = `price-${sanitizedId}`
+  priceInput.name = `price[${item.id}]`
+  priceInput.inputMode = 'decimal'
+  priceInput.autocomplete = 'off'
+  priceInput.step = '0.01'
+  priceInput.dataset.numpad = 'true'
+  priceInput.dataset.numpadField = `price-${sanitizedId}`
+  priceInput.setAttribute('data-numpad-field', `price-${sanitizedId}`)
+  priceInput.setAttribute('aria-label', 'Enhedspris')
+  const hasPrice = item.price !== null && item.price !== undefined && item.price !== ''
+  const priceValue = hasPrice ? toNumber(item.price) : 0
+  priceInput.dataset.price = hasPrice ? String(priceValue) : ''
+  if (item.manual) {
+    priceInput.placeholder = 'Enhedspris'
+    priceInput.readOnly = false
+    priceInput.value = hasPrice ? String(priceValue) : ''
+  } else {
+    const displayPrice = Number.isFinite(priceValue) ? priceValue.toFixed(2) : '0.00'
+    priceInput.readOnly = !admin
+    priceInput.value = displayPrice
+  }
+
+  const sumElement = document.createElement('div')
+  sumElement.className = 'csm-sum mat-line mat-sum'
+  sumElement.setAttribute('data-sum', '')
+  sumElement.setAttribute('aria-label', 'Linjetotal')
+  const lineTotal = toNumber(item.price) * toNumber(item.quantity)
+  sumElement.textContent = `${formatCurrency(lineTotal)} kr`
+
+  row.appendChild(nameInput)
+  row.appendChild(qtyInput)
+  row.appendChild(priceInput)
+  row.appendChild(sumElement)
+
+  const hasQty = toNumber(qtyInput.value) > 0
+  row.toggleAttribute('data-has-qty', hasQty)
+  row.dataset.hasQty = hasQty ? 'true' : 'false'
+
+  return { row, nameInput, qtyInput, priceInput, sumElement }
+}
+
+export function attachRowHandlers (row, {
+  toNumber = value => {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+    if (value == null) return 0
+    const str = String(value).trim().replace(/\s+/g, '').replace(',', '.')
+    const parsed = Number.parseFloat(str)
+    return Number.isFinite(parsed) ? parsed : 0
+  },
+  formatCurrency = value => {
+    const number = Number.isFinite(value) ? value : 0
+    return new Intl.NumberFormat('da-DK', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(number)
+  },
+  onTotalsChange = () => {}
+} = {}) {
+  if (!row) return () => {}
+  const qty = row.querySelector('input.csm-qty')
+  const price = row.querySelector('input.csm-price')
+  const sum = row.querySelector('[data-sum]')
+  if (!qty || !price || !sum) return () => {}
+
+  const update = () => {
+    const quantity = toNumber(qty.value || 0)
+    const unitPrice = toNumber(price.value || 0)
+    const total = quantity * unitPrice
+    sum.textContent = `${formatCurrency(total)} kr`
+    const hasQty = quantity > 0
+    row.toggleAttribute('data-has-qty', hasQty)
+    row.dataset.hasQty = hasQty ? 'true' : 'false'
+    onTotalsChange(total)
+  }
+
+  qty.addEventListener('input', update)
+  price.addEventListener('input', update)
+
+  return () => {
+    qty.removeEventListener('input', update)
+    price.removeEventListener('input', update)
+  }
 }

@@ -1,67 +1,145 @@
-function resolveRow(result, item, index) {
-  if (!result) return null;
-  if (result instanceof HTMLElement) {
-    return { row: result };
-  }
-  const row = result.row instanceof HTMLElement ? result.row : null;
-  if (!row) return null;
+const DEFAULT_ROW_HEIGHT = 64
+const DEFAULT_OVERSCAN = 6
+const DEFAULT_ROW_GAP = 8
 
-  if (typeof result.update === 'function') {
-    result.update(item, index);
+export function createVirtualMaterialsList ({
+  container,
+  items = [],
+  renderRow,
+  rowHeight = DEFAULT_ROW_HEIGHT,
+  overscan = DEFAULT_OVERSCAN,
+  gap = DEFAULT_ROW_GAP
+}) {
+  if (!container) {
+    throw new Error('container is required for virtual list')
   }
+  if (typeof renderRow !== 'function') {
+    throw new Error('renderRow callback is required')
+  }
+
+  const state = {
+    items: Array.isArray(items) ? items.slice() : [],
+    renderRow,
+    rowHeight,
+    overscan,
+    pool: document.createElement('div'),
+    spacer: document.createElement('div'),
+    cache: new Map(),
+    gap,
+    hasMeasured: false
+  }
+
+  container.innerHTML = ''
+  container.classList.add('materials-virtual-list')
+  container.style.position = 'relative'
+  container.style.overflowY = container.style.overflowY || 'auto'
+
+  state.pool.className = 'materials-virtual-pool'
+  state.pool.style.position = 'absolute'
+  state.pool.style.left = '0'
+  state.pool.style.right = '0'
+  state.pool.style.top = '0'
+
+  state.spacer.className = 'materials-virtual-spacer'
+  state.spacer.style.width = '100%'
+
+  container.appendChild(state.spacer)
+  container.appendChild(state.pool)
+
+  function getRow (index) {
+    if (index < 0 || index >= state.items.length) return null
+    if (state.cache.has(index)) {
+      return state.cache.get(index)
+    }
+    const item = state.items[index]
+    const result = state.renderRow(item, index)
+    const element = result?.row || result
+    if (!(element instanceof HTMLElement)) return null
+    element.dataset.virtualIndex = String(index)
+    element.style.position = 'absolute'
+    element.style.left = '0'
+    element.style.right = '0'
+    element.style.willChange = 'transform'
+    if (!state.hasMeasured) {
+      state.pool.appendChild(element)
+      const rect = element.getBoundingClientRect()
+      const measuredHeight = rect?.height || 0
+      if (measuredHeight > 0) {
+        state.rowHeight = measuredHeight + state.gap
+        state.hasMeasured = true
+      }
+    }
+    state.cache.set(index, element)
+    return element
+  }
+
+  function updateSpacerHeight () {
+    const safeRowHeight = state.rowHeight || DEFAULT_ROW_HEIGHT
+    state.spacer.style.height = `${state.items.length * safeRowHeight}px`
+  }
+
+  function render () {
+    const scrollTop = container.scrollTop
+    const viewportHeight = container.clientHeight || 0
+    const safeRowHeight = state.rowHeight || DEFAULT_ROW_HEIGHT
+    const startIndex = Math.max(Math.floor(scrollTop / safeRowHeight) - state.overscan, 0)
+    const endIndex = Math.min(
+      state.items.length,
+      Math.ceil((scrollTop + viewportHeight) / safeRowHeight) + state.overscan
+    )
+
+    const nextChildren = new Set()
+    for (let index = startIndex; index < endIndex; index += 1) {
+      const row = getRow(index)
+      if (!row) continue
+      row.style.transform = `translateY(${index * safeRowHeight}px)`
+      nextChildren.add(row)
+      if (row.parentElement !== state.pool) {
+        state.pool.appendChild(row)
+      }
+    }
+
+    Array.from(state.pool.children).forEach(child => {
+      if (!nextChildren.has(child)) {
+        state.pool.removeChild(child)
+      }
+    })
+  }
+
+  function clearCache () {
+    state.cache.forEach(element => {
+      if (element?.parentElement === state.pool) {
+        state.pool.removeChild(element)
+      }
+    })
+    state.cache.clear()
+    state.hasMeasured = false
+  }
+
+  function setItems (nextItems) {
+    state.items = Array.isArray(nextItems) ? nextItems.slice() : []
+    clearCache()
+    updateSpacerHeight()
+    render()
+  }
+
+  function onScroll () {
+    render()
+  }
+
+  function destroy () {
+    container.removeEventListener('scroll', onScroll)
+    clearCache()
+    container.innerHTML = ''
+  }
+
+  container.addEventListener('scroll', onScroll)
+
+  setItems(state.items)
 
   return {
-    row,
-    destroy: typeof result.destroy === 'function' ? result.destroy : null,
-  };
-}
-
-export function createVirtualMaterialsList(options = {}) {
-  const { container, items = [], renderRow } = options;
-  if (!(container instanceof HTMLElement) || typeof renderRow !== 'function') {
-    return {
-      update() {},
-      refresh() {},
-      destroy() {},
-    };
+    update: setItems,
+    refresh: render,
+    destroy
   }
-
-  container.classList.add('materials-virtual-list');
-
-  let currentItems = Array.isArray(items) ? items.slice() : [];
-  let rendered = [];
-
-  function clearRendered() {
-    rendered.forEach(entry => entry.destroy?.());
-    rendered = [];
-  }
-
-  function renderAll(list) {
-    clearRendered();
-    container.innerHTML = '';
-
-    list.forEach((item, index) => {
-      const result = resolveRow(renderRow(item, index), item, index);
-      if (!result?.row) return;
-      container.appendChild(result.row);
-      rendered.push(result);
-    });
-  }
-
-  renderAll(currentItems);
-
-  return {
-    update(nextItems = []) {
-      currentItems = Array.isArray(nextItems) ? nextItems.slice() : [];
-      renderAll(currentItems);
-    },
-    refresh() {
-      renderAll(currentItems);
-    },
-    destroy() {
-      clearRendered();
-      container.innerHTML = '';
-      currentItems = [];
-    },
-  };
 }

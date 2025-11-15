@@ -1,80 +1,90 @@
-const listeners = new WeakMap();
+/**
+ * @purpose Prevent scroll chaining and rubber-band bounce in the materials list.
+ * @inputs root: optional Element|Document to scope the container lookup.
+ * @outputs void
+ */
+const initializedContainers = new WeakSet()
 
-function normalizeElement(root) {
-  if (!(root instanceof HTMLElement)) {
-    return document.querySelector('.materials-scroll') || null;
+const SELECTORS = [
+  '#materials .mat-scroll',
+  '#materials-list',
+  '.materials-scroll',
+  '#materials',
+  '.materials-v2__body'
+]
+
+function findMaterialsScrollContainer (root = document) {
+  if (!root || typeof root.querySelector !== 'function') {
+    return null
   }
-  return root.closest('.materials-scroll') || root;
-}
 
-function createWheelHandler(element) {
-  return function handleWheel(event) {
-    if (!element || event.defaultPrevented) return;
-    const deltaY = event.deltaY;
-    if (!deltaY) return;
-
-    const { scrollTop, scrollHeight, clientHeight } = element;
-    const atTop = scrollTop <= 0 && deltaY < 0;
-    const atBottom = scrollTop + clientHeight >= scrollHeight && deltaY > 0;
-
-    if (atTop || atBottom) {
-      return;
+  for (const selector of SELECTORS) {
+    const found = root.querySelector(selector)
+    if (found) {
+      return found
     }
+  }
 
-    event.stopPropagation();
-  };
+  if (root !== document) {
+    return findMaterialsScrollContainer(document)
+  }
+
+  return null
 }
 
-function createTouchHandlers(element) {
-  const state = { startY: 0 };
-  const onStart = event => {
-    if (!event.touches || event.touches.length === 0) return;
-    state.startY = event.touches[0].clientY;
-  };
+export function initMaterialsScrollLock (root = document) {
+  const container = findMaterialsScrollContainer(root)
+  if (!container || initializedContainers.has(container)) {
+    return
+  }
 
-  const onMove = event => {
-    if (!element || !event.touches || event.touches.length === 0) return;
-    const currentY = event.touches[0].clientY;
-    const deltaY = state.startY - currentY;
-
-    const { scrollTop, scrollHeight, clientHeight } = element;
-    const atTop = scrollTop <= 0 && deltaY < 0;
-    const atBottom = scrollTop + clientHeight >= scrollHeight && deltaY > 0;
-
-    if (atTop || atBottom) {
-      return;
+  const lockWithinBounds = () => {
+    const max = Math.max(0, container.scrollHeight - container.clientHeight)
+    if (container.scrollTop > max) {
+      container.scrollTop = max
     }
+  }
 
-    event.stopPropagation();
-  };
+  const canScroll = () => container.scrollHeight > container.clientHeight
 
-  return { onStart, onMove };
-}
+  const handleTouchStart = () => {
+    const max = Math.max(0, container.scrollHeight - container.clientHeight)
+    if (container.scrollTop <= 0 && max > 0) {
+      container.scrollTop = 1
+    } else if (container.scrollTop >= max && max > 0) {
+      container.scrollTop = max - 1
+    }
+  }
 
-export function initMaterialsScrollLock(root) {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  const handleTouchMove = event => {
+    if (!canScroll()) return
+    const atTop = container.scrollTop <= 0
+    const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight
+    if (atTop || atBottom) {
+      event.preventDefault()
+    }
+  }
 
-  const element = normalizeElement(root);
-  if (!element || listeners.has(element)) return;
+  const handleWheel = event => {
+    if (!canScroll()) return
+    const delta = Math.sign(event.deltaY)
+    if (delta === 0) return
+    const atTop = container.scrollTop <= 0
+    const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight
+    if ((delta < 0 && atTop) || (delta > 0 && atBottom)) {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+  }
 
-  const wheelHandler = createWheelHandler(element);
-  const touchHandlers = createTouchHandlers(element);
+  const handleResize = () => {
+    lockWithinBounds()
+  }
 
-  element.addEventListener('wheel', wheelHandler, { passive: false });
-  element.addEventListener('touchstart', touchHandlers.onStart, { passive: true });
-  element.addEventListener('touchmove', touchHandlers.onMove, { passive: false });
+  container.addEventListener('touchstart', handleTouchStart, { passive: true })
+  container.addEventListener('touchmove', handleTouchMove, { passive: false })
+  container.addEventListener('wheel', handleWheel, { passive: false })
+  window.addEventListener('resize', handleResize)
 
-  listeners.set(element, () => {
-    element.removeEventListener('wheel', wheelHandler);
-    element.removeEventListener('touchstart', touchHandlers.onStart);
-    element.removeEventListener('touchmove', touchHandlers.onMove);
-  });
-}
-
-export function destroyMaterialsScrollLock(root) {
-  const element = normalizeElement(root);
-  const cleanup = element ? listeners.get(element) : null;
-  if (!cleanup) return;
-  cleanup();
-  listeners.delete(element);
+  initializedContainers.add(container)
 }
