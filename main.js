@@ -748,7 +748,7 @@ function hydrateMaterialListsFromJson() {
     return;
   }
 
-  fetch('./complete_lists.json')
+  fetch('./src/data/complete_lists.json')
     .then(response => {
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
