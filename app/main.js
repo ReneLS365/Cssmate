@@ -6,7 +6,6 @@ import { createMaterialRow } from './src/modules/materialRowTemplate.js'
 import { sha256Hex, constantTimeEquals } from './src/lib/sha256.js'
 import { ensureExportLibs, ensureZipLib, prefetchExportLibs } from './src/features/export/lazy-libs.js'
 import { setupNumpad } from './js/numpad.js'
-import { openA9ForInput } from './js/a9-calc.js'
 import { exportMeta, setSlaebFormulaText } from './js/export-meta.js'
 import { createVirtualMaterialsList } from './src/modules/materialsVirtualList.js'
 import { initClickGuard } from './src/ui/Guards/ClickGuard.js'
@@ -176,28 +175,22 @@ function setupGuideModal() {
 
 function setupA9Integration() {
   const slaebInput = document.querySelector('input[data-a9-slaeb="true"]');
-  const openBtn = document.getElementById('btnOpenA9');
+  const openBtn = document.querySelector('.js-slaeb-calc-link');
+
+  if (openBtn) {
+    const calcUrl = openBtn.dataset.calcUrl || 'https://cala9.netlify.app/';
+    openBtn.addEventListener('click', event => {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      window.open(calcUrl, '_blank', 'noopener,noreferrer');
+    });
+  }
 
   if (!slaebInput) {
     return;
   }
-
-  const openOverlay = event => {
-    if (event) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-    openA9ForInput(slaebInput);
-  };
-
-  if (openBtn) {
-    openBtn.addEventListener('click', openOverlay);
-  }
-
-  slaebInput.addEventListener('focus', event => {
-    event.stopPropagation();
-    openOverlay();
-  });
 
   slaebInput.addEventListener('a9-commit', event => {
     const formulaText = typeof event?.detail?.formulaText === 'string'

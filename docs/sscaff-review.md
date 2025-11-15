@@ -25,18 +25,21 @@
   - Beskrivelse: `.material-row` og `.csm-row` har `grid-template-columns: 1fr 88px 110px 110px`, hvilket giver 300+ px faste kolonner oven i navnekolonnen. På smalle mobiler betyder det at rækkerne sprænger viewporten og udløser horisontal scrolling.【F:app/style.css†L81-L140】
   - Forslag: Brug responsive `minmax()` kolonner (fx `clamp`) eller CSS-variablen `--materials-grid` i stedet for faste px-bredder, så layoutet kan kollapse på 320–360 px.
   - Type: responsivitet/bug
+  - Status: Løst i Fix-pack B (responsivitet + numpad-tema).
 
 - [C-02] Skalerings-hack giver sløret UI på små skærme
   - Fil: `app/style.css`
   - Beskrivelse: For `@media (max-width:420px)` bliver hele `#app` skaleret med `transform: scale(0.92)` og bredde korrigeres med `width: calc(100%/0.92)`. Det forstørrer indholdet til >100 % af viewporten, skaber ekstra horizontal scroll og gør teksten sløret pga. skalering.【F:app/style.css†L209-L223】
   - Forslag: Drop skalering og i stedet justér paddings/typografi direkte i breakpoints, så appen forbliver 1:1 pixel-mappet.
   - Type: responsiveness/UX
+  - Status: Løst i Fix-pack B (responsivitet + numpad-tema).
 
 - [C-03] Numpad-farver ignorerer temaets CSS-variabler
   - Fil: `app/css/numpad.css`
   - Beskrivelse: Den nye numpad bruger hårdkodede farver (#121212, #1f1f1f, #27ae60 osv.) og egne border-radii, så den ikke følger de globale tema-variabler i `:root`. Når resten af appen skifter palette, vil numpaden stå tilbage i andre farver.【F:app/css/numpad.css†L19-L120】
   - Forslag: Erstat faste hex-koder med eksisterende CSS-variabler (`--panel`, `--accent`, `--text`) og lad spacing følge `var(--pad)` for at holde designet konsistent.
   - Type: visual cleanup
+  - Status: Løst i Fix-pack B (responsivitet + numpad-tema).
 
 ## JS – issues og forslag
 - [J-01] SHA-256 er en stub der returnerer samme hash
@@ -143,16 +146,19 @@
   - Skærmstørrelse: 360×640 og mindre
   - Beskrivelse: De faste kolonnebredder i `.material-row` tvinger navnekolonnen til få plads; resultatet er at materialenavne bliver klippet eller kræver horizontal scroll, hvilket gør optælling besværlig.【F:app/style.css†L81-L140】
   - Forslag: Brug fleksible kolonner eller stack felterne (fx navn over pris) under 400 px bredde.
+  - Status: Løst i Fix-pack B (responsivitet + numpad-tema).
 
 - [U-02] Skaleringstricket gør hele appen utydelig
   - Skærmstørrelse: <420 px
   - Beskrivelse: `transform: scale(0.92)` på hele appen giver en zoomet/flimrende oplevelse og ændrer touch-targets’ fysiske størrelse, hvilket især går ud over tastbare elementer nær kanterne.【F:app/style.css†L209-L223】
   - Forslag: Tilpas spacing/typografi med medier queries i stedet for at skalere hele DOM’en.
+  - Status: Løst i Fix-pack B (responsivitet + numpad-tema).
 
 - [U-03] Numpad deler ikke tema med resten af UI’et
   - Skærmstørrelse: Alle
   - Beskrivelse: Den mørke numpad bruger egne farver og kontraster, så komponenten "stikker ud" visuelt fra resten af UI'et og virker som et fremmed modul. For brugere i mørke omgivelser betyder det skarpe kontraster og dårlig visuel hierarki.【F:app/css/numpad.css†L19-L120】
   - Forslag: Bind farverne til eksisterende tema-variabler og match knaphøjder/typografi med resten af appen.
+  - Status: Løst i Fix-pack B (responsivitet + numpad-tema).
 
 ## Samlet oversigt
 | ID   | Type                   | Severity | Kort beskrivelse |
@@ -181,3 +187,4 @@
 | U-03 | UX/visual              | Lav      | Numpad matcher ikke temaet |
 
 _Fix-pack A (admin + eksport + eval + numpad scroll-lock) er implementeret og testet manuelt i browser._
+_Fix-pack B (CSS/responsivitet + numpad-tema) er implementeret og testet på 320–414 px viewport bredde._
