@@ -2,12 +2,20 @@
   --bg:#1e1f22;
   --elev:#26272b;
   --panel:#2d2f34;
+  --panel-soft:#2b2d32;
+  --panel-muted:#26272c;
   --text:#f4f4f6;
   --muted:#c8c9ce;
   --border:#3b3d45;
   --accent:#8ea0b5;
+  --accent-strong:#f2b661;
+  --radius-md:10px;
+  --radius-lg:16px;
+  --shadow-strong:0 18px 40px rgba(0,0,0,0.45);
   --gap:12px;
   --pad:12px;
+  --materials-grid-desktop:2fr minmax(64px,0.9fr) minmax(72px,1fr) minmax(72px,1fr);
+  --materials-grid-mobile:1.4fr minmax(56px,0.8fr) minmax(64px,0.9fr) minmax(64px,0.9fr);
 }
 :focus-visible{outline:2px solid currentColor;outline-offset:2px}
 .skip-to-content{position:absolute;left:-9999px;top:0;background:var(--panel);color:var(--text);padding:8px 14px;border-radius:10px;z-index:1000;box-shadow:0 12px 30px rgba(0,0,0,0.4)}
@@ -85,44 +93,46 @@ button{cursor:pointer}
 .material-row,
 .csm-row {
   display: grid;
-  grid-template-columns: 1fr 88px 110px 110px;
-  gap: 10px;
+  grid-template-columns: var(--materials-grid-desktop);
+  column-gap: 10px;
+  row-gap: 6px;
   align-items: center;
   padding: 10px 12px;
   min-height: 40px;
-  border-radius: 10px;
-  background: #1f2124;
+  border-radius: var(--radius-md);
+  border:1px solid var(--border);
+  background: var(--panel);
 }
 
 .material-row + .material-row,
 .csm-row + .csm-row { margin-top: 8px; }
 
 .material-row.manual,
-.csm-row.manual { background: #23252a; }
+.csm-row.manual { background: var(--elev); }
 
 .csm-row input,
 .material-row input {
   height: 40px;
   padding: 0 12px;
-  border: 1px solid #2b2d32;
-  border-radius: 10px;
-  background: #2a2c31;
-  color: #e7e7e7;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+  color: var(--text);
   outline: none;
   position: static;
   z-index: auto;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
 }
 
 .csm-row input[readonly],
 .material-row input[readonly] {
-  background: #1c1e22;
-  color: #bfc2c9;
+  background: var(--panel-muted);
+  color: var(--muted);
   cursor: default;
 }
 
 .csm-row input:focus,
-.material-row input:focus { border-color: #4c7bff; background: #2e3036; }
+.material-row input:focus { border-color: var(--accent); background: var(--elev); }
 
 .csm-name { min-width: 140px; text-align: left; }
 .manual .csm-name { font-weight: 600; }
@@ -141,11 +151,11 @@ button{cursor:pointer}
   align-items: center;
   justify-content: flex-end;
   padding: 0 12px;
-  background: #2a2c31;
-  border: 1px solid #2b2d32;
-  border-radius: 10px;
-  color: #e7e7e7;
-  font-size: 0.9rem;
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-size: 0.95rem;
 }
 
 .csm-row--custom { all: unset; }
@@ -213,17 +223,27 @@ round:rgba(255,255,255,0.03)}
 @media (max-width:420px){
   #app,
   .app-root{
-    transform:scale(0.92);
-    transform-origin:top center;
-    width:calc(100%/0.92);
-    max-width:calc(100%/0.92);
+    width:100%;
+    max-width:100%;
     margin:0 auto;
+    padding-inline:8px;
   }
 
+  main{padding:12px 0;gap:10px;}
+
+  fieldset,
+  .form-grid,
+  .overview,
+  .review-panel,
   .card,
   .panel{
-    padding:calc(var(--pad) * 0.75);
+    padding:10px 12px;
   }
+
+  header .bar{padding-inline:8px;}
+
+  .material-row,
+  .csm-row{column-gap:4px;padding-inline:10px;}
 }
 
 @media print{
@@ -345,6 +365,42 @@ round:rgba(255,255,255,0.03)}
 }
 
 .materials-list input:focus{outline:2px solid #3b82f6;outline-offset:0}
+
+@media (max-width:400px){
+  .material-row,
+  .csm-row{
+    grid-template-columns:var(--materials-grid-mobile);
+    column-gap:6px;
+  }
+
+  .material-row .mat-name,
+  .csm-row .mat-name,
+  .csm-name{
+    font-size:0.9rem;
+    line-height:1.25;
+    word-break:break-word;
+  }
+
+  .material-row input,
+  .csm-row input{
+    font-size:0.9rem;
+    padding-inline:10px;
+  }
+}
+
+@media (max-width:340px){
+  .material-row,
+  .csm-row{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    grid-auto-rows:auto;
+  }
+
+  .material-row .mat-name,
+  .csm-row .mat-name,
+  .csm-name{
+    grid-column:1 / -1;
+  }
+}
 
 
 
