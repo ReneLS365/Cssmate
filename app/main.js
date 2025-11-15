@@ -7,6 +7,8 @@ import { createMaterialRow } from './src/modules/materialRowTemplate.js'
 import { sha256Hex, constantTimeEquals } from './src/lib/sha256.js'
 import { ensureExportLibs, ensureZipLib, prefetchExportLibs } from './src/features/export/lazy-libs.js'
 import { setupNumpad } from './js/numpad.js'
+import { initA9Calc, openA9ForInput } from './js/a9-calc.js'
+import { exportMeta, setSlaebFormulaText } from './js/export-meta.js'
 import { createVirtualMaterialsList } from './src/modules/materialsVirtualList.js'
 import { initClickGuard } from './src/ui/Guards/ClickGuard.js'
 import { setAdminOk, restoreAdminState } from './src/state/admin.js'
@@ -65,6 +67,13 @@ function forEachNode(nodeList, callback) {
   for (let index = 0; index < nodeList.length; index += 1) {
     callback(nodeList[index], index, nodeList);
   }
+}
+
+function updateSlaebFormulaInfo(text) {
+  const infoEl = document.getElementById('slaebPercentCalcInfo');
+  if (!infoEl) return;
+  const value = typeof text === 'string' ? text.trim() : '';
+  infoEl.textContent = value ? `Formel (A9): ${value}` : '';
 }
 
 function vis(id) {
@@ -164,6 +173,42 @@ function setupGuideModal() {
       }
     }
   });
+}
+
+function setupA9Integration() {
+  initA9Calc();
+
+  const slaebInput = document.getElementById('slaebePct');
+  const openBtn = document.getElementById('btnOpenA9');
+
+  if (!slaebInput) {
+    return;
+  }
+
+  if (openBtn) {
+    openBtn.addEventListener('click', () => {
+      openA9ForInput(slaebInput);
+    });
+  }
+
+  const handleManualUpdate = () => {
+    if (slaebInput.dataset.a9Commit === '1') {
+      return;
+    }
+    setSlaebFormulaText('');
+    updateSlaebFormulaInfo('');
+  };
+
+  slaebInput.addEventListener('input', handleManualUpdate);
+  slaebInput.addEventListener('change', handleManualUpdate);
+
+  slaebInput.addEventListener('a9-commit', event => {
+    const formulaText = event?.detail?.formulaText || '';
+    setSlaebFormulaText(formulaText);
+    updateSlaebFormulaInfo(formulaText);
+  });
+
+  updateSlaebFormulaInfo(exportMeta.slaebFormulaText);
 }
 
 function formatCurrency(value) {
@@ -1388,6 +1433,7 @@ function collectExtrasState() {
     montagepris: getValue('montagepris'),
     demontagepris: getValue('demontagepris'),
     slaebePct: getValue('slaebePct'),
+    slaebeFormulaText: exportMeta.slaebFormulaText || '',
     antalBoringHuller: getValue('antalBoringHuller'),
     antalLukHuller: getValue('antalLukHuller'),
     antalBoringBeton: getValue('antalBoringBeton'),
@@ -1447,6 +1493,8 @@ function applyExtrasSnapshot(extras = {}) {
   assign('montagepris', extras.montagepris);
   assign('demontagepris', extras.demontagepris);
   assign('slaebePct', extras.slaebePct);
+  setSlaebFormulaText(extras?.slaebeFormulaText ?? '');
+  updateSlaebFormulaInfo(exportMeta.slaebFormulaText);
   assign('antalBoringHuller', extras.antalBoringHuller);
   assign('antalLukHuller', extras.antalLukHuller);
   assign('antalBoringBeton', extras.antalBoringBeton);
@@ -2368,6 +2416,7 @@ function beregnLon() {
     extras: {
       slaebePct: slaebePctInput,
       slaebeBelob: slaebebelob,
+      slaebeFormulaText: exportMeta.slaebFormulaText || '',
       boringHuller: { antal: antalBoringHuller, pris: BORING_HULLER_RATE, total: boringHullerTotal },
       lukHuller: { antal: antalLukHuller, pris: LUK_HULLER_RATE, total: lukHullerTotal },
       boringBeton: { antal: antalBoringBeton, pris: BORING_BETON_RATE, total: boringBetonTotal },
@@ -2501,6 +2550,16 @@ function downloadEkompletCSV() {
     formatNumberForCSV(data.montagepris || 0),
     formatNumberForCSV(extras.slaebeBelob || 0),
   ]);
+  const slaebFormulaNote = (extras.slaebeFormulaText || '').trim();
+  if (slaebFormulaNote) {
+    rows.push([
+      'Tillæg',
+      'A9 slæb-formel',
+      extras.slaebeFormulaText,
+      '',
+      ''
+    ]);
+  }
   const boringHuller = extras.boringHuller || {};
   rows.push([
     'Tillæg',
@@ -2725,6 +2784,10 @@ function buildCSVPayload(customSagsnummer, options = {}) {
   }
   lines.push(`Total;Lønsum;${escapeCSV(formatNumberForCSV(laborSum))}`);
   lines.push(`Total;Projektsum;${escapeCSV(formatNumberForCSV(projectSum))}`);
+  const formulaNote = (exportMeta.slaebFormulaText || '').trim();
+  if (formulaNote) {
+    lines.push(`Noter;A9 slæb-formel;${escapeCSV(exportMeta.slaebFormulaText)}`);
+  }
 
   const content = lines.join('\n');
   const baseName = sanitizeFilename(info.sagsnummer || 'akkordseddel') || 'akkordseddel';
@@ -2905,6 +2968,11 @@ async function exportPDFBlob(customSagsnummer, options = {}) {
     return `<div class="${classes.join(' ')}"><span>${row.label}</span><strong>${formatReviewValue(row)}</strong></div>`;
   }).join('');
 
+  const formulaNoteSource = (exportMeta.slaebFormulaText || '').trim();
+  const formulaNoteHtml = formulaNoteSource
+    ? `<p class="a9-formula-note"><strong>A9 slæb-formel:</strong> ${escapeHtml(exportMeta.slaebFormulaText).replace(/\n/g, '<br>')}</p>`
+    : '';
+
   wrapper.innerHTML = `
     <style>
       .export-preview { font-family: system-ui, -apple-system, Segoe UI, sans-serif; }
@@ -2921,6 +2989,8 @@ async function exportPDFBlob(customSagsnummer, options = {}) {
       .export-preview .review-row--emphasize { font-weight: 600; }
       .export-preview .review-row span { flex: 1; }
       .export-preview .review-row strong { white-space: pre-wrap; text-align: right; }
+      .export-preview .a9-formula-note { margin-top: 10px; font-size: 13px; color: #1f2937; }
+      .export-preview .a9-formula-note strong { margin-right: 6px; }
       .export-preview .totals { display: flex; gap: 12px; flex-wrap: wrap; }
       .export-preview .totals div { background: #f7f7f7; border: 1px solid #ddd; padding: 8px 12px; border-radius: 6px; }
     </style>
@@ -2981,6 +3051,7 @@ async function exportPDFBlob(customSagsnummer, options = {}) {
       <div class="review-grid">
         ${reviewRowsHtml}
       </div>
+      ${formulaNoteHtml}
     </section>
     <section>
       <h3>Løn & projektsum</h3>
@@ -3356,6 +3427,7 @@ function initApp() {
   populateRecentCases();
 
   setupGuideModal();
+  setupA9Integration();
 
   document.getElementById('btnBeregnLon')?.addEventListener('click', () => beregnLon());
   document.getElementById('btnPrint')?.addEventListener('click', () => {

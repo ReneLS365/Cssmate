@@ -11,6 +11,7 @@
   <title>akkordseddel</title>
   <link rel=stylesheet href=style.css>
   <link rel=stylesheet href=css/numpad.css>
+  <link rel=stylesheet href=css/a9-calc.css>
   <link rel=stylesheet href=print.css media=print>
   <link rel=stylesheet href=src/styles/fixes.css>
   <link rel=stylesheet href=/css/pwa.css>
@@ -162,7 +163,11 @@
       <legend>Tillæg & km</legend>
       <div class=grid-2>
         <label for=slaebePct><span>Slæb i %</span>
-          <input id=slaebePct placeholder="Slæb i %" inputmode=decimal data-numpad=true data-decimal=comma data-numpad-field=slaebePct>
+          <div class=field-with-icon>
+            <input id=slaebePct placeholder="Slæb i %" inputmode=decimal data-numpad=true data-decimal=comma data-numpad-field=slaebePct data-a9-slaeb=true>
+            <button type=button class=a9-open-btn id=btnOpenA9 aria-label="Åbn A9 lommeregner">🧮</button>
+          </div>
+          <div id=slaebPercentCalcInfo class="help-text small-muted" aria-live=polite></div>
         </label>
         <label for=km><span>Km</span>
           <input id=km placeholder=Km inputmode=decimal data-numpad=true data-decimal=comma data-numpad-field=km>
@@ -291,6 +296,51 @@
       </div>
 
       <button type="button" class="numpad-commit" id="numpad-btn-commit">✓</button>
+    </div>
+  </div>
+
+  <div id=a9-overlay class=a9-hidden aria-hidden=true>
+    <div class=a9-panel role=dialog aria-label="Slæb i % lommeregner" tabindex=-1>
+      <button type=button class=a9-close id=a9-btn-close aria-label="Luk lommeregner">✕</button>
+      <div class=a9-display>
+        <div class=a9-display-top id=a9-display-expression></div>
+        <div class=a9-display-mid id=a9-display-previous></div>
+        <div class=a9-display-main id=a9-display-current>0</div>
+      </div>
+      <div class=a9-actions>
+        <button type=button class=a9-copy id=a9-btn-copy>📋 Kopiér formel</button>
+      </div>
+      <div class=a9-grid>
+        <button data-a9-key=C class="a9-key a9-func" type=button>C</button>
+        <button data-a9-key=MC class="a9-key a9-func" type=button>mc</button>
+        <button data-a9-key=MR class="a9-key a9-func" type=button>mr</button>
+        <button data-a9-key=M- class="a9-key a9-func" type=button>m-</button>
+        <button data-a9-key=M+ class="a9-key a9-func" type=button>m+</button>
+
+        <button data-a9-key=BACK class="a9-key a9-func" type=button>⌫</button>
+        <button data-a9-key=÷ class="a9-key a9-op" type=button>÷</button>
+        <button data-a9-key=× class="a9-key a9-op" type=button>×</button>
+        <button data-a9-key=- class="a9-key a9-op" type=button>-</button>
+
+        <button data-a9-key=7 class=a9-key type=button>7</button>
+        <button data-a9-key=8 class=a9-key type=button>8</button>
+        <button data-a9-key=9 class=a9-key type=button>9</button>
+        <button data-a9-key=+ class="a9-key a9-op" type=button>+</button>
+
+        <button data-a9-key=4 class=a9-key type=button>4</button>
+        <button data-a9-key=5 class=a9-key type=button>5</button>
+        <button data-a9-key=6 class=a9-key type=button>6</button>
+        <button data-a9-key== class="a9-key a9-eq" type=button>=</button>
+
+        <button data-a9-key=1 class=a9-key type=button>1</button>
+        <button data-a9-key=2 class=a9-key type=button>2</button>
+        <button data-a9-key=3 class=a9-key type=button>3</button>
+        <button data-a9-key=% class="a9-key a9-func" type=button>%</button>
+
+        <button data-a9-key=0 class="a9-key a9-wide" type=button>0</button>
+        <button data-a9-key=, class=a9-key type=button>,</button>
+      </div>
+      <button type=button class=a9-commit id=a9-btn-commit>✓ Brug som slæb %</button>
     </div>
   </div>
 
