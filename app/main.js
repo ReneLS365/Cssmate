@@ -3349,20 +3349,12 @@ function initApp() {
 
   vis('sagsinfo');
 
-  const navConfig = [
-    { id: 'btnSagsinfo', section: 'sagsinfo' },
-    { id: 'btnOptaelling', section: 'optaelling' },
-    { id: 'btnLon', section: 'lon' },
-  ];
-
-  navConfig.forEach(({ id, section, onActivate }) => {
-    const button = document.getElementById(id);
-    if (!button) return;
+  const tabButtons = document.querySelectorAll('header nav button[data-section][role="tab"]');
+  forEachNode(tabButtons, button => {
+    const { section } = button.dataset;
+    if (!section) return;
     button.addEventListener('click', () => {
       vis(section);
-      if (typeof onActivate === 'function') {
-        onActivate();
-      }
     });
   });
 
