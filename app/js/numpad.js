@@ -147,8 +147,8 @@ function observeNumpadInputs () {
 function showNumpadForInput (input) {
   if (!overlay) return
 
+  lastFocusedInput = document.activeElement instanceof HTMLElement ? document.activeElement : null
   activeInput = input instanceof HTMLInputElement ? input : null
-  lastFocusedInput = activeInput || (document.activeElement instanceof HTMLElement ? document.activeElement : null)
 
   const inputValue = activeInput && typeof activeInput.value === 'string' ? activeInput.value : ''
   const initial = normalizeFromField(inputValue)
@@ -169,6 +169,8 @@ function showNumpadForInput (input) {
 
 function hideNumpad (commit) {
   if (!overlay) return
+
+  const focusTarget = !commit && lastFocusedInput ? lastFocusedInput : null
 
   if (commit && activeInput) {
     const fieldValue = formatForField(currentValue)
@@ -197,8 +199,8 @@ function hideNumpad (commit) {
   if (document?.documentElement) {
     document.documentElement.classList.remove('np-open')
   }
-  if (lastFocusedInput && typeof lastFocusedInput.focus === 'function') {
-    lastFocusedInput.focus()
+  if (focusTarget && typeof focusTarget.focus === 'function') {
+    focusTarget.focus()
   }
   lastFocusedInput = null
 }
