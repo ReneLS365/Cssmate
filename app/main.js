@@ -1829,6 +1829,10 @@ function beregnLon() {
   const sagsnummer = info.sagsnummer?.trim() || 'uspecified';
   const jobType = document.getElementById('jobType')?.value || 'montage';
   const jobFactor = jobType === 'demontage' ? 0.5 : 1;
+  const selectedSystems = getSelectedSystemKeys();
+  const normalizedPrimarySystem = selectedSystems
+    .map(value => normalizeKey(value))
+    .find(value => ['bosta', 'haki', 'modex'].includes(value)) || '';
   const slaebePctInput = toNumber(document.getElementById('slaebePct')?.value);
   const antalBoringHuller = toNumber(document.getElementById('antalBoringHuller')?.value);
   const antalLukHuller = toNumber(document.getElementById('antalLukHuller')?.value);
@@ -1872,6 +1876,7 @@ function beregnLon() {
         baseUnitPrice: basePrice,
         lineTotal,
         system: item?.systemKey || '',
+        systemKey: item?.systemKey || '',
       });
     });
   }
@@ -2146,6 +2151,8 @@ function beregnLon() {
     jobType,
     montagepris: montageBase,
     demontagepris: montageBase * 0.5,
+    systems: selectedSystems,
+    primarySystem: normalizedPrimarySystem,
     extras: {
       slaebePct: slaebePctInput,
       slaebeBelob: slaebebelob,
@@ -2195,6 +2202,7 @@ function beregnLon() {
   attachAkkordExcelButton();
 
   if (typeof window !== 'undefined') {
+    window.__cssmateLastEkompletData = lastEkompletData;
     window.__beregnLonCache = {
       materialSum: lastMaterialSum,
       laborSum: lastLoensum,
@@ -2212,8 +2220,23 @@ function beregnLon() {
 
 function attachEkompletButton() {
   const button = document.getElementById('btnEkompletExport');
-  if (!button) return;
-  button.addEventListener('click', () => downloadEkompletCSV());
+  if (!button || button.dataset.ekompletBound === '1') return;
+  button.dataset.ekompletBound = '1';
+  button.addEventListener('click', async () => {
+    const previousDisabled = button.disabled;
+    button.disabled = true;
+    try {
+      const exported = await exportToEKomplet();
+      if (exported !== false) {
+        await exportAkkordExcelForActiveJob();
+      }
+    } catch (error) {
+      console.error('Fejl ved E-komplet/Excel eksport:', error);
+      alert('Fejl ved eksport. Tjek konsollen.');
+    } finally {
+      button.disabled = previousDisabled;
+    }
+  });
 }
 
 function attachAkkordExcelButton() {
@@ -2267,16 +2290,17 @@ async function handleAkkordExcelExport(button) {
 }
 
 function downloadEkompletCSV() {
+async function exportToEKomplet() {
   if (!validateSagsinfo()) {
     setEkompletStatus('Udfyld Sagsinfo før du indberetter til E-komplet.', 'error');
     updateActionHint('Udfyld Sagsinfo for at indberette.', 'error');
-    return;
+    return false;
   }
 
   const data = lastEkompletData;
   if (!data) {
     setEkompletStatus('Beregn løn først, så alle data er opdaterede.', 'error');
-    return;
+    return false;
   }
 
   const rows = [];
@@ -2435,6 +2459,7 @@ function downloadEkompletCSV() {
 
   setEkompletStatus('Filen er hentet og klar til upload i E-komplet.', 'success');
   updateActionHint('E-komplet fil er genereret.', 'success');
+  return true;
 }
 
 
