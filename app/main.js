@@ -2278,7 +2278,7 @@ async function handleAkkordExcelExport(button) {
   button.textContent = 'Henter Excel…';
 
   try {
-    await exportAkkordExcelForActiveJob(system);
+    await exportAkkordExcelForActiveJob(job, system);
     setEkompletStatus('Akkord Excel er hentet.', 'success');
   } catch (error) {
     console.error('Akkord Excel eksport fejlede', error);
@@ -2289,7 +2289,6 @@ async function handleAkkordExcelExport(button) {
   }
 }
 
-function downloadEkompletCSV() {
 async function exportToEKomplet() {
   if (!validateSagsinfo()) {
     setEkompletStatus('Udfyld Sagsinfo før du indberetter til E-komplet.', 'error');
@@ -3307,5 +3306,3 @@ if (document.readyState === 'loading') {
 } else {
   initApp();
 }
-
-export { populateWorkersFromLabor };
