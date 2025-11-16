@@ -147,8 +147,8 @@ function observeNumpadInputs () {
 function showNumpadForInput (input) {
   if (!overlay) return
 
+  lastFocusedInput = document.activeElement instanceof HTMLElement ? document.activeElement : null
   activeInput = input instanceof HTMLInputElement ? input : null
-  lastFocusedInput = activeInput || (document.activeElement instanceof HTMLElement ? document.activeElement : null)
 
   const inputValue = activeInput && typeof activeInput.value === 'string' ? activeInput.value : ''
   const initial = normalizeFromField(inputValue)
@@ -170,10 +170,7 @@ function showNumpadForInput (input) {
 function hideNumpad (commit) {
   if (!overlay) return
 
-  const previousActiveInput = activeInput
-  const focusTarget = lastFocusedInput && lastFocusedInput !== previousActiveInput
-    ? lastFocusedInput
-    : null
+  const focusTarget = !commit && lastFocusedInput ? lastFocusedInput : null
 
   if (commit && activeInput) {
     const fieldValue = formatForField(currentValue)
