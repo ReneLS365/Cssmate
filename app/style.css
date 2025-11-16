@@ -192,6 +192,8 @@ button{cursor:pointer}
 .status-message{margin:6px 0 0;font-size:0.85rem}
 .status-message.success{color:#8adbae}
 .status-message.error{color:#ff9b9b}
+.akkord-excel-controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+.akkord-excel-controls select{min-width:160px}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;padding:24px;z-index:999}
 .modal.open{display:flex}
 .modal[hidden]{display:none!important}

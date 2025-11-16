@@ -1,5 +1,5 @@
 // Auto-generated dataset with full price lists for SSCaff systems
-const BOSTA_DATA = [
+export const BOSTA_DATA = [
   { varenr: 'B001', navn: 'Spindelfod kort', enhed: 'stk', pris: 2.675425 },
   { varenr: 'B002', navn: 'Spindelfod lang', enhed: 'stk', pris: 2.675425 },
   { varenr: 'B003', navn: 'Vippefod', enhed: 'stk', pris: 4.4305038 },
@@ -106,7 +106,7 @@ const BOSTA_DATA = [
   { varenr: 'B104', navn: 'Mentortillæg', enhed: 'stk', pris: 22.26 },
 ];
 
-const HAKI_DATA = [
+export const HAKI_DATA = [
   { varenr: 'H001', navn: 'Spindelfod kort', enhed: 'stk', pris: 2.68 },
   { varenr: 'H002', navn: 'BPF Fodsokkel', enhed: 'stk', pris: 3.04427 },
   { varenr: 'H003', navn: 'Strø / trykudligner', enhed: 'stk', pris: 1.77 },
@@ -176,7 +176,7 @@ const HAKI_DATA = [
   { varenr: 'H067', navn: 'Mentortillæg', enhed: 'stk', pris: 22.26 },
 ];
 
-const MODEX_DATA = [
+export const MODEX_DATA = [
   { varenr: 'M001', navn: 'Spindelfod', enhed: 'stk', pris: 2.68 },
   { varenr: 'M002', navn: 'Begynderstykke', enhed: 'stk', pris: 4.18 },
   { varenr: 'M003', navn: 'Vertikalstander 300', enhed: 'stk', pris: 25.05 },
@@ -248,7 +248,7 @@ const MODEX_DATA = [
   { varenr: 'M069', navn: 'Opskydeligt rækværk', enhed: 'stk', pris: 9.67 },
 ];
 
-const ALFIX_DATA = [
+export const ALFIX_DATA = [
   { varenr: 'A001', navn: 'Kipdrager 4,5 m', enhed: 'stk', pris: 249.66 },
   { varenr: 'A002', navn: 'Alu drager pr. m', enhed: 'm', pris: 17.12 },
   { varenr: 'A003', navn: '4,5 m kederdrager', enhed: 'stk', pris: 175.68 },

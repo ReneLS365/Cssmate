@@ -12,6 +12,7 @@ import { createVirtualMaterialsList } from './src/modules/materialsVirtualList.j
 import { initClickGuard } from './src/ui/Guards/ClickGuard.js'
 import { setAdminOk, restoreAdminState } from './src/state/admin.js'
 import { exportAkkordExcelForActiveJob } from './src/export/akkord-excel.js'
+import { setActiveJob } from './src/state/jobs.js'
 import './boot-inline.js'
 
 const IOS_INSTALL_PROMPT_DISMISSED_KEY = 'csmate.iosInstallPromptDismissed'
@@ -281,6 +282,12 @@ const OPSKYDELIGT_RATE = 9.67;
 const KM_RATE = 2.12;
 const TILLAEG_UDD1 = 42.98;
 const TILLAEG_UDD2 = 49.38;
+const AKKORD_EXCEL_SYSTEMS = [
+  { id: 'bosta', label: 'BOSTA 2025' },
+  { id: 'haki', label: 'HAKI 2025' },
+  { id: 'modex', label: 'MODEX 2025' },
+];
+const AKKORD_EXCEL_STORAGE_KEY = 'csmate.akkordExcelSystem';
 
 // --- Scaffold Part Lists ---
 function createSystemMaterialState(system) {
@@ -342,6 +349,39 @@ function ensureSystemSelection() {
 function getSelectedSystemKeys() {
   ensureSystemSelection();
   return Array.from(selectedSystemKeys);
+}
+
+function isSupportedExcelSystem(value) {
+  if (!value) return false;
+  return AKKORD_EXCEL_SYSTEMS.some(option => option.id === value);
+}
+
+function getStoredExcelSystem() {
+  if (typeof localStorage === 'undefined') return '';
+  try {
+    return localStorage.getItem(AKKORD_EXCEL_STORAGE_KEY) || '';
+  } catch (error) {
+    console.warn('Kunne ikke læse Excel-system fra storage', error);
+    return '';
+  }
+}
+
+function setStoredExcelSystem(value) {
+  if (typeof localStorage === 'undefined' || !isSupportedExcelSystem(value)) return;
+  try {
+    localStorage.setItem(AKKORD_EXCEL_STORAGE_KEY, value);
+  } catch (error) {
+    console.warn('Kunne ikke gemme Excel-system', error);
+  }
+}
+
+function getPreferredExcelSystem() {
+  const stored = getStoredExcelSystem();
+  if (isSupportedExcelSystem(stored)) return stored;
+  const selected = getSelectedSystemKeys();
+  const match = selected.find(key => isSupportedExcelSystem(key));
+  if (match) return match;
+  return AKKORD_EXCEL_SYSTEMS[0]?.id || 'bosta';
 }
 
 function getDatasetForSelectedSystems(selected) {
@@ -1277,6 +1317,69 @@ function setEkompletStatus(message, variant = 'success') {
   statusEl.removeAttribute('hidden');
 }
 
+function inferSystemFromLine(line) {
+  if (!line) return '';
+  if (line.system) return line.system;
+  if (line.systemKey) return line.systemKey;
+  const rawId = String(line.varenr || line.id || '').trim().toLowerCase();
+  if (rawId.startsWith('b')) return 'bosta';
+  if (rawId.startsWith('h')) return 'haki';
+  if (rawId.startsWith('m')) return 'modex';
+  return '';
+}
+
+function buildAkkordJobSnapshot(data = lastEkompletData) {
+  const source = data || lastEkompletData;
+  if (!source) return null;
+  const formInfo = collectSagsinfo();
+  const info = { ...(source.sagsinfo || {}), ...formInfo };
+  const jobType = source.jobType || document.getElementById('jobType')?.value || 'montage';
+  const workerNames = info.montoer || '';
+  const montageNames = jobType === 'demontage' ? '' : workerNames;
+  const demontageNames = jobType === 'demontage' ? workerNames : '';
+  const formattedDate = info.dato ? formatDateForDisplay(info.dato) : '';
+  const job = {
+    id: info.sagsnummer || info.navn || info.adresse || 'akkord',
+    caseNo: info.sagsnummer || '',
+    site: info.adresse || '',
+    address: info.adresse || '',
+    task: info.navn || '',
+    title: info.navn || '',
+    customer: info.kunde || '',
+    date: formattedDate || info.dato || '',
+    montageWorkers: montageNames,
+    demontageWorkers: demontageNames,
+    montor: workerNames,
+    worker: workerNames,
+    system: getPreferredExcelSystem(),
+  };
+
+  const materialLines = Array.isArray(source.materialer) ? source.materialer : [];
+  const normalized = materialLines
+    .map(line => ({
+      id: line?.varenr || line?.id || '',
+      label: line?.name || line?.label || '',
+      name: line?.name || line?.label || '',
+      qty: toNumber(line?.quantity ?? line?.qty ?? 0),
+      amount: toNumber(line?.quantity ?? line?.qty ?? 0),
+      system: inferSystemFromLine(line),
+    }))
+    .filter(line => line.label && line.qty > 0);
+
+  job.lines = normalized;
+  job.items = normalized;
+  job.materials = normalized;
+  return job;
+}
+
+function syncActiveJobState() {
+  const job = buildAkkordJobSnapshot();
+  if (job) {
+    setActiveJob(job);
+  }
+  return job;
+}
+
 function normalizeDateValue(value) {
   if (!value) return '';
   const trimmed = String(value).trim();
@@ -1772,6 +1875,7 @@ function beregnLon() {
         unitPrice: adjustedUnitPrice,
         baseUnitPrice: basePrice,
         lineTotal,
+        system: item?.systemKey || '',
         systemKey: item?.systemKey || '',
       });
     });
@@ -1990,6 +2094,46 @@ function beregnLon() {
     btn.textContent = 'Indberet til E-komplet';
     actions.appendChild(btn);
 
+    const excelControls = document.createElement('div');
+    excelControls.className = 'akkord-excel-controls';
+
+    const excelLabel = document.createElement('label');
+    excelLabel.className = 'sr-only';
+    excelLabel.htmlFor = 'akkordExcelSystem';
+    excelLabel.textContent = 'Vælg system til akkord Excel';
+    excelControls.appendChild(excelLabel);
+
+    const excelSelect = document.createElement('select');
+    excelSelect.id = 'akkordExcelSystem';
+    excelSelect.name = 'akkordExcelSystem';
+    excelSelect.title = 'Vælg hvilket system Excel-filen skal bruge';
+    const selectedKeys = getSelectedSystemKeys();
+    const preferredSystem = getPreferredExcelSystem();
+    AKKORD_EXCEL_SYSTEMS.forEach(option => {
+      const opt = document.createElement('option');
+      opt.value = option.id;
+      opt.textContent = option.label;
+      if (!selectedKeys.includes(option.id)) {
+        opt.dataset.inactive = 'true';
+      }
+      if (option.id === preferredSystem) {
+        opt.selected = true;
+      }
+      excelSelect.appendChild(opt);
+    });
+    excelSelect.addEventListener('change', () => {
+      setStoredExcelSystem(excelSelect.value);
+    });
+    excelControls.appendChild(excelSelect);
+
+    const excelButton = document.createElement('button');
+    excelButton.id = 'btnAkkordExcel';
+    excelButton.type = 'button';
+    excelButton.textContent = 'Download akkord Excel';
+    excelControls.appendChild(excelButton);
+
+    actions.appendChild(excelControls);
+
     const status = document.createElement('p');
     status.id = 'ekompletStatus';
     status.className = 'status-message';
@@ -2052,8 +2196,10 @@ function beregnLon() {
     },
   };
 
+  syncActiveJobState();
   updateTotals(true);
   attachEkompletButton();
+  attachAkkordExcelButton();
 
   if (typeof window !== 'undefined') {
     window.__cssmateLastEkompletData = lastEkompletData;
@@ -2093,6 +2239,57 @@ function attachEkompletButton() {
   });
 }
 
+function attachAkkordExcelButton() {
+  const button = document.getElementById('btnAkkordExcel');
+  if (!button) return;
+  button.addEventListener('click', () => {
+    handleAkkordExcelExport(button);
+  });
+}
+
+async function handleAkkordExcelExport(button) {
+  if (!validateSagsinfo()) {
+    setEkompletStatus('Udfyld Sagsinfo før du henter Excel.', 'error');
+    updateActionHint('Udfyld Sagsinfo for at hente Excel.', 'error');
+    return;
+  }
+
+  if (!lastEkompletData) {
+    setEkompletStatus('Beregn løn først, så alle data er opdaterede.', 'error');
+    return;
+  }
+
+  const select = document.getElementById('akkordExcelSystem');
+  const system = (select?.value || getPreferredExcelSystem() || '').toLowerCase();
+  if (!isSupportedExcelSystem(system)) {
+    setEkompletStatus('Vælg BOSTA, HAKI eller MODEX som system.', 'error');
+    return;
+  }
+
+  setStoredExcelSystem(system);
+  const job = syncActiveJobState();
+  if (!job || !Array.isArray(job.lines) || job.lines.length === 0) {
+    setEkompletStatus('Ingen materialer at eksportere. Udfyld optælling og beregn igen.', 'error');
+    return;
+  }
+
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Henter Excel…';
+
+  try {
+    await exportAkkordExcelForActiveJob(system);
+    setEkompletStatus('Akkord Excel er hentet.', 'success');
+  } catch (error) {
+    console.error('Akkord Excel eksport fejlede', error);
+    setEkompletStatus('Kunne ikke hente akkord Excel. Prøv igen.', 'error');
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+function downloadEkompletCSV() {
 async function exportToEKomplet() {
   if (!validateSagsinfo()) {
     setEkompletStatus('Udfyld Sagsinfo før du indberetter til E-komplet.', 'error');
