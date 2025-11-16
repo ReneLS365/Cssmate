@@ -170,6 +170,11 @@ function showNumpadForInput (input) {
 function hideNumpad (commit) {
   if (!overlay) return
 
+  const previousActiveInput = activeInput
+  const focusTarget = lastFocusedInput && lastFocusedInput !== previousActiveInput
+    ? lastFocusedInput
+    : null
+
   if (commit && activeInput) {
     const fieldValue = formatForField(currentValue)
 
@@ -197,8 +202,8 @@ function hideNumpad (commit) {
   if (document?.documentElement) {
     document.documentElement.classList.remove('np-open')
   }
-  if (lastFocusedInput && typeof lastFocusedInput.focus === 'function') {
-    lastFocusedInput.focus()
+  if (focusTarget && typeof focusTarget.focus === 'function') {
+    focusTarget.focus()
   }
   lastFocusedInput = null
 }
