@@ -32,44 +32,52 @@
     <header data-allow-click>
       <div class=bar>
         <h1 class=ttl>akkordseddel</h1>
-        <nav class=tabs role=tablist aria-label="Akkordseddel faner">
+        <nav class="tabs" role="tablist" aria-label="Akkordseddel faner">
           <button
-            id=tab-sagsinfo
-            class="tab-button active"
-            type=button
-            role=tab
-            data-section=sagsinfo
-            aria-controls=sagsinfoSection
-            aria-selected=true
-            tabindex=0
-          >Sagsinfo</button>
+            id="tab-sagsinfo"
+            class="tab-button"
+            type="button"
+            role="tab"
+            aria-controls="panel-sagsinfo"
+            aria-selected="true"
+            data-tab-target="panel-sagsinfo"
+          >
+            Sagsinfo
+          </button>
           <button
-            id=tab-optaelling
-            class=tab-button
-            type=button
-            role=tab
-            data-section=optaelling
-            aria-controls=optaellingSection
-            aria-selected=false
-            tabindex=-1
-          >Optælling</button>
+            id="tab-optaelling"
+            class="tab-button"
+            type="button"
+            role="tab"
+            aria-controls="panel-optaelling"
+            aria-selected="false"
+            data-tab-target="panel-optaelling"
+          >
+            Optælling
+          </button>
           <button
-            id=tab-loen
-            class=tab-button
-            type=button
-            role=tab
-            data-section=lon
-            aria-controls=lonSection
-            aria-selected=false
-            tabindex=-1
-          >Løn</button>
+            id="tab-loen"
+            class="tab-button"
+            type="button"
+            role="tab"
+            aria-controls="panel-loen"
+            aria-selected="false"
+            data-tab-target="panel-loen"
+          >
+            Løn
+          </button>
         </nav>
       </div>
     </header>
     <div class=app-content>
       <div class=materials-scroll>
         <main id=main>
-  <section id=sagsinfoSection class="sektion tab-panel" role=tabpanel aria-labelledby=tab-sagsinfo>
+  <section
+    id="panel-sagsinfo"
+    class="sektion tab-panel"
+    role="tabpanel"
+    aria-labelledby="tab-sagsinfo"
+  >
     <fieldset>
       <legend>Stamdata</legend>
       <div class="form-grid grid-3">
@@ -107,7 +115,13 @@
     </fieldset>
   </section>
 
-  <section id=optaellingSection class="sektion tab-panel" role=tabpanel aria-labelledby=tab-optaelling hidden>
+  <section
+    id="panel-optaelling"
+    class="sektion tab-panel"
+    role="tabpanel"
+    aria-labelledby="tab-optaelling"
+    hidden
+  >
     <fieldset>
       <legend>Systemer</legend>
       <div id=listSelectors class=row></div>
@@ -144,6 +158,15 @@
 
     <p id=actionHint class="hint no-print">Udfyld Sagsinfo for at fortsætte.</p>
 
+  </section>
+
+  <section
+    id="panel-loen"
+    class="sektion tab-panel"
+    role="tabpanel"
+    aria-labelledby="tab-loen"
+    hidden
+  >
     <fieldset class=no-print data-allow-click>
       <legend>Admin</legend>
       <div class=row>
@@ -154,9 +177,6 @@
       <p id=adminFeedback class=status-message hidden aria-live=polite></p>
       <button id=btnHardResetApp type=button hidden>Nulstil app-data</button>
     </fieldset>
-  </section>
-
-  <section id=lonSection class="sektion tab-panel" role=tabpanel aria-labelledby=tab-loen hidden>
     <fieldset>
       <legend>Type & beløb</legend>
       <div class=grid-3>

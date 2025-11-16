@@ -48,71 +48,11 @@ if (typeof document !== 'undefined') {
 }
 
 // --- Utility Functions ---
-function resolveSectionId(id) {
-  if (!id) return '';
-  const base = id.endsWith('Section') ? id.slice(0, -7) : id;
-  const normalized = normalizeKey(base);
-  const finalBase = normalized || base.replace(/Section$/i, '');
-  return `${finalBase}Section`;
-}
-
-function forEachNode(nodeList, callback) {
-  if (!nodeList || typeof callback !== 'function') return;
-
-  if (typeof nodeList.forEach === 'function') {
-    nodeList.forEach(callback);
-    return;
-  }
-
-  for (let index = 0; index < nodeList.length; index += 1) {
-    callback(nodeList[index], index, nodeList);
-  }
-}
-
 function updateSlaebFormulaInfo(text) {
   const infoEl = document.getElementById('slaebPercentCalcInfo');
   if (!infoEl) return;
   const value = typeof text === 'string' ? text.trim() : '';
   infoEl.textContent = value ? `Formel (A9): ${value}` : '';
-}
-
-function vis(id) {
-  const targetId = resolveSectionId(id);
-  const sections = document.querySelectorAll('.sektion');
-
-  if (!sections.length) return;
-
-  let activeId = targetId;
-  let hasMatch = false;
-  for (let index = 0; index < sections.length; index += 1) {
-    if (sections[index].id === activeId) {
-      hasMatch = true;
-      break;
-    }
-  }
-
-  if (!hasMatch) {
-    const fallback = sections[0];
-    activeId = fallback ? fallback.id : '';
-  }
-
-  forEachNode(sections, section => {
-    const isActive = section.id === activeId;
-    section.classList.toggle('active', isActive);
-    section.toggleAttribute('hidden', !isActive);
-    if (section.style && section.style.display) {
-      section.style.removeProperty('display');
-    }
-  });
-
-  const navButtons = document.querySelectorAll('header nav button[data-section][role="tab"]');
-  forEachNode(navButtons, btn => {
-    const buttonTarget = resolveSectionId(btn.dataset.section);
-    const isActive = buttonTarget === activeId;
-    btn.classList.toggle('active', isActive);
-    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
-    btn.setAttribute('tabindex', isActive ? '0' : '-1');
-  });
 }
 
 let guideModalPreviousFocus = null;
@@ -175,6 +115,54 @@ function setupGuideModal() {
       }
     }
   });
+}
+
+function initTabs() {
+  const tabs = Array.from(document.querySelectorAll(".tab-button[role='tab']"));
+  const panels = Array.from(document.querySelectorAll(".tab-panel[role='tabpanel']"));
+  if (!tabs.length || !panels.length) return;
+
+  function setActiveTab(nextTab) {
+    const targetId = nextTab.getAttribute('data-tab-target');
+    if (!targetId) return;
+
+    tabs.forEach(tab => {
+      const isActive = tab === nextTab;
+      tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      tab.classList.toggle('tab-active', isActive);
+      tab.tabIndex = isActive ? 0 : -1;
+    });
+
+    panels.forEach(panel => {
+      const isActive = panel.id === targetId;
+      panel.hidden = !isActive;
+    });
+  }
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => setActiveTab(tab));
+  });
+
+  document.addEventListener('keydown', evt => {
+    if (!['ArrowLeft', 'ArrowRight'].includes(evt.key)) return;
+    const current = document.activeElement;
+    if (!current || !current.matches(".tab-button[role='tab']")) return;
+
+    evt.preventDefault();
+    const idx = tabs.indexOf(current);
+    if (idx === -1) return;
+
+    const dir = evt.key === 'ArrowRight' ? 1 : -1;
+    const nextIdx = (idx + dir + tabs.length) % tabs.length;
+    const nextTab = tabs[nextIdx];
+    if (nextTab) {
+      nextTab.focus();
+      setActiveTab(nextTab);
+    }
+  });
+
+  const initiallySelected = tabs.find(t => t.getAttribute('aria-selected') === 'true') || tabs[0];
+  if (initiallySelected) setActiveTab(initiallySelected);
 }
 
 function setupA9Integration() {
@@ -2982,16 +2970,7 @@ function initApp() {
   if (appInitialized) return;
   appInitialized = true;
 
-  vis('sagsinfo');
-
-  const tabButtons = document.querySelectorAll('header nav button[data-section][role="tab"]');
-  forEachNode(tabButtons, button => {
-    const { section } = button.dataset;
-    if (!section) return;
-    button.addEventListener('click', () => {
-      vis(section);
-    });
-  });
+  initTabs();
 
   const optaellingContainer = document.getElementById('optaellingContainer');
   if (optaellingContainer) {
