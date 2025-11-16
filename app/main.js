@@ -2289,7 +2289,6 @@ async function handleAkkordExcelExport(button) {
   }
 }
 
-function downloadEkompletCSV() {
 async function exportToEKomplet() {
   if (!validateSagsinfo()) {
     setEkompletStatus('Udfyld Sagsinfo før du indberetter til E-komplet.', 'error');
@@ -3307,5 +3306,3 @@ if (document.readyState === 'loading') {
 } else {
   initApp();
 }
-
-export { populateWorkersFromLabor };
