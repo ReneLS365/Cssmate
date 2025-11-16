@@ -2278,7 +2278,7 @@ async function handleAkkordExcelExport(button) {
   button.textContent = 'Henter Excel…';
 
   try {
-    await exportAkkordExcelForActiveJob(system);
+    await exportAkkordExcelForActiveJob(job, system);
     setEkompletStatus('Akkord Excel er hentet.', 'success');
   } catch (error) {
     console.error('Akkord Excel eksport fejlede', error);
