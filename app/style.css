@@ -86,8 +86,7 @@ input,select,textarea,button{background:var(--panel);color:var(--text);border:1p
 input.numpad-readonly{caret-color:transparent}
 textarea{resize:vertical}
 button{cursor:pointer}
-.sektion{display:flex;flex-direction:column;gap:var(--gap)}
-.sektion.active{display:flex!important;}
+.sektion{flex-direction:column;gap:var(--gap)}
 .row{display:flex;gap:8px;flex-wrap:wrap}
 .btn-group{display:flex;gap:8px;flex-wrap:wrap}
 .job-history{gap:var(--gap)}
