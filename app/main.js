@@ -16,7 +16,8 @@ import { setActiveJob } from './src/state/jobs.js'
 import './boot-inline.js'
 
 const IOS_INSTALL_PROMPT_DISMISSED_KEY = 'csmate.iosInstallPromptDismissed'
-const TAB_STORAGE_KEY = 'cssmate:lastActiveTab'
+const TAB_STORAGE_KEY = 'sscaff:lastTab'
+const LEGACY_TAB_STORAGE_KEYS = ['cssmate:lastActiveTab']
 const DEFAULT_TAB_ID = 'sagsinfo'
 let DEFAULT_ADMIN_CODE_HASH = ''
 let materialsVirtualListController = null
@@ -186,10 +187,18 @@ function setupAdminControls() {
 
 function getStoredTabId() {
   try {
-    return window.localStorage?.getItem(TAB_STORAGE_KEY) || '';
-  } catch {
-    return '';
-  }
+    const storage = window.localStorage;
+    if (!storage) return '';
+    const current = storage.getItem(TAB_STORAGE_KEY);
+    if (current) return current;
+    for (const legacyKey of LEGACY_TAB_STORAGE_KEYS) {
+      const legacyValue = storage.getItem(legacyKey);
+      if (legacyValue) {
+        return legacyValue;
+      }
+    }
+  } catch {}
+  return '';
 }
 
 function focusTabByIndex(index) {
@@ -274,7 +283,15 @@ function setActiveTab(tabId, { focus = false } = {}) {
 
   currentTabId = nextTabId;
   try {
-    window.localStorage?.setItem(TAB_STORAGE_KEY, nextTabId);
+    const storage = window.localStorage;
+    if (storage) {
+      storage.setItem(TAB_STORAGE_KEY, nextTabId);
+      LEGACY_TAB_STORAGE_KEYS.forEach(key => {
+        try {
+          storage.setItem(key, nextTabId);
+        } catch {}
+      });
+    }
   } catch {}
 
   if (focus && typeof nextButton.focus === 'function') {

@@ -35,14 +35,14 @@
         <nav class="tabs" role="tablist" aria-label="SSCaff sektioner">
           <button id="tab-sagsinfo" class="tab tab--active" type="button" role="tab" data-tab-id="sagsinfo" aria-controls="panel-sagsinfo" aria-selected="true">Sagsinfo</button>
           <button id="tab-optaelling" class="tab" type="button" role="tab" data-tab-id="optaelling" aria-controls="panel-optaelling" aria-selected="false">Optælling</button>
-          <button id="tab-loen" class="tab" type="button" role="tab" data-tab-id="loen" aria-controls="panel-loen" aria-selected="false">Løn</button>
+          <button id="tab-lon" class="tab" type="button" role="tab" data-tab-id="lon" aria-controls="panel-lon" aria-selected="false">Løn</button>
           <button id="tab-hjaelp" class="tab" type="button" role="tab" data-tab-id="hjaelp" aria-controls="panel-hjaelp" aria-selected="false">Hjælp</button>
         </nav>
       </div>
     </header>
     <div class=app-content>
       <div class=materials-scroll>
-        <main id=main>
+        <main id=main class="app-root">
           <div class="tab-panels" data-tab-panels>
   <section
     id="panel-sagsinfo"
@@ -102,7 +102,7 @@
         </label>
         <button id=btnLoadHistoryJob type=button disabled>Indlæs sag</button>
       </div>
-      <div class="job-history__summary" aria-live=polite>
+      <div class="job-history__summary table-wrapper" aria-live=polite>
         <table>
           <thead>
             <tr>
@@ -131,6 +131,9 @@
     <fieldset>
       <legend>Status</legend>
       <p class=hint>Udfyld Sagsinfo og Optælling for at aktivere eksport.</p>
+      <p id=actionHint class="hint no-print" role=status aria-live=polite aria-atomic=true>
+        Udfyld Sagsinfo for at fortsætte.
+      </p>
     </fieldset>
   </section>
 
@@ -160,35 +163,14 @@
       <div id=optaellingContainer class=materials></div>
     </fieldset>
 
-    <section id=overview class=overview>
-      <div class=totals>
-        <div>
-          <span>Materialesum</span>
-          <strong data-total=material>0,00</strong>
-        </div>
-        <div>
-          <span>Lønsum</span>
-          <strong data-total=labor>0,00</strong>
-        </div>
-        <div>
-          <span>Projektsum</span>
-          <strong data-total=project>0,00</strong>
-        </div>
-      </div>
-    </section>
-
-    <p id=actionHint class="hint no-print" role=status aria-live=polite aria-atomic=true>
-      Udfyld Sagsinfo for at fortsætte.
-    </p>
-
   </section>
 
   <section
-    id="panel-loen"
+    id="panel-lon"
     class="sektion tab-panel"
     role="tabpanel"
-    data-tab-panel="loen"
-    aria-labelledby="tab-loen"
+    data-tab-panel="lon"
+    aria-labelledby="tab-lon"
     aria-hidden="true"
     hidden
   >
@@ -332,6 +314,7 @@
     <fieldset>
       <legend>Support</legend>
       <p class=hint>Kontakt administratoren hvis data skal nulstilles eller hvis eksporten fejler.</p>
+      <p class=hint>Se også logfilerne i <code>/debug</code>-mappen for fejlfinding.</p>
     </fieldset>
   </section>
           </div>
