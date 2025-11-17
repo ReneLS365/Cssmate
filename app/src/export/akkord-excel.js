@@ -187,6 +187,7 @@ function triggerDownload(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
+// Eksporter seneste job som et Excel-ark baseret på valg/system
 export async function exportAkkordExcelForActiveJob(jobOverride, systemOverride) {
   const job = getLatestJobSnapshot(jobOverride);
   if (!job) {

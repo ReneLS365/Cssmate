@@ -19,6 +19,7 @@ let expression = '';
 let previous = '';
 let memoryValue = 0;
 let initialized = false;
+let previousFocus = null;
 
 export function initA9Calc () {
   if (initialized) return;
@@ -67,12 +68,14 @@ export function initA9Calc () {
   updateDisplays();
 }
 
+// Åbn A9-panelet for et inputfelt og klargør data/fokus
 export function openA9ForInput (input) {
   if (!initialized) {
     initA9Calc();
   }
   if (!overlay || !panel) return;
 
+  previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   activeTargetInput = input || null;
   const normalized = normalizeFieldValue(activeTargetInput?.value);
   current = normalized || '0';
@@ -85,6 +88,7 @@ export function openA9ForInput (input) {
   panel.focus({ preventScroll: true });
 }
 
+// Luk A9-panelet og skriv tilbage til feltet hvis nødvendigt
 function hideA9 (commit) {
   if (commit && activeTargetInput) {
     const numeric = parseLocaleNumber(current);
@@ -114,6 +118,10 @@ function hideA9 (commit) {
     overlay.setAttribute('aria-hidden', 'true');
   }
   activeTargetInput = null;
+  if (previousFocus && typeof previousFocus.focus === 'function') {
+    previousFocus.focus();
+  }
+  previousFocus = null;
 }
 
 function handleKeydown (event) {

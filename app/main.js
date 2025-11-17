@@ -16,6 +16,7 @@ import { setActiveJob } from './src/state/jobs.js'
 import './boot-inline.js'
 
 const IOS_INSTALL_PROMPT_DISMISSED_KEY = 'csmate.iosInstallPromptDismissed'
+const TAB_STORAGE_KEY = 'cssmate:lastActiveTab'
 let DEFAULT_ADMIN_CODE_HASH = ''
 let materialsVirtualListController = null
 
@@ -63,6 +64,7 @@ function getGuideModalElement() {
   return document.getElementById('guideModal');
 }
 
+// Åbn hjælpeguiden og flyt fokus til modalen for bedre tilgængelighed
 function openGuideModal() {
   const modal = getGuideModalElement();
   if (!modal) return;
@@ -78,6 +80,7 @@ function openGuideModal() {
   }
 }
 
+// Luk hjælpeguiden og returnér fokus til udgangspunktet
 function closeGuideModal() {
   const modal = getGuideModalElement();
   if (!modal) return;
@@ -119,14 +122,40 @@ function setupGuideModal() {
   });
 }
 
+// Initier fanenavigationen og sørg for at paneler/taster hænger sammen
 function initTabs() {
   const tabs = Array.from(document.querySelectorAll(".tab-button[role='tab']"));
   const panels = Array.from(document.querySelectorAll(".tab-panel[role='tabpanel']"));
   if (!tabs.length || !panels.length) return;
 
-  function setActiveTab(nextTab) {
-    const targetId = nextTab.getAttribute('data-tab-target');
-    if (!targetId) return;
+  const panelMap = new Map(panels.map(panel => [panel.id, panel]));
+  const tabByPanel = new Map();
+
+  const getPanelIdForTab = tab => tab?.getAttribute('data-tab-target') || tab?.getAttribute('aria-controls') || '';
+
+  tabs.forEach(tab => {
+    const panelId = getPanelIdForTab(tab);
+    if (panelId) {
+      tabByPanel.set(panelId, tab);
+    }
+    const initialSelected = tab.getAttribute('aria-selected') === 'true';
+    tab.tabIndex = initialSelected ? 0 : -1;
+  });
+
+  const persistTabId = panelId => {
+    try {
+      window.localStorage?.setItem(TAB_STORAGE_KEY, panelId);
+    } catch {}
+  };
+
+  // setActiveTab sikrer én kilde til sandhed for faner/paneler
+  const setActiveTab = (target, { persist = true } = {}) => {
+    const nextTab = typeof target === 'string'
+      ? (tabByPanel.get(target) || tabs.find(tab => tab.id === target))
+      : target;
+    if (!nextTab) return;
+    const targetId = getPanelIdForTab(nextTab);
+    if (!targetId || !panelMap.has(targetId)) return;
 
     tabs.forEach(tab => {
       const isActive = tab === nextTab;
@@ -138,11 +167,23 @@ function initTabs() {
     panels.forEach(panel => {
       const isActive = panel.id === targetId;
       panel.hidden = !isActive;
+      panel.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+      panel.classList.toggle('active', isActive);
     });
-  }
+
+    if (persist) {
+      persistTabId(targetId);
+    }
+  };
 
   tabs.forEach(tab => {
     tab.addEventListener('click', () => setActiveTab(tab));
+    tab.addEventListener('keydown', event => {
+      if (event.key === ' ' || event.key === 'Enter') {
+        event.preventDefault();
+        setActiveTab(tab);
+      }
+    });
   });
 
   document.addEventListener('keydown', evt => {
@@ -163,8 +204,27 @@ function initTabs() {
     }
   });
 
-  const initiallySelected = tabs.find(t => t.getAttribute('aria-selected') === 'true') || tabs[0];
-  if (initiallySelected) setActiveTab(initiallySelected);
+  const getStoredPanelId = () => {
+    try {
+      return window.localStorage?.getItem(TAB_STORAGE_KEY) || '';
+    } catch {
+      return '';
+    }
+  };
+
+  const storedPanelId = getStoredPanelId();
+  if (storedPanelId && panelMap.has(storedPanelId)) {
+    setActiveTab(storedPanelId, { persist: false });
+  } else {
+    const initiallySelected = tabs.find(t => t.getAttribute('aria-selected') === 'true') || tabs[0];
+    if (initiallySelected) {
+      setActiveTab(initiallySelected, { persist: false });
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    window.__cssmateSetActiveTab = tabId => setActiveTab(tabId);
+  }
 }
 
 function setupA9Integration() {
