@@ -15,6 +15,15 @@
 
 **Open issues**: Ingen – historikpanelet opdateres nu automatisk.
 
+## Sagsinfo & Historik
+**Checks**: app/index.html, app/style.css, app/main.js (tabs/state).
+
+**Findings**: Job-fanen duplikerede information, gav en ekstra navigation og forvirrede brugere når lokalstorage pegede på en ikke-eksisterende fane.
+
+**Fixes**: Fjernede Job-fanen helt og gjorde Sagsinfo til default-tab. Historikkort, status og sag-loader ligger nu direkte i Sagsinfo-panelet, så hele flowet (stamdata → historik → status) ligger samlet og er tilgængeligt med ét klik. Tab-baren har fået tydeligere styling/border, og tab-logikken falder tilbage til Sagsinfo hvis ældre installationer forsøger at åbne den gamle fane.
+
+**Open issues**: Ingen – historikken kan nu indlæses og beregnes direkte fra Sagsinfo.
+
 ## Modaler
 **Checks**: app/main.js (guide-modal), app/style.css.
 
@@ -39,6 +48,15 @@
 **Findings**: Eksportknapper manglede helt i UI og event bindinger var døde kode.
 
 **Fixes**: Ny knapgruppe, central init med prefetch, E-komplet knap kører Excel efter indberetning. Alle eksportknapper skriver nu status via det fælles `actionHint`-område (`role="status"`), så brugeren får både succes- og fejlbeskeder uden ekstra UI.
+
+**Open issues**: Ingen.
+
+## Performance & Repo-rydring
+**Checks**: app/main.js (DOM-cache, historik, materialer), app/style.css (tabs), repo rodstruktur.
+
+**Findings**: Repetitive `getElementById`-slag i historik- og sagsinfoflowet gav unødige DOM-lookups. Rodmappen indeholdt desuden den gamle `legacy/`-mappe og Excel-skabeloner i `public/`, som ikke blev deployet sammen med appen.
+
+**Fixes**: Tilføjede en defensiv DOM-cache (`getDomElement`) der holder styr på ofte brugte elementer (tabs, historikliste, action hint, optælling osv.) og genbruger referencer uden at låse fast når elementer re-renderes. Materialelisten bruger nu container-cache for at reducere query-selector belastning. Flyttede Excel-filerne til `app/akkord/` så Netlify automatisk leverer dem, og fjernede hele `legacy/` kataloget. Roden er dermed ryddet op og hurtigere at overskue.
 
 **Open issues**: Ingen.
 

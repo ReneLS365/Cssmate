@@ -17,12 +17,30 @@ import './boot-inline.js'
 
 const IOS_INSTALL_PROMPT_DISMISSED_KEY = 'csmate.iosInstallPromptDismissed'
 const TAB_STORAGE_KEY = 'cssmate:lastActiveTab'
-const DEFAULT_TAB_ID = 'job'
+const DEFAULT_TAB_ID = 'sagsinfo'
 let DEFAULT_ADMIN_CODE_HASH = ''
 let materialsVirtualListController = null
 let currentTabId = null
 let tabButtons = []
 let tabPanels = []
+const domCache = new Map()
+
+function getDomElement (id) {
+  if (!id || typeof document === 'undefined' || typeof document.getElementById !== 'function') {
+    return null
+  }
+  const cached = domCache.get(id)
+  if (cached && cached.isConnected) {
+    return cached
+  }
+  const element = document.getElementById(id)
+  if (element) {
+    domCache.set(id, element)
+  } else {
+    domCache.delete(id)
+  }
+  return element
+}
 
 const KNOWN_ADMIN_CODE_HASHES = new Set([
   'ff0a69fa196820f9529e3c20cfa809545e6697f5796527f7657a83bb7e6acd0d'
@@ -641,7 +659,7 @@ function findMaterialById(id) {
 
 // --- UI for List Selection ---
 function setupListSelectors() {
-  const container = document.getElementById('listSelectors');
+  const container = getDomElement('listSelectors');
   if (!container) return;
   const warningId = 'systemSelectionWarning';
   const duplicateWarningId = 'systemDuplicateWarning';
@@ -688,7 +706,7 @@ function setupListSelectors() {
     }
 
     warning?.setAttribute('hidden', '');
-    const hint = document.getElementById('actionHint');
+    const hint = getDomElement('actionHint');
     if (hint && hint.textContent === 'Vælg mindst ét system for at fortsætte optællingen.') {
       updateActionHint('');
     }
@@ -698,7 +716,7 @@ function setupListSelectors() {
 }
 
 function syncSystemSelectorState() {
-  const container = document.getElementById('listSelectors');
+  const container = getDomElement('listSelectors');
   if (!container) return;
   container.querySelectorAll('input[type="checkbox"]').forEach(input => {
     input.checked = selectedSystemKeys.has(input.value);
@@ -707,7 +725,7 @@ function syncSystemSelectorState() {
 
 // --- Rendering Functions ---
 function renderOptaelling() {
-  const container = document.getElementById('optaellingContainer');
+  const container = getDomElement('optaellingContainer');
   if (!container) return;
   syncSystemSelectorState();
 
@@ -985,9 +1003,10 @@ function performTotalsUpdate() {
 }
 
 function updateMaterialVisibility() {
-  const showSelectedOnly = document.getElementById('showSelectedOnly');
+  const showSelectedOnly = getDomElement('showSelectedOnly');
   const only = !!showSelectedOnly?.checked;
-  const rows = document.querySelectorAll('#optaellingContainer .material-row');
+  const container = getDomElement('optaellingContainer');
+  const rows = container ? container.querySelectorAll('.material-row') : [];
 
   rows.forEach(row => {
     const qty = toNumber(row.querySelector('input.qty,input.quantity')?.value);
@@ -1022,24 +1041,25 @@ function updateTotal() {
 const sagsinfoFieldIds = ['sagsnummer', 'sagsnavn', 'sagsadresse', 'sagskunde', 'sagsdato', 'sagsmontoer'];
 
 function collectSagsinfo() {
+  const readValue = id => getDomElement(id)?.value ?? '';
   return {
-    sagsnummer: document.getElementById('sagsnummer')?.value.trim() || '',
-    navn: document.getElementById('sagsnavn')?.value.trim() || '',
-    adresse: document.getElementById('sagsadresse')?.value.trim() || '',
-    kunde: document.getElementById('sagskunde')?.value.trim() || '',
-    dato: document.getElementById('sagsdato')?.value || '',
-    montoer: document.getElementById('sagsmontoer')?.value.trim() || '',
+    sagsnummer: readValue('sagsnummer').trim(),
+    navn: readValue('sagsnavn').trim(),
+    adresse: readValue('sagsadresse').trim(),
+    kunde: readValue('sagskunde').trim(),
+    dato: readValue('sagsdato'),
+    montoer: readValue('sagsmontoer').trim(),
   };
 }
 
 function setSagsinfoField(id, value) {
-  const el = document.getElementById(id);
+  const el = getDomElement(id);
   if (!el) return;
   el.value = value;
 }
 
 function updateActionHint(message = '', variant = 'info') {
-  const hint = document.getElementById('actionHint');
+  const hint = getDomElement('actionHint');
   if (!hint) return;
   hint.classList.remove('error', 'success');
   if (!message) {
@@ -1142,7 +1162,7 @@ async function getRecentProjects() {
 }
 
 function setHistoryListBusy(isBusy) {
-  const list = document.getElementById('historyList');
+  const list = getDomElement('historyList');
   if (!list) return;
   list.setAttribute('aria-busy', isBusy ? 'true' : 'false');
 }
@@ -1162,7 +1182,7 @@ function formatHistoryTimestamp(value) {
 }
 
 function renderHistoryList(entries = recentCasesCache) {
-  const list = document.getElementById('historyList');
+  const list = getDomElement('historyList');
   if (!list) return;
   list.innerHTML = '';
   const cases = Array.isArray(entries)
@@ -1262,7 +1282,7 @@ function buildHistorySummary(entry) {
 }
 
 function renderJobHistorySummary(entry) {
-  const tbody = document.getElementById('job-history-summary-body');
+  const tbody = getDomElement('job-history-summary-body');
   if (!tbody) return;
   tbody.innerHTML = '';
   const summary = buildHistorySummary(entry);
@@ -1294,7 +1314,7 @@ function renderJobHistorySummary(entry) {
 }
 
 function updateHistorySummaryFromSelect() {
-  const select = document.getElementById('jobHistorySelect');
+  const select = getDomElement('jobHistorySelect');
   if (!select) return;
   const selectedId = Number(select.value);
   let entry = null;
@@ -1308,16 +1328,16 @@ function updateHistorySummaryFromSelect() {
     }
   }
   renderJobHistorySummary(entry || null);
-  const loadBtn = document.getElementById('btnLoadHistoryJob');
+  const loadBtn = getDomElement('btnLoadHistoryJob');
   if (loadBtn) {
     loadBtn.disabled = !(entry && entry.id != null);
   }
 }
 
 async function populateRecentCases() {
-  const select = document.getElementById('jobHistorySelect');
+  const select = getDomElement('jobHistorySelect');
   if (!select) return;
-  const button = document.getElementById('btnLoadHistoryJob');
+  const button = getDomElement('btnLoadHistoryJob');
   setHistoryListBusy(true);
   const cases = await getRecentProjects();
   recentCasesCache = cases;
@@ -1357,9 +1377,9 @@ async function populateRecentCases() {
 }
 
 function collectExtrasState() {
-  const getValue = id => document.getElementById(id)?.value ?? '';
+  const getValue = id => getDomElement(id)?.value ?? '';
   return {
-    jobType: document.getElementById('jobType')?.value || 'montage',
+    jobType: getDomElement('jobType')?.value || 'montage',
     montagepris: getValue('montagepris'),
     demontagepris: getValue('demontagepris'),
     slaebePct: getValue('slaebePct'),
@@ -1530,7 +1550,7 @@ function applyProjectSnapshot(snapshot, options = {}) {
 }
 
 async function handleLoadCase() {
-  const select = document.getElementById('jobHistorySelect');
+  const select = getDomElement('jobHistorySelect');
   if (!select) return;
   const value = Number(select.value);
   if (!Number.isFinite(value) || value <= 0) return;
@@ -1552,7 +1572,7 @@ async function handleLoadCase() {
 function validateSagsinfo() {
   let isValid = true;
   sagsinfoFieldIds.forEach(id => {
-    const el = document.getElementById(id);
+    const el = getDomElement(id);
     if (!el) return;
     const rawValue = (el.value || '').trim();
     let fieldValid = rawValue.length > 0;
@@ -1566,7 +1586,7 @@ function validateSagsinfo() {
   });
 
   ['btnExportCSV', 'btnExportAll', 'btnExportZip', 'btnPrint'].forEach(id => {
-    const btn = document.getElementById(id);
+    const btn = getDomElement(id);
     if (btn) btn.disabled = !isValid;
   });
 
@@ -3542,13 +3562,13 @@ function initApp() {
 
   initTabs();
 
-  const optaellingContainer = document.getElementById('optaellingContainer');
+  const optaellingContainer = getDomElement('optaellingContainer');
   if (optaellingContainer) {
     optaellingContainer.addEventListener('input', handleOptaellingInput);
     optaellingContainer.addEventListener('change', handleOptaellingInput);
   }
 
-  const showSelectedInput = document.getElementById('showSelectedOnly');
+  const showSelectedInput = getDomElement('showSelectedOnly');
   if (showSelectedInput) {
     showSelectedInput.addEventListener('change', () => {
       updateMaterialVisibility();
@@ -3579,18 +3599,18 @@ function initApp() {
 
   document.getElementById('btnAddWorker')?.addEventListener('click', () => addWorker());
 
-  const historySelect = document.getElementById('jobHistorySelect');
+  const historySelect = getDomElement('jobHistorySelect');
+  const loadHistoryButton = getDomElement('btnLoadHistoryJob');
   if (historySelect) {
     historySelect.addEventListener('change', event => {
       updateHistorySummaryFromSelect();
       const hasValue = Boolean(event?.target?.value);
-      const loadBtn = document.getElementById('btnLoadHistoryJob');
-      if (loadBtn) {
-        loadBtn.disabled = !hasValue;
+      if (loadHistoryButton) {
+        loadHistoryButton.disabled = !hasValue;
       }
     });
   }
-  document.getElementById('btnLoadHistoryJob')?.addEventListener('click', () => handleLoadCase());
+  loadHistoryButton?.addEventListener('click', () => handleLoadCase());
 
   ['traelleloeft35', 'traelleloeft50'].forEach(id => {
     const input = document.getElementById(id);

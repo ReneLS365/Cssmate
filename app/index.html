@@ -33,8 +33,7 @@
       <div class=bar>
         <h1 class=ttl>akkordseddel</h1>
         <nav class="tabs" role="tablist" aria-label="SSCaff sektioner">
-          <button id="tab-job" class="tab tab--compact tab--active" type="button" role="tab" data-tab-id="job" aria-controls="panel-job" aria-selected="true">Job</button>
-          <button id="tab-sagsinfo" class="tab" type="button" role="tab" data-tab-id="sagsinfo" aria-controls="panel-sagsinfo" aria-selected="false">Sagsinfo</button>
+          <button id="tab-sagsinfo" class="tab tab--active" type="button" role="tab" data-tab-id="sagsinfo" aria-controls="panel-sagsinfo" aria-selected="true">Sagsinfo</button>
           <button id="tab-optaelling" class="tab" type="button" role="tab" data-tab-id="optaelling" aria-controls="panel-optaelling" aria-selected="false">Optælling</button>
           <button id="tab-loen" class="tab" type="button" role="tab" data-tab-id="loen" aria-controls="panel-loen" aria-selected="false">Løn</button>
           <button id="tab-hjaelp" class="tab" type="button" role="tab" data-tab-id="hjaelp" aria-controls="panel-hjaelp" aria-selected="false">Hjælp</button>
@@ -46,13 +45,49 @@
         <main id=main>
           <div class="tab-panels" data-tab-panels>
   <section
-    id="panel-job"
+    id="panel-sagsinfo"
     class="sektion tab-panel tab-panel--active"
     role="tabpanel"
-    data-tab-panel="job"
-    aria-labelledby="tab-job"
+    data-tab-panel="sagsinfo"
+    aria-labelledby="tab-sagsinfo"
     aria-hidden="false"
   >
+    <fieldset>
+      <legend>Stamdata</legend>
+      <div class="form-grid grid-3">
+        <label for=sagsnummer>
+          <span>Sagsnummer</span>
+          <input id=sagsnummer name=sagsnummer required>
+        </label>
+        <label for=sagsnavn>
+          <span>Navn/opgave</span>
+          <input id=sagsnavn name=navn required>
+        </label>
+        <label for=sagsadresse>
+          <span>Adresse</span>
+          <input id=sagsadresse name=adresse required>
+        </label>
+        <label for=sagskunde>
+          <span>Kunde</span>
+          <input id=sagskunde name=kunde required>
+        </label>
+        <label for=sagsdato class=date-field>
+          <span>Dato</span>
+          <div class=date-input-wrapper>
+            <input id=sagsdato name=dato type=date required inputmode=numeric>
+            <button id=calendarIcon class=date-picker-trigger type=button aria-label="Åbn kalender">📅</button>
+          </div>
+        </label>
+        <label for=sagsmontoer class=col-span-3>
+          <span>Montørnavne</span>
+          <textarea id=sagsmontoer name=montoer rows=3 placeholder="Fx: Anna Jensen, Bo Nielsen" required></textarea>
+        </label>
+      </div>
+      <div class="form-actions no-print">
+        <button id=btnOpenGuideModal type=button>Åbn guide</button>
+      </div>
+    </fieldset>
+
     <section class="card job-history no-print" aria-live=polite>
       <header class="card-header">
         <h2>Historik</h2>
@@ -92,55 +127,10 @@
         <ul id=historyList class="history-list" aria-live=polite aria-busy=true></ul>
       </div>
     </section>
+
     <fieldset>
       <legend>Status</legend>
       <p class=hint>Udfyld Sagsinfo og Optælling for at aktivere eksport.</p>
-    </fieldset>
-  </section>
-
-  <section
-    id="panel-sagsinfo"
-    class="sektion tab-panel"
-    role="tabpanel"
-    data-tab-panel="sagsinfo"
-    aria-labelledby="tab-sagsinfo"
-    aria-hidden="true"
-    hidden
-  >
-    <fieldset>
-      <legend>Stamdata</legend>
-      <div class="form-grid grid-3">
-        <label for=sagsnummer>
-          <span>Sagsnummer</span>
-          <input id=sagsnummer name=sagsnummer required>
-        </label>
-        <label for=sagsnavn>
-          <span>Navn/opgave</span>
-          <input id=sagsnavn name=navn required>
-        </label>
-        <label for=sagsadresse>
-          <span>Adresse</span>
-          <input id=sagsadresse name=adresse required>
-        </label>
-        <label for=sagskunde>
-          <span>Kunde</span>
-          <input id=sagskunde name=kunde required>
-        </label>
-        <label for=sagsdato class=date-field>
-          <span>Dato</span>
-          <div class=date-input-wrapper>
-            <input id=sagsdato name=dato type=date required inputmode=numeric>
-            <button id=calendarIcon class=date-picker-trigger type=button aria-label="Åbn kalender">📅</button>
-          </div>
-        </label>
-        <label for=sagsmontoer class=col-span-3>
-          <span>Montørnavne</span>
-          <textarea id=sagsmontoer name=montoer rows=3 placeholder="Fx: Anna Jensen, Bo Nielsen" required></textarea>
-        </label>
-      </div>
-      <div class="form-actions no-print">
-        <button id=btnOpenGuideModal type=button>Åbn guide</button>
-      </div>
     </fieldset>
   </section>
 
