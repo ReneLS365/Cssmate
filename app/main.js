@@ -237,8 +237,22 @@ function handleTabKeydown(event, index) {
   }
 }
 
+function refreshTabCollections() {
+  tabButtons = Array.from(document.querySelectorAll('[data-tab-id]'))
+    .filter(button => typeof button.dataset.tabId === 'string' && button.dataset.tabId.length)
+  tabPanels = Array.from(document.querySelectorAll('[data-tab-panel]'))
+    .filter(panel => typeof panel.dataset.tabPanel === 'string' && panel.dataset.tabPanel.length)
+}
+
+function ensureTabCollections() {
+  if (!tabButtons.length || !tabPanels.length) {
+    refreshTabCollections()
+  }
+  return tabButtons.length && tabPanels.length
+}
+
 function setActiveTab(tabId, { focus = false } = {}) {
-  if (!tabButtons.length || !tabPanels.length) return;
+  if (!ensureTabCollections()) return;
   const nextButton = tabButtons.find(button => button.dataset.tabId === tabId) || tabButtons[0];
   if (!nextButton) {
     console.warn('Faneknap ikke fundet for id', tabId);
@@ -301,10 +315,7 @@ function setActiveTab(tabId, { focus = false } = {}) {
 
 // Initier faner og tastaturnavigation
 function initTabs() {
-  tabButtons = Array.from(document.querySelectorAll('[role="tab"][data-tab-id]'))
-    .filter(button => typeof button.dataset.tabId === 'string' && button.dataset.tabId.length);
-  tabPanels = Array.from(document.querySelectorAll('[role="tabpanel"][data-tab-panel]'))
-    .filter(panel => typeof panel.dataset.tabPanel === 'string' && panel.dataset.tabPanel.length);
+  refreshTabCollections()
 
   if (!tabButtons.length || !tabPanels.length) {
     console.warn('Faner kunne ikke initialiseres – mangler markup');

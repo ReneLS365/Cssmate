@@ -1,0 +1,11 @@
+{
+  "name": "sscaff-app",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bump-sw-version": "node scripts/bump-sw-version.js",
+    "update-prices": "node scripts/update-price-lists.js",
+    "build": "npm run bump-sw-version"
+  }
+}
