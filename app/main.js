@@ -328,7 +328,12 @@ function setupA9Integration() {
       return;
     }
     setSlaebFormulaText('');
-    updateSlaebFormulaInfo('');
+    const manualValue = slaebInput.value?.trim();
+    if (manualValue) {
+      updateSlaebFormulaInfo(`Manuel værdi: ${manualValue}`);
+    } else {
+      updateSlaebFormulaInfo('');
+    }
   };
 
   slaebInput.addEventListener('input', handleManualUpdate);
@@ -1134,13 +1139,95 @@ async function getRecentProjects() {
   }
 }
 
+function setHistoryListBusy(isBusy) {
+  const list = document.getElementById('historyList');
+  if (!list) return;
+  list.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+}
+
+function formatHistoryTimestamp(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return '';
+  try {
+    return new Intl.DateTimeFormat('da-DK', {
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    }).format(date);
+  } catch {
+    return date.toLocaleString('da-DK');
+  }
+}
+
+function renderHistoryList(entries = recentCasesCache) {
+  const list = document.getElementById('historyList');
+  if (!list) return;
+  list.innerHTML = '';
+  const cases = Array.isArray(entries)
+    ? entries.filter(entry => entry && entry.data)
+    : [];
+  if (!cases.length) {
+    const empty = document.createElement('li');
+    empty.className = 'history-list__empty';
+    empty.textContent = 'Ingen historik endnu.';
+    list.appendChild(empty);
+    setHistoryListBusy(false);
+    return;
+  }
+  cases.slice(0, 10).forEach(entry => {
+    const li = document.createElement('li');
+    li.className = 'history-list__item';
+    const info = entry.data?.sagsinfo || {};
+    const titleText = info.navn?.trim()
+      || info.sagsnummer?.trim()
+      || 'Sag uden navn';
+    const title = document.createElement('span');
+    title.className = 'history-list__title';
+    title.textContent = titleText;
+    const meta = document.createElement('span');
+    meta.className = 'history-list__meta';
+    const parts = [];
+    if (info.sagsnummer) parts.push(info.sagsnummer);
+    const systems = Array.isArray(entry.data?.systems)
+      ? entry.data.systems
+        .map(key => systemLabelMap.get(key) || key)
+        .filter(Boolean)
+      : [];
+    if (systems.length) {
+      parts.push(systems.join(', '));
+    }
+    const timestamp = formatHistoryTimestamp(entry.ts || entry.data?.timestamp);
+    if (timestamp) {
+      parts.push(timestamp);
+    }
+    const totals = entry.data?.totals;
+    if (totals) {
+      const material = toNumber(totals.materialSum);
+      const labor = toNumber(totals.laborSum);
+      const combined = material + labor;
+      if (combined > 0) {
+        parts.push(`Sum ${formatCurrency(combined)}`);
+      }
+    }
+    meta.textContent = parts.join(' • ');
+    li.appendChild(title);
+    if (parts.length) {
+      li.appendChild(meta);
+    }
+    list.appendChild(li);
+  });
+  setHistoryListBusy(false);
+}
+
 async function populateRecentCases() {
   const select = document.getElementById('recentCases');
   if (!select) return;
   const button = document.getElementById('btnLoadCase');
+  setHistoryListBusy(true);
   const cases = await getRecentProjects();
   recentCasesCache = cases;
   select.innerHTML = '';
+  renderHistoryList(cases);
 
   if (!cases.length) {
     const option = document.createElement('option');
@@ -1347,6 +1434,7 @@ async function handleLoadCase() {
     const cases = await getRecentProjects();
     recentCasesCache = cases;
     record = cases.find(entry => Number(entry.id) === value);
+    renderHistoryList(recentCasesCache);
   }
   if (record && record.data) {
     applyProjectSnapshot(record.data, { skipHint: false });
@@ -1457,8 +1545,9 @@ function populateExcelSystemSelect() {
   AKKORD_EXCEL_SYSTEMS.forEach(option => {
     const opt = document.createElement('option');
     opt.value = option.id;
-    opt.textContent = option.label;
-    if (!selectedKeys.includes(option.id)) {
+    const isActive = selectedKeys.includes(option.id);
+    opt.textContent = isActive ? option.label : `${option.label} (ikke aktiv i sag)`;
+    if (!isActive) {
       opt.dataset.inactive = 'true';
     }
     if (option.id === currentValue) {
@@ -1499,6 +1588,7 @@ function initExportButtons() {
 function onExportCSV() {
   try {
     downloadCSV();
+    updateActionHint('CSV er klar til download.', 'success');
   } catch (error) {
     console.error('CSV eksport fejlede', error);
     updateActionHint('Kunne ikke eksportere CSV.', 'error');
@@ -1508,6 +1598,7 @@ function onExportCSV() {
 async function onExportAll() {
   try {
     await exportAll();
+    updateActionHint('JSON eksport gemt.', 'success');
   } catch (error) {
     console.error('JSON eksport fejlede', error);
     updateActionHint('Kunne ikke eksportere JSON.', 'error');
@@ -1517,6 +1608,7 @@ async function onExportAll() {
 async function onExportZip() {
   try {
     await exportZip();
+    updateActionHint('ZIP eksport gemt.', 'success');
   } catch (error) {
     console.error('ZIP eksport fejlede', error);
     updateActionHint('Kunne ikke eksportere ZIP.', 'error');
@@ -1980,12 +2072,39 @@ async function verifyAdminCodeInput(value, tenantConfig = null) {
   return { ok: false, reason: 'no_match' };
 }
 
+function handleAdminLogout(feedback) {
+  admin = false;
+  setAdminOk(false);
+  renderOptaelling();
+  updateTotals(true);
+  if (feedback) {
+    feedback.textContent = 'Admin-tilstand er slået fra.';
+    feedback.classList.remove('error');
+    feedback.classList.add('success');
+    feedback.removeAttribute('hidden');
+  }
+  updateActionHint('Admin-tilstand er slået fra.', 'success');
+}
+
 async function login() {
   const codeInput = document.getElementById('adminCode');
   const feedback = document.getElementById('adminFeedback');
   if (!codeInput) return;
 
-  const validation = await verifyAdminCodeInput(codeInput.value);
+  const trimmed = codeInput.value.trim();
+  if (!trimmed) {
+    if (isAdminUnlocked()) {
+      handleAdminLogout(feedback);
+    } else if (feedback) {
+      feedback.textContent = 'Indtast admin-kode for at logge ind.';
+      feedback.classList.remove('success');
+      feedback.classList.add('error');
+      feedback.removeAttribute('hidden');
+    }
+    return;
+  }
+
+  const validation = await verifyAdminCodeInput(trimmed);
   if (validation.ok) {
     admin = true;
     setAdminOk(true); // Update admin state for click guard

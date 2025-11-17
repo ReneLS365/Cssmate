@@ -94,7 +94,12 @@ button{cursor:pointer}
 .export-actions button{padding:0.4rem 0.5rem;font-size:0.85rem;border-radius:0.75rem;background:var(--panel-soft);border:1px solid var(--border)}
 .export-select-label{display:flex;flex-direction:column;gap:0.35rem;font-size:0.9rem}
 .export-select-label select{min-height:40px}
+#akkordExcelSystem option[data-inactive="true"]{color:var(--muted);font-style:italic}
 .history-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.35rem;color:var(--muted);font-size:0.9rem}
+.history-list__item{border:1px solid var(--border);border-radius:10px;padding:0.6rem 0.75rem;display:flex;flex-direction:column;gap:0.15rem;background:var(--panel-soft)}
+.history-list__title{font-weight:600;color:var(--text);font-size:0.95rem}
+.history-list__meta{font-size:0.8rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:0.35rem}
+.history-list__empty{font-style:italic;color:var(--muted)}
 .grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--gap)}
 .grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--gap)}
 .form-grid{padding:var(--pad);background:var(--panel);border-radius:12px}
