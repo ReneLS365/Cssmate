@@ -45,7 +45,7 @@ function initNumpad () {
   })
 
   if (commitBtn) {
-    commitBtn.addEventListener('click', () => hideNumpad({ commit: true }))
+    commitBtn.addEventListener('click', handleCommitClick)
   }
   if (closeBtn) {
     closeBtn.addEventListener('click', () => hideNumpad({ commit: false }))
@@ -212,6 +212,11 @@ function hideNumpad ({ commit = false } = {}) {
   lastFocusedInput = null
 }
 
+function handleCommitClick () {
+  commitCurrentExpression()
+  hideNumpad({ commit: true })
+}
+
 /* Tast-logic */
 
 function handleKey (key) {
@@ -283,6 +288,20 @@ function computeExpression () {
   } catch (error) {
     console.warn('Invalid expression in numpad:', error)
   }
+}
+
+function commitCurrentExpression () {
+  if (expression && expression.trim()) {
+    computeExpression()
+  } else {
+    expression = ''
+  }
+
+  if (!currentValue || currentValue === '') {
+    currentValue = '0'
+  }
+
+  updateDisplays()
 }
 
 /* Display */
