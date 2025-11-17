@@ -16,15 +16,21 @@ import { setActiveJob } from './src/state/jobs.js'
 import './boot-inline.js'
 
 const IOS_INSTALL_PROMPT_DISMISSED_KEY = 'csmate.iosInstallPromptDismissed'
-const TAB_STORAGE_KEY = 'sscaff:lastTab'
-const LEGACY_TAB_STORAGE_KEYS = ['cssmate:lastActiveTab']
-const DEFAULT_TAB_ID = 'sagsinfo'
+const TAB_STORAGE_KEY = 'csmate:lastTab'
+const LEGACY_TAB_STORAGE_KEYS = ['sscaff:lastTab', 'cssmate:lastActiveTab']
+const KNOWN_TAB_ID_ORDER = ['sagsinfo', 'optaelling', 'lon', 'historik', 'hjaelp']
+const KNOWN_TAB_IDS = new Set(KNOWN_TAB_ID_ORDER)
+const DEFAULT_TAB_ID = KNOWN_TAB_ID_ORDER[0]
 let DEFAULT_ADMIN_CODE_HASH = ''
 let materialsVirtualListController = null
 let currentTabId = null
 let tabButtons = []
 let tabPanels = []
 const domCache = new Map()
+
+function isKnownTabId(tabId) {
+  return typeof tabId === 'string' && KNOWN_TAB_IDS.has(tabId)
+}
 
 function getDomElement (id) {
   if (!id || typeof document === 'undefined' || typeof document.getElementById !== 'function') {
@@ -190,10 +196,10 @@ function getStoredTabId() {
     const storage = window.localStorage;
     if (!storage) return '';
     const current = storage.getItem(TAB_STORAGE_KEY);
-    if (current) return current;
+    if (isKnownTabId(current)) return current;
     for (const legacyKey of LEGACY_TAB_STORAGE_KEYS) {
       const legacyValue = storage.getItem(legacyKey);
-      if (legacyValue) {
+      if (isKnownTabId(legacyValue)) {
         return legacyValue;
       }
     }
@@ -202,7 +208,7 @@ function getStoredTabId() {
 }
 
 function focusTabByIndex(index) {
-  if (!tabButtons.length) return;
+  if (!ensureTabCollections()) return;
   const normalized = (index + tabButtons.length) % tabButtons.length;
   const button = tabButtons[normalized];
   if (button) {
@@ -238,10 +244,15 @@ function handleTabKeydown(event, index) {
 }
 
 function refreshTabCollections() {
-  tabButtons = Array.from(document.querySelectorAll('[data-tab-id]'))
-    .filter(button => typeof button.dataset.tabId === 'string' && button.dataset.tabId.length)
-  tabPanels = Array.from(document.querySelectorAll('[data-tab-panel]'))
-    .filter(panel => typeof panel.dataset.tabPanel === 'string' && panel.dataset.tabPanel.length)
+  if (typeof document === 'undefined') {
+    tabButtons = []
+    tabPanels = []
+    return
+  }
+  tabButtons = Array.from(document.querySelectorAll('[role="tab"][data-tab-id]'))
+    .filter(button => isKnownTabId(button.dataset.tabId))
+  tabPanels = Array.from(document.querySelectorAll('[role="tabpanel"][data-tab-panel]'))
+    .filter(panel => isKnownTabId(panel.dataset.tabPanel))
 }
 
 function ensureTabCollections() {
@@ -251,9 +262,20 @@ function ensureTabCollections() {
   return tabButtons.length && tabPanels.length
 }
 
+function findFirstAvailableTabId() {
+  const preferred = KNOWN_TAB_ID_ORDER.find(id => tabButtons.some(button => button.dataset.tabId === id))
+  if (preferred) {
+    return preferred
+  }
+  return tabButtons[0]?.dataset.tabId || DEFAULT_TAB_ID
+}
+
 function setActiveTab(tabId, { focus = false } = {}) {
   if (!ensureTabCollections()) return;
-  const nextButton = tabButtons.find(button => button.dataset.tabId === tabId) || tabButtons[0];
+  const desiredTabId = isKnownTabId(tabId) ? tabId : DEFAULT_TAB_ID
+  const nextButton = tabButtons.find(button => button.dataset.tabId === desiredTabId)
+    || tabButtons.find(button => button.dataset.tabId === DEFAULT_TAB_ID)
+    || tabButtons[0];
   if (!nextButton) {
     console.warn('Faneknap ikke fundet for id', tabId);
     return;
@@ -299,12 +321,14 @@ function setActiveTab(tabId, { focus = false } = {}) {
   try {
     const storage = window.localStorage;
     if (storage) {
-      storage.setItem(TAB_STORAGE_KEY, nextTabId);
-      LEGACY_TAB_STORAGE_KEYS.forEach(key => {
-        try {
-          storage.setItem(key, nextTabId);
-        } catch {}
-      });
+      if (isKnownTabId(nextTabId)) {
+        storage.setItem(TAB_STORAGE_KEY, nextTabId);
+        LEGACY_TAB_STORAGE_KEYS.forEach(key => {
+          try {
+            storage.setItem(key, nextTabId);
+          } catch {}
+        });
+      }
     }
   } catch {}
 
@@ -333,7 +357,7 @@ function initTabs() {
   const storedTabId = getStoredTabId();
   const initialTabId = tabButtons.some(button => button.dataset.tabId === storedTabId)
     ? storedTabId
-    : (tabButtons.find(button => button.getAttribute('aria-selected') === 'true')?.dataset.tabId || DEFAULT_TAB_ID);
+    : (tabButtons.find(button => button.getAttribute('aria-selected') === 'true')?.dataset.tabId || findFirstAvailableTabId());
 
   setActiveTab(initialTabId, { focus: false });
 
@@ -1382,15 +1406,14 @@ function renderJobHistorySummary(entry) {
 
 function updateHistorySummaryFromSelect() {
   const select = getDomElement('jobHistorySelect');
-  if (!select) return;
-  const selectedId = Number(select.value);
+  const selectedId = Number(select?.value);
   let entry = null;
   if (Number.isFinite(selectedId) && selectedId > 0) {
     entry = findHistoryEntryById(selectedId);
   }
   if (!entry && recentCasesCache.length) {
     entry = recentCasesCache[0];
-    if (entry && select.value !== String(entry.id)) {
+    if (entry && select && select.value !== String(entry.id)) {
       select.value = String(entry.id);
     }
   }
@@ -1403,24 +1426,37 @@ function updateHistorySummaryFromSelect() {
 
 async function populateRecentCases() {
   const select = getDomElement('jobHistorySelect');
-  if (!select) return;
   const button = getDomElement('btnLoadHistoryJob');
+  const hasHistoryUi = Boolean(select || getDomElement('historyList'));
+  if (!hasHistoryUi) return;
   setHistoryListBusy(true);
   const cases = await getRecentProjects();
   recentCasesCache = cases;
-  const previousValue = select.value;
-  select.innerHTML = '';
+  const previousValue = select?.value || '';
+  if (select) {
+    select.innerHTML = '';
+  }
   renderHistoryList(cases);
 
   if (!cases.length) {
-    const option = document.createElement('option');
-    option.value = '';
-    option.textContent = 'Ingen gemte sager endnu';
-    option.disabled = true;
-    option.selected = true;
-    select.appendChild(option);
+    if (select) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'Ingen gemte sager endnu';
+      option.disabled = true;
+      option.selected = true;
+      select.appendChild(option);
+    }
     if (button) button.disabled = true;
     renderJobHistorySummary(null);
+    return;
+  }
+
+  if (!select) {
+    renderJobHistorySummary(cases[0] || null);
+    if (button) {
+      button.disabled = !(cases[0] && cases[0].id != null);
+    }
     return;
   }
 
