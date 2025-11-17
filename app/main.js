@@ -21,12 +21,46 @@ const LEGACY_TAB_STORAGE_KEYS = ['sscaff:lastTab', 'cssmate:lastActiveTab']
 const KNOWN_TAB_ID_ORDER = ['sagsinfo', 'optaelling', 'lon', 'historik', 'hjaelp']
 const KNOWN_TAB_IDS = new Set(KNOWN_TAB_ID_ORDER)
 const DEFAULT_TAB_ID = KNOWN_TAB_ID_ORDER[0]
+const INSTALL_BUTTON_DISABLED_TOOLTIP = 'Tilføj via browsermenu på denne platform'
+const PWA_INSTALL_AVAILABLE_EVENT = 'csmate:pwa-install-available'
+const PWA_INSTALL_CONSUMED_EVENT = 'csmate:pwa-install-consumed'
 let DEFAULT_ADMIN_CODE_HASH = ''
 let materialsVirtualListController = null
 let currentTabId = null
 let tabButtons = []
 let tabPanels = []
 const domCache = new Map()
+let deferredInstallPromptEvent = null
+
+function setDeferredInstallPromptEvent(event) {
+  deferredInstallPromptEvent = event
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return
+  const eventName = event ? PWA_INSTALL_AVAILABLE_EVENT : PWA_INSTALL_CONSUMED_EVENT
+  window.dispatchEvent(new Event(eventName))
+}
+
+function getDeferredInstallPromptEvent() {
+  return deferredInstallPromptEvent
+}
+
+function consumeDeferredInstallPromptEvent() {
+  const prompt = deferredInstallPromptEvent
+  if (prompt) {
+    setDeferredInstallPromptEvent(null)
+  }
+  return prompt
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', event => {
+    event.preventDefault()
+    setDeferredInstallPromptEvent(event)
+  })
+
+  window.addEventListener('appinstalled', () => {
+    setDeferredInstallPromptEvent(null)
+  })
+}
 
 function isKnownTabId(tabId) {
   return typeof tabId === 'string' && KNOWN_TAB_IDS.has(tabId)
@@ -3602,15 +3636,17 @@ function setupPWAInstallPrompt() {
   const iosDismissButton = document.getElementById('iosInstallDismiss');
   if (!installButton && !iosBanner) return;
 
-  let deferredPrompt = null;
   const displayModeMedia = typeof window.matchMedia === 'function'
     ? window.matchMedia('(display-mode: standalone)')
     : null;
+  const isStandalone = () => (displayModeMedia?.matches ?? false) || navigator.standalone === true;
+  let serviceWorkerReady = false;
 
   const hideInstallButton = () => {
     if (installButton) {
       installButton.setAttribute('hidden', '');
       installButton.disabled = false;
+      installButton.removeAttribute('title');
     }
   };
 
@@ -3618,6 +3654,25 @@ function setupPWAInstallPrompt() {
     if (installButton) {
       installButton.removeAttribute('hidden');
       installButton.disabled = false;
+      installButton.removeAttribute('title');
+    }
+  };
+
+  const updateInstallButtonState = () => {
+    if (!installButton) return;
+
+    if (!serviceWorkerReady || isStandalone()) {
+      hideInstallButton();
+      return;
+    }
+
+    showInstallButton();
+    if (getDeferredInstallPromptEvent()) {
+      installButton.disabled = false;
+      installButton.removeAttribute('title');
+    } else {
+      installButton.disabled = true;
+      installButton.title = INSTALL_BUTTON_DISABLED_TOOLTIP;
     }
   };
 
@@ -3656,17 +3711,42 @@ function setupPWAInstallPrompt() {
     }
   };
 
-  window.addEventListener('beforeinstallprompt', event => {
-    event.preventDefault();
-    deferredPrompt = event;
-    showInstallButton();
+  const ensureServiceWorkerReady = () => {
+    if (!('serviceWorker' in navigator) || !navigator.serviceWorker?.ready) {
+      serviceWorkerReady = true;
+      updateInstallButtonState();
+      return;
+    }
+
+    navigator.serviceWorker.ready
+      .then(() => {
+        serviceWorkerReady = true;
+        updateInstallButtonState();
+        if (isStandalone()) {
+          hideIOSHint(true);
+        }
+      })
+      .catch(error => {
+        serviceWorkerReady = true;
+        updateInstallButtonState();
+        console.warn('Service worker blev ikke klar i tide til install-knappen', error);
+      });
+  };
+
+  ensureServiceWorkerReady();
+
+  window.addEventListener(PWA_INSTALL_AVAILABLE_EVENT, () => {
+    updateInstallButtonState();
+  });
+
+  window.addEventListener(PWA_INSTALL_CONSUMED_EVENT, () => {
+    updateInstallButtonState();
   });
 
   installButton?.addEventListener('click', async () => {
-    if (!deferredPrompt) return;
+    const promptEvent = consumeDeferredInstallPromptEvent();
+    if (!promptEvent) return;
     installButton.disabled = true;
-    const promptEvent = deferredPrompt;
-    deferredPrompt = null;
     promptEvent.prompt();
     try {
       await promptEvent.userChoice;
@@ -3678,7 +3758,6 @@ function setupPWAInstallPrompt() {
   });
 
   window.addEventListener('appinstalled', () => {
-    deferredPrompt = null;
     hideInstallButton();
     hideIOSHint(true);
   });
@@ -3688,6 +3767,9 @@ function setupPWAInstallPrompt() {
       if (event.matches) {
         hideInstallButton();
         hideIOSHint(true);
+      } else {
+        updateInstallButtonState();
+        maybeShowIOSHint();
       }
     });
   }
@@ -3703,6 +3785,7 @@ function setupPWAInstallPrompt() {
   });
 
   maybeShowIOSHint();
+  updateInstallButtonState();
 
   if (iosBanner) {
     iosBanner.addEventListener('click', event => {
