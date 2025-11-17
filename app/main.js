@@ -10,7 +10,7 @@ import { setupNumpad } from './js/numpad.js'
 import { exportMeta, setSlaebFormulaText } from './js/export-meta.js'
 import { createVirtualMaterialsList } from './src/modules/materialsVirtualList.js'
 import { initClickGuard } from './src/ui/Guards/ClickGuard.js'
-import { setAdminOk, restoreAdminState } from './src/state/admin.js'
+import { setAdminOk, restoreAdminState, isAdminUnlocked } from './src/state/admin.js'
 import { exportAkkordExcelForActiveJob } from './src/export/akkord-excel.js'
 import { setActiveJob } from './src/state/jobs.js'
 import './boot-inline.js'
@@ -63,9 +63,27 @@ function updateSlaebFormulaInfo(text) {
 }
 
 let guideModalLastFocus = null;
+let guideModalEscapeHandler = null;
 
 function getGuideModalElement() {
   return document.getElementById('guideModal');
+}
+
+function attachGuideModalEscapeHandler() {
+  if (guideModalEscapeHandler || typeof document === 'undefined') return;
+  guideModalEscapeHandler = event => {
+    if (event.key === 'Escape' && isGuideModalOpen()) {
+      event.preventDefault();
+      closeGuideModal();
+    }
+  };
+  document.addEventListener('keydown', guideModalEscapeHandler);
+}
+
+function detachGuideModalEscapeHandler() {
+  if (!guideModalEscapeHandler || typeof document === 'undefined') return;
+  document.removeEventListener('keydown', guideModalEscapeHandler);
+  guideModalEscapeHandler = null;
 }
 
 // Åbn hjælpeguiden og flyt fokus til dialogen
@@ -83,6 +101,7 @@ function openGuideModal() {
   if (content && typeof content.focus === 'function') {
     content.focus();
   }
+  attachGuideModalEscapeHandler();
 }
 
 // Luk hjælpeguiden og returnér fokus til tidligere element
@@ -93,6 +112,7 @@ function closeGuideModal() {
   modal.removeAttribute('data-open');
   modal.setAttribute('aria-hidden', 'true');
   modal.setAttribute('hidden', '');
+  detachGuideModalEscapeHandler();
   const previous = guideModalLastFocus;
   guideModalLastFocus = null;
   if (previous && document.contains(previous) && typeof previous.focus === 'function') {
@@ -123,12 +143,26 @@ function setupGuideModal() {
   document.getElementById('btnOpenGuideModal')?.addEventListener('click', () => {
     openGuideModal();
   });
+}
 
-  document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && isGuideModalOpen()) {
-      event.preventDefault();
-      closeGuideModal();
+function setupAdminControls() {
+  const hardResetButton = document.getElementById('btnHardResetApp');
+  if (!hardResetButton) return;
+
+  const toggleHardResetVisibility = unlocked => {
+    if (unlocked) {
+      hardResetButton.removeAttribute('hidden');
+      hardResetButton.disabled = false;
+    } else {
+      hardResetButton.setAttribute('hidden', '');
+      hardResetButton.disabled = true;
     }
+  };
+
+  toggleHardResetVisibility(isAdminUnlocked());
+
+  document.addEventListener('csmate:admin-change', event => {
+    toggleHardResetVisibility(Boolean(event?.detail?.unlocked));
   });
 }
 
@@ -179,11 +213,20 @@ function handleTabKeydown(event, index) {
 function setActiveTab(tabId, { focus = false } = {}) {
   if (!tabButtons.length || !tabPanels.length) return;
   const nextButton = tabButtons.find(button => button.dataset.tabId === tabId) || tabButtons[0];
-  if (!nextButton) return;
+  if (!nextButton) {
+    console.warn('Faneknap ikke fundet for id', tabId);
+    return;
+  }
   const nextTabId = nextButton.dataset.tabId;
-  if (!nextTabId) return;
+  if (!nextTabId) {
+    console.warn('Faneknap mangler data-tab-id', nextButton);
+    return;
+  }
   const nextPanel = tabPanels.find(panel => panel.dataset.tabPanel === nextTabId);
-  if (!nextPanel) return;
+  if (!nextPanel) {
+    console.warn('Tab-panel ikke fundet for id', nextTabId);
+    return;
+  }
 
   if (currentTabId === nextTabId) {
     if (focus && typeof nextButton.focus === 'function') {
@@ -223,9 +266,15 @@ function setActiveTab(tabId, { focus = false } = {}) {
 
 // Initier faner og tastaturnavigation
 function initTabs() {
-  tabButtons = Array.from(document.querySelectorAll('[role="tab"][data-tab-id]'));
-  tabPanels = Array.from(document.querySelectorAll('[role="tabpanel"][data-tab-panel]'));
-  if (!tabButtons.length || !tabPanels.length) return;
+  tabButtons = Array.from(document.querySelectorAll('[role="tab"][data-tab-id]'))
+    .filter(button => typeof button.dataset.tabId === 'string' && button.dataset.tabId.length);
+  tabPanels = Array.from(document.querySelectorAll('[role="tabpanel"][data-tab-panel]'))
+    .filter(panel => typeof panel.dataset.tabPanel === 'string' && panel.dataset.tabPanel.length);
+
+  if (!tabButtons.length || !tabPanels.length) {
+    console.warn('Faner kunne ikke initialiseres – mangler markup');
+    return;
+  }
 
   tabButtons.forEach((button, index) => {
     const tabId = button.dataset.tabId;
@@ -3277,6 +3326,7 @@ function initApp() {
   populateRecentCases();
 
   setupGuideModal();
+  setupAdminControls();
   setupA9Integration();
   initExportButtons();
 
