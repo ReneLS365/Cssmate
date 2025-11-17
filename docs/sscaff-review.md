@@ -6,18 +6,21 @@
   - Beskrivelse: `<link rel="canonical">` er sat til `https://csmate.netlify.app/`, hvilket fortæller søgemaskiner at indholdet "hører til" på et andet domæne end SSCaff. Det giver duplicate-content signaler og gør det sværere for sscaff.netlify.app at blive indekseret korrekt.
   - Forslag: Opdater canonical-URL'en til den faktiske SSCaff-URL (eller fjern tagget helt, hvis siden skal kunne bruges på flere tenants).
   - Type: SEO/bug
+  - Status: Løst i denne iteration – canonical peger nu på `https://sscaff.netlify.app/` i `app/index.html`.
 
 - [H-02] Faneknapper mangler semantik til hjælpeteknologi
   - Fil: `app/index.html`
   - Beskrivelse: Navigationsknapperne for "Sagsinfo", "Optælling" og "Løn" styrer visningen af sektioner, men de indgår ikke i et `role="tablist"`, har ikke `role="tab"`, og der er ingen `aria-controls`, så screenreadere kan ikke høre hvilken sektion knappen åbner eller at knapperne opfører sig som faner.【F:app/index.html†L32-L104】
   - Forslag: Brug `role="tablist"` på `<nav>`, `role="tab"` + `aria-controls` på knapperne og `role="tabpanel"` på sektionerne, så relationen er tydelig uden custom JS.
   - Type: accessibility
+  - Status: Løst i denne iteration – tabsene bruger nu `role="tablist"`, `role="tab"`, `aria-controls`, `aria-selected` og panelerne har `role="tabpanel"`/`aria-labelledby` i `app/index.html`.
 
 - [H-03] Numpad-dialogen er ikke annonceret som modal
   - Fil: `app/index.html`
   - Beskrivelse: Den nye numpad har et `role="dialog"`, men mangler `aria-modal="true"` og et `tabindex="-1"`/fokuspunkt på selve panelet. Uden det bliver fokus liggende bag dialogen, og screenreadere kan fortsætte med at interagere med resten af app'en mens overlægget er åbent.【F:app/index.html†L246-L280】
   - Forslag: Giv `.numpad-panel` `aria-modal="true"` og fokusér elementet, når dialogen åbnes, så det opfører sig som en rigtig modal (evt. genbrug fokusstyringen fra guide-modal). 
   - Type: accessibility
+  - Status: Løst i denne iteration – `.numpad-panel` har `aria-modal="true"` + `tabindex="-1"` i `app/index.html`, og `app/js/numpad.js` fokuserer dialogen ved åbning.
 
 ## CSS – issues og forslag
 - [C-01] Materialelisten bruger faste pixelkolonner
