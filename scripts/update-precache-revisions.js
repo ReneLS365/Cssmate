@@ -17,7 +17,10 @@ function toJsonArray(source) {
 
 function fromManifest(manifest) {
   return `[${manifest
-    .map(entry => `{url:"${entry.url}",revision:"${entry.revision}"}`)
+    .map(entry => {
+      const revision = entry.revision === null ? 'null' : `"${entry.revision}"`
+      return `{url:"${entry.url}",revision:${revision}}`
+    })
     .join(',')}]`
 }
 
