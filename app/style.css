@@ -104,9 +104,14 @@ button{cursor:pointer}
 .export-panel{gap:0.75rem}
 .export-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:0.5rem}
 .export-actions button{padding:0.4rem 0.5rem;font-size:0.85rem;border-radius:0.75rem;background:var(--panel-soft);border:1px solid var(--border)}
-.export-select-label{display:flex;flex-direction:column;gap:0.35rem;font-size:0.9rem}
-.export-select-label select{min-height:40px}
-#akkordExcelSystem option[data-inactive="true"]{color:var(--muted);font-style:italic}
+.export-system-selector{display:flex;flex-direction:column;gap:0.35rem;padding:0.75rem;border:1px dashed var(--border);border-radius:10px;background:var(--panel-soft)}
+.export-system-selector legend{padding:0 4px;font-size:0.95rem}
+.export-system-options{display:flex;flex-direction:column;gap:0.35rem}
+.export-system-option{display:flex;align-items:flex-start;gap:0.5rem;font-size:0.9rem;color:var(--text)}
+.export-system-option input{margin-top:0.2rem}
+.export-system-option__label{font-weight:500}
+.export-system-option__hint{display:block;font-size:0.75rem;color:var(--muted)}
+.export-system-option--inactive .export-system-option__label{opacity:0.7}
 .history-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.35rem;color:var(--muted);font-size:0.9rem}
 .history-list__item{border:1px solid var(--border);border-radius:10px;padding:0.6rem 0.75rem;display:flex;flex-direction:column;gap:0.15rem;background:var(--panel-soft)}
 .history-list__title{font-weight:600;color:var(--text);font-size:0.95rem}

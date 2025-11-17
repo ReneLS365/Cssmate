@@ -18,6 +18,14 @@ const TEMPLATE_PATHS = {
 
 const ALLOWED_SYSTEMS = Object.keys(TEMPLATE_PATHS);
 
+function sanitizeFilename(value) {
+  return (value || 'akkordseddel')
+    .toString()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/[^a-z0-9-_]+/gi, '_');
+}
+
 function getLatestJobSnapshot(jobOverride) {
   if (jobOverride) return jobOverride;
   if (typeof window !== 'undefined' && window.__cssmateLastEkompletData) {
@@ -30,8 +38,8 @@ function normalizeSystem(value) {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
 
-function selectSystem(job, override) {
-  const forced = normalizeSystem(override || job?.system || job?.systemOverride);
+function selectSystem(job) {
+  const forced = normalizeSystem(job?.system || job?.systemOverride);
   if (ALLOWED_SYSTEMS.includes(forced)) {
     return forced;
   }
@@ -66,6 +74,45 @@ function selectSystem(job, override) {
   }
 
   return '';
+}
+
+function normalizeSystemList(value) {
+  if (!value && value !== 0) return [];
+  const list = Array.isArray(value)
+    ? value
+    : (typeof value === 'string' || (value && typeof value[Symbol.iterator] === 'function')
+        ? Array.from(value)
+        : [value]);
+  const unique = [];
+  list.forEach(entry => {
+    const normalized = normalizeSystem(entry);
+    if (ALLOWED_SYSTEMS.includes(normalized) && !unique.includes(normalized)) {
+      unique.push(normalized);
+    }
+  });
+  return unique;
+}
+
+function resolveSystems(job, override) {
+  const overrideList = normalizeSystemList(override);
+  if (overrideList.length > 0) {
+    return overrideList;
+  }
+  if (Array.isArray(job?.systems)) {
+    const jobList = normalizeSystemList(job.systems);
+    if (jobList.length > 0) {
+      return jobList;
+    }
+  }
+  const fallback = selectSystem(job);
+  return fallback ? [fallback] : [];
+}
+
+function buildExcelFilename(job, system) {
+  const caseNo = job?.sagsinfo?.sagsnummer || job?.caseNo || job?.id || 'sag';
+  const safeCase = sanitizeFilename(caseNo) || 'sag';
+  const systemLabel = (system || '').toString().toUpperCase();
+  return `Akkordseddel_${safeCase}_${systemLabel || 'SYSTEM'}.xlsx`;
 }
 
 function getXLSX() {
@@ -176,44 +223,41 @@ function fillHeader(sheet, job) {
   });
 }
 
-function triggerDownload(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  URL.revokeObjectURL(url);
-}
-
-// Eksporter seneste job som et Excel-ark baseret på valg/system
+// Eksporter seneste job som Excel-ark baseret på valgte systemer
 export async function exportAkkordExcelForActiveJob(jobOverride, systemOverride) {
   const job = getLatestJobSnapshot(jobOverride);
   if (!job) {
     console.warn('Excel-akkord eksport sprang over – ingen aktive data.');
-    return;
+    return [];
   }
 
-  const system = selectSystem(job, systemOverride);
-  if (!system) {
-    console.warn('Excel-akkord eksport sprang over – ingen understøttet system valgt.');
-    return;
-  }
-  if (!ALLOWED_SYSTEMS.includes(system)) {
-    console.warn('Excel-akkord eksport sprang over – system ikke understøttet:', system);
-    return;
+  const systems = resolveSystems(job, systemOverride);
+  if (systems.length === 0) {
+    console.warn('Excel-akkord eksport sprang over – ingen understøttede systemer valgt.');
+    return [];
   }
 
-  const { workbook, sheet } = await loadTemplate(system);
-  const nameToQty = buildNameToQtyMap(job, system);
-  fillHeader(sheet, job);
-  fillLines(sheet, nameToQty);
+  const results = [];
+  for (const system of systems) {
+    if (!ALLOWED_SYSTEMS.includes(system)) continue;
+    try {
+      const { workbook, sheet } = await loadTemplate(system);
+      const nameToQty = buildNameToQtyMap(job, system);
+      fillHeader(sheet, job);
+      fillLines(sheet, nameToQty);
 
-  const xlsx = getXLSX();
-  const output = xlsx.write(workbook, { bookType: 'xlsx', type: 'array' });
-  const blob = new Blob([output], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  const caseNo = job?.sagsinfo?.sagsnummer || job?.caseNo || 'akkord';
-  const safeName = `${system}-${caseNo}.xlsx`;
-  triggerDownload(blob, safeName);
+      const xlsx = getXLSX();
+      const output = xlsx.write(workbook, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([output], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      results.push({
+        system,
+        blob,
+        fileName: buildExcelFilename(job, system),
+      });
+    } catch (error) {
+      console.error('Excel-akkord eksport fejlede for system:', system, error);
+    }
+  }
+
+  return results;
 }
