@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "bump-sw-version": "node scripts/bump-sw-version.js",
+    "refresh-precache": "node scripts/update-precache-revisions.js",
     "update-prices": "node scripts/update-price-lists.js",
-    "build": "npm run bump-sw-version"
+    "build": "npm run refresh-precache && npm run bump-sw-version"
   }
 }
