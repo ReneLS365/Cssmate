@@ -163,7 +163,9 @@
       </div>
     </section>
 
-    <p id=actionHint class="hint no-print">Udfyld Sagsinfo for at fortsætte.</p>
+    <p id=actionHint class="hint no-print" role=status aria-live=polite aria-atomic=true>
+      Udfyld Sagsinfo for at fortsætte.
+    </p>
 
   </section>
 
@@ -308,9 +310,7 @@
     <fieldset>
       <legend>Seneste sager</legend>
       <p>Vælg en sag under <strong>Job</strong> for at se detaljer. Historikken opdateres automatisk efter beregning.</p>
-      <ul class="history-list">
-        <li>Ingen historik endnu.</li>
-      </ul>
+      <ul id=historyList class="history-list" aria-live=polite aria-busy=true></ul>
     </fieldset>
     <fieldset>
       <legend>Log</legend>

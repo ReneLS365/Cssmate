@@ -44,8 +44,12 @@ function initNumpad () {
     }
   })
 
-  commitBtn.addEventListener('click', () => hideNumpad({ commit: true }))
-  closeBtn.addEventListener('click', () => hideNumpad({ commit: false }))
+  if (commitBtn) {
+    commitBtn.addEventListener('click', () => hideNumpad({ commit: true }))
+  }
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => hideNumpad({ commit: false }))
+  }
 
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape' && isNumpadOpen()) {
@@ -284,7 +288,7 @@ function computeExpression () {
 /* Display */
 
 function updateDisplays () {
-  if (!displayCurrent) return
+  if (!displayCurrent || !displayExpr) return
   displayExpr.textContent = expression.replace(/\./g, ',')
   displayCurrent.textContent = formatNumber(currentValue)
 }
