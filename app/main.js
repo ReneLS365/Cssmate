@@ -521,6 +521,7 @@ const systemLabelMap = new Map(Object.keys(MATERIAL_SYSTEMS).map(key => {
 }));
 
 const selectedSystemKeys = new Set(systemOptions.length ? [systemOptions[0].key] : []);
+let excelSystemSelectionCache = new Set(['bosta']);
 
 function ensureSystemSelection() {
   if (selectedSystemKeys.size === 0 && systemOptions.length) {
@@ -538,28 +539,66 @@ function isSupportedExcelSystem(value) {
   return AKKORD_EXCEL_SYSTEMS.some(option => option.id === value);
 }
 
-function getStoredExcelSystem() {
-  if (typeof localStorage === 'undefined') return '';
+function normalizeExcelSystemId(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function sanitizeExcelSystemSelection(values) {
+  const list = Array.isArray(values)
+    ? values
+    : (typeof values === 'string'
+      ? [values]
+      : (values && typeof values[Symbol.iterator] === 'function'
+        ? Array.from(values)
+        : []));
+  const unique = [];
+  list.forEach(value => {
+    const normalized = normalizeExcelSystemId(value);
+    if (isSupportedExcelSystem(normalized) && !unique.includes(normalized)) {
+      unique.push(normalized);
+    }
+  });
+  return unique;
+}
+
+function getStoredExcelSystems() {
+  if (typeof localStorage === 'undefined') {
+    return Array.from(excelSystemSelectionCache);
+  }
   try {
-    return localStorage.getItem(AKKORD_EXCEL_STORAGE_KEY) || '';
+    const raw = localStorage.getItem(AKKORD_EXCEL_STORAGE_KEY);
+    if (raw === null) {
+      return Array.from(excelSystemSelectionCache);
+    }
+    let parsed = [];
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = raw ? [raw] : [];
+    }
+    const sanitized = sanitizeExcelSystemSelection(parsed);
+    excelSystemSelectionCache = new Set(sanitized);
+    return sanitized;
   } catch (error) {
-    console.warn('Kunne ikke læse Excel-system fra storage', error);
-    return '';
+    console.warn('Kunne ikke læse Excel-systemer fra storage', error);
+    return Array.from(excelSystemSelectionCache);
   }
 }
 
-function setStoredExcelSystem(value) {
-  if (typeof localStorage === 'undefined' || !isSupportedExcelSystem(value)) return;
+function setStoredExcelSystems(values) {
+  const sanitized = sanitizeExcelSystemSelection(values);
+  excelSystemSelectionCache = new Set(sanitized);
+  if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(AKKORD_EXCEL_STORAGE_KEY, value);
+    localStorage.setItem(AKKORD_EXCEL_STORAGE_KEY, JSON.stringify(sanitized));
   } catch (error) {
-    console.warn('Kunne ikke gemme Excel-system', error);
+    console.warn('Kunne ikke gemme Excel-systemer', error);
   }
 }
 
 function getPreferredExcelSystem() {
-  const stored = getStoredExcelSystem();
-  if (isSupportedExcelSystem(stored)) return stored;
+  const stored = getStoredExcelSystems();
+  if (stored.length > 0 && isSupportedExcelSystem(stored[0])) return stored[0];
   const selected = getSelectedSystemKeys();
   const match = selected.find(key => isSupportedExcelSystem(key));
   if (match) return match;
@@ -1688,27 +1727,124 @@ function setEkompletStatus(message, variant = 'success') {
   statusEl.removeAttribute('hidden');
 }
 
-function populateExcelSystemSelect() {
-  const select = document.getElementById('akkordExcelSystem');
-  if (!select) return;
+function getExcelSystemInputs() {
+  if (typeof document === 'undefined') return [];
+  return Array.from(document.querySelectorAll('input[name="akkordExcelSystem"][type="checkbox"]'));
+}
+
+function getExcelSystemSelectionFromInputs() {
+  const inputs = getExcelSystemInputs();
+  if (inputs.length === 0) {
+    return Array.from(excelSystemSelectionCache);
+  }
+  const selected = inputs.filter(input => input.checked).map(input => input.value);
+  return sanitizeExcelSystemSelection(selected);
+}
+
+function syncExcelSystemSelector() {
+  const inputs = getExcelSystemInputs();
+  if (inputs.length === 0) return;
   const selectedKeys = getSelectedSystemKeys();
-  const storedValue = getStoredExcelSystem();
-  const preferredValue = storedValue || getPreferredExcelSystem();
-  const currentValue = select.value || preferredValue;
-  select.innerHTML = '';
-  AKKORD_EXCEL_SYSTEMS.forEach(option => {
-    const opt = document.createElement('option');
-    opt.value = option.id;
-    const isActive = selectedKeys.includes(option.id);
-    opt.textContent = isActive ? option.label : `${option.label} (ikke aktiv i sag)`;
-    if (!isActive) {
-      opt.dataset.inactive = 'true';
+  const storedSelection = new Set(getStoredExcelSystems());
+  inputs.forEach(input => {
+    const systemId = normalizeExcelSystemId(input.value);
+    input.checked = storedSelection.has(systemId);
+    const label = input.closest('.export-system-option');
+    const labelText = label?.querySelector('.export-system-option__label');
+    const hint = label?.querySelector('.export-system-option__hint');
+    const config = AKKORD_EXCEL_SYSTEMS.find(option => option.id === systemId);
+    if (labelText && config) {
+      labelText.textContent = config.label;
     }
-    if (option.id === currentValue) {
-      opt.selected = true;
+    const isActive = selectedKeys.includes(systemId);
+    if (hint) {
+      hint.textContent = isActive ? 'Aktiv i sag' : 'Ikke aktiv i sag';
     }
-    select.appendChild(opt);
+    if (label) {
+      label.classList.toggle('export-system-option--inactive', !isActive);
+    }
   });
+}
+
+function initExcelSystemSelector() {
+  syncExcelSystemSelector();
+  const container = document.getElementById('akkordExcelSystemOptions');
+  if (!container) return;
+  container.addEventListener('change', event => {
+    const target = event.target;
+    if (!target || typeof target.getAttribute !== 'function') return;
+    if (target.getAttribute('name') !== 'akkordExcelSystem') return;
+    const selected = getExcelSystemSelectionFromInputs();
+    setStoredExcelSystems(selected);
+  });
+}
+
+function requireExcelSystemSelection(options = {}) {
+  const selection = getExcelSystemSelectionFromInputs();
+  if (selection.length === 0) {
+    const message = 'Vælg mindst ét Excel 25-ark under "Eksport & deling".';
+    if (options.forEkomplet) {
+      setEkompletStatus(message, 'error');
+    }
+    updateActionHint(message, 'error');
+    return null;
+  }
+  return selection;
+}
+
+function triggerBlobDownload(blob, fileName) {
+  if (typeof document === 'undefined') return;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+async function downloadExcelPayloads(payloads, job) {
+  if (!Array.isArray(payloads) || payloads.length === 0) {
+    return { count: 0, zipped: false };
+  }
+  const files = payloads.filter(entry => entry?.blob && entry?.fileName);
+  if (files.length === 0) {
+    return { count: 0, zipped: false };
+  }
+  if (files.length === 1) {
+    triggerBlobDownload(files[0].blob, files[0].fileName);
+    return { count: 1, zipped: false };
+  }
+  const { JSZip } = await ensureZipLib();
+  const zip = new JSZip();
+  files.forEach(entry => {
+    zip.file(entry.fileName, entry.blob);
+  });
+  const zipBlob = await zip.generateAsync({ type: 'blob' });
+  const baseName = sanitizeFilename(job?.sagsinfo?.sagsnummer || job?.caseNo || 'akkordsedler') || 'akkordsedler';
+  triggerBlobDownload(zipBlob, `${baseName}_excel.zip`);
+  return { count: files.length, zipped: true };
+}
+
+function buildExcelExportMessage(result) {
+  if (!result || result.count === 0) {
+    return '';
+  }
+  if (result.count === 1) {
+    return '1 Excel-ark blev genereret og downloadet direkte. ZIP bruges kun ved flere valg.';
+  }
+  return `${result.count} Excel-ark blev samlet i én ZIP-fil. ZIP bruges kun ved flere valg.`;
+}
+
+async function exportExcelSelection(job, systems) {
+  if (!job) return { count: 0, zipped: false };
+  const requested = sanitizeExcelSystemSelection(systems);
+  if (requested.length === 0) {
+    return { count: 0, zipped: false };
+  }
+  const payloads = await exportAkkordExcelForActiveJob(job, requested);
+  return downloadExcelPayloads(payloads, job);
 }
 
 function initExportButtons() {
@@ -1716,7 +1852,6 @@ function initExportButtons() {
   const btnAll = document.getElementById('btnExportAll');
   const btnZip = document.getElementById('btnExportZip');
   const btnEkomplet = document.getElementById('btnExportEkomplet');
-  const excelSelect = document.getElementById('akkordExcelSystem');
 
   if (btnCSV) btnCSV.addEventListener('click', () => onExportCSV());
   if (btnAll) btnAll.addEventListener('click', () => onExportAll());
@@ -1730,16 +1865,11 @@ function initExportButtons() {
     button.addEventListener('focus', prime, { once: true });
   });
 
-  populateExcelSystemSelect();
-
-  if (excelSelect) {
-    excelSelect.addEventListener('change', () => {
-      setStoredExcelSystem(excelSelect.value);
-    });
-  }
+  initExcelSystemSelector();
 }
 
 function onExportCSV() {
+  if (!requireExcelSystemSelection()) return;
   try {
     downloadCSV();
     updateActionHint('CSV er klar til download.', 'success');
@@ -1750,6 +1880,7 @@ function onExportCSV() {
 }
 
 async function onExportAll() {
+  if (!requireExcelSystemSelection()) return;
   try {
     await exportAll();
     updateActionHint('JSON eksport gemt.', 'success');
@@ -1760,6 +1891,7 @@ async function onExportAll() {
 }
 
 async function onExportZip() {
+  if (!requireExcelSystemSelection()) return;
   try {
     await exportZip();
     updateActionHint('ZIP eksport gemt.', 'success');
@@ -1770,6 +1902,8 @@ async function onExportZip() {
 }
 
 async function onExportEkomplet() {
+  const excelSelection = requireExcelSystemSelection({ forEkomplet: true });
+  if (!excelSelection) return;
   const button = document.getElementById('btnExportEkomplet');
   if (!button) return;
   const originalLabel = button.textContent;
@@ -1781,18 +1915,16 @@ async function onExportEkomplet() {
       return;
     }
 
-    const select = document.getElementById('akkordExcelSystem');
-    const system = (select?.value || getPreferredExcelSystem() || '').toLowerCase();
-    if (!isSupportedExcelSystem(system)) {
-      setEkompletStatus('Vælg BOSTA, HAKI eller MODEX som system.', 'error');
+    const job = syncActiveJobState();
+    const excelResult = await exportExcelSelection(job, excelSelection);
+    if (!excelResult || excelResult.count === 0) {
+      setEkompletStatus('E-komplet fil er klar, men Excel-ark blev ikke genereret.', 'error');
+      updateActionHint('Excel-ark blev ikke genereret.', 'error');
       return;
     }
-
-    setStoredExcelSystem(system);
-    const job = syncActiveJobState();
-    await exportAkkordExcelForActiveJob(job, system);
-    setEkompletStatus('E-komplet og Excel er klar.', 'success');
-    updateActionHint('E-komplet og Excel er klar.', 'success');
+    const message = buildExcelExportMessage(excelResult);
+    setEkompletStatus(`E-komplet fil og Excel er klar. ${message}`, 'success');
+    updateActionHint(`E-komplet fil og Excel er klar. ${message}`, 'success');
   } catch (error) {
     console.error('E-komplet/Excel eksport fejlede', error);
     setEkompletStatus('Eksporten fejlede. Prøv igen.', 'error');
@@ -2667,7 +2799,7 @@ function beregnLon() {
 
   syncActiveJobState();
   updateTotals(true);
-  populateExcelSystemSelect();
+  syncExcelSystemSelector();
 
   if (typeof window !== 'undefined') {
     window.__cssmateLastEkompletData = lastEkompletData;
@@ -2853,8 +2985,6 @@ async function exportToEKomplet() {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 
-  setEkompletStatus('Filen er hentet og klar til upload i E-komplet.', 'success');
-  updateActionHint('E-komplet fil er genereret.', 'success');
   return true;
 }
 

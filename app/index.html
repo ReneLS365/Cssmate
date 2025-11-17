@@ -270,14 +270,27 @@
         <button id=btnExportZip type=button>ZIP</button>
         <button id=btnExportEkomplet type=button>E-komplet</button>
       </div>
-      <label for=akkordExcelSystem class=export-select-label>
-        <span>Excel 25-ark</span>
-        <select id=akkordExcelSystem name=akkordExcelSystem>
-          <option value=bosta>BOSTA 2025</option>
-          <option value=haki>HAKI 2025</option>
-          <option value=modex>MODEX 2025</option>
-        </select>
-      </label>
+      <fieldset class="export-system-selector">
+        <legend>Excel 25-ark</legend>
+        <p class="hint">Vælg de systemer der skal have et 25-ark. Kun BOSTA er valgt som standard.</p>
+        <div id=akkordExcelSystemOptions class="export-system-options" role=group aria-label="Excel systemvalg">
+          <label class="export-system-option" data-system=bosta>
+            <input type=checkbox name=akkordExcelSystem value=bosta checked>
+            <span class="export-system-option__label">BOSTA 2025</span>
+            <small class="export-system-option__hint" aria-live=polite></small>
+          </label>
+          <label class="export-system-option" data-system=haki>
+            <input type=checkbox name=akkordExcelSystem value=haki>
+            <span class="export-system-option__label">HAKI 2025</span>
+            <small class="export-system-option__hint" aria-live=polite></small>
+          </label>
+          <label class="export-system-option" data-system=modex>
+            <input type=checkbox name=akkordExcelSystem value=modex>
+            <span class="export-system-option__label">MODEX 2025</span>
+            <small class="export-system-option__hint" aria-live=polite></small>
+          </label>
+        </div>
+      </fieldset>
       <p id=ekompletStatus class="status-message" hidden aria-live=polite></p>
     </fieldset>
     <fieldset>
