@@ -17,8 +17,12 @@ import './boot-inline.js'
 
 const IOS_INSTALL_PROMPT_DISMISSED_KEY = 'csmate.iosInstallPromptDismissed'
 const TAB_STORAGE_KEY = 'cssmate:lastActiveTab'
+const DEFAULT_TAB_ID = 'sagsinfo'
 let DEFAULT_ADMIN_CODE_HASH = ''
 let materialsVirtualListController = null
+let currentTabId = null
+let tabButtons = []
+let tabPanels = []
 
 const KNOWN_ADMIN_CODE_HASHES = new Set([
   'ff0a69fa196820f9529e3c20cfa809545e6697f5796527f7657a83bb7e6acd0d'
@@ -58,20 +62,21 @@ function updateSlaebFormulaInfo(text) {
   infoEl.textContent = value ? `Formel (A9): ${value}` : '';
 }
 
-let guideModalPreviousFocus = null;
+let guideModalLastFocus = null;
 
 function getGuideModalElement() {
   return document.getElementById('guideModal');
 }
 
-// Åbn hjælpeguiden og flyt fokus til modalen for bedre tilgængelighed
+// Åbn hjælpeguiden og flyt fokus til dialogen
 function openGuideModal() {
   const modal = getGuideModalElement();
   if (!modal) return;
-  guideModalPreviousFocus = document.activeElement instanceof HTMLElement
+  guideModalLastFocus = document.activeElement instanceof HTMLElement
     ? document.activeElement
     : null;
   modal.removeAttribute('hidden');
+  modal.dataset.open = 'true';
   modal.classList.add('open');
   modal.setAttribute('aria-hidden', 'false');
   const content = modal.querySelector('.modal-content');
@@ -80,17 +85,24 @@ function openGuideModal() {
   }
 }
 
-// Luk hjælpeguiden og returnér fokus til udgangspunktet
+// Luk hjælpeguiden og returnér fokus til tidligere element
 function closeGuideModal() {
   const modal = getGuideModalElement();
   if (!modal) return;
   modal.classList.remove('open');
+  modal.removeAttribute('data-open');
   modal.setAttribute('aria-hidden', 'true');
   modal.setAttribute('hidden', '');
-  if (guideModalPreviousFocus && typeof guideModalPreviousFocus.focus === 'function') {
-    guideModalPreviousFocus.focus();
+  const previous = guideModalLastFocus;
+  guideModalLastFocus = null;
+  if (previous && document.contains(previous) && typeof previous.focus === 'function') {
+    previous.focus();
   }
-  guideModalPreviousFocus = null;
+}
+
+function isGuideModalOpen() {
+  const modal = getGuideModalElement();
+  return Boolean(modal && modal.dataset.open === 'true');
 }
 
 function setupGuideModal() {
@@ -113,117 +125,125 @@ function setupGuideModal() {
   });
 
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape') {
-      const currentModal = getGuideModalElement();
-      if (currentModal && currentModal.classList.contains('open')) {
-        closeGuideModal();
-      }
+    if (event.key === 'Escape' && isGuideModalOpen()) {
+      event.preventDefault();
+      closeGuideModal();
     }
   });
 }
 
-// Initier fanenavigationen og sørg for at paneler/taster hænger sammen
-function initTabs() {
-  const tabs = Array.from(document.querySelectorAll(".tab-button[role='tab']"));
-  const panels = Array.from(document.querySelectorAll(".tab-panel[role='tabpanel']"));
-  if (!tabs.length || !panels.length) return;
+function getStoredTabId() {
+  try {
+    return window.localStorage?.getItem(TAB_STORAGE_KEY) || '';
+  } catch {
+    return '';
+  }
+}
 
-  const panelMap = new Map(panels.map(panel => [panel.id, panel]));
-  const tabByPanel = new Map();
+function focusTabByIndex(index) {
+  if (!tabButtons.length) return;
+  const normalized = (index + tabButtons.length) % tabButtons.length;
+  const button = tabButtons[normalized];
+  if (button) {
+    setActiveTab(button.dataset.tabId, { focus: true });
+  }
+}
 
-  const getPanelIdForTab = tab => tab?.getAttribute('data-tab-target') || tab?.getAttribute('aria-controls') || '';
-
-  tabs.forEach(tab => {
-    const panelId = getPanelIdForTab(tab);
-    if (panelId) {
-      tabByPanel.set(panelId, tab);
-    }
-    const initialSelected = tab.getAttribute('aria-selected') === 'true';
-    tab.tabIndex = initialSelected ? 0 : -1;
-  });
-
-  const persistTabId = panelId => {
-    try {
-      window.localStorage?.setItem(TAB_STORAGE_KEY, panelId);
-    } catch {}
-  };
-
-  // setActiveTab sikrer én kilde til sandhed for faner/paneler
-  const setActiveTab = (target, { persist = true } = {}) => {
-    const nextTab = typeof target === 'string'
-      ? (tabByPanel.get(target) || tabs.find(tab => tab.id === target))
-      : target;
-    if (!nextTab) return;
-    const targetId = getPanelIdForTab(nextTab);
-    if (!targetId || !panelMap.has(targetId)) return;
-
-    tabs.forEach(tab => {
-      const isActive = tab === nextTab;
-      tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
-      tab.classList.toggle('tab-active', isActive);
-      tab.tabIndex = isActive ? 0 : -1;
-    });
-
-    panels.forEach(panel => {
-      const isActive = panel.id === targetId;
-      panel.hidden = !isActive;
-      panel.setAttribute('aria-hidden', isActive ? 'false' : 'true');
-      panel.classList.toggle('active', isActive);
-    });
-
-    if (persist) {
-      persistTabId(targetId);
-    }
-  };
-
-  tabs.forEach(tab => {
-    tab.addEventListener('click', () => setActiveTab(tab));
-    tab.addEventListener('keydown', event => {
-      if (event.key === ' ' || event.key === 'Enter') {
-        event.preventDefault();
-        setActiveTab(tab);
-      }
-    });
-  });
-
-  document.addEventListener('keydown', evt => {
-    if (!['ArrowLeft', 'ArrowRight'].includes(evt.key)) return;
-    const current = document.activeElement;
-    if (!current || !current.matches(".tab-button[role='tab']")) return;
-
-    evt.preventDefault();
-    const idx = tabs.indexOf(current);
-    if (idx === -1) return;
-
-    const dir = evt.key === 'ArrowRight' ? 1 : -1;
-    const nextIdx = (idx + dir + tabs.length) % tabs.length;
-    const nextTab = tabs[nextIdx];
-    if (nextTab) {
-      nextTab.focus();
-      setActiveTab(nextTab);
-    }
-  });
-
-  const getStoredPanelId = () => {
-    try {
-      return window.localStorage?.getItem(TAB_STORAGE_KEY) || '';
-    } catch {
-      return '';
-    }
-  };
-
-  const storedPanelId = getStoredPanelId();
-  if (storedPanelId && panelMap.has(storedPanelId)) {
-    setActiveTab(storedPanelId, { persist: false });
-  } else {
-    const initiallySelected = tabs.find(t => t.getAttribute('aria-selected') === 'true') || tabs[0];
-    if (initiallySelected) {
-      setActiveTab(initiallySelected, { persist: false });
+function handleTabKeydown(event, index) {
+  const key = event.key;
+  if (key === 'ArrowRight' || key === 'ArrowLeft') {
+    event.preventDefault();
+    const dir = key === 'ArrowRight' ? 1 : -1;
+    focusTabByIndex(index + dir);
+    return;
+  }
+  if (key === 'Home') {
+    event.preventDefault();
+    focusTabByIndex(0);
+    return;
+  }
+  if (key === 'End') {
+    event.preventDefault();
+    focusTabByIndex(tabButtons.length - 1);
+    return;
+  }
+  if (key === ' ' || key === 'Enter') {
+    event.preventDefault();
+    const button = tabButtons[index];
+    if (button) {
+      setActiveTab(button.dataset.tabId, { focus: true });
     }
   }
+}
+
+function setActiveTab(tabId, { focus = false } = {}) {
+  if (!tabButtons.length || !tabPanels.length) return;
+  const nextButton = tabButtons.find(button => button.dataset.tabId === tabId) || tabButtons[0];
+  if (!nextButton) return;
+  const nextTabId = nextButton.dataset.tabId;
+  if (!nextTabId) return;
+  const nextPanel = tabPanels.find(panel => panel.dataset.tabPanel === nextTabId);
+  if (!nextPanel) return;
+
+  if (currentTabId === nextTabId) {
+    if (focus && typeof nextButton.focus === 'function') {
+      nextButton.focus();
+    }
+    return;
+  }
+
+  tabButtons.forEach(button => {
+    const isActive = button === nextButton;
+    button.classList.toggle('tab--active', isActive);
+    button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    button.tabIndex = isActive ? 0 : -1;
+  });
+
+  tabPanels.forEach(panel => {
+    const matches = panel === nextPanel;
+    panel.classList.toggle('tab-panel--active', matches);
+    if (matches) {
+      panel.removeAttribute('hidden');
+      panel.setAttribute('aria-hidden', 'false');
+    } else {
+      panel.setAttribute('hidden', '');
+      panel.setAttribute('aria-hidden', 'true');
+    }
+  });
+
+  currentTabId = nextTabId;
+  try {
+    window.localStorage?.setItem(TAB_STORAGE_KEY, nextTabId);
+  } catch {}
+
+  if (focus && typeof nextButton.focus === 'function') {
+    nextButton.focus();
+  }
+}
+
+// Initier faner og tastaturnavigation
+function initTabs() {
+  tabButtons = Array.from(document.querySelectorAll('[role="tab"][data-tab-id]'));
+  tabPanels = Array.from(document.querySelectorAll('[role="tabpanel"][data-tab-panel]'));
+  if (!tabButtons.length || !tabPanels.length) return;
+
+  tabButtons.forEach((button, index) => {
+    const tabId = button.dataset.tabId;
+    const isSelected = button.getAttribute('aria-selected') === 'true';
+    button.tabIndex = isSelected ? 0 : -1;
+    button.addEventListener('click', () => setActiveTab(tabId));
+    button.addEventListener('keydown', event => handleTabKeydown(event, index));
+  });
+
+  const storedTabId = getStoredTabId();
+  const initialTabId = tabButtons.some(button => button.dataset.tabId === storedTabId)
+    ? storedTabId
+    : (tabButtons.find(button => button.getAttribute('aria-selected') === 'true')?.dataset.tabId || DEFAULT_TAB_ID);
+
+  setActiveTab(initialTabId, { focus: false });
 
   if (typeof window !== 'undefined') {
-    window.__cssmateSetActiveTab = tabId => setActiveTab(tabId);
+    window.__cssmateSetActiveTab = (tabId, options) => setActiveTab(tabId, options);
   }
 }
 
@@ -1377,6 +1397,117 @@ function setEkompletStatus(message, variant = 'success') {
   statusEl.removeAttribute('hidden');
 }
 
+function populateExcelSystemSelect() {
+  const select = document.getElementById('akkordExcelSystem');
+  if (!select) return;
+  const selectedKeys = getSelectedSystemKeys();
+  const storedValue = getStoredExcelSystem();
+  const preferredValue = storedValue || getPreferredExcelSystem();
+  const currentValue = select.value || preferredValue;
+  select.innerHTML = '';
+  AKKORD_EXCEL_SYSTEMS.forEach(option => {
+    const opt = document.createElement('option');
+    opt.value = option.id;
+    opt.textContent = option.label;
+    if (!selectedKeys.includes(option.id)) {
+      opt.dataset.inactive = 'true';
+    }
+    if (option.id === currentValue) {
+      opt.selected = true;
+    }
+    select.appendChild(opt);
+  });
+}
+
+function initExportButtons() {
+  const btnCSV = document.getElementById('btnExportCSV');
+  const btnAll = document.getElementById('btnExportAll');
+  const btnZip = document.getElementById('btnExportZip');
+  const btnEkomplet = document.getElementById('btnExportEkomplet');
+  const excelSelect = document.getElementById('akkordExcelSystem');
+
+  if (btnCSV) btnCSV.addEventListener('click', () => onExportCSV());
+  if (btnAll) btnAll.addEventListener('click', () => onExportAll());
+  if (btnZip) btnZip.addEventListener('click', () => onExportZip());
+  if (btnEkomplet) btnEkomplet.addEventListener('click', () => onExportEkomplet());
+
+  [btnAll, btnZip, btnEkomplet].forEach(button => {
+    if (!button) return;
+    const prime = () => prefetchExportLibs();
+    button.addEventListener('pointerenter', prime, { once: true });
+    button.addEventListener('focus', prime, { once: true });
+  });
+
+  populateExcelSystemSelect();
+
+  if (excelSelect) {
+    excelSelect.addEventListener('change', () => {
+      setStoredExcelSystem(excelSelect.value);
+    });
+  }
+}
+
+function onExportCSV() {
+  try {
+    downloadCSV();
+  } catch (error) {
+    console.error('CSV eksport fejlede', error);
+    updateActionHint('Kunne ikke eksportere CSV.', 'error');
+  }
+}
+
+async function onExportAll() {
+  try {
+    await exportAll();
+  } catch (error) {
+    console.error('JSON eksport fejlede', error);
+    updateActionHint('Kunne ikke eksportere JSON.', 'error');
+  }
+}
+
+async function onExportZip() {
+  try {
+    await exportZip();
+  } catch (error) {
+    console.error('ZIP eksport fejlede', error);
+    updateActionHint('Kunne ikke eksportere ZIP.', 'error');
+  }
+}
+
+async function onExportEkomplet() {
+  const button = document.getElementById('btnExportEkomplet');
+  if (!button) return;
+  const originalLabel = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Eksporterer…';
+  try {
+    const exported = await exportToEKomplet();
+    if (exported === false) {
+      return;
+    }
+
+    const select = document.getElementById('akkordExcelSystem');
+    const system = (select?.value || getPreferredExcelSystem() || '').toLowerCase();
+    if (!isSupportedExcelSystem(system)) {
+      setEkompletStatus('Vælg BOSTA, HAKI eller MODEX som system.', 'error');
+      return;
+    }
+
+    setStoredExcelSystem(system);
+    const job = syncActiveJobState();
+    await exportAkkordExcelForActiveJob(job, system);
+    setEkompletStatus('E-komplet og Excel er klar.', 'success');
+    updateActionHint('E-komplet og Excel er klar.', 'success');
+  } catch (error) {
+    console.error('E-komplet/Excel eksport fejlede', error);
+    setEkompletStatus('Eksporten fejlede. Prøv igen.', 'error');
+    updateActionHint('Eksporten fejlede. Prøv igen.', 'error');
+  } finally {
+    button.disabled = false;
+    button.textContent = originalLabel;
+  }
+}
+
 function inferSystemFromLine(line) {
   if (!line) return '';
   if (line.system) return line.system;
@@ -2145,63 +2276,6 @@ function beregnLon() {
       resultatDiv.appendChild(line);
     });
 
-    const actions = document.createElement('div');
-    actions.className = 'ekomplet-actions no-print';
-
-    const btn = document.createElement('button');
-    btn.id = 'btnEkompletExport';
-    btn.type = 'button';
-    btn.textContent = 'Indberet til E-komplet';
-    actions.appendChild(btn);
-
-    const excelControls = document.createElement('div');
-    excelControls.className = 'akkord-excel-controls';
-
-    const excelLabel = document.createElement('label');
-    excelLabel.className = 'sr-only';
-    excelLabel.htmlFor = 'akkordExcelSystem';
-    excelLabel.textContent = 'Vælg system til akkord Excel';
-    excelControls.appendChild(excelLabel);
-
-    const excelSelect = document.createElement('select');
-    excelSelect.id = 'akkordExcelSystem';
-    excelSelect.name = 'akkordExcelSystem';
-    excelSelect.title = 'Vælg hvilket system Excel-filen skal bruge';
-    const selectedKeys = getSelectedSystemKeys();
-    const preferredSystem = getPreferredExcelSystem();
-    AKKORD_EXCEL_SYSTEMS.forEach(option => {
-      const opt = document.createElement('option');
-      opt.value = option.id;
-      opt.textContent = option.label;
-      if (!selectedKeys.includes(option.id)) {
-        opt.dataset.inactive = 'true';
-      }
-      if (option.id === preferredSystem) {
-        opt.selected = true;
-      }
-      excelSelect.appendChild(opt);
-    });
-    excelSelect.addEventListener('change', () => {
-      setStoredExcelSystem(excelSelect.value);
-    });
-    excelControls.appendChild(excelSelect);
-
-    const excelButton = document.createElement('button');
-    excelButton.id = 'btnAkkordExcel';
-    excelButton.type = 'button';
-    excelButton.textContent = 'Download akkord Excel';
-    excelControls.appendChild(excelButton);
-
-    actions.appendChild(excelControls);
-
-    const status = document.createElement('p');
-    status.id = 'ekompletStatus';
-    status.className = 'status-message';
-    status.hidden = true;
-    status.setAttribute('aria-live', 'polite');
-    actions.appendChild(status);
-
-    resultatDiv.appendChild(actions);
   }
 
   laborEntries = beregnedeArbejdere;
@@ -2258,8 +2332,7 @@ function beregnLon() {
 
   syncActiveJobState();
   updateTotals(true);
-  attachEkompletButton();
-  attachAkkordExcelButton();
+  populateExcelSystemSelect();
 
   if (typeof window !== 'undefined') {
     window.__cssmateLastEkompletData = lastEkompletData;
@@ -2277,77 +2350,6 @@ function beregnLon() {
   return sagsnummer;
 }
 
-
-function attachEkompletButton() {
-  const button = document.getElementById('btnEkompletExport');
-  if (!button || button.dataset.ekompletBound === '1') return;
-  button.dataset.ekompletBound = '1';
-  button.addEventListener('click', async () => {
-    const previousDisabled = button.disabled;
-    button.disabled = true;
-    try {
-      const exported = await exportToEKomplet();
-      if (exported !== false) {
-        await exportAkkordExcelForActiveJob();
-      }
-    } catch (error) {
-      console.error('Fejl ved E-komplet/Excel eksport:', error);
-      alert('Fejl ved eksport. Tjek konsollen.');
-    } finally {
-      button.disabled = previousDisabled;
-    }
-  });
-}
-
-function attachAkkordExcelButton() {
-  const button = document.getElementById('btnAkkordExcel');
-  if (!button) return;
-  button.addEventListener('click', () => {
-    handleAkkordExcelExport(button);
-  });
-}
-
-async function handleAkkordExcelExport(button) {
-  if (!validateSagsinfo()) {
-    setEkompletStatus('Udfyld Sagsinfo før du henter Excel.', 'error');
-    updateActionHint('Udfyld Sagsinfo for at hente Excel.', 'error');
-    return;
-  }
-
-  if (!lastEkompletData) {
-    setEkompletStatus('Beregn løn først, så alle data er opdaterede.', 'error');
-    return;
-  }
-
-  const select = document.getElementById('akkordExcelSystem');
-  const system = (select?.value || getPreferredExcelSystem() || '').toLowerCase();
-  if (!isSupportedExcelSystem(system)) {
-    setEkompletStatus('Vælg BOSTA, HAKI eller MODEX som system.', 'error');
-    return;
-  }
-
-  setStoredExcelSystem(system);
-  const job = syncActiveJobState();
-  if (!job || !Array.isArray(job.lines) || job.lines.length === 0) {
-    setEkompletStatus('Ingen materialer at eksportere. Udfyld optælling og beregn igen.', 'error');
-    return;
-  }
-
-  const originalText = button.textContent;
-  button.disabled = true;
-  button.textContent = 'Henter Excel…';
-
-  try {
-    await exportAkkordExcelForActiveJob(job, system);
-    setEkompletStatus('Akkord Excel er hentet.', 'success');
-  } catch (error) {
-    console.error('Akkord Excel eksport fejlede', error);
-    setEkompletStatus('Kunne ikke hente akkord Excel. Prøv igen.', 'error');
-  } finally {
-    button.disabled = false;
-    button.textContent = originalText;
-  }
-}
 
 async function exportToEKomplet() {
   if (!validateSagsinfo()) {
@@ -3276,6 +3278,7 @@ function initApp() {
 
   setupGuideModal();
   setupA9Integration();
+  initExportButtons();
 
   document.getElementById('btnBeregnLon')?.addEventListener('click', () => beregnLon());
   document.getElementById('btnPrint')?.addEventListener('click', () => {
@@ -3284,24 +3287,6 @@ function initApp() {
     } else {
       updateActionHint('Udfyld Sagsinfo for at kunne printe.', 'error');
     }
-  });
-
-  document.getElementById('btnExportCSV')?.addEventListener('click', () => downloadCSV());
-
-  document.getElementById('btnExportAll')?.addEventListener('click', async () => {
-    await exportAll();
-  });
-
-  document.getElementById('btnExportZip')?.addEventListener('click', async () => {
-    await exportZip();
-  });
-
-  ['btnExportAll', 'btnExportZip'].forEach(id => {
-    const button = document.getElementById(id);
-    if (!button) return;
-    const prime = () => prefetchExportLibs();
-    button.addEventListener('pointerenter', prime, { once: true });
-    button.addEventListener('focus', prime, { once: true });
   });
 
   document.getElementById('btnAddWorker')?.addEventListener('click', () => addWorker());

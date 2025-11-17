@@ -104,6 +104,11 @@
   color: var(--text);
 }
 
+.numpad-key--op {
+  background: #111;
+  color: #fff;
+}
+
 .numpad-key-op {
   font-weight: 600;
 }

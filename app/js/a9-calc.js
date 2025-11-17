@@ -19,7 +19,7 @@ let expression = '';
 let previous = '';
 let memoryValue = 0;
 let initialized = false;
-let previousFocus = null;
+let lastFocusedField = null;
 
 export function initA9Calc () {
   if (initialized) return;
@@ -75,8 +75,8 @@ export function openA9ForInput (input) {
   }
   if (!overlay || !panel) return;
 
-  previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   activeTargetInput = input || null;
+  lastFocusedField = activeTargetInput;
   const normalized = normalizeFieldValue(activeTargetInput?.value);
   current = normalized || '0';
   expression = '';
@@ -102,13 +102,14 @@ function hideA9 (commit) {
         delete activeTargetInput.dataset.a9Commit;
       }
       const formulaText = lastCopiedFormulaText || buildA9CopyString() || '';
+      const detail = { numeric, value: valueStr, formulaText };
       activeTargetInput.dispatchEvent(new CustomEvent('a9-commit', {
         bubbles: true,
-        detail: {
-          numeric,
-          value: valueStr,
-          formulaText
-        }
+        detail
+      }));
+      activeTargetInput.dispatchEvent(new CustomEvent('a9:commit', {
+        bubbles: true,
+        detail
       }));
     }
   }
@@ -118,10 +119,10 @@ function hideA9 (commit) {
     overlay.setAttribute('aria-hidden', 'true');
   }
   activeTargetInput = null;
-  if (previousFocus && typeof previousFocus.focus === 'function') {
-    previousFocus.focus();
+  if (lastFocusedField && document.contains(lastFocusedField) && typeof lastFocusedField.focus === 'function') {
+    lastFocusedField.focus();
   }
-  previousFocus = null;
+  lastFocusedField = null;
 }
 
 function handleKeydown (event) {
