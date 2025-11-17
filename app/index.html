@@ -36,6 +36,7 @@
           <button id="tab-sagsinfo" class="tab tab--active" type="button" role="tab" data-tab-id="sagsinfo" aria-controls="panel-sagsinfo" aria-selected="true">Sagsinfo</button>
           <button id="tab-optaelling" class="tab" type="button" role="tab" data-tab-id="optaelling" aria-controls="panel-optaelling" aria-selected="false">Optælling</button>
           <button id="tab-lon" class="tab" type="button" role="tab" data-tab-id="lon" aria-controls="panel-lon" aria-selected="false">Løn</button>
+          <button id="tab-historik" class="tab" type="button" role="tab" data-tab-id="historik" aria-controls="panel-historik" aria-selected="false">Historik</button>
           <button id="tab-hjaelp" class="tab" type="button" role="tab" data-tab-id="hjaelp" aria-controls="panel-hjaelp" aria-selected="false">Hjælp</button>
         </nav>
       </div>
@@ -87,46 +88,6 @@
         <button id=btnOpenGuideModal type=button>Åbn guide</button>
       </div>
     </fieldset>
-
-    <section class="card job-history no-print" aria-live=polite>
-      <header class="card-header">
-        <h2>Historik</h2>
-        <p>Vælg en tidligere sag for at indlæse data eller se timeløn.</p>
-      </header>
-      <div class="job-history__controls">
-        <label for=jobHistorySelect>
-          <span>Seneste sager</span>
-          <select id=jobHistorySelect name=jobHistorySelect>
-            <option value="" selected>Indlæser sager…</option>
-          </select>
-        </label>
-        <button id=btnLoadHistoryJob type=button disabled>Indlæs sag</button>
-      </div>
-      <div class="job-history__summary table-wrapper" aria-live=polite>
-        <table>
-          <thead>
-            <tr>
-              <th scope=col>Dato &amp; tid</th>
-              <th scope=col>Timer</th>
-              <th scope=col>Uden tillæg</th>
-              <th scope=col>Udd1</th>
-              <th scope=col>Udd2</th>
-              <th scope=col>Udd2 + mentor</th>
-            </tr>
-          </thead>
-          <tbody id=job-history-summary-body>
-            <tr>
-              <td colspan=6>Vælg en sag for at se historik.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="job-history__list">
-        <h3>Seneste eksport/import</h3>
-        <p class="job-history__hint">Historikken opdateres automatisk efter beregning. Åbn review-loggen i debug-mappen for fuld oversigt over ændringer.</p>
-        <ul id=historyList class="history-list" aria-live=polite aria-busy=true></ul>
-      </div>
-    </section>
 
     <fieldset>
       <legend>Status</legend>
@@ -305,6 +266,56 @@
         <button id=btnAddWorker type=button>+ Tilføj mand</button>
       </div>
     </fieldset>
+  </section>
+
+  <section
+    id="panel-historik"
+    class="sektion tab-panel"
+    role="tabpanel"
+    data-tab-panel="historik"
+    aria-labelledby="tab-historik"
+    aria-hidden="true"
+    hidden
+  >
+    <section class="card job-history no-print" aria-live=polite>
+      <header class="card-header">
+        <h2>Historik</h2>
+        <p>Vælg en tidligere sag for at indlæse data eller se timeløn.</p>
+      </header>
+      <div class="job-history__controls">
+        <label for=jobHistorySelect>
+          <span>Seneste sager</span>
+          <select id=jobHistorySelect name=jobHistorySelect>
+            <option value="" selected>Indlæser sager…</option>
+          </select>
+        </label>
+        <button id=btnLoadHistoryJob type=button disabled>Indlæs sag</button>
+      </div>
+      <div class="job-history__summary table-wrapper" aria-live=polite>
+        <table>
+          <thead>
+            <tr>
+              <th scope=col>Dato &amp; tid</th>
+              <th scope=col>Timer</th>
+              <th scope=col>Uden tillæg</th>
+              <th scope=col>Udd1</th>
+              <th scope=col>Udd2</th>
+              <th scope=col>Udd2 + mentor</th>
+            </tr>
+          </thead>
+          <tbody id=job-history-summary-body>
+            <tr>
+              <td colspan=6>Vælg en sag for at se historik.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="job-history__list">
+        <h3>Seneste eksport/import</h3>
+        <p class="job-history__hint">Historikken opdateres automatisk efter beregning. Åbn review-loggen i debug-mappen for fuld oversigt over ændringer.</p>
+        <ul id=historyList class="history-list" aria-live=polite aria-busy=true></ul>
+      </div>
+    </section>
   </section>
 
   <section
