@@ -170,7 +170,7 @@ function showNumpadForInput (input) {
 function hideNumpad (commit) {
   if (!overlay) return
 
-  const focusTarget = !commit && lastFocusedInput ? lastFocusedInput : null
+  const focusTarget = lastFocusedInput
 
   if (commit && activeInput) {
     const fieldValue = formatForField(currentValue)
