@@ -32,12 +32,11 @@
     <header data-allow-click>
       <div class=bar>
         <h1 class=ttl>akkordseddel</h1>
-        <nav class="tabs" role="tablist" aria-label="Cssmate sektioner">
-          <button id="tab-job" class="tab tab--compact" type="button" role="tab" data-tab-id="job" aria-controls="panel-job" aria-selected="false">Job</button>
-          <button id="tab-sagsinfo" class="tab tab--active" type="button" role="tab" data-tab-id="sagsinfo" aria-controls="panel-sagsinfo" aria-selected="true">Sagsinfo</button>
+        <nav class="tabs" role="tablist" aria-label="SSCaff sektioner">
+          <button id="tab-job" class="tab tab--compact tab--active" type="button" role="tab" data-tab-id="job" aria-controls="panel-job" aria-selected="true">Job</button>
+          <button id="tab-sagsinfo" class="tab" type="button" role="tab" data-tab-id="sagsinfo" aria-controls="panel-sagsinfo" aria-selected="false">Sagsinfo</button>
           <button id="tab-optaelling" class="tab" type="button" role="tab" data-tab-id="optaelling" aria-controls="panel-optaelling" aria-selected="false">Optælling</button>
           <button id="tab-loen" class="tab" type="button" role="tab" data-tab-id="loen" aria-controls="panel-loen" aria-selected="false">Løn</button>
-          <button id="tab-historik" class="tab" type="button" role="tab" data-tab-id="historik" aria-controls="panel-historik" aria-selected="false">Historik</button>
           <button id="tab-hjaelp" class="tab" type="button" role="tab" data-tab-id="hjaelp" aria-controls="panel-hjaelp" aria-selected="false">Hjælp</button>
         </nav>
       </div>
@@ -48,27 +47,51 @@
           <div class="tab-panels" data-tab-panels>
   <section
     id="panel-job"
-    class="sektion tab-panel"
+    class="sektion tab-panel tab-panel--active"
     role="tabpanel"
     data-tab-panel="job"
     aria-labelledby="tab-job"
-    aria-hidden="true"
-    hidden
+    aria-hidden="false"
   >
-    <fieldset class=no-print>
-      <legend>Aktive sager</legend>
-      <div class="job-panel-grid">
-        <label for=recentCases>
-          <span>Vælg seneste sag</span>
-          <select id=recentCases name=recentCases>
+    <section class="card job-history no-print" aria-live=polite>
+      <header class="card-header">
+        <h2>Historik</h2>
+        <p>Vælg en tidligere sag for at indlæse data eller se timeløn.</p>
+      </header>
+      <div class="job-history__controls">
+        <label for=jobHistorySelect>
+          <span>Seneste sager</span>
+          <select id=jobHistorySelect name=jobHistorySelect>
             <option value="" selected>Indlæser sager…</option>
           </select>
         </label>
-        <div class="job-panel-actions">
-          <button id=btnLoadCase type=button disabled>Indlæs sag</button>
-        </div>
+        <button id=btnLoadHistoryJob type=button disabled>Indlæs sag</button>
       </div>
-    </fieldset>
+      <div class="job-history__summary" aria-live=polite>
+        <table>
+          <thead>
+            <tr>
+              <th scope=col>Dato &amp; tid</th>
+              <th scope=col>Timer</th>
+              <th scope=col>Uden tillæg</th>
+              <th scope=col>Udd1</th>
+              <th scope=col>Udd2</th>
+              <th scope=col>Udd2 + mentor</th>
+            </tr>
+          </thead>
+          <tbody id=job-history-summary-body>
+            <tr>
+              <td colspan=6>Vælg en sag for at se historik.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="job-history__list">
+        <h3>Seneste eksport/import</h3>
+        <p class="job-history__hint">Historikken opdateres automatisk efter beregning. Åbn review-loggen i debug-mappen for fuld oversigt over ændringer.</p>
+        <ul id=historyList class="history-list" aria-live=polite aria-busy=true></ul>
+      </div>
+    </section>
     <fieldset>
       <legend>Status</legend>
       <p class=hint>Udfyld Sagsinfo og Optælling for at aktivere eksport.</p>
@@ -77,11 +100,12 @@
 
   <section
     id="panel-sagsinfo"
-    class="sektion tab-panel tab-panel--active"
+    class="sektion tab-panel"
     role="tabpanel"
     data-tab-panel="sagsinfo"
     aria-labelledby="tab-sagsinfo"
-    aria-hidden="false"
+    aria-hidden="true"
+    hidden
   >
     <fieldset>
       <legend>Stamdata</legend>
@@ -295,26 +319,6 @@
       <div class=row>
         <button id=btnAddWorker type=button>+ Tilføj mand</button>
       </div>
-    </fieldset>
-  </section>
-
-  <section
-    id="panel-historik"
-    class="sektion tab-panel"
-    role="tabpanel"
-    data-tab-panel="historik"
-    aria-labelledby="tab-historik"
-    aria-hidden="true"
-    hidden
-  >
-    <fieldset>
-      <legend>Seneste sager</legend>
-      <p>Vælg en sag under <strong>Job</strong> for at se detaljer. Historikken opdateres automatisk efter beregning.</p>
-      <ul id=historyList class="history-list" aria-live=polite aria-busy=true></ul>
-    </fieldset>
-    <fieldset>
-      <legend>Log</legend>
-      <p class=hint>Åbn review-loggen i debug-mappen for fuld oversigt over ændringer.</p>
     </fieldset>
   </section>
 

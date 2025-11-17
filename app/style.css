@@ -69,6 +69,10 @@ main{display:flex;flex-direction:column;gap:var(--gap);height:100%;max-width:700
 .tab-panels{flex:1 1 auto;min-height:0;height:calc(100dvh - (var(--header-height,56px) + var(--tab-bar-height,52px)));overflow-y:auto;padding:clamp(0.5rem,2vw,1rem) clamp(0.75rem,3vw,1.5rem) clamp(1rem,4vw,1.75rem);width:100%;max-width:700px;margin:0 auto}
 .tab-panel{min-width:0}
 fieldset{border:1px solid var(--border);background:var(--panel);border-radius:12px;margin:0;padding:var(--pad)}
+.card{border:1px solid var(--border);background:var(--panel);border-radius:12px;padding:var(--pad);display:flex;flex-direction:column;gap:var(--gap)}
+.card-header{display:flex;flex-direction:column;gap:0.35rem}
+.card-header h2{margin:0;font-size:1.15rem}
+.card-header p{margin:0;color:var(--muted);font-size:0.9rem}
 legend{color:var(--muted);padding:0 6px}
 label{display:flex;flex-direction:column;gap:6px;font-size:0.95rem}
 label span{color:var(--muted);font-size:0.85rem}
@@ -86,9 +90,18 @@ button{cursor:pointer}
 .sektion.active{display:flex!important;}
 .row{display:flex;gap:8px;flex-wrap:wrap}
 .btn-group{display:flex;gap:8px;flex-wrap:wrap}
-.job-panel-grid{display:flex;flex-direction:column;gap:var(--gap)}
-.job-panel-actions{display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.5rem}
-.job-panel-actions button{flex:1 1 auto}
+.job-history{gap:var(--gap)}
+.job-history__controls{display:flex;flex-wrap:wrap;gap:var(--gap);align-items:flex-end}
+.job-history__controls label{flex:1 1 220px}
+.job-history__controls button{flex:0 0 auto;min-width:160px}
+.job-history__summary{overflow-x:auto}
+.job-history__summary table{width:100%;border-collapse:collapse;min-width:520px}
+.job-history__summary th,.job-history__summary td{text-align:left;padding:0.5rem;border-bottom:1px solid var(--border);white-space:nowrap}
+.job-history__summary th{color:var(--muted);font-size:0.85rem;font-weight:600}
+.job-history__summary td{font-variant-numeric:tabular-nums}
+.job-history__list h3{margin:0 0 0.25rem;font-size:1rem}
+.job-history__hint{margin:0 0 0.75rem;font-size:0.85rem;color:var(--muted)}
+.job-history__list{display:flex;flex-direction:column;gap:0.5rem}
 .export-panel{gap:0.75rem}
 .export-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:0.5rem}
 .export-actions button{padding:0.4rem 0.5rem;font-size:0.85rem;border-radius:0.75rem;background:var(--panel-soft);border:1px solid var(--border)}
@@ -242,7 +255,7 @@ button{cursor:pointer}
   .system-option{flex:1 1 100%}
   header .bar{gap:12px}
   .worker-output{font-size:0.9rem}
-  .job-panel-actions button,.form-actions button{flex:1 1 100%;min-width:0}
+  .form-actions button{flex:1 1 100%;min-width:0}
 }
 
 @media (max-width:360px){

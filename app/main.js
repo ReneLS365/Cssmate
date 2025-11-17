@@ -17,7 +17,7 @@ import './boot-inline.js'
 
 const IOS_INSTALL_PROMPT_DISMISSED_KEY = 'csmate.iosInstallPromptDismissed'
 const TAB_STORAGE_KEY = 'cssmate:lastActiveTab'
-const DEFAULT_TAB_ID = 'sagsinfo'
+const DEFAULT_TAB_ID = 'job'
 let DEFAULT_ADMIN_CODE_HASH = ''
 let materialsVirtualListController = null
 let currentTabId = null
@@ -402,6 +402,7 @@ let laborEntries = [];
 let lastLoensum = 0;
 let lastMaterialSum = 0;
 let lastEkompletData = null;
+let lastJobSummary = null;
 let recentCasesCache = [];
 let cachedDBPromise = null;
 const DEFAULT_ACTION_HINT = 'Udfyld Sagsinfo for at fortsætte.';
@@ -416,6 +417,7 @@ const OPSKYDELIGT_RATE = 9.67;
 const KM_RATE = 2.12;
 const TILLAEG_UDD1 = 42.98;
 const TILLAEG_UDD2 = 49.38;
+const DEFAULT_MENTOR_RATE = 22.26;
 const AKKORD_EXCEL_SYSTEMS = [
   { id: 'bosta', label: 'BOSTA 2025' },
   { id: 'haki', label: 'HAKI 2025' },
@@ -1219,13 +1221,107 @@ function renderHistoryList(entries = recentCasesCache) {
   setHistoryListBusy(false);
 }
 
-async function populateRecentCases() {
-  const select = document.getElementById('recentCases');
+function findHistoryEntryById(id) {
+  if (!Number.isFinite(id) || id <= 0) {
+    return null;
+  }
+  return recentCasesCache.find(entry => Number(entry?.id) === id) || null;
+}
+
+function buildHistorySummary(entry) {
+  if (!entry || !entry.data) {
+    return null;
+  }
+  const totals = entry.data.totals || {};
+  const timer = toNumber(totals.timer ?? totals.totalHours);
+  const baseRate = toNumber(totals.hourlyBase ?? totals.akkordTimeLon ?? totals.timeprisUdenTillaeg);
+  const mentorRate = toNumber(totals.mentorRate);
+  const appliedMentorRate = mentorRate > 0 ? mentorRate : DEFAULT_MENTOR_RATE;
+  let hourlyUdd1 = toNumber(totals.hourlyUdd1);
+  let hourlyUdd2 = toNumber(totals.hourlyUdd2);
+  let hourlyUdd2Mentor = toNumber(totals.hourlyUdd2Mentor);
+  const hasBase = baseRate > 0;
+  if (!(hourlyUdd1 > 0) && hasBase) {
+    hourlyUdd1 = baseRate + TILLAEG_UDD1;
+  }
+  if (!(hourlyUdd2 > 0) && hasBase) {
+    hourlyUdd2 = baseRate + TILLAEG_UDD2;
+  }
+  if (!(hourlyUdd2Mentor > 0) && hasBase) {
+    hourlyUdd2Mentor = baseRate + TILLAEG_UDD2 + appliedMentorRate;
+  }
+
+  return {
+    date: formatHistoryTimestamp(entry.ts || entry.data.timestamp),
+    timer: timer > 0 ? timer : 0,
+    hourlyBase: hasBase ? baseRate : 0,
+    hourlyUdd1: hourlyUdd1 > 0 ? hourlyUdd1 : 0,
+    hourlyUdd2: hourlyUdd2 > 0 ? hourlyUdd2 : 0,
+    hourlyUdd2Mentor: hourlyUdd2Mentor > 0 ? hourlyUdd2Mentor : 0,
+  };
+}
+
+function renderJobHistorySummary(entry) {
+  const tbody = document.getElementById('job-history-summary-body');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  const summary = buildHistorySummary(entry);
+  if (!summary) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 6;
+    cell.textContent = 'Ingen historik endnu.';
+    row.appendChild(cell);
+    tbody.appendChild(row);
+    return;
+  }
+  const formatRate = value => (value > 0 ? `${formatCurrency(value)} kr` : '–');
+  const values = [
+    summary.date || '–',
+    summary.timer > 0 ? formatNumber(summary.timer) : '–',
+    formatRate(summary.hourlyBase),
+    formatRate(summary.hourlyUdd1),
+    formatRate(summary.hourlyUdd2),
+    formatRate(summary.hourlyUdd2Mentor),
+  ];
+  const row = document.createElement('tr');
+  values.forEach(text => {
+    const cell = document.createElement('td');
+    cell.textContent = text;
+    row.appendChild(cell);
+  });
+  tbody.appendChild(row);
+}
+
+function updateHistorySummaryFromSelect() {
+  const select = document.getElementById('jobHistorySelect');
   if (!select) return;
-  const button = document.getElementById('btnLoadCase');
+  const selectedId = Number(select.value);
+  let entry = null;
+  if (Number.isFinite(selectedId) && selectedId > 0) {
+    entry = findHistoryEntryById(selectedId);
+  }
+  if (!entry && recentCasesCache.length) {
+    entry = recentCasesCache[0];
+    if (entry && select.value !== String(entry.id)) {
+      select.value = String(entry.id);
+    }
+  }
+  renderJobHistorySummary(entry || null);
+  const loadBtn = document.getElementById('btnLoadHistoryJob');
+  if (loadBtn) {
+    loadBtn.disabled = !(entry && entry.id != null);
+  }
+}
+
+async function populateRecentCases() {
+  const select = document.getElementById('jobHistorySelect');
+  if (!select) return;
+  const button = document.getElementById('btnLoadHistoryJob');
   setHistoryListBusy(true);
   const cases = await getRecentProjects();
   recentCasesCache = cases;
+  const previousValue = select.value;
   select.innerHTML = '';
   renderHistoryList(cases);
 
@@ -1237,15 +1333,9 @@ async function populateRecentCases() {
     option.selected = true;
     select.appendChild(option);
     if (button) button.disabled = true;
+    renderJobHistorySummary(null);
     return;
   }
-
-  const placeholder = document.createElement('option');
-  placeholder.value = '';
-  placeholder.textContent = 'Vælg gemt sag';
-  placeholder.disabled = true;
-  placeholder.selected = true;
-  select.appendChild(placeholder);
 
   cases.forEach(entry => {
     const option = document.createElement('option');
@@ -1258,7 +1348,12 @@ async function populateRecentCases() {
     select.appendChild(option);
   });
 
-  if (button) button.disabled = true;
+  const preferred = cases.find(entry => String(entry.id) === previousValue) || cases[0];
+  if (preferred) {
+    select.value = String(preferred.id);
+  }
+  if (button) button.disabled = !(select.value);
+  updateHistorySummaryFromSelect();
 }
 
 function collectExtrasState() {
@@ -1291,6 +1386,19 @@ function collectProjectSnapshot() {
   const labor = Array.isArray(laborEntries)
     ? laborEntries.map(entry => ({ ...entry }))
     : [];
+  const totals = {
+    materialSum: lastMaterialSum,
+    laborSum: lastLoensum,
+  };
+  if (lastJobSummary) {
+    totals.timer = lastJobSummary.totalHours;
+    totals.hourlyBase = lastJobSummary.hourlyBase;
+    totals.hourlyUdd1 = lastJobSummary.hourlyUdd1;
+    totals.hourlyUdd2 = lastJobSummary.hourlyUdd2;
+    totals.hourlyUdd2Mentor = lastJobSummary.hourlyUdd2Mentor;
+    totals.mentorRate = lastJobSummary.mentorRate;
+  }
+
   return {
     timestamp: Date.now(),
     sagsinfo: collectSagsinfo(),
@@ -1298,10 +1406,7 @@ function collectProjectSnapshot() {
     materials,
     labor,
     extras: collectExtrasState(),
-    totals: {
-      materialSum: lastMaterialSum,
-      laborSum: lastLoensum,
-    },
+    totals,
   };
 }
 
@@ -1425,7 +1530,7 @@ function applyProjectSnapshot(snapshot, options = {}) {
 }
 
 async function handleLoadCase() {
-  const select = document.getElementById('recentCases');
+  const select = document.getElementById('jobHistorySelect');
   if (!select) return;
   const value = Number(select.value);
   if (!Number.isFinite(value) || value <= 0) return;
@@ -1438,6 +1543,7 @@ async function handleLoadCase() {
   }
   if (record && record.data) {
     applyProjectSnapshot(record.data, { skipHint: false });
+    renderJobHistorySummary(record);
   } else {
     updateActionHint('Kunne ikke indlæse den valgte sag.', 'error');
   }
@@ -2201,6 +2307,7 @@ function beregnLon() {
   const workers = document.querySelectorAll('.worker-row');
 
   lastEkompletData = null;
+  lastJobSummary = null;
 
   const tralleState = computeTraelleTotals();
   const traelleSum = tralleState && Number.isFinite(tralleState.sum) ? tralleState.sum : 0;
@@ -2279,6 +2386,7 @@ function beregnLon() {
       resultatDiv.appendChild(message);
     }
     laborEntries = [];
+    lastJobSummary = null;
     return;
   }
 
@@ -2348,6 +2456,17 @@ function beregnLon() {
     ...totalsBaseInput,
     workers: workersForTotals,
   });
+
+  const safeBaseHourly = Number.isFinite(totals.timeprisUdenTillaeg) ? totals.timeprisUdenTillaeg : 0;
+  const hasBaseHourly = safeBaseHourly > 0;
+  lastJobSummary = {
+    totalHours: samletTimer,
+    hourlyBase: hasBaseHourly ? safeBaseHourly : 0,
+    hourlyUdd1: hasBaseHourly ? safeBaseHourly + TILLAEG_UDD1 : 0,
+    hourlyUdd2: hasBaseHourly ? safeBaseHourly + TILLAEG_UDD2 : 0,
+    hourlyUdd2Mentor: hasBaseHourly ? safeBaseHourly + TILLAEG_UDD2 + DEFAULT_MENTOR_RATE : 0,
+    mentorRate: DEFAULT_MENTOR_RATE,
+  };
 
   const samletUdbetalt = totals.montoerLonMedTillaeg;
   const materialSumInfo = totals.materialer + totals.slaeb;
@@ -3460,16 +3579,18 @@ function initApp() {
 
   document.getElementById('btnAddWorker')?.addEventListener('click', () => addWorker());
 
-  const recentSelect = document.getElementById('recentCases');
-  if (recentSelect) {
-    recentSelect.addEventListener('change', event => {
-      const loadBtn = document.getElementById('btnLoadCase');
+  const historySelect = document.getElementById('jobHistorySelect');
+  if (historySelect) {
+    historySelect.addEventListener('change', event => {
+      updateHistorySummaryFromSelect();
+      const hasValue = Boolean(event?.target?.value);
+      const loadBtn = document.getElementById('btnLoadHistoryJob');
       if (loadBtn) {
-        loadBtn.disabled = !(event.target.value);
+        loadBtn.disabled = !hasValue;
       }
     });
   }
-  document.getElementById('btnLoadCase')?.addEventListener('click', () => handleLoadCase());
+  document.getElementById('btnLoadHistoryJob')?.addEventListener('click', () => handleLoadCase());
 
   ['traelleloeft35', 'traelleloeft50'].forEach(id => {
     const input = document.getElementById(id);
