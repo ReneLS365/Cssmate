@@ -32,51 +32,56 @@
     <header data-allow-click>
       <div class=bar>
         <h1 class=ttl>akkordseddel</h1>
-        <nav class="tabs" role="tablist" aria-label="Akkordseddel faner">
-          <button
-            id="tab-sagsinfo"
-            class="tab-button"
-            type="button"
-            role="tab"
-            aria-controls="panel-sagsinfo"
-            aria-selected="true"
-            data-tab-target="panel-sagsinfo"
-          >
-            Sagsinfo
-          </button>
-          <button
-            id="tab-optaelling"
-            class="tab-button"
-            type="button"
-            role="tab"
-            aria-controls="panel-optaelling"
-            aria-selected="false"
-            data-tab-target="panel-optaelling"
-          >
-            Optælling
-          </button>
-          <button
-            id="tab-loen"
-            class="tab-button"
-            type="button"
-            role="tab"
-            aria-controls="panel-loen"
-            aria-selected="false"
-            data-tab-target="panel-loen"
-          >
-            Løn
-          </button>
+        <nav class="tabs" role="tablist" aria-label="Cssmate sektioner">
+          <button id="tab-job" class="tab tab--compact" type="button" role="tab" data-tab-id="job" aria-controls="panel-job" aria-selected="false">Job</button>
+          <button id="tab-sagsinfo" class="tab tab--active" type="button" role="tab" data-tab-id="sagsinfo" aria-controls="panel-sagsinfo" aria-selected="true">Sagsinfo</button>
+          <button id="tab-optaelling" class="tab" type="button" role="tab" data-tab-id="optaelling" aria-controls="panel-optaelling" aria-selected="false">Optælling</button>
+          <button id="tab-loen" class="tab" type="button" role="tab" data-tab-id="loen" aria-controls="panel-loen" aria-selected="false">Løn</button>
+          <button id="tab-historik" class="tab" type="button" role="tab" data-tab-id="historik" aria-controls="panel-historik" aria-selected="false">Historik</button>
+          <button id="tab-hjaelp" class="tab" type="button" role="tab" data-tab-id="hjaelp" aria-controls="panel-hjaelp" aria-selected="false">Hjælp</button>
         </nav>
       </div>
     </header>
     <div class=app-content>
       <div class=materials-scroll>
         <main id=main>
+          <div class="tab-panels" data-tab-panels>
   <section
-    id="panel-sagsinfo"
+    id="panel-job"
     class="sektion tab-panel"
     role="tabpanel"
+    data-tab-panel="job"
+    aria-labelledby="tab-job"
+    aria-hidden="true"
+    hidden
+  >
+    <fieldset class=no-print>
+      <legend>Aktive sager</legend>
+      <div class="job-panel-grid">
+        <label for=recentCases>
+          <span>Vælg seneste sag</span>
+          <select id=recentCases name=recentCases>
+            <option value="" selected>Indlæser sager…</option>
+          </select>
+        </label>
+        <div class="job-panel-actions">
+          <button id=btnLoadCase type=button disabled>Indlæs sag</button>
+        </div>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Status</legend>
+      <p class=hint>Udfyld Sagsinfo og Optælling for at aktivere eksport.</p>
+    </fieldset>
+  </section>
+
+  <section
+    id="panel-sagsinfo"
+    class="sektion tab-panel tab-panel--active"
+    role="tabpanel"
+    data-tab-panel="sagsinfo"
     aria-labelledby="tab-sagsinfo"
+    aria-hidden="false"
   >
     <fieldset>
       <legend>Stamdata</legend>
@@ -119,7 +124,9 @@
     id="panel-optaelling"
     class="sektion tab-panel"
     role="tabpanel"
+    data-tab-panel="optaelling"
     aria-labelledby="tab-optaelling"
+    aria-hidden="true"
     hidden
   >
     <fieldset>
@@ -164,7 +171,9 @@
     id="panel-loen"
     class="sektion tab-panel"
     role="tabpanel"
+    data-tab-panel="loen"
     aria-labelledby="tab-loen"
+    aria-hidden="true"
     hidden
   >
     <fieldset class=no-print data-allow-click>
@@ -255,6 +264,24 @@
       <button id=btnBeregnLon type=button>Beregn løn</button>
       <button id=btnPrint type=button disabled>Print</button>
     </div>
+    <fieldset class="no-print export-panel">
+      <legend>Eksport & deling</legend>
+      <div class="export-actions" role="group" aria-label="Eksport muligheder">
+        <button id=btnExportCSV type=button>CSV</button>
+        <button id=btnExportAll type=button>JSON</button>
+        <button id=btnExportZip type=button>ZIP</button>
+        <button id=btnExportEkomplet type=button>E-komplet</button>
+      </div>
+      <label for=akkordExcelSystem class=export-select-label>
+        <span>Excel 25-ark</span>
+        <select id=akkordExcelSystem name=akkordExcelSystem>
+          <option value=bosta>BOSTA 2025</option>
+          <option value=haki>HAKI 2025</option>
+          <option value=modex>MODEX 2025</option>
+        </select>
+      </label>
+      <p id=ekompletStatus class="status-message" hidden aria-live=polite></p>
+    </fieldset>
     <fieldset>
       <legend>Resultat</legend>
       <div id=lonResult></div>
@@ -268,7 +295,54 @@
       </div>
     </fieldset>
   </section>
+
+  <section
+    id="panel-historik"
+    class="sektion tab-panel"
+    role="tabpanel"
+    data-tab-panel="historik"
+    aria-labelledby="tab-historik"
+    aria-hidden="true"
+    hidden
+  >
+    <fieldset>
+      <legend>Seneste sager</legend>
+      <p>Vælg en sag under <strong>Job</strong> for at se detaljer. Historikken opdateres automatisk efter beregning.</p>
+      <ul class="history-list">
+        <li>Ingen historik endnu.</li>
+      </ul>
+    </fieldset>
+    <fieldset>
+      <legend>Log</legend>
+      <p class=hint>Åbn review-loggen i debug-mappen for fuld oversigt over ændringer.</p>
+    </fieldset>
+  </section>
+
+  <section
+    id="panel-hjaelp"
+    class="sektion tab-panel"
+    role="tabpanel"
+    data-tab-panel="hjaelp"
+    aria-labelledby="tab-hjaelp"
+    aria-hidden="true"
+    hidden
+  >
+    <fieldset>
+      <legend>Hurtig hjælp</legend>
+      <ol>
+        <li>Udfyld alle felter i <strong>Sagsinfo</strong>.</li>
+        <li>Vælg systemer og registrér materialer under <strong>Optælling</strong>.</li>
+        <li>Beregn og eksporter fra <strong>Løn</strong>.</li>
+      </ol>
+    </fieldset>
+    <fieldset>
+      <legend>Support</legend>
+      <p class=hint>Kontakt administratoren hvis data skal nulstilles eller hvis eksporten fejler.</p>
+    </fieldset>
+  </section>
+          </div>
         </main>
+
       </div>
     </div>
 
@@ -313,19 +387,19 @@
 
         <div class="numpad-grid">
           <button data-key="C" class="numpad-key numpad-key-func">C</button>
-          <button data-key="÷" class="numpad-key numpad-key-op">÷</button>
-          <button data-key="×" class="numpad-key numpad-key-op">×</button>
+          <button data-key="÷" class="numpad-key numpad-key-op numpad-key--op">÷</button>
+          <button data-key="×" class="numpad-key numpad-key-op numpad-key--op">×</button>
           <button data-key="BACK" class="numpad-key numpad-key-func">⌫</button>
 
           <button data-key="7" class="numpad-key">7</button>
           <button data-key="8" class="numpad-key">8</button>
           <button data-key="9" class="numpad-key">9</button>
-          <button data-key="-" class="numpad-key numpad-key-op">-</button>
+          <button data-key="-" class="numpad-key numpad-key-op numpad-key--op">-</button>
 
           <button data-key="4" class="numpad-key">4</button>
           <button data-key="5" class="numpad-key">5</button>
           <button data-key="6" class="numpad-key">6</button>
-          <button data-key="+" class="numpad-key numpad-key-op">+</button>
+          <button data-key="+" class="numpad-key numpad-key-op numpad-key--op">+</button>
 
           <button data-key="1" class="numpad-key">1</button>
           <button data-key="2" class="numpad-key">2</button>

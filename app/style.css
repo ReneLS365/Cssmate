@@ -16,6 +16,8 @@
   --pad:12px;
   --materials-grid-desktop:2fr minmax(64px,0.9fr) minmax(72px,1fr) minmax(72px,1fr);
   --materials-grid-mobile:1.4fr minmax(56px,0.8fr) minmax(64px,0.9fr) minmax(64px,0.9fr);
+  --header-height:56px;
+  --tab-bar-height:52px;
 }
 :focus-visible{outline:2px solid currentColor;outline-offset:2px}
 .skip-to-content{position:absolute;left:-9999px;top:0;background:var(--panel);color:var(--text);padding:8px 14px;border-radius:10px;z-index:1000;box-shadow:0 12px 30px rgba(0,0,0,0.4)}
@@ -39,7 +41,7 @@ html,body{margin:0;height:100%;width:100%;max-width:100vw;overflow-x:hidden;back
 }
 .app-shell{height:100dvh;height:var(--app-vh,100dvh);display:flex;flex-direction:column}
 .app-content{flex:1 1 auto;min-height:0;overflow:hidden}
-.materials-scroll{height:100%;overflow-y:auto;overscroll-behavior:contain;padding-bottom:0!important;-webkit-overflow-scrolling:touch}
+.materials-scroll{height:100%;overflow:hidden;display:flex;flex-direction:column;overscroll-behavior:contain;padding-bottom:0!important}
 .materials-scroll>:last-child{margin-bottom:0!important}
 :root.np-open,
 :root.np-open body{
@@ -50,16 +52,19 @@ html,body{margin:0;height:100%;width:100%;max-width:100vw;overflow-x:hidden;back
   .app-shell{height:var(--app-vh,100vh)}
 }
 header{position:sticky;top:0;background:var(--elev);border-bottom:1px solid var(--border);z-index:5}
-header .bar{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px 10px;min-height:40px}
+header .bar{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px 10px;min-height:var(--header-height)}
 header .ttl{font-weight:700}
-nav{display:flex;gap:6px;flex-wrap:wrap;padding:4px 0}
-nav button{background:#34353b;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:6px 12px;min-height:36px;font-size:0.95rem;line-height:1.2}
-.tab-panel[hidden]{display:none!important}
-.tab-button[aria-selected="true"]{outline:none}
-.tab-button.tab-active{outline:2px solid var(--accent)}
+.tabs{display:flex;gap:0.25rem;overflow-x:auto;padding:0.25rem 0.5rem;-webkit-overflow-scrolling:touch;scroll-snap-type:x mandatory;scrollbar-width:thin}
+.tabs::-webkit-scrollbar{height:4px}
+.tab{flex:0 0 auto;scroll-snap-align:start;min-width:5.5rem;padding:0.4rem 0.6rem;font-size:0.85rem;border-radius:0.5rem;border:none;background:var(--panel);color:var(--text);font-weight:500}
+.tab--compact{min-width:4.5rem}
+.tab--active{background:var(--accent);color:#0b1623;font-weight:600}
+.tab-panel{display:none}
+.tab-panel.tab-panel--active{display:flex;flex-direction:column;gap:var(--gap)}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .material-row input:focus-visible,.csm-row input:focus-visible{outline:2px solid var(--accent)}
-main{padding:var(--pad);display:flex;flex-direction:column;gap:var(--gap)}
+main{display:flex;flex-direction:column;gap:var(--gap);height:100%;max-width:700px;margin:0 auto;padding:0}
+.tab-panels{flex:1 1 auto;min-height:0;height:calc(100dvh - (var(--header-height,56px) + var(--tab-bar-height,52px)));overflow-y:auto;padding:0.75rem 1rem 1.5rem;width:100%;max-width:700px;margin:0 auto}
 fieldset{border:1px solid var(--border);background:var(--panel);border-radius:12px;margin:0;padding:var(--pad)}
 legend{color:var(--muted);padding:0 6px}
 label{display:flex;flex-direction:column;gap:6px;font-size:0.95rem}
@@ -78,6 +83,15 @@ button{cursor:pointer}
 .sektion.active{display:flex!important;}
 .row{display:flex;gap:8px;flex-wrap:wrap}
 .btn-group{display:flex;gap:8px;flex-wrap:wrap}
+.job-panel-grid{display:flex;flex-direction:column;gap:var(--gap)}
+.job-panel-actions{display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.5rem}
+.job-panel-actions button{flex:1 1 auto}
+.export-panel{gap:0.75rem}
+.export-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:0.5rem}
+.export-actions button{padding:0.4rem 0.5rem;font-size:0.85rem;border-radius:0.75rem;background:var(--panel-soft);border:1px solid var(--border)}
+.export-select-label{display:flex;flex-direction:column;gap:0.35rem;font-size:0.9rem}
+.export-select-label select{min-height:40px}
+.history-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.35rem;color:var(--muted);font-size:0.9rem}
 .grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--gap)}
 .grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--gap)}
 .form-grid{padding:var(--pad);background:var(--panel);border-radius:12px}
@@ -192,8 +206,6 @@ button{cursor:pointer}
 .status-message{margin:6px 0 0;font-size:0.85rem}
 .status-message.success{color:#8adbae}
 .status-message.error{color:#ff9b9b}
-.akkord-excel-controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
-.akkord-excel-controls select{min-width:160px}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;padding:24px;z-index:999}
 .modal.open{display:flex}
 .modal[hidden]{display:none!important}
@@ -209,13 +221,14 @@ button{cursor:pointer}
   .worker-grid{grid-template-columns:1fr}
   .totals{grid-template-columns:1fr}
   .btn-group{flex-direction:column}
-  nav button{padding:6px 12px;min-height:38px}
+  .tabs .tab{padding:6px 12px;min-height:38px}
   .system-selector-options{gap:8px}
   .system-option{flex:1 1 calc(50% - 8px);justify-content:flex-start}
+  .tab-panels{padding:0.5rem 0.75rem 1rem}
 }
 @media (max-width:480px){
   body{font-size:15px}
-  nav button{flex:1 1 auto;width:100%;padding:6px 10px;min-height:36px}
+  .tabs .tab{flex:1 1 auto;width:auto;padding:6px 10px;min-height:36px}
   .material-row label{font-size:0.9rem}
   .material-row .system-badge{margin-left:6px;font-size:0.65rem}
   .system-option{flex:1 1 100%}

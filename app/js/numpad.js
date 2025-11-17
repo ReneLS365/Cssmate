@@ -40,17 +40,17 @@ function initNumpad () {
 
     // Klik på mørk baggrund lukker uden commit
     if (e.target === overlay) {
-      hideNumpad(false)
+      hideNumpad({ commit: false })
     }
   })
 
-  commitBtn.addEventListener('click', () => hideNumpad(true))
-  closeBtn.addEventListener('click', () => hideNumpad(false))
+  commitBtn.addEventListener('click', () => hideNumpad({ commit: true }))
+  closeBtn.addEventListener('click', () => hideNumpad({ commit: false }))
 
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape' && isNumpadOpen()) {
       event.preventDefault()
-      hideNumpad(false)
+      hideNumpad({ commit: false })
     }
   })
 
@@ -147,8 +147,8 @@ function observeNumpadInputs () {
 function showNumpadForInput (input) {
   if (!overlay) return
 
-  lastFocusedInput = document.activeElement instanceof HTMLElement ? document.activeElement : null
   activeInput = input instanceof HTMLInputElement ? input : null
+  lastFocusedInput = activeInput
 
   const inputValue = activeInput && typeof activeInput.value === 'string' ? activeInput.value : ''
   const initial = normalizeFromField(inputValue)
@@ -167,7 +167,7 @@ function showNumpadForInput (input) {
   }
 }
 
-function hideNumpad (commit) {
+function hideNumpad ({ commit = false } = {}) {
   if (!overlay) return
 
   const focusTarget = lastFocusedInput
@@ -181,6 +181,9 @@ function hideNumpad (commit) {
     // Fyr normalt input-event så eksisterende logik (materialer/løn osv.) kører
     const inputEvent = new Event('input', { bubbles: true })
     activeInput.dispatchEvent(inputEvent)
+
+    const changeEvent = new Event('change', { bubbles: true })
+    activeInput.dispatchEvent(changeEvent)
 
     // Ekstra event hvis man vil fange det specifikt
     const customEvent = new CustomEvent('numpad-commit', {
@@ -199,7 +202,7 @@ function hideNumpad (commit) {
   if (document?.documentElement) {
     document.documentElement.classList.remove('np-open')
   }
-  if (focusTarget && typeof focusTarget.focus === 'function') {
+  if (focusTarget && document.contains(focusTarget) && typeof focusTarget.focus === 'function') {
     focusTarget.focus()
   }
   lastFocusedInput = null

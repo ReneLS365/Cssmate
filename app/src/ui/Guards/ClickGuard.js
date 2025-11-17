@@ -10,6 +10,7 @@ function shouldBypass (target) {
 
 export function initClickGuard () {
   if (typeof document === 'undefined') return
+  if (!document.querySelector(ADMIN_GUARD_SELECTOR)) return
 
   const blockEvent = event => {
     const target = event.target
