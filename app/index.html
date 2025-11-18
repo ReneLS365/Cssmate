@@ -370,7 +370,7 @@
 
     <div id="numpad-overlay" class="numpad-hidden" aria-hidden="true" data-numpad-overlay>
       <div
-        class="numpad-panel"
+        class="numpad-panel numpad-container"
         role="dialog"
         aria-modal="true"
         aria-label="Numpad lommeregner"
@@ -388,19 +388,19 @@
 
         <div class="numpad-grid">
           <button data-key="C" class="numpad-key numpad-key-func">C</button>
-          <button data-key="÷" class="numpad-key numpad-key-op numpad-key--op">÷</button>
-          <button data-key="×" class="numpad-key numpad-key-op numpad-key--op">×</button>
+          <button data-key="÷" class="numpad-key numpad-key-op numpad-key--op numpad-operator">÷</button>
+          <button data-key="×" class="numpad-key numpad-key-op numpad-key--op numpad-operator">×</button>
           <button data-key="BACK" class="numpad-key numpad-key-func">⌫</button>
 
           <button data-key="7" class="numpad-key">7</button>
           <button data-key="8" class="numpad-key">8</button>
           <button data-key="9" class="numpad-key">9</button>
-          <button data-key="-" class="numpad-key numpad-key-op numpad-key--op">-</button>
+          <button data-key="-" class="numpad-key numpad-key-op numpad-key--op numpad-operator">-</button>
 
           <button data-key="4" class="numpad-key">4</button>
           <button data-key="5" class="numpad-key">5</button>
           <button data-key="6" class="numpad-key">6</button>
-          <button data-key="+" class="numpad-key numpad-key-op numpad-key--op">+</button>
+          <button data-key="+" class="numpad-key numpad-key-op numpad-key--op numpad-operator">+</button>
 
           <button data-key="1" class="numpad-key">1</button>
           <button data-key="2" class="numpad-key">2</button>
@@ -409,7 +409,7 @@
 
           <button data-key="%" class="numpad-key numpad-key-func">%</button>
           <button data-key="0" class="numpad-key">0</button>
-          <button data-key="," class="numpad-key numpad-key-op">,</button>
+          <button data-key="," class="numpad-key numpad-key-op numpad-operator">,</button>
         </div>
 
         <button type="button" class="numpad-commit" id="numpad-btn-commit">✓</button>

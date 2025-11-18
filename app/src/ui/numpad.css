@@ -1,1 +1,18 @@
-/* Empty placeholder to satisfy import of src/ui/numpad.css */
+.numpad-container {
+  padding: 0.35rem;
+}
+
+.numpad-key,
+.numpad-commit,
+.numpad-operator {
+  min-width: 20vw;
+  min-height: 54px;
+  font-size: 1.3rem;
+  padding: 0.75rem;
+}
+
+.numpad-key:active,
+.numpad-operator:active,
+.numpad-commit:active {
+  transform: scale(0.92);
+}
