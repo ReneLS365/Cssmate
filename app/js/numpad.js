@@ -14,6 +14,7 @@ const boundInputs = new WeakSet()
 let lastFocusedInput = null
 let baseValue = 0
 let activeOperator = null
+let expressionParts = []
 let suppressNextFocus = false
 
 function isNumpadOpen () {
@@ -166,6 +167,7 @@ function showNumpadForInput (input) {
   if (baseValue === null) baseValue = 0
   expression = ''
   activeOperator = null
+  expressionParts = []
 
   updateDisplays()
 
@@ -235,6 +237,7 @@ function handleCommitClick () {
   baseValue = numericResult
   activeOperator = null
   expression = ''
+  expressionParts = []
 
   updateDisplays()
   hideNumpad({ commit: true })
@@ -249,6 +252,7 @@ function handleKey (key) {
       expression = ''
       baseValue = 0
       activeOperator = null
+      expressionParts = []
       break
     case 'BACK':
       if (currentValue.length > 1) {
@@ -294,22 +298,17 @@ function handleKey (key) {
 }
 
 function handleOperatorInput (op) {
-  const hasOperator = Boolean(activeOperator)
   const operand = parseNumericValue(currentValue)
 
-  if (hasOperator && operand !== null) {
-    const interim = evaluatePendingExpression()
-    if (interim !== null && interim !== undefined) {
-      baseValue = interim
-      currentValue = ''
-    }
-  } else if (!hasOperator && operand !== null) {
-    baseValue = operand
+  if (operand !== null) {
+    upsertOperandInExpression(operand)
     currentValue = ''
-  } else if (!hasOperator && operand === null) {
-    currentValue = ''
+  } else if (expressionParts.length === 0) {
+    upsertOperandInExpression(Number.isFinite(baseValue) ? baseValue : 0)
   }
 
+  appendOrReplaceOperator(op)
+  baseValue = evaluateExpressionParts(buildEvaluationSequence())
   activeOperator = op
 }
 
@@ -321,31 +320,14 @@ function applyPendingExpression () {
   baseValue = result
   activeOperator = null
   expression = ''
+  expressionParts = []
 }
 
 function evaluatePendingExpression () {
-  const base = Number.isFinite(baseValue) ? baseValue : 0
-  const operand = parseNumericValue(currentValue)
+  const sequence = buildEvaluationSequence()
+  if (!sequence.length) return null
 
-  if (!activeOperator) {
-    return operand !== null ? operand : base
-  }
-  if (operand === null) {
-    return base
-  }
-
-  switch (activeOperator) {
-    case '+':
-      return base + operand
-    case '-':
-      return base - operand
-    case '×':
-      return base * operand
-    case '÷':
-      return operand === 0 ? base : base / operand
-    default:
-      return base
-  }
+  return evaluateExpressionParts(sequence)
 }
 
 /* Display */
@@ -358,12 +340,105 @@ function updateDisplays () {
 }
 
 function getExpressionText () {
-  if (!activeOperator) return ''
-  const baseDisplay = formatNumber(baseValue)
-  if (currentValue === '') {
-    return `${baseDisplay} ${activeOperator}`
+  if (!expressionParts.length && !activeOperator) return ''
+
+  const parts = expressionParts.map(part => {
+    if (typeof part === 'string') return part
+    return formatNumber(part)
+  })
+  const lastOriginal = expressionParts[expressionParts.length - 1]
+
+  const operand = currentValue === '' ? null : formatNumber(currentValue)
+  if (operand !== null && typeof lastOriginal === 'string') {
+    parts.push(operand)
+  } else if (operand !== null && !parts.length) {
+    return ''
+  } else if (operand === null && typeof lastOriginal === 'string') {
+    parts.pop()
   }
-  return `${baseDisplay} ${activeOperator} ${formatNumber(currentValue)}`
+
+  return parts.join(' ')
+}
+
+function upsertOperandInExpression (value) {
+  if (expressionParts.length === 0) {
+    expressionParts.push(value)
+    return
+  }
+
+  const lastIndex = expressionParts.length - 1
+  if (typeof expressionParts[lastIndex] === 'string') {
+    expressionParts.push(value)
+  } else {
+    expressionParts[lastIndex] = value
+  }
+}
+
+function appendOrReplaceOperator (operator) {
+  if (expressionParts.length === 0) {
+    expressionParts.push(0)
+  }
+
+  const lastIndex = expressionParts.length - 1
+  if (typeof expressionParts[lastIndex] === 'string') {
+    expressionParts[lastIndex] = operator
+  } else {
+    expressionParts.push(operator)
+  }
+}
+
+function buildEvaluationSequence () {
+  const sequence = expressionParts.slice()
+  const operand = parseNumericValue(currentValue)
+
+  if (operand !== null) {
+    if (!sequence.length) {
+      sequence.push(operand)
+    } else if (typeof sequence[sequence.length - 1] === 'string') {
+      sequence.push(operand)
+    } else {
+      sequence[sequence.length - 1] = operand
+    }
+  }
+
+  if (typeof sequence[sequence.length - 1] === 'string') {
+    sequence.pop()
+  }
+
+  return sequence
+}
+
+function evaluateExpressionParts (parts) {
+  if (!parts.length) return 0
+
+  const working = parts.slice()
+
+  for (let i = 0; i < working.length; i++) {
+    const token = working[i]
+    if (token === '×' || token === '÷') {
+      const left = Number(working[i - 1] ?? 0)
+      const right = Number(working[i + 1] ?? 0)
+      const replacement = token === '×'
+        ? left * right
+        : (right === 0 ? left : left / right)
+
+      working.splice(i - 1, 3, replacement)
+      i -= 2
+    }
+  }
+
+  let result = Number(working[0]) || 0
+  for (let i = 1; i < working.length; i += 2) {
+    const operator = working[i]
+    const value = Number(working[i + 1] ?? 0)
+    if (operator === '+') {
+      result += value
+    } else if (operator === '-') {
+      result -= value
+    }
+  }
+
+  return result
 }
 
 function formatNumber (v) {
