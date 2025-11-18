@@ -1,5 +1,3 @@
-import { evaluateExpression } from './safe-eval.js'
-
 // js/numpad.js
 // Globalt numpad + simpel lommeregner til alle talfelter
 
@@ -14,6 +12,9 @@ let mutationObserver = null
 let pendingBind = false
 const boundInputs = new WeakSet()
 let lastFocusedInput = null
+let baseValue = 0
+let activeOperator = null
+let suppressNextFocus = false
 
 function isNumpadOpen () {
   return Boolean(overlay && !overlay.classList.contains('numpad-hidden'))
@@ -65,6 +66,10 @@ function initNumpad () {
 function handleNumpadFocus (event) {
   const input = event.currentTarget
   if (!(input instanceof HTMLInputElement)) return
+  if (suppressNextFocus) {
+    suppressNextFocus = false
+    return
+  }
 
   const rawValue = (input.value || '').trim()
   const isZeroLike = rawValue === '' || rawValue === '0' || rawValue === '0,0' || rawValue === '0,00'
@@ -157,7 +162,10 @@ function showNumpadForInput (input) {
   const inputValue = activeInput && typeof activeInput.value === 'string' ? activeInput.value : ''
   const initial = normalizeFromField(inputValue)
   currentValue = initial === '' ? '0' : initial
+  baseValue = parseNumericValue(currentValue)
+  if (baseValue === null) baseValue = 0
   expression = ''
+  activeOperator = null
 
   updateDisplays()
 
@@ -207,13 +215,28 @@ function hideNumpad ({ commit = false } = {}) {
     document.documentElement.classList.remove('np-open')
   }
   if (focusTarget && document.contains(focusTarget) && typeof focusTarget.focus === 'function') {
+    suppressNextFocus = true
     focusTarget.focus()
+    setTimeout(() => {
+      suppressNextFocus = false
+    }, 0)
+  } else {
+    suppressNextFocus = false
   }
   lastFocusedInput = null
 }
 
 function handleCommitClick () {
-  commitCurrentExpression()
+  const resolved = evaluatePendingExpression()
+  const fallback = parseNumericValue(currentValue)
+  const numericResult = resolved ?? fallback ?? baseValue ?? 0
+
+  currentValue = String(numericResult)
+  baseValue = numericResult
+  activeOperator = null
+  expression = ''
+
+  updateDisplays()
   hideNumpad({ commit: true })
 }
 
@@ -224,18 +247,24 @@ function handleKey (key) {
     case 'C':
       currentValue = '0'
       expression = ''
+      baseValue = 0
+      activeOperator = null
       break
     case 'BACK':
       if (currentValue.length > 1) {
         currentValue = currentValue.slice(0, -1)
+      } else if (currentValue.length === 1) {
+        currentValue = activeOperator ? '' : '0'
       } else {
-        currentValue = '0'
+        currentValue = ''
       }
       break
     case '%': {
-      const base = parseFloat(currentValue || '0')
-      if (Number.isFinite(base)) {
-        currentValue = String(base / 100)
+      const numeric = parseNumericValue(currentValue)
+      if (numeric !== null) {
+        currentValue = String(numeric / 100)
+      } else {
+        currentValue = '0'
       }
       break
     }
@@ -243,11 +272,10 @@ function handleKey (key) {
     case '-':
     case '×':
     case '÷':
-      addCurrentToExpression(key)
-      currentValue = '0'
+      handleOperatorInput(key)
       break
     case '=':
-      computeExpression()
+      applyPendingExpression()
       break
     case ',':
       if (!currentValue.includes('.')) {
@@ -265,51 +293,77 @@ function handleKey (key) {
   updateDisplays()
 }
 
-function addCurrentToExpression (op) {
-  const val = currentValue === '' ? '0' : currentValue
-  if (!expression) {
-    expression = val + ' ' + op + ' '
-  } else {
-    expression = expression + val + ' ' + op + ' '
-  }
-}
+function handleOperatorInput (op) {
+  const hasOperator = Boolean(activeOperator)
+  const operand = parseNumericValue(currentValue)
 
-function computeExpression () {
-  const expr = (expression + (currentValue || '0')).trim()
-  if (!expr) return
-
-  try {
-    const result = evaluateExpression(expr)
-    if (!Number.isFinite(result)) {
-      throw new Error('Expression result is not finite')
+  if (hasOperator && operand !== null) {
+    const interim = evaluatePendingExpression()
+    if (interim !== null && interim !== undefined) {
+      baseValue = interim
+      currentValue = ''
     }
-    currentValue = String(result)
-    expression = ''
-  } catch (error) {
-    console.warn('Invalid expression in numpad:', error)
+  } else if (!hasOperator && operand !== null) {
+    baseValue = operand
+    currentValue = ''
+  } else if (!hasOperator && operand === null) {
+    currentValue = ''
   }
+
+  activeOperator = op
 }
 
-function commitCurrentExpression () {
-  if (expression && expression.trim()) {
-    computeExpression()
-  } else {
-    expression = ''
+function applyPendingExpression () {
+  const result = evaluatePendingExpression()
+  if (result === null || result === undefined) return
+
+  currentValue = String(result)
+  baseValue = result
+  activeOperator = null
+  expression = ''
+}
+
+function evaluatePendingExpression () {
+  const base = Number.isFinite(baseValue) ? baseValue : 0
+  const operand = parseNumericValue(currentValue)
+
+  if (!activeOperator) {
+    return operand !== null ? operand : base
+  }
+  if (operand === null) {
+    return base
   }
 
-  if (!currentValue || currentValue === '') {
-    currentValue = '0'
+  switch (activeOperator) {
+    case '+':
+      return base + operand
+    case '-':
+      return base - operand
+    case '×':
+      return base * operand
+    case '÷':
+      return operand === 0 ? base : base / operand
+    default:
+      return base
   }
-
-  updateDisplays()
 }
 
 /* Display */
 
 function updateDisplays () {
   if (!displayCurrent || !displayExpr) return
-  displayExpr.textContent = expression.replace(/\./g, ',')
+  expression = getExpressionText()
+  displayExpr.textContent = expression
   displayCurrent.textContent = formatNumber(currentValue)
+}
+
+function getExpressionText () {
+  if (!activeOperator) return ''
+  const baseDisplay = formatNumber(baseValue)
+  if (currentValue === '') {
+    return `${baseDisplay} ${activeOperator}`
+  }
+  return `${baseDisplay} ${activeOperator} ${formatNumber(currentValue)}`
 }
 
 function formatNumber (v) {
@@ -318,6 +372,16 @@ function formatNumber (v) {
   if (!Number.isFinite(n)) return '0'
   // simpelt dansk-komma format
   return String(n).replace('.', ',')
+}
+
+function parseNumericValue (value) {
+  if (value === null || value === undefined) return null
+  const normalized = String(value).trim().replace(/,/g, '.').replace(/\s+/g, '')
+  if (!normalized || normalized === '.' || normalized === '-' || normalized === '+') {
+    return null
+  }
+  const numeric = Number(normalized)
+  return Number.isFinite(numeric) ? numeric : null
 }
 
 function normalizeFromField (v) {
