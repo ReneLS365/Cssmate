@@ -328,17 +328,19 @@ export function getJobsForAkkordExport(options = { mode: 'current' }) {
 
 function buildAkkordPageHtml(job, index) {
   const systemLabel = job.system || 'Ukendt system'
+
   const linesHtml = (job.lines || []).map((line, i) => {
-    const qty = Number(line.qty ?? line.quantity ?? 0)
-    const unit = line.unit || 'stk'
-    const name = line.name || ''
-    const price = Number(line.price ?? 0)
+    const qty   = Number(line.qty || line.amount || 0)
+    const unit  = line.unit || 'stk'
+    const name  = line.name || line.title || ''
+    const price = Number(line.price || 0)
     const lineTotal = qty * price
-    const system = line.system || ''
+    const system = line.system || job.system || ''
+
     return `
       <tr>
         <td>${i + 1}</td>
-        <td class="tal">${qty.toLocaleString('da-DK')}</td>
+        <td class="tal">${qty}</td>
         <td>${unit}</td>
         <td>${name}</td>
         <td class="tal">${price.toFixed(2)}</td>
@@ -348,11 +350,48 @@ function buildAkkordPageHtml(job, index) {
     `
   }).join('')
 
-  const materialsSum = job.totals?.materialsSum ?? (job.lines || []).reduce((sum, line) => {
-    const q = Number(line.qty ?? 0)
-    const p = Number(line.price ?? 0)
-    return sum + (Number.isFinite(q * p) ? q * p : 0)
-  }, 0)
+  const alloc = job.akkordAlloc || {}
+  const isPrimary = !!alloc.isPrimary
+
+  // Lokale materialer
+  const localMaterials = typeof alloc.materials === 'number'
+    ? alloc.materials
+    : (job.totals && typeof job.totals.materialsSum === 'number'
+       ? job.totals.materialsSum
+       : (job.lines || []).reduce((sum, line) => {
+           const q = Number(line.qty || line.amount || 0)
+           const p = Number(line.price || 0)
+           return sum + q * p
+         }, 0))
+
+  // Global samlet materialesum (kun relevant for primær)
+  const materialsGlobal = Number(alloc.materialsGlobal ?? 0)
+
+  const extrasAllocated = Number(alloc.extrasAllocated ?? 0)
+  const hoursAllocated  = Number(alloc.hoursAllocated ?? 0)
+  const akkordTotal     = typeof alloc.akkordTotal === 'number'
+    ? alloc.akkordTotal
+    : (localMaterials + extrasAllocated)
+
+  const hourlyRate = Number(alloc.hourlyRate ?? 0)
+  const sharePct   = alloc.share ? (alloc.share * 100) : 0
+
+  // Tekster til footer
+  const globalMatLine = isPrimary && materialsGlobal
+    ? `<p><strong>Samlet materialesum (alle sedler):</strong> ${materialsGlobal.toFixed(2)} kr.</p>`
+    : ''
+
+  const extrasLine = isPrimary
+    ? `<p><strong>Slæb/tillæg/km/ekstra (samlet):</strong> ${extrasAllocated.toFixed(2)} kr.</p>`
+    : `<p><strong>Slæb/tillæg/km/ekstra:</strong> (samlet på primær seddel)</p>`
+
+  const hoursLine = isPrimary
+    ? `<p><strong>Timer i alt:</strong> ${hoursAllocated.toFixed(2)} t</p>`
+    : `<p><strong>Timer:</strong> (samlet på primær seddel)</p>`
+
+  const hourlyLine = isPrimary && hourlyRate
+    ? `<p><strong>Timeløn (akkord):</strong> ${hourlyRate.toFixed(2)} kr./t</p>`
+    : `<p><strong>Timeløn (akkord):</strong> __________</p>`
 
   return `
     <section class="akkord-page">
@@ -389,13 +428,15 @@ function buildAkkordPageHtml(job, index) {
 
       <div class="akkord-footer">
         <div class="akkord-sum">
-          <p><strong>Materialesum:</strong> ${materialsSum.toFixed(2)} kr.</p>
+          <p><strong>Materialesum (denne seddel):</strong> ${localMaterials.toFixed(2)} kr.</p>
+          ${globalMatLine}
+          ${extrasLine}
+          <p><strong>Akkordsum for seddel:</strong> ${akkordTotal.toFixed(2)} kr.</p>
         </div>
         <div class="akkord-extra">
-          <p><strong>Tillæg (%):</strong> __________</p>
-          <p><strong>Km:</strong> __________</p>
-          <p><strong>Ekstra arbejde:</strong> __________</p>
-          <p><strong>Timer i alt:</strong> __________</p>
+          ${hoursLine}
+          ${hourlyLine}
+          <p><strong>Andel af materialesum:</strong> ${sharePct.toFixed(1)} %</p>
         </div>
       </div>
     </section>
@@ -407,31 +448,165 @@ export function computeGlobalAkkordTotals(jobs) {
     materialsSum: 0,
     extrasSum: 0,
     kmSum: 0,
+    otherExtraSum: 0,
     hoursSum: 0,
     totalAkkord: 0,
   }
 
-  return (jobs || []).reduce((acc, job) => {
-    const t = job?.totals || {}
-    acc.materialsSum += Number(t.materialsSum ?? 0)
-    acc.extrasSum += Number(t.extrasSum ?? 0)
-    acc.kmSum += Number(t.kmSum ?? 0)
-    acc.hoursSum += Number(t.hours ?? 0)
-    acc.totalAkkord += Number(t.totalAkkord ?? 0)
+  const totals = (jobs || []).reduce((acc, job) => {
+    const t = job.totals || {}
+
+    // Materialer
+    const materials = typeof t.materialsSum === 'number'
+      ? t.materialsSum
+      : (job.lines || []).reduce((sum, line) => {
+          const q = Number(line.qty || line.amount || 0)
+          const p = Number(line.price || 0)
+          return sum + q * p
+        }, 0)
+
+    acc.materialsSum += materials
+
+    // Tillæg, km, ekstra – brug eksisterende felter hvis de findes, ellers 0
+    acc.extrasSum     += Number(t.extrasSum ?? 0)      // generelle tillæg/procenter
+    acc.kmSum         += Number(t.kmSum ?? 0)          // km-beløb
+    acc.otherExtraSum += Number(t.otherExtraSum ?? 0)  // evt. “ekstra arbejde”
+
+    // Timer
+    acc.hoursSum      += Number(t.hours ?? t.totalHours ?? 0)
+
+    // Samlet akkordsum (hvis det allerede er udregnet et sted)
+    acc.totalAkkord   += Number(t.totalAkkord ?? 0)
+
     return acc
   }, initial)
+
+  // Hvis totalAkkord ikke er sat, så beregn efter “materialer + tillæg + km + ekstra”
+  const rawExtrasTotal = totals.extrasSum + totals.kmSum + totals.otherExtraSum
+  const computedTotalAkkord = totals.materialsSum + rawExtrasTotal
+
+  if (!totals.totalAkkord) {
+    totals.totalAkkord = computedTotalAkkord
+  }
+
+  totals.rawExtrasTotal = rawExtrasTotal
+  return totals
+}
+
+/**
+ * Fordeler akkord-tal på tværs af jobs.
+ *
+ * KRAV:
+ *  - Alle materialesummer beregnes pr. job.
+ *  - Den SAMLEDE materialesum + tillæg/km/ekstra + timer
+ *    lægges kun på ÉN primær seddel (index 0).
+ *  - De øvrige sedler viser deres egen materialesum, men ingen fordelte tillæg/timer.
+ *
+ * Notation:
+ *  - M_total = samlet materialesum
+ *  - E_total = samlet tillæg/km/ekstra
+ *  - H_total = samlede timer
+ *  - A_total = M_total + E_total (eller totals.totalAkkord)
+ */
+function allocateAkkordAcrossJobs(jobs) {
+  const totals = computeGlobalAkkordTotals(jobs)
+  const M_total = totals.materialsSum
+  const E_total = totals.rawExtrasTotal
+  const H_total = totals.hoursSum
+
+  const A_total = totals.totalAkkord || (M_total + E_total)
+  const hourlyRate = H_total > 0 ? (A_total / H_total) : 0
+
+  const primaryIndex = 0 // første seddel er primær
+
+  const enrichedJobs = (jobs || []).map((job, idx) => {
+    const t = job.totals || {}
+
+    // Materialesum for DETTE job
+    const materials = typeof t.materialsSum === 'number'
+      ? t.materialsSum
+      : (job.lines || []).reduce((sum, line) => {
+          const q = Number(line.qty || line.amount || 0)
+          const p = Number(line.price || 0)
+          return sum + q * p
+        }, 0)
+
+    const share = M_total > 0 ? (materials / M_total) : 0
+
+    // Primær seddel får ALLE globale tal
+    if (idx === primaryIndex) {
+      const jobExtras      = E_total
+      const jobHours       = H_total
+      const jobAkkordTotal = A_total
+
+      return {
+        ...job,
+        akkordAlloc: {
+          isPrimary: true,
+          share,                 // andel af materialesum i %
+          materials,             // materialesum for denne seddel (lokal)
+          materialsGlobal: M_total, // samlet materialesum fra alle sedler
+          extrasAllocated: jobExtras,
+          hoursAllocated: jobHours,
+          akkordTotal: jobAkkordTotal,
+          hourlyRate,           // fælles timeløn baseret på total
+        },
+      }
+    }
+
+    // Øvrige sedler: viser kun egne materialer,
+    // men ingen fordelte tillæg/timer.
+    return {
+      ...job,
+      akkordAlloc: {
+        isPrimary: false,
+        share,
+        materials,
+        materialsGlobal: 0,
+        extrasAllocated: 0,
+        hoursAllocated: 0,
+        akkordTotal: materials,
+        hourlyRate: 0,
+      },
+    }
+  })
+
+  return {
+    totals: {
+      materialsTotal: M_total,
+      extrasTotal: E_total,
+      hoursTotal: H_total,
+      akkordTotal: A_total,
+      hourlyRate,
+    },
+    jobs: enrichedJobs,
+  }
 }
 
 export function exportAkkord({ mode = 'current' } = {}) {
-  const jobs = getJobsForAkkordExport({ mode })
-  if (!jobs || !jobs.length) {
+  const jobsRaw = getJobsForAkkordExport({ mode })
+  if (!jobsRaw || !jobsRaw.length) {
     alert('Ingen akkordsedler valgt til eksport.')
     return
   }
 
+  // Fordel/saml akkordtal på tværs af jobs
+  const { jobs, totals } = allocateAkkordAcrossJobs(jobsRaw)
+
   const pagesHtml = jobs.map((job, idx) => buildAkkordPageHtml(job, idx)).join(`
     <div class="page-break"></div>
   `)
+
+  const summaryHtml = `
+    <section class="akkord-page">
+      <h1>Samlet akkordoversigt</h1>
+      <p><strong>Materialer i alt:</strong> ${totals.materialsTotal.toFixed(2)} kr.</p>
+      <p><strong>Tillæg/km/ekstra i alt:</strong> ${totals.extrasTotal.toFixed(2)} kr.</p>
+      <p><strong>Akkordsum i alt:</strong> ${totals.akkordTotal.toFixed(2)} kr.</p>
+      <p><strong>Timer i alt:</strong> ${totals.hoursTotal.toFixed(2)} t</p>
+      <p><strong>Timeløn (akkord):</strong> ${totals.hourlyRate.toFixed(2)} kr./t</p>
+    </section>
+  `
 
   const html = `
     <!doctype html>
@@ -443,6 +618,9 @@ export function exportAkkord({ mode = 'current' } = {}) {
         body {
           font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
           margin: 16px;
+        }
+        .akkord-page {
+          margin-bottom: 12mm;
         }
         .akkord-header {
           display: flex;
@@ -501,6 +679,8 @@ export function exportAkkord({ mode = 'current' } = {}) {
       </style>
     </head>
     <body>
+      ${summaryHtml}
+      <div class="page-break"></div>
       ${pagesHtml}
     </body>
     </html>
