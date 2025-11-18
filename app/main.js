@@ -16,6 +16,87 @@ import { exportAkkord } from './js/akkord-export.js'
 import { setActiveJob } from './src/state/jobs.js'
 import './boot-inline.js'
 
+function getCurrentAppVersion () {
+  if (typeof window !== 'undefined' && typeof window.CSSMATE_APP_VERSION === 'string') {
+    return window.CSSMATE_APP_VERSION
+  }
+
+  if (typeof self !== 'undefined' && typeof self.CSSMATE_APP_VERSION === 'string') {
+    return self.CSSMATE_APP_VERSION
+  }
+
+  return 'dev'
+}
+
+function showUpdateBanner (currentVersion, previousVersion) {
+  if (typeof document === 'undefined') return
+  if (document.getElementById('cssmate-update-banner')) return
+
+  const banner = document.createElement('div')
+  banner.id = 'cssmate-update-banner'
+  banner.style.position = 'fixed'
+  banner.style.left = '0'
+  banner.style.right = '0'
+  banner.style.bottom = '0'
+  banner.style.zIndex = '9999'
+  banner.style.padding = '8px 12px'
+  banner.style.fontSize = '12px'
+  banner.style.display = 'flex'
+  banner.style.justifyContent = 'space-between'
+  banner.style.alignItems = 'center'
+  banner.style.background = '#222'
+  banner.style.color = '#fff'
+
+  banner.innerHTML = `
+    <span>Ny version af Cssmate er klar (fra ${previousVersion} til ${currentVersion}).</span>
+    <button type="button" id="cssmate-update-btn">Opdater nu</button>
+  `
+
+  if (!document.body) {
+    return
+  }
+
+  document.body.appendChild(banner)
+
+  const btn = document.getElementById('cssmate-update-btn')
+  if (btn) {
+    btn.style.marginLeft = '12px'
+    btn.style.padding = '4px 10px'
+    btn.style.fontSize = '12px'
+    btn.style.cursor = 'pointer'
+
+    btn.addEventListener('click', () => {
+      if (typeof window === 'undefined') {
+        return
+      }
+
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(regs => {
+          return Promise.all(regs.map(reg => reg.update()))
+        }).finally(() => {
+          window.location.reload(true)
+        })
+      } else {
+        window.location.reload(true)
+      }
+    })
+  }
+}
+
+(function setupVersionCheck () {
+  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') return
+
+  const version = getCurrentAppVersion()
+  const STORAGE_KEY = 'cssmate_app_version'
+  const previous = window.localStorage.getItem(STORAGE_KEY)
+
+  if (previous && previous !== version) {
+    showUpdateBanner(version, previous)
+  }
+
+  window.localStorage.setItem(STORAGE_KEY, version)
+})()
+
 const IOS_INSTALL_PROMPT_DISMISSED_KEY = 'csmate.iosInstallPromptDismissed'
 const TAB_STORAGE_KEY = 'csmate:lastTab'
 const LEGACY_TAB_STORAGE_KEYS = ['sscaff:lastTab', 'cssmate:lastActiveTab']
