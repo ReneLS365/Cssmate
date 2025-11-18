@@ -108,7 +108,6 @@ button[data-role=important]::after,
   left:-8px;
   right:-8px;
   background:transparent;
-  pointer-events:none;
 }
 
 button,
