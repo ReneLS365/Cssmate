@@ -1,5 +1,3 @@
-import { evaluateExpression } from './safe-eval.js'
-
 // js/numpad.js
 // Globalt numpad + simpel lommeregner til alle talfelter
 
@@ -14,6 +12,10 @@ let mutationObserver = null
 let pendingBind = false
 const boundInputs = new WeakSet()
 let lastFocusedInput = null
+let baseValue = 0
+let activeOperator = null
+let expressionParts = []
+let suppressNextFocus = false
 
 function isNumpadOpen () {
   return Boolean(overlay && !overlay.classList.contains('numpad-hidden'))
@@ -65,6 +67,10 @@ function initNumpad () {
 function handleNumpadFocus (event) {
   const input = event.currentTarget
   if (!(input instanceof HTMLInputElement)) return
+  if (suppressNextFocus) {
+    suppressNextFocus = false
+    return
+  }
 
   const rawValue = (input.value || '').trim()
   const isZeroLike = rawValue === '' || rawValue === '0' || rawValue === '0,0' || rawValue === '0,00'
@@ -157,7 +163,11 @@ function showNumpadForInput (input) {
   const inputValue = activeInput && typeof activeInput.value === 'string' ? activeInput.value : ''
   const initial = normalizeFromField(inputValue)
   currentValue = initial === '' ? '0' : initial
+  baseValue = parseNumericValue(currentValue)
+  if (baseValue === null) baseValue = 0
   expression = ''
+  activeOperator = null
+  expressionParts = []
 
   updateDisplays()
 
@@ -207,13 +217,29 @@ function hideNumpad ({ commit = false } = {}) {
     document.documentElement.classList.remove('np-open')
   }
   if (focusTarget && document.contains(focusTarget) && typeof focusTarget.focus === 'function') {
+    suppressNextFocus = true
     focusTarget.focus()
+    setTimeout(() => {
+      suppressNextFocus = false
+    }, 0)
+  } else {
+    suppressNextFocus = false
   }
   lastFocusedInput = null
 }
 
 function handleCommitClick () {
-  commitCurrentExpression()
+  const resolved = evaluatePendingExpression()
+  const fallback = parseNumericValue(currentValue)
+  const numericResult = resolved ?? fallback ?? baseValue ?? 0
+
+  currentValue = String(numericResult)
+  baseValue = numericResult
+  activeOperator = null
+  expression = ''
+  expressionParts = []
+
+  updateDisplays()
   hideNumpad({ commit: true })
 }
 
@@ -224,18 +250,25 @@ function handleKey (key) {
     case 'C':
       currentValue = '0'
       expression = ''
+      baseValue = 0
+      activeOperator = null
+      expressionParts = []
       break
     case 'BACK':
       if (currentValue.length > 1) {
         currentValue = currentValue.slice(0, -1)
+      } else if (currentValue.length === 1) {
+        currentValue = activeOperator ? '' : '0'
       } else {
-        currentValue = '0'
+        currentValue = ''
       }
       break
     case '%': {
-      const base = parseFloat(currentValue || '0')
-      if (Number.isFinite(base)) {
-        currentValue = String(base / 100)
+      const numeric = parseNumericValue(currentValue)
+      if (numeric !== null) {
+        currentValue = String(numeric / 100)
+      } else {
+        currentValue = '0'
       }
       break
     }
@@ -243,11 +276,10 @@ function handleKey (key) {
     case '-':
     case '×':
     case '÷':
-      addCurrentToExpression(key)
-      currentValue = '0'
+      handleOperatorInput(key)
       break
     case '=':
-      computeExpression()
+      applyPendingExpression()
       break
     case ',':
       if (!currentValue.includes('.')) {
@@ -265,51 +297,148 @@ function handleKey (key) {
   updateDisplays()
 }
 
-function addCurrentToExpression (op) {
-  const val = currentValue === '' ? '0' : currentValue
-  if (!expression) {
-    expression = val + ' ' + op + ' '
-  } else {
-    expression = expression + val + ' ' + op + ' '
+function handleOperatorInput (op) {
+  const operand = parseNumericValue(currentValue)
+
+  if (operand !== null) {
+    upsertOperandInExpression(operand)
+    currentValue = ''
+  } else if (expressionParts.length === 0) {
+    upsertOperandInExpression(Number.isFinite(baseValue) ? baseValue : 0)
   }
+
+  appendOrReplaceOperator(op)
+  baseValue = evaluateExpressionParts(buildEvaluationSequence())
+  activeOperator = op
 }
 
-function computeExpression () {
-  const expr = (expression + (currentValue || '0')).trim()
-  if (!expr) return
+function applyPendingExpression () {
+  const result = evaluatePendingExpression()
+  if (result === null || result === undefined) return
 
-  try {
-    const result = evaluateExpression(expr)
-    if (!Number.isFinite(result)) {
-      throw new Error('Expression result is not finite')
-    }
-    currentValue = String(result)
-    expression = ''
-  } catch (error) {
-    console.warn('Invalid expression in numpad:', error)
-  }
+  currentValue = String(result)
+  baseValue = result
+  activeOperator = null
+  expression = ''
+  expressionParts = []
 }
 
-function commitCurrentExpression () {
-  if (expression && expression.trim()) {
-    computeExpression()
-  } else {
-    expression = ''
-  }
+function evaluatePendingExpression () {
+  const sequence = buildEvaluationSequence()
+  if (!sequence.length) return null
 
-  if (!currentValue || currentValue === '') {
-    currentValue = '0'
-  }
-
-  updateDisplays()
+  return evaluateExpressionParts(sequence)
 }
 
 /* Display */
 
 function updateDisplays () {
   if (!displayCurrent || !displayExpr) return
-  displayExpr.textContent = expression.replace(/\./g, ',')
+  expression = getExpressionText()
+  displayExpr.textContent = expression
   displayCurrent.textContent = formatNumber(currentValue)
+}
+
+function getExpressionText () {
+  if (!expressionParts.length && !activeOperator) return ''
+
+  const parts = expressionParts.map(part => {
+    if (typeof part === 'string') return part
+    return formatNumber(part)
+  })
+  const lastOriginal = expressionParts[expressionParts.length - 1]
+
+  const operand = currentValue === '' ? null : formatNumber(currentValue)
+  if (operand !== null && typeof lastOriginal === 'string') {
+    parts.push(operand)
+  } else if (operand !== null && !parts.length) {
+    return ''
+  } else if (operand === null && typeof lastOriginal === 'string') {
+    parts.pop()
+  }
+
+  return parts.join(' ')
+}
+
+function upsertOperandInExpression (value) {
+  if (expressionParts.length === 0) {
+    expressionParts.push(value)
+    return
+  }
+
+  const lastIndex = expressionParts.length - 1
+  if (typeof expressionParts[lastIndex] === 'string') {
+    expressionParts.push(value)
+  } else {
+    expressionParts[lastIndex] = value
+  }
+}
+
+function appendOrReplaceOperator (operator) {
+  if (expressionParts.length === 0) {
+    expressionParts.push(0)
+  }
+
+  const lastIndex = expressionParts.length - 1
+  if (typeof expressionParts[lastIndex] === 'string') {
+    expressionParts[lastIndex] = operator
+  } else {
+    expressionParts.push(operator)
+  }
+}
+
+function buildEvaluationSequence () {
+  const sequence = expressionParts.slice()
+  const operand = parseNumericValue(currentValue)
+
+  if (operand !== null) {
+    if (!sequence.length) {
+      sequence.push(operand)
+    } else if (typeof sequence[sequence.length - 1] === 'string') {
+      sequence.push(operand)
+    } else {
+      sequence[sequence.length - 1] = operand
+    }
+  }
+
+  if (typeof sequence[sequence.length - 1] === 'string') {
+    sequence.pop()
+  }
+
+  return sequence
+}
+
+function evaluateExpressionParts (parts) {
+  if (!parts.length) return 0
+
+  const working = parts.slice()
+
+  for (let i = 0; i < working.length; i++) {
+    const token = working[i]
+    if (token === '×' || token === '÷') {
+      const left = Number(working[i - 1] ?? 0)
+      const right = Number(working[i + 1] ?? 0)
+      const replacement = token === '×'
+        ? left * right
+        : (right === 0 ? left : left / right)
+
+      working.splice(i - 1, 3, replacement)
+      i -= 2
+    }
+  }
+
+  let result = Number(working[0]) || 0
+  for (let i = 1; i < working.length; i += 2) {
+    const operator = working[i]
+    const value = Number(working[i + 1] ?? 0)
+    if (operator === '+') {
+      result += value
+    } else if (operator === '-') {
+      result -= value
+    }
+  }
+
+  return result
 }
 
 function formatNumber (v) {
@@ -318,6 +447,16 @@ function formatNumber (v) {
   if (!Number.isFinite(n)) return '0'
   // simpelt dansk-komma format
   return String(n).replace('.', ',')
+}
+
+function parseNumericValue (value) {
+  if (value === null || value === undefined) return null
+  const normalized = String(value).trim().replace(/,/g, '.').replace(/\s+/g, '')
+  if (!normalized || normalized === '.' || normalized === '-' || normalized === '+') {
+    return null
+  }
+  const numeric = Number(normalized)
+  return Number.isFinite(numeric) ? numeric : null
 }
 
 function normalizeFromField (v) {
