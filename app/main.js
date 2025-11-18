@@ -12,6 +12,7 @@ import { createVirtualMaterialsList } from './src/modules/materialsVirtualList.j
 import { initClickGuard } from './src/ui/Guards/ClickGuard.js'
 import { setAdminOk, restoreAdminState, isAdminUnlocked } from './src/state/admin.js'
 import { exportAkkordExcelForActiveJob } from './src/export/akkord-excel.js'
+import { exportAkkord } from './js/akkord-export.js'
 import { setActiveJob } from './src/state/jobs.js'
 import './boot-inline.js'
 
@@ -508,6 +509,14 @@ let lastMaterialSum = 0;
 let lastEkompletData = null;
 let lastJobSummary = null;
 let recentCasesCache = [];
+
+function syncRecentProjectsGlobal(entries = recentCasesCache) {
+  if (typeof window === 'undefined') return;
+  const payload = Array.isArray(entries) ? entries.slice() : [];
+  window.__cssmateRecentProjects = payload;
+}
+
+syncRecentProjectsGlobal([]);
 let cachedDBPromise = null;
 const DEFAULT_ACTION_HINT = 'Udfyld Sagsinfo for at fortsætte.';
 const DB_NAME = 'csmate_projects';
@@ -1466,6 +1475,7 @@ async function populateRecentCases() {
   setHistoryListBusy(true);
   const cases = await getRecentProjects();
   recentCasesCache = cases;
+  syncRecentProjectsGlobal(recentCasesCache);
   const previousValue = select?.value || '';
   if (select) {
     select.innerHTML = '';
@@ -1695,6 +1705,7 @@ async function handleLoadCase() {
   if (!record) {
     const cases = await getRecentProjects();
     recentCasesCache = cases;
+    syncRecentProjectsGlobal(recentCasesCache);
     record = cases.find(entry => Number(entry.id) === value);
     renderHistoryList(recentCasesCache);
   }
@@ -3864,6 +3875,15 @@ function initApp() {
   setupAdminControls();
   setupA9Integration();
   initExportButtons();
+
+  const akkordBtn = document.getElementById('btnExportAkkord');
+  if (akkordBtn) {
+    akkordBtn.addEventListener('click', () => {
+      const hasSelectedJobs = Boolean(document.querySelector('[data-job-select]:checked, [data-job-select][aria-checked="true"]'));
+      const mode = hasSelectedJobs ? 'selected' : 'current';
+      exportAkkord({ mode });
+    });
+  }
 
   document.getElementById('btnBeregnLon')?.addEventListener('click', () => beregnLon());
   document.getElementById('btnPrint')?.addEventListener('click', () => {
