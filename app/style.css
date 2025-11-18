@@ -35,8 +35,12 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;width:100%;max-width:100vw;overflow-x:hidden;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+html{
+  -ms-touch-action:manipulation;
+  touch-action:manipulation;
+}
 html,body,.app-shell,.app-content,.materials-scroll{min-height:100%}
-body{font-size:16px;line-height:1.45;font-weight:400;background-color:var(--bg,#121212)}
+body{font-size:16px;line-height:1.45;font-weight:400;background-color:var(--bg,#121212);overscroll-behavior-y:contain}
 .app-shell,.app-content,.materials-scroll{max-width:100vw}
 @media (max-width:420px){
   .app-shell,.app-content,main,header,footer{width:100%;max-width:100vw}
@@ -56,7 +60,10 @@ body{font-size:16px;line-height:1.45;font-weight:400;background-color:var(--bg,#
 header{position:sticky;top:0;background:var(--elev);border-bottom:1px solid var(--border);z-index:5}
 header .bar{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px 10px;min-height:var(--header-height)}
 header .ttl{font-weight:700}
-.tabs{display:flex;gap:0.35rem;overflow-x:auto;padding:0.25rem 0;border-radius:0.75rem;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:var(--accent) transparent;touch-action:pan-x;scrollbar-gutter:stable both-edges}
+.tabs{display:flex;gap:0.35rem;overflow-x:auto;padding:0.25rem 0;border-radius:0.75rem;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:var(--accent) transparent;touch-action:pan-x;scrollbar-gutter:stable both-edges;overscroll-behavior-x:contain}
+.materials-list,
+.table-wrapper,
+.scroll-area{overscroll-behavior:auto}
 .tabs::-webkit-scrollbar{height:4px}
 .tab{flex:0 0 auto;scroll-snap-align:start;min-width:4.5rem;padding:0.55rem 0.9rem;font-size:0.95rem;border-radius:0.45rem;border:1px solid rgba(255,255,255,0.08);background:var(--panel);color:var(--muted);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background-color .2s ease,color .2s ease,border-color .2s ease}
 .tab:not(.tab--active):hover{color:var(--text);border-color:rgba(255,255,255,0.18)}
@@ -77,21 +84,40 @@ input[type=submit],
   min-width:44px;
   padding:0.5rem 0.75rem;
   touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
 }
 button *,
-.tab *{pointer-events:none}
-button,
-.tab,
-.icon-button{position:relative}
-button::after,
-.tab::after,
-.icon-button::after{
+.tab *,
+.icon-button *{pointer-events:none}
+
+button[data-role=primary],
+button[data-role=important],
+.numpad-commit,
+.tab{
+  position:relative;
+}
+
+button[data-role=primary]::after,
+button[data-role=important]::after,
+.numpad-commit::after,
+.tab::after{
   content:"";
   position:absolute;
   top:-8px;
+  bottom:-8px;
   left:-8px;
   right:-8px;
-  bottom:-8px;
+  background:transparent;
+  pointer-events:none;
+}
+
+button,
+.tab,
+.icon-button,
+.numpad-key,
+.numpad-commit{
+  user-select:none;
+  -webkit-user-select:none;
 }
 input[type=text],
 input[type=number],
@@ -103,7 +129,8 @@ select{
 }
 button,
 .tab,
-.numpad-key{-webkit-tap-highlight-color:transparent}
+.numpad-key,
+.numpad-commit{-webkit-tap-highlight-color:transparent}
 main{display:block;width:100%}
 .app-root{max-width:540px;margin:0 auto;padding:0 0.75rem 1.5rem;display:flex;flex-direction:column;flex:1 1 auto;min-height:0;width:100%}
 .tab-panels{flex:1 1 auto;min-height:0;overflow-y:auto;padding:clamp(0.5rem,2vw,1rem) 0 clamp(1rem,4vw,1.75rem);width:100%;margin:0 auto}
@@ -290,14 +317,13 @@ button{cursor:pointer}
   .worker-grid{grid-template-columns:1fr}
   .totals{grid-template-columns:1fr}
   .btn-group{flex-direction:column}
-  .tabs .tab{padding:6px 12px;min-height:38px}
   .system-selector-options{gap:8px}
   .system-option{flex:1 1 calc(50% - 8px);justify-content:flex-start}
   .tab-panels{padding:0.5rem 0.75rem 1rem}
 }
 @media (max-width:480px){
   body{font-size:15px;line-height:1.4}
-  .tabs .tab{flex:1 1 auto;width:auto;padding:6px 10px;min-height:36px}
+  .tabs .tab{flex:1 1 auto;width:auto}
   .material-row label{font-size:0.9rem}
   .material-row .system-badge{margin-left:6px;font-size:0.65rem}
   .system-option{flex:1 1 100%}
@@ -309,7 +335,67 @@ button{cursor:pointer}
 @media (max-width:360px){
   body{font-size:14px;line-height:1.35}
   .tabs{padding-inline:0.25rem}
-  .tabs .tab{min-width:4.25rem;padding:0.35rem 0.4rem;font-size:0.75rem}
+}
+
+/* Meget små skærme (gamle Android, 320–360 bredde) */
+@media (max-width:360px){
+  .tab,
+  button,
+  .icon-button,
+  .material-btn{
+    min-height:52px;
+    min-width:52px;
+    padding:0.65rem 0.9rem;
+    font-size:1rem;
+  }
+
+  .numpad-key,
+  .numpad-commit,
+  .numpad-operator{
+    min-height:58px;
+    font-size:1.35rem;
+    padding:0.9rem;
+  }
+}
+
+/* Mellemstore mobiler (361–480px) */
+@media (min-width:361px) and (max-width:480px){
+  .tab,
+  button,
+  .icon-button,
+  .material-btn{
+    min-height:48px;
+    min-width:48px;
+    padding:0.55rem 0.85rem;
+    font-size:0.95rem;
+  }
+
+  .numpad-key,
+  .numpad-commit,
+  .numpad-operator{
+    min-height:54px;
+    font-size:1.3rem;
+  }
+}
+
+/* Større mobiler (> 480px), stadig touch-venlig */
+@media (min-width:481px){
+  .tab,
+  button,
+  .icon-button,
+  .material-btn{
+    min-height:44px;
+    min-width:44px;
+    padding:0.45rem 0.8rem;
+    font-size:0.9rem;
+  }
+
+  .numpad-key,
+  .numpad-commit,
+  .numpad-operator{
+    min-height:50px;
+    font-size:1.2rem;
+  }
 }
 
 @media (max-width:420px){

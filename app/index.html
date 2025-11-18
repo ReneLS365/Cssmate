@@ -220,8 +220,8 @@
     </section>
 
     <div class="row no-print btn-group">
-      <button id=btnBeregnLon type=button>Beregn løn</button>
-      <button id=btnPrint type=button disabled>Print</button>
+      <button id=btnBeregnLon type=button data-role="primary">Beregn løn</button>
+      <button id=btnPrint type=button disabled data-role="primary">Print</button>
     </div>
     <fieldset class="no-print export-panel">
       <legend>Eksport & deling</legend>
@@ -229,7 +229,7 @@
         <button id=btnExportCSV type=button>CSV</button>
         <button id=btnExportAll type=button>JSON</button>
         <button id=btnExportZip type=button>ZIP</button>
-        <button id=btnExportEkomplet type=button>E-komplet</button>
+        <button id=btnExportEkomplet type=button data-role="primary">E-komplet</button>
       </div>
       <fieldset class="export-system-selector">
         <legend>Excel 25-ark</legend>
@@ -289,7 +289,7 @@
             <option value="" selected>Indlæser sager…</option>
           </select>
         </label>
-        <button id=btnLoadHistoryJob type=button disabled>Indlæs sag</button>
+        <button id=btnLoadHistoryJob type=button disabled data-role="primary">Indlæs sag</button>
       </div>
       <div class="job-history__summary table-wrapper" aria-live=polite>
         <table>
