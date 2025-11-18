@@ -60,7 +60,7 @@ body{font-size:16px;line-height:1.45;font-weight:400;background-color:var(--bg,#
 header{position:sticky;top:0;background:var(--elev);border-bottom:1px solid var(--border);z-index:5}
 header .bar{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px 10px;min-height:var(--header-height)}
 header .ttl{font-weight:700}
-.tabs{display:flex;gap:0.35rem;overflow-x:auto;padding:0.25rem 0;border-radius:0.75rem;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:var(--accent) transparent;touch-action:pan-x;scrollbar-gutter:stable both-edges;overscroll-behavior-x:contain}
+.tabs{display:flex;gap:0.35rem;overflow-x:auto;padding:0.25rem 0;border-radius:0.75rem;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:var(--accent) transparent;touch-action:pan-x;scrollbar-gutter:stable both-edges;overscroll-behavior-x:contain;flex:1 1 auto;min-width:0;max-width:100%}
 .materials-list,
 .table-wrapper,
 .scroll-area{overscroll-behavior:auto}
