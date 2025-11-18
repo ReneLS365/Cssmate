@@ -1,3 +1,4 @@
+import { MATERIAL_SYSTEMS } from '../dataset.js'
 import { getActiveJob } from '../src/state/jobs.js'
 
 const SYSTEM_LABELS = new Map([
@@ -6,6 +7,26 @@ const SYSTEM_LABELS = new Map([
   ['modex', 'MODEX'],
   ['alfix', 'ALFIX'],
 ])
+
+const MATERIAL_LOOKUP = Object.entries(MATERIAL_SYSTEMS).reduce((acc, [systemId, system]) => {
+  const idMap = new Map()
+  const nameMap = new Map()
+  const items = Array.isArray(system.items) ? system.items : []
+  items.forEach(item => {
+    const idKey = normalizeMaterialId(item.id)
+    if (idKey && !idMap.has(idKey)) {
+      idMap.set(idKey, item)
+    }
+    const nameKey = normalizeMaterialName(item.name)
+    if (nameKey && !nameMap.has(nameKey)) {
+      nameMap.set(nameKey, item)
+    }
+  })
+  acc[systemId] = { idMap, nameMap, label: system.label }
+  return acc
+}, {})
+
+const KNOWN_SYSTEM_IDS = Object.keys(MATERIAL_LOOKUP)
 
 function formatDate(value) {
   if (!value) return ''
@@ -41,9 +62,92 @@ function getSystemLabel(value) {
   return SYSTEM_LABELS.get(normalized) || inferSystemFromCode(value) || value.toString().toUpperCase()
 }
 
-function cloneJob(job) {
-  if (!job) return null
-  return JSON.parse(JSON.stringify(job))
+function normalizeMaterialId(value) {
+  if (value === undefined || value === null) return ''
+  return String(value).trim().toLowerCase()
+}
+
+function normalizeMaterialName(value) {
+  if (value === undefined || value === null) return ''
+  const base = String(value).trim().toLowerCase()
+  if (!base) return ''
+  try {
+    return base
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+  } catch {
+    return base
+  }
+}
+
+function normalizeSystemKey(value) {
+  if (value === undefined || value === null) return ''
+  const normalized = String(value).trim().toLowerCase()
+  if (!normalized) return ''
+  if (MATERIAL_LOOKUP[normalized]) return normalized
+  if (normalized.startsWith('b')) return 'bosta'
+  if (normalized.startsWith('h')) return 'haki'
+  if (normalized.startsWith('m')) return 'modex'
+  if (normalized.startsWith('a')) return 'alfix'
+  return ''
+}
+
+function getSystemCandidates(line, fallbackSystem) {
+  const candidates = []
+  const direct = normalizeSystemKey(line?.system || line?.systemKey)
+  if (direct) candidates.push(direct)
+  const fallback = normalizeSystemKey(fallbackSystem)
+  if (fallback && !candidates.includes(fallback)) {
+    candidates.push(fallback)
+  }
+  if (!direct) {
+    const inferred = normalizeSystemKey(line?.id || line?.varenr)
+    if (inferred && !candidates.includes(inferred)) {
+      candidates.push(inferred)
+    }
+  }
+  if (!candidates.length) return KNOWN_SYSTEM_IDS
+  return candidates
+}
+
+function findMaterialMatch(line, fallbackSystem) {
+  if (!line) return null
+  const idKey = normalizeMaterialId(line.id || line.varenr)
+  const nameKey = normalizeMaterialName(line.name || line.label || line.title)
+  const candidates = getSystemCandidates(line, fallbackSystem)
+  for (const systemId of candidates) {
+    const lookup = MATERIAL_LOOKUP[systemId]
+    if (!lookup) continue
+    if (idKey && lookup.idMap.has(idKey)) {
+      return { ...lookup.idMap.get(idKey), systemId }
+    }
+  }
+  if (!nameKey) return null
+  for (const systemId of candidates) {
+    const lookup = MATERIAL_LOOKUP[systemId]
+    if (!lookup) continue
+    if (lookup.nameMap.has(nameKey)) {
+      return { ...lookup.nameMap.get(nameKey), systemId }
+    }
+  }
+  return null
+}
+
+function enrichLinesWithMaterialPrices(lines = [], fallbackSystem) {
+  if (!Array.isArray(lines) || !lines.length) return []
+  return lines.map(line => {
+    if (!line) return line
+    const price = Number(line.price ?? 0)
+    if (price > 0) return line
+    const match = findMaterialMatch(line, fallbackSystem)
+    if (!match) return line
+    return {
+      ...line,
+      price: match.price,
+      unit: line.unit || match.unit || 'stk',
+      system: line.system || getSystemLabel(match.systemId),
+    }
+  })
 }
 
 function normalizeLine(line, index = 0) {
@@ -86,12 +190,16 @@ function extractTotals(source = {}) {
 function buildJobFromMaterials(source, fallbackId = 'akkord') {
   if (!source) return null
   const info = source.sagsinfo || {}
-  const lines = normalizeLines(
-    Array.isArray(source.materialer)
-      ? source.materialer
-      : Array.isArray(source.materials)
-        ? source.materials
-        : source.lines || []
+  const systemHint = source.system || source.primarySystem || (Array.isArray(source.systems) ? source.systems[0] : '')
+  const linesWithPrices = enrichLinesWithMaterialPrices(
+    normalizeLines(
+      Array.isArray(source.materialer)
+        ? source.materialer
+        : Array.isArray(source.materials)
+          ? source.materials
+          : source.lines || []
+    ),
+    systemHint
   )
 
   const job = {
@@ -103,16 +211,16 @@ function buildJobFromMaterials(source, fallbackId = 'akkord') {
     system: getSystemLabel(
       source.system || source.primarySystem || (Array.isArray(source.systems) ? source.systems[0] : '')
     ),
-    lines,
+    lines: linesWithPrices,
     totals: extractTotals(source),
   }
 
-  if (!(job.totals.materialsSum > 0) && lines.length) {
-    job.totals.materialsSum = lines.reduce((sum, line) => sum + (Number(line.qty) * Number(line.price) || 0), 0)
+  if (!(job.totals.materialsSum > 0) && linesWithPrices.length) {
+    job.totals.materialsSum = linesWithPrices.reduce((sum, line) => sum + (Number(line.qty) * Number(line.price) || 0), 0)
   }
 
-  if (!job.system && lines.length) {
-    const firstSystem = lines.find(line => line.system)?.system
+  if (!job.system && linesWithPrices.length) {
+    const firstSystem = linesWithPrices.find(line => line.system)?.system
     job.system = firstSystem || ''
   }
 
@@ -181,7 +289,7 @@ function buildJobFromActiveState() {
   }
   const active = getActiveJob()
   if (active) {
-    return cloneJob(active)
+    return buildJobFromMaterials(active, active.id || 'akkord')
   }
   return null
 }
