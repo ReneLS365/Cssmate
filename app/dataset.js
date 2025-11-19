@@ -96,14 +96,6 @@ export const BOSTA_DATA = [
   { varenr: 'B094', navn: 'Hjulkonsoller', enhed: 'stk', pris: 21.424 },
   { varenr: 'B095', navn: 'Kegle m. fod', enhed: 'stk', pris: 10.33 },
   { varenr: 'B096', navn: 'Bræt rød/hvid', enhed: 'stk', pris: 6.28 },
-  { varenr: 'B097', navn: 'Luk af hul', enhed: 'stk', pris: 3.45 },
-  { varenr: 'B098', navn: 'Opskydeligt rækværk', enhed: 'stk', pris: 9.67 },
-  { varenr: 'B099', navn: 'Borring i beton', enhed: 'stk', pris: 11.49 },
-  { varenr: 'B100', navn: 'Huller', enhed: 'stk', pris: 4.7 },
-  { varenr: 'B101', navn: 'Km.', enhed: 'stk', pris: 2.12, category: 'wage' },
-  { varenr: 'B102', navn: 'Udd. tillæg 1', enhed: 'stk', pris: 42.98, category: 'wage' },
-  { varenr: 'B103', navn: 'Udd. tillæg 2', enhed: 'stk', pris: 49.38, category: 'wage' },
-  { varenr: 'B104', navn: 'Mentortillæg', enhed: 'stk', pris: 22.26, category: 'wage' },
 ];
 
 export const HAKI_DATA = [
@@ -166,14 +158,6 @@ export const HAKI_DATA = [
   { varenr: 'H057', navn: 'Bræt', enhed: 'stk', pris: 6.28 },
   { varenr: 'H058', navn: 'Geda hejs', enhed: 'stk', pris: 303.08 },
   { varenr: 'H059', navn: 'El hejs', enhed: 'stk', pris: 153.07 },
-  { varenr: 'H060', navn: 'Luk af hul', enhed: 'stk', pris: 3.45 },
-  { varenr: 'H061', navn: 'Opskydeligt rækværk', enhed: 'stk', pris: 9.67 },
-  { varenr: 'H062', navn: 'Borring i beton', enhed: 'stk', pris: 11.49 },
-  { varenr: 'H063', navn: 'Huller', enhed: 'stk', pris: 4.7 },
-  { varenr: 'H064', navn: 'Km.', enhed: 'stk', pris: 2.12, category: 'wage' },
-  { varenr: 'H065', navn: 'Udd. tillæg 1', enhed: 'stk', pris: 42.98, category: 'wage' },
-  { varenr: 'H066', navn: 'Udd. tillæg 2', enhed: 'stk', pris: 49.38, category: 'wage' },
-  { varenr: 'H067', navn: 'Mentortillæg', enhed: 'stk', pris: 22.26, category: 'wage' },
 ];
 
 export const MODEX_DATA = [
@@ -244,8 +228,6 @@ export const MODEX_DATA = [
   { varenr: 'M065', navn: 'Grønne skilte', enhed: 'stk', pris: 5.15 },
   { varenr: 'M066', navn: 'Reklameskilt', enhed: 'stk', pris: 9.73 },
   { varenr: 'M067', navn: 'Stiger 2m & 3M', enhed: 'stk', pris: 4.51 },
-  { varenr: 'M068', navn: 'Luk af hul', enhed: 'stk', pris: 3.45 },
-  { varenr: 'M069', navn: 'Opskydeligt rækværk', enhed: 'stk', pris: 9.67 },
 ];
 
 export const ALFIX_DATA = [
