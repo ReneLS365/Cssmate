@@ -142,6 +142,7 @@ fieldset{border:1px solid var(--border);background:var(--panel);border-radius:12
 legend{color:var(--muted);padding:0 6px}
 label{display:flex;flex-direction:column;gap:6px;font-size:0.95rem}
 label span{color:var(--muted);font-size:0.85rem}
+.form-field{display:flex;flex-direction:column;gap:6px;font-size:0.95rem}
 .form-actions{margin-top:var(--gap);display:flex;justify-content:flex-end;gap:0.5rem;flex-wrap:wrap}
 .form-actions button{min-width:160px;flex:0 1 200px}
 .date-field .date-input-wrapper{display:flex;align-items:center;gap:8px}
