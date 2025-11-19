@@ -29,8 +29,14 @@ export function createMaterialRow (item, {
   const row = document.createElement('div')
   row.className = `material-row mat-row csm-row${item.manual ? ' manual' : ''}`
   row.dataset.itemId = item.id
+  const varenr = item.varenr ?? item.id
+  if (varenr != null) {
+    row.dataset.varenr = String(varenr)
+  }
   if (item.systemKey) {
-    row.dataset.system = item.systemKey
+    const systemKey = String(item.systemKey)
+    row.dataset.system = systemKey
+    row.dataset.systemId = systemKey
   }
 
   const sanitizedId = String(item.id).replace(/[^a-zA-Z0-9_-]+/g, '-')

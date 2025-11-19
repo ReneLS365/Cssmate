@@ -120,6 +120,14 @@ let tabButtons = []
 let tabPanels = []
 const domCache = new Map()
 let deferredInstallPromptEvent = null
+const ALGOLIA_APP_ID = 'FOCOF98A09'
+const ALGOLIA_SEARCH_KEY = 'e07e93ca012eba63054d01c6fc82107d'
+const ALGOLIA_INDEX_NAME = 'cssmate_materials'
+let algoliaClient = null
+let algoliaIndex = null
+let materialSearchInitialized = false
+let materialSearchLastQuery = ''
+let materialSearchClickBound = false
 
 function setDeferredInstallPromptEvent(event) {
   deferredInstallPromptEvent = event
@@ -148,6 +156,181 @@ if (typeof window !== 'undefined') {
 
   window.addEventListener('appinstalled', () => {
     setDeferredInstallPromptEvent(null)
+  })
+}
+
+function initAlgoliaClient () {
+  if (typeof window === 'undefined' || algoliaClient) return
+  if (typeof window.algoliasearch !== 'function') {
+    console.warn('algoliasearch JS client not loaded')
+    return
+  }
+
+  algoliaClient = window.algoliasearch(ALGOLIA_APP_ID, ALGOLIA_SEARCH_KEY)
+  algoliaIndex = algoliaClient.initIndex(ALGOLIA_INDEX_NAME)
+}
+
+function setMaterialSearchMessage (message) {
+  const container = document.getElementById('material-search-results')
+  if (!container) return
+  const paragraph = document.createElement('p')
+  paragraph.className = 'material-search-status'
+  paragraph.textContent = message
+  container.innerHTML = ''
+  container.appendChild(paragraph)
+}
+
+function createMaterialSearchHit (hit) {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'material-search-hit'
+  button.dataset.systemId = hit.systemId || ''
+  button.dataset.varenr = hit.varenr || ''
+
+  const main = document.createElement('div')
+  main.className = 'hit-main'
+  const nameEl = document.createElement('strong')
+  nameEl.textContent = hit.name || ''
+  main.appendChild(nameEl)
+  if (hit.varenr) {
+    const idEl = document.createElement('span')
+    idEl.textContent = `(${hit.varenr})`
+    main.appendChild(idEl)
+  }
+
+  const meta = document.createElement('div')
+  meta.className = 'hit-meta'
+  const systemEl = document.createElement('span')
+  systemEl.textContent = hit.systemLabel || hit.systemId || ''
+  const price = Number(hit.price ?? 0)
+  const numericPrice = Number.isFinite(price) ? price : 0
+  const priceEl = document.createElement('span')
+  const unitLabel = hit.unit || 'stk'
+  priceEl.textContent = `${numericPrice.toFixed(2)} kr / ${unitLabel}`
+  meta.appendChild(systemEl)
+  meta.appendChild(priceEl)
+
+  button.appendChild(main)
+  button.appendChild(meta)
+
+  return button
+}
+
+function renderMaterialSearchResults (hits = []) {
+  const container = document.getElementById('material-search-results')
+  if (!container) return
+
+  if (!hits.length) {
+    setMaterialSearchMessage('Ingen materialer matchede din søgning.')
+    return
+  }
+
+  container.innerHTML = ''
+  hits.forEach(hit => {
+    container.appendChild(createMaterialSearchHit(hit))
+  })
+}
+
+function escapeSelectorValue (value) {
+  if (typeof value !== 'string') return ''
+  if (typeof window !== 'undefined' && window.CSS && typeof window.CSS.escape === 'function') {
+    return window.CSS.escape(value)
+  }
+  return value.replace(/["\\]/g, '\\$&')
+}
+
+function highlightMaterialRow (row) {
+  if (!row) return
+  row.classList.add('material-row--highlight')
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  window.setTimeout(() => {
+    row.classList.remove('material-row--highlight')
+  }, 1500)
+}
+
+function focusMaterialRow (systemId, varenr) {
+  const escapedVarenr = varenr ? escapeSelectorValue(varenr) : ''
+  const escapedSystem = systemId ? escapeSelectorValue(systemId) : ''
+  let row = null
+
+  if (escapedVarenr) {
+    const systemSelector = escapedSystem ? `[data-system-id="${escapedSystem}"]` : ''
+    const selectors = [
+      `.material-row[data-varenr="${escapedVarenr}"]${systemSelector}`,
+      `.csm-row[data-varenr="${escapedVarenr}"]${systemSelector}`
+    ].join(',')
+    row = document.querySelector(selectors)
+  }
+
+  if (!row && escapedSystem) {
+    const systemSelectors = [
+      `.material-row[data-system-id="${escapedSystem}"]`,
+      `.csm-row[data-system-id="${escapedSystem}"]`,
+      `.material-row[data-system="${escapedSystem}"]`,
+      `.csm-row[data-system="${escapedSystem}"]`
+    ].join(',')
+    row = document.querySelector(systemSelectors)
+  }
+
+  if (row) {
+    highlightMaterialRow(row)
+  }
+}
+
+function bindMaterialResultClicks () {
+  if (materialSearchClickBound) return
+  const container = document.getElementById('material-search-results')
+  if (!container) return
+
+  container.addEventListener('click', event => {
+    const btn = event.target.closest('.material-search-hit')
+    if (!btn) return
+    const systemId = btn.dataset.systemId || ''
+    const varenr = btn.dataset.varenr || ''
+    focusMaterialRow(systemId, varenr)
+  })
+  materialSearchClickBound = true
+}
+
+function setupMaterialSearch () {
+  if (materialSearchInitialized) return
+  const input = document.getElementById('material-search-input')
+  if (!input || !document.getElementById('material-search-results')) return
+
+  materialSearchInitialized = true
+  initAlgoliaClient()
+  bindMaterialResultClicks()
+  setMaterialSearchMessage('Skriv for at søge i materialer…')
+
+  input.addEventListener('input', async event => {
+    const query = event.target.value.trim()
+    materialSearchLastQuery = query
+
+    if (!query) {
+      setMaterialSearchMessage('Skriv for at søge i materialer…')
+      return
+    }
+
+    if (!algoliaIndex) {
+      initAlgoliaClient()
+      if (!algoliaIndex) {
+        setMaterialSearchMessage('Algolia søgning er ikke tilgængelig lige nu.')
+        return
+      }
+    }
+
+    setMaterialSearchMessage('Søger…')
+
+    try {
+      const response = await algoliaIndex.search(query, { hitsPerPage: 25 })
+      if (query !== materialSearchLastQuery) return
+      renderMaterialSearchResults(response.hits || [])
+    } catch (error) {
+      console.error('Algolia search failed', error)
+      if (query === materialSearchLastQuery) {
+        setMaterialSearchMessage('Kunne ikke søge i materialer. Prøv igen senere.')
+      }
+    }
   })
 }
 
@@ -3776,6 +3959,7 @@ async function initApp() {
   setupMobileKeyboardDismissal();
   setupServiceWorkerMessaging();
   setupPWAInstallPrompt();
+  setupMaterialSearch();
 
   document.getElementById('btnHardResetApp')?.addEventListener('click', () => {
     hardResetApp();

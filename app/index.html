@@ -131,6 +131,17 @@
         </label>
       </div>
 
+      <section id="material-search-panel" class="material-search-panel no-print">
+        <label for="material-search-input">Søg i materialer</label>
+        <input
+          id="material-search-input"
+          type="search"
+          placeholder="Søg efter navn, varenr, system..."
+          autocomplete="off"
+        />
+        <div id="material-search-results" aria-live="polite"></div>
+      </section>
+
       <div id="optaellingContainer" class="materials"></div>
     </fieldset>
 
@@ -472,6 +483,7 @@
   </div>
 
 <script src="js/version.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/algoliasearch@4/dist/algoliasearch-lite.umd.js" crossorigin="anonymous"></script>
 <script type="module" src="main.js"></script>
 </body>
 </html>
