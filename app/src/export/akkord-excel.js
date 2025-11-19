@@ -1,4 +1,5 @@
 import { BOSTA_DATA, HAKI_DATA, MODEX_DATA } from '../../dataset.js'
+import { ensureSheetJs } from '../features/export/sheetjs-loader.js'
 
 const SYSTEM_DATA = {
   bosta: BOSTA_DATA,
@@ -115,13 +116,7 @@ function buildExcelFilename(job, system) {
   return `Akkordseddel_${safeCase}_${systemLabel || 'SYSTEM'}.xlsx`;
 }
 
-function getXLSX() {
-  if (typeof XLSX !== 'undefined') return XLSX;
-  if (typeof window !== 'undefined' && window.XLSX) return window.XLSX;
-  throw new Error('SheetJS (XLSX) er ikke indlæst.');
-}
-
-async function loadTemplate(system) {
+async function loadTemplate(system, xlsx) {
   const templatePath = TEMPLATE_PATHS[system];
   if (!templatePath) {
     throw new Error(`Ukendt system: ${system}`);
@@ -131,7 +126,6 @@ async function loadTemplate(system) {
     throw new Error(`Kunne ikke hente template: ${templatePath}`);
   }
   const buffer = await response.arrayBuffer();
-  const xlsx = getXLSX();
   const workbook = xlsx.read(buffer, { type: 'array' });
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
@@ -179,8 +173,7 @@ function buildNameToQtyMap(job, system) {
   return map;
 }
 
-function fillLines(sheet, nameToQty) {
-  const xlsx = getXLSX();
+function fillLines(sheet, nameToQty, xlsx) {
   const range = xlsx.utils.decode_range(sheet['!ref']);
   for (let row = range.s.r; row <= range.e.r; row += 1) {
     const columns = [
@@ -237,16 +230,23 @@ export async function exportAkkordExcelForActiveJob(jobOverride, systemOverride)
     return [];
   }
 
+  let xlsx;
+  try {
+    xlsx = await ensureSheetJs();
+  } catch (error) {
+    console.error('Kunne ikke indlæse SheetJS til Excel eksport.', error);
+    return [];
+  }
+
   const results = [];
   for (const system of systems) {
     if (!ALLOWED_SYSTEMS.includes(system)) continue;
     try {
-      const { workbook, sheet } = await loadTemplate(system);
+      const { workbook, sheet } = await loadTemplate(system, xlsx);
       const nameToQty = buildNameToQtyMap(job, system);
       fillHeader(sheet, job);
-      fillLines(sheet, nameToQty);
+      fillLines(sheet, nameToQty, xlsx);
 
-      const xlsx = getXLSX();
       const output = xlsx.write(workbook, { bookType: 'xlsx', type: 'array' });
       const blob = new Blob([output], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       results.push({

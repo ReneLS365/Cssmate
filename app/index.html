@@ -11,13 +11,20 @@
   <meta name=apple-mobile-web-app-status-bar-style content=black-translucent>
   <title>akkordseddel</title>
   <link rel=stylesheet href=style.css>
-  <link rel=stylesheet href=css/numpad.css>
-  <link rel=stylesheet href=css/a9-calc.css>
+  <link rel="preload" href="css/numpad.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <link rel="preload" href="css/a9-calc.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
   <link rel=stylesheet href=print.css media=print>
-  <link rel=stylesheet href=src/styles/fixes.css>
-  <link rel=stylesheet href=/css/pwa.css>
+  <link rel="preload" href="src/styles/fixes.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <link rel="preload" href="/css/pwa.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript>
+    <link rel="stylesheet" href="css/numpad.css">
+    <link rel="stylesheet" href="css/a9-calc.css">
+    <link rel="stylesheet" href="src/styles/fixes.css">
+    <link rel="stylesheet" href="/css/pwa.css">
+  </noscript>
   <link rel=manifest href=/manifest.webmanifest crossorigin=anonymous>
   <link rel=apple-touch-icon href=/icons/icon-192.png>
+  <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg">
   <link rel=canonical href=https://sscaff.netlify.app/ >
 </head>
 <body>
@@ -370,7 +377,7 @@
     </div>
   </div>
 
-    <div id="numpad-overlay" class="numpad-hidden" aria-hidden="true" data-numpad-overlay>
+    <div id="numpad-overlay" class="numpad-hidden" aria-hidden="true" data-numpad-overlay hidden inert>
       <div
         class="numpad-panel numpad-container"
         role="dialog"
@@ -463,6 +470,5 @@
     </div>
   </div>
 
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="js/version.js"></script>
 <script type="module" src="main.js"></script>

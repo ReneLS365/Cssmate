@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+# Sitemap: https://sscaff.netlify.app/sitemap.xml
