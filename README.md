@@ -11,7 +11,7 @@ CSMate er en letvægtsudgave af den oprindelige Cssmate-applikation, målrettet 
 | `app/cache-output.json` | Snapshot af hvilke assets SW'en skal pre-caches med. |
 | `docs/lighthouse/` | Gemmer Lighthouse-målinger; `latest-mobile.json` overskrives ved nye audits. |
 | `scripts/` | Node-scripts til f.eks. at bump'e SW-version (`bump-sw-version.js`) og opdatere prislister (`update-price-lists.js`). |
-| `tools/` | Hjælpeværktøjer, fx `lh-enforce.js` til at gate builds på Lighthouse-scorer samt `algolia-upload-materials.js` til at uploade data til Algolia. |
+| `tools/` | Hjælpeværktøjer, fx `lh-enforce.js` til at gate builds på Lighthouse-scorer. |
 | `netlify.toml` | Netlify build- og deploykonfiguration. |
 
 ## NPM-scripts
@@ -21,10 +21,9 @@ CSMate er en letvægtsudgave af den oprindelige Cssmate-applikation, målrettet 
 - `npm run build` – alias for `bump-sw-version`, så Netlify kan bygge en frisk pakke før deploy.
 - `npm run test:html` – validerer markup med `html-validate`.
 - `npm run test:links` – crawler `app/` og sikrer at interne links virker.
-- `npm run test:lh:mobile` – kører Lighthouse mod et givent URL (default `LHCI_URL`) med mobilprofil + PWA-kategori.
+- `npm run test:lh:mobile` – kører Lighthouse mod et givent URL (default `LHCI_URL`) med mobilprofil og deterministiske throttling-flags.
 - `npm run test:lh:enforce` – læser `docs/lighthouse/latest-mobile.json` og fejler hvis scorerne falder.
 - `npm run test:super` – kombineret testflow der kører build + samtlige audits.
-- `npm run algolia:upload` – synker materialer til Algolia-indekset.
 
 ## CODEx Autonomous CI Bootstrapper
 

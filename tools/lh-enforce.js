@@ -29,7 +29,6 @@ const categories = [
   "accessibility",
   "best-practices",
   "seo",
-  "pwa",
 ];
 
 const failures = [];

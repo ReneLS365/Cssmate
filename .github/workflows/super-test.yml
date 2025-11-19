@@ -13,10 +13,10 @@ concurrency:
 jobs:
   super-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     env:
-      # Sæt til den rigtige offentlige URL for Cssmate
-      LHCI_URL: https://cssmate.netlify.app
+      LHCI_URL: http://127.0.0.1:4173
 
     steps:
       - name: Checkout
@@ -31,5 +31,30 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Start static server
+        run: |
+          npx http-server app -p 4173 --silent &
+          echo $! > server.pid
+
+      - name: Wait for local server
+        run: |
+          for attempt in {1..20}; do
+            if curl -sf "$LHCI_URL" >/dev/null; then
+              echo "Local server is reachable"
+              exit 0
+            fi
+            echo "Attempt ${attempt} failed, retrying in 1s"
+            sleep 1
+          done
+          echo "Local server did not become reachable" >&2
+          exit 1
+
       - name: Run SuperTest (build + HTML + links + Lighthouse 100/100)
         run: npm run test:super
+
+      - name: Stop static server
+        if: always()
+        run: |
+          if [ -f server.pid ]; then
+            kill $(cat server.pid) || true
+          fi
