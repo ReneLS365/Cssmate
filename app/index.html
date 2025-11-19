@@ -1,19 +1,19 @@
-<!doctype html>
-<html lang=da>
+<!DOCTYPE html>
+<html lang="da">
 <head>
   <!-- force build -->
-  
-  <meta charset=utf-8>
-  <meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name=description content="CSMate – stilladsoptælling, akkord og PWA til byggepladsen.">
-  <meta name=theme-color content=#0f172a>
-  <meta name=apple-mobile-web-app-capable content=yes>
-  <meta name=apple-mobile-web-app-status-bar-style content=black-translucent>
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="description" content="CSMate – stilladsoptælling, akkord og PWA til byggepladsen.">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>akkordseddel</title>
-  <link rel=stylesheet href=style.css>
+  <link rel="stylesheet" href="style.css">
   <link rel="preload" href="css/numpad.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
   <link rel="preload" href="css/a9-calc.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
-  <link rel=stylesheet href=print.css media=print>
+  <link rel="stylesheet" href="print.css" media="print">
   <link rel="preload" href="src/styles/fixes.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
   <link rel="preload" href="/css/pwa.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
   <noscript>
@@ -22,24 +22,24 @@
     <link rel="stylesheet" href="src/styles/fixes.css">
     <link rel="stylesheet" href="/css/pwa.css">
   </noscript>
-  <link rel=manifest href=/manifest.webmanifest crossorigin=anonymous>
-  <link rel=apple-touch-icon href=/icons/icon-192.png>
+  <link rel="manifest" href="/manifest.webmanifest" crossorigin="anonymous">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg">
-  <link rel=canonical href=https://sscaff.netlify.app/ >
+  <link rel="canonical" href="https://sscaff.netlify.app/">
 </head>
 <body>
-  <a class=skip-to-content href=#main>Spring til indhold</a>
-  <div id=iosInstallPrompt class=ios-install-prompt role=region aria-live=polite hidden>
+  <a class="skip-to-content" href="#main">Spring til indhold</a>
+  <section id="iosInstallPrompt" class="ios-install-prompt" aria-live="polite" hidden>
     <p>Tilføj CSMate til hjemmeskærmen: Tryk på delingsknappen og vælg <strong>Føj til hjemmeskærm</strong>.</p>
-    <button type=button id=iosInstallDismiss class=ios-install-dismiss aria-label="Skjul iOS installationshint">✕</button>
-  </div>
+    <button type="button" id="iosInstallDismiss" class="ios-install-dismiss" aria-label="Skjul iOS installationshint">✕</button>
+  </section>
   <div class="pwa-install-wrap no-print">
-    <button type=button id=installBtn class=pwa-install-btn hidden>Installer app</button>
+    <button type="button" id="installBtn" class="pwa-install-btn" hidden>Installer app</button>
   </div>
-  <div id=app class=app-shell>
+  <div id="app" class="app-shell">
     <header data-allow-click>
-      <div class=bar>
-        <h1 class=ttl>akkordseddel</h1>
+      <div class="bar">
+        <h1 class="ttl">akkordseddel</h1>
         <nav class="tabs" role="tablist" aria-label="SSCaff sektioner">
           <button id="tab-sagsinfo" class="tab tab--active" type="button" role="tab" data-tab-id="sagsinfo" aria-controls="panel-sagsinfo" aria-selected="true">Sagsinfo</button>
           <button id="tab-optaelling" class="tab" type="button" role="tab" data-tab-id="optaelling" aria-controls="panel-optaelling" aria-selected="false">Optælling</button>
@@ -49,9 +49,9 @@
         </nav>
       </div>
     </header>
-    <div class=app-content>
-      <div class=materials-scroll>
-        <main id=main class="app-root">
+    <div class="app-content">
+      <div class="materials-scroll">
+        <main id="main" class="app-root">
           <div class="tab-panels" data-tab-panels>
   <section
     id="panel-sagsinfo"
@@ -64,43 +64,45 @@
     <fieldset>
       <legend>Stamdata</legend>
       <div class="form-grid grid-3">
-        <label for=sagsnummer>
+        <label>
           <span>Sagsnummer</span>
-          <input id=sagsnummer name=sagsnummer required>
+          <input type="text" id="sagsnummer" name="sagsnummer" required>
         </label>
-        <label for=sagsnavn>
+        <label>
           <span>Navn/opgave</span>
-          <input id=sagsnavn name=navn required>
+          <input type="text" id="sagsnavn" name="navn" required>
         </label>
-        <label for=sagsadresse>
+        <label>
           <span>Adresse</span>
-          <input id=sagsadresse name=adresse required>
+          <input type="text" id="sagsadresse" name="adresse" required>
         </label>
-        <label for=sagskunde>
+        <label>
           <span>Kunde</span>
-          <input id=sagskunde name=kunde required>
+          <input type="text" id="sagskunde" name="kunde" required>
         </label>
-        <label for=sagsdato class=date-field>
-          <span>Dato</span>
-          <div class=date-input-wrapper>
-            <input id=sagsdato name=dato type=date required inputmode=numeric>
-            <button id=calendarIcon class=date-picker-trigger type=button aria-label="Åbn kalender">📅</button>
+        <div class="form-field date-field">
+          <label for="sagsdato">
+            <span>Dato</span>
+          </label>
+          <div class="date-input-wrapper">
+            <input id="sagsdato" name="dato" type="date" required inputmode="numeric">
+            <button type="button" id="calendarIcon" class="date-picker-trigger" aria-label="Åbn kalender">📅</button>
           </div>
-        </label>
-        <label for=sagsmontoer class=col-span-3>
+        </div>
+        <label class="col-span-3">
           <span>Montørnavne</span>
-          <textarea id=sagsmontoer name=montoer rows=3 placeholder="Fx: Anna Jensen, Bo Nielsen" required></textarea>
+          <textarea id="sagsmontoer" name="montoer" rows="3" placeholder="Fx: Anna Jensen, Bo Nielsen" required></textarea>
         </label>
       </div>
       <div class="form-actions no-print">
-        <button id=btnOpenGuideModal type=button>Åbn guide</button>
+        <button id="btnOpenGuideModal" type="button">Åbn guide</button>
       </div>
     </fieldset>
 
     <fieldset>
       <legend>Status</legend>
-      <p class=hint>Udfyld Sagsinfo og Optælling for at aktivere eksport.</p>
-      <p id=actionHint class="hint no-print" role=status aria-live=polite aria-atomic=true>
+      <p class="hint">Udfyld Sagsinfo og Optælling for at aktivere eksport.</p>
+      <p id="actionHint" class="hint no-print" role="status" aria-live="polite" aria-atomic="true">
         Udfyld Sagsinfo for at fortsætte.
       </p>
     </fieldset>
@@ -117,19 +119,19 @@
   >
     <fieldset>
       <legend>Systemer</legend>
-      <div id=listSelectors class=row></div>
+      <div id="listSelectors" class="row"></div>
     </fieldset>
 
     <fieldset>
       <legend>Materialer</legend>
       <div class="material-options no-print">
-        <label class=toggle-selected>
-          <input type=checkbox id=showSelectedOnly>
+        <label class="toggle-selected">
+          <input type="checkbox" id="showSelectedOnly">
           <span>Vis kun valgte materialer</span>
         </label>
       </div>
 
-      <div id=optaellingContainer class=materials></div>
+      <div id="optaellingContainer" class="materials"></div>
     </fieldset>
 
   </section>
@@ -143,45 +145,48 @@
     aria-hidden="true"
     hidden
   >
-    <fieldset class=no-print data-allow-click>
+    <fieldset class="no-print" data-allow-click>
       <legend>Admin</legend>
-      <div class=row>
-        <label class=sr-only for=adminCode>Admin kode</label>
-        <input id=adminCode placeholder=Kode>
-        <button id=btnAdminLogin type=button>Log ind</button>
+      <div class="row">
+        <label class="sr-only" for="adminCode">Admin kode</label>
+        <input type="text" id="adminCode" placeholder="Kode">
+        <button id="btnAdminLogin" type="button">Log ind</button>
       </div>
-      <p id=adminFeedback class=status-message hidden aria-live=polite></p>
-      <button id=btnHardResetApp type=button hidden>Nulstil app-data</button>
+      <p id="adminFeedback" class="status-message" hidden aria-live="polite"></p>
+      <button id="btnHardResetApp" type="button" hidden>Nulstil app-data</button>
     </fieldset>
     <fieldset>
-      <legend>Type & beløb</legend>
-      <div class=grid-3>
-        <label for=jobType><span>Arbejdstype</span>
-          <select id=jobType>
-            <option value=montage>Montage</option>
-            <option value=demontage>Demontage (50%)</option>
+      <legend>Type &amp; beløb</legend>
+      <div class="grid-3">
+        <label><span>Arbejdstype</span>
+          <select id="jobType">
+            <option value="montage">Montage</option>
+            <option value="demontage">Demontage (50%)</option>
           </select>
         </label>
-        <label for=montagepris><span>Montagepris (auto)</span>
-          <input id=montagepris placeholder="Montagepris (auto)" inputmode=decimal data-numpad=true data-decimal=comma data-numpad-field=montagepris>
+        <label><span>Montagepris (auto)</span>
+          <input type="text" id="montagepris" placeholder="Montagepris (auto)" inputmode="decimal" data-numpad="true" data-decimal="comma" data-numpad-field="montagepris">
         </label>
-        <label for=demontagepris><span>Demontagepris (auto)</span>
-          <input id=demontagepris placeholder="Demontagepris (auto)" inputmode=decimal data-numpad=true data-decimal=comma data-numpad-field=demontagepris>
+        <label><span>Demontagepris (auto)</span>
+          <input type="text" id="demontagepris" placeholder="Demontagepris (auto)" inputmode="decimal" data-numpad="true" data-decimal="comma" data-numpad-field="demontagepris">
         </label>
       </div>
     </fieldset>
     <fieldset>
-      <legend>Tillæg & km</legend>
-      <div class=grid-2>
-        <label for=slaebePct><span>Slæb i %</span>
-          <div class=field-with-icon>
-            <input id=slaebePct placeholder="Slæb i %" data-decimal=comma data-numpad-field=slaebePct data-a9-slaeb=true data-numpad=off>
-            <button type=button class="a9-open-btn js-slaeb-calc-link" aria-label="Åbn slæb-procent app" data-calc-url="https://cala9.netlify.app/">🧮</button>
+      <legend>Tillæg &amp; km</legend>
+      <div class="grid-2">
+          <div class="form-field">
+            <label for="slaebePct">
+              <span>Slæb i %</span>
+            </label>
+            <div class="field-with-icon">
+              <input type="text" id="slaebePct" placeholder="Slæb i %" data-decimal="comma" data-numpad-field="slaebePct" data-a9-slaeb="true" data-numpad="off">
+              <button type="button" class="a9-open-btn js-slaeb-calc-link" aria-label="Åbn slæb-procent app" data-calc-url="https://cala9.netlify.app/">🧮</button>
+            </div>
+            <div id="slaebPercentCalcInfo" class="help-text small-muted" aria-live="polite"></div>
           </div>
-          <div id=slaebPercentCalcInfo class="help-text small-muted" aria-live=polite></div>
-        </label>
-        <label for=km><span>Km</span>
-          <input id=km placeholder=Km inputmode=decimal data-numpad=true data-decimal=comma data-numpad-field=km>
+        <label><span>Km</span>
+          <input type="text" id="km" placeholder="Km" inputmode="decimal" data-numpad="true" data-decimal="comma" data-numpad-field="km">
         </label>
       </div>
     </fieldset>
@@ -189,86 +194,86 @@
     <fieldset>
       <legend>Ekstra arbejde</legend>
       <div class="grid-3 extra-work-grid">
-        <label for=antalBoringHuller><span>Huller (antal)</span>
-          <input id=antalBoringHuller placeholder="Huller (antal)" inputmode=numeric data-numpad=true data-decimal=comma data-testid=antal-input-1 data-numpad-field=antalBoringHuller>
+        <label><span>Huller (antal)</span>
+          <input type="text" id="antalBoringHuller" placeholder="Huller (antal)" inputmode="numeric" data-numpad="true" data-decimal="comma" data-testid="antal-input-1" data-numpad-field="antalBoringHuller">
         </label>
-        <label for=antalLukHuller><span>Luk af hul (antal)</span>
-          <input id=antalLukHuller placeholder="Luk af hul (antal)" inputmode=numeric data-numpad=true data-decimal=comma data-numpad-field=antalLukHuller>
+        <label><span>Luk af hul (antal)</span>
+          <input type="text" id="antalLukHuller" placeholder="Luk af hul (antal)" inputmode="numeric" data-numpad="true" data-decimal="comma" data-numpad-field="antalLukHuller">
         </label>
-        <label for=antalBoringBeton><span>Boring i beton (antal)</span>
-          <input id=antalBoringBeton placeholder="Boring i beton (antal)" inputmode=numeric data-numpad=true data-decimal=comma data-numpad-field=antalBoringBeton>
+        <label><span>Boring i beton (antal)</span>
+          <input type="text" id="antalBoringBeton" placeholder="Boring i beton (antal)" inputmode="numeric" data-numpad="true" data-decimal="comma" data-numpad-field="antalBoringBeton">
         </label>
-        <label for=antalOpskydeligt><span>Opskydeligt rækværk (antal)</span>
-          <input id=antalOpskydeligt placeholder="Opskydeligt rækværk (antal)" inputmode=numeric data-numpad=true data-decimal=comma data-numpad-field=antalOpskydeligt>
+        <label><span>Opskydeligt rækværk (antal)</span>
+          <input type="text" id="antalOpskydeligt" placeholder="Opskydeligt rækværk (antal)" inputmode="numeric" data-numpad="true" data-decimal="comma" data-numpad-field="antalOpskydeligt">
         </label>
-        <label for=traelleloeft35><span>Tralleløft 0,35 (antal)</span>
-          <input id=traelleloeft35 placeholder="Tralleløft 0,35 (antal)" inputmode=numeric data-numpad=true data-decimal=comma data-numpad-field=traelleloeft35>
+        <label><span>Tralleløft 0,35 (antal)</span>
+          <input type="text" id="traelleloeft35" placeholder="Tralleløft 0,35 (antal)" inputmode="numeric" data-numpad="true" data-decimal="comma" data-numpad-field="traelleloeft35">
         </label>
-        <label for=traelleloeft50><span>Tralleløft 0,50 (antal)</span>
-          <input id=traelleloeft50 placeholder="Tralleløft 0,50 (antal)" inputmode=numeric data-numpad=true data-decimal=comma data-numpad-field=traelleloeft50>
+        <label><span>Tralleløft 0,50 (antal)</span>
+          <input type="text" id="traelleloeft50" placeholder="Tralleløft 0,50 (antal)" inputmode="numeric" data-numpad="true" data-decimal="comma" data-numpad-field="traelleloeft50">
         </label>
       </div>
     </fieldset>
 
     <section class="overview overview-inline">
-      <div class=totals>
+      <div class="totals">
         <div>
           <span>Materialesum</span>
-          <strong data-total=material>0,00</strong>
+          <strong data-total="material">0,00</strong>
         </div>
         <div>
           <span>Lønsum</span>
-          <strong data-total=labor>0,00</strong>
+          <strong data-total="labor">0,00</strong>
         </div>
         <div>
           <span>Projektsum</span>
-          <strong data-total=project>0,00</strong>
+          <strong data-total="project">0,00</strong>
         </div>
       </div>
     </section>
 
     <div class="row no-print btn-group">
-      <button id=btnBeregnLon type=button data-role="primary">Beregn løn</button>
-      <button id=btnPrint type=button disabled data-role="primary">Print</button>
+      <button id="btnBeregnLon" type="button" data-role="primary">Beregn løn</button>
+      <button id="btnPrint" type="button" disabled data-role="primary">Print</button>
     </div>
     <fieldset class="no-print export-panel">
-      <legend>Eksport & deling</legend>
+      <legend>Eksport &amp; deling</legend>
       <div class="export-actions" role="group" aria-label="Eksport muligheder">
-        <button id=btnExportZip type=button>ZIP</button>
-        <button id=btnExportAkkord type=button>Eksporter akkordseddel</button>
+        <button id="btnExportZip" type="button">ZIP</button>
+        <button id="btnExportAkkord" type="button">Eksporter akkordseddel</button>
       </div>
       <fieldset class="export-system-selector">
         <legend>Excel 25-ark</legend>
         <p class="hint">Vælg de systemer der skal have et 25-ark. Kun BOSTA er valgt som standard.</p>
-        <div id=akkordExcelSystemOptions class="export-system-options" role=group aria-label="Excel systemvalg">
-          <label class="export-system-option" data-system=bosta>
-            <input type=checkbox name=akkordExcelSystem value=bosta checked>
+        <div id="akkordExcelSystemOptions" class="export-system-options" role="group" aria-label="Excel systemvalg">
+          <label class="export-system-option" data-system="bosta">
+            <input type="checkbox" name="akkordExcelSystem" value="bosta" checked>
             <span class="export-system-option__label">BOSTA 2025</span>
-            <small class="export-system-option__hint" aria-live=polite></small>
+            <small class="export-system-option__hint" aria-live="polite"></small>
           </label>
-          <label class="export-system-option" data-system=haki>
-            <input type=checkbox name=akkordExcelSystem value=haki>
+          <label class="export-system-option" data-system="haki">
+            <input type="checkbox" name="akkordExcelSystem" value="haki">
             <span class="export-system-option__label">HAKI 2025</span>
-            <small class="export-system-option__hint" aria-live=polite></small>
+            <small class="export-system-option__hint" aria-live="polite"></small>
           </label>
-          <label class="export-system-option" data-system=modex>
-            <input type=checkbox name=akkordExcelSystem value=modex>
+          <label class="export-system-option" data-system="modex">
+            <input type="checkbox" name="akkordExcelSystem" value="modex">
             <span class="export-system-option__label">MODEX 2025</span>
-            <small class="export-system-option__hint" aria-live=polite></small>
+            <small class="export-system-option__hint" aria-live="polite"></small>
           </label>
         </div>
       </fieldset>
     </fieldset>
     <fieldset>
       <legend>Resultat</legend>
-      <div id=lonResult></div>
+      <div id="lonResult"></div>
     </fieldset>
 
-    <fieldset class=no-print>
+    <fieldset class="no-print">
       <legend>Medarbejdere</legend>
-      <div id=workers></div>
-      <div class=row>
-        <button id=btnAddWorker type=button>+ Tilføj mand</button>
+      <div id="workers"></div>
+      <div class="row">
+        <button id="btnAddWorker" type="button">+ Tilføj mand</button>
       </div>
     </fieldset>
   </section>
@@ -282,35 +287,35 @@
     aria-hidden="true"
     hidden
   >
-    <section class="card job-history no-print" aria-live=polite>
+    <section class="card job-history no-print" aria-live="polite">
       <header class="card-header">
         <h2>Historik</h2>
         <p>Vælg en tidligere sag for at indlæse data eller se timeløn.</p>
       </header>
       <div class="job-history__controls">
-        <label for=jobHistorySelect>
+        <label>
           <span>Seneste sager</span>
-          <select id=jobHistorySelect name=jobHistorySelect>
+          <select id="jobHistorySelect" name="jobHistorySelect">
             <option value="" selected>Indlæser sager…</option>
           </select>
         </label>
-        <button id=btnLoadHistoryJob type=button disabled data-role="primary">Indlæs sag</button>
+        <button id="btnLoadHistoryJob" type="button" disabled data-role="primary">Indlæs sag</button>
       </div>
-      <div class="job-history__summary table-wrapper" aria-live=polite>
+      <div class="job-history__summary table-wrapper" aria-live="polite">
         <table>
           <thead>
             <tr>
-              <th scope=col>Dato &amp; tid</th>
-              <th scope=col>Timer</th>
-              <th scope=col>Uden tillæg</th>
-              <th scope=col>Udd1</th>
-              <th scope=col>Udd2</th>
-              <th scope=col>Udd2 + mentor</th>
+              <th scope="col">Dato &amp; tid</th>
+              <th scope="col">Timer</th>
+              <th scope="col">Uden tillæg</th>
+              <th scope="col">Udd1</th>
+              <th scope="col">Udd2</th>
+              <th scope="col">Udd2 + mentor</th>
             </tr>
           </thead>
-          <tbody id=job-history-summary-body>
+          <tbody id="job-history-summary-body">
             <tr>
-              <td colspan=6>Vælg en sag for at se historik.</td>
+              <td colspan="6">Vælg en sag for at se historik.</td>
             </tr>
           </tbody>
         </table>
@@ -318,7 +323,7 @@
       <div class="job-history__list">
         <h3>Seneste eksport/import</h3>
         <p class="job-history__hint">Historikken opdateres automatisk efter beregning. Åbn review-loggen i debug-mappen for fuld oversigt over ændringer.</p>
-        <ul id=historyList class="history-list" aria-live=polite aria-busy=true></ul>
+        <ul id="historyList" class="history-list" aria-live="polite" aria-busy="true"></ul>
       </div>
     </section>
   </section>
@@ -342,8 +347,8 @@
     </fieldset>
     <fieldset>
       <legend>Support</legend>
-      <p class=hint>Kontakt administratoren hvis data skal nulstilles eller hvis eksporten fejler.</p>
-      <p class=hint>Se også logfilerne i <code>/debug</code>-mappen for fejlfinding.</p>
+      <p class="hint">Kontakt administratoren hvis data skal nulstilles eller hvis eksporten fejler.</p>
+      <p class="hint">Se også logfilerne i <code>/debug</code>-mappen for fejlfinding.</p>
     </fieldset>
   </section>
           </div>
@@ -352,10 +357,10 @@
       </div>
     </div>
 
-    <div id=guideModal class=modal hidden aria-hidden=true>
-      <div class=modal-content role=dialog aria-modal=true aria-labelledby=guideModalTitle tabindex=-1>
-        <button type=button class=modal-close aria-label=Luk>×</button>
-        <h2 id=guideModalTitle>Guide til CSMate</h2>
+    <div id="guideModal" class="modal" hidden aria-hidden="true">
+      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="guideModalTitle" tabindex="-1">
+        <button type="button" class="modal-close" aria-label="Luk">×</button>
+        <h2 id="guideModalTitle">Guide til CSMate</h2>
         <p>
           Følg disse trin for at genskabe den stabile arbejdsgang:
         </p>
@@ -373,7 +378,7 @@
     </div>
   </div>
 
-    <div id="numpad-overlay" class="numpad-hidden" aria-hidden="true" data-numpad-overlay hidden inert>
+    <div id="numpad-overlay" class="numpad-hidden" data-numpad-overlay hidden inert>
       <div
         class="numpad-panel numpad-container"
         role="dialog"
@@ -392,79 +397,81 @@
         </div>
 
         <div class="numpad-grid">
-          <button data-key="C" class="numpad-key numpad-key-func">C</button>
-          <button data-key="÷" class="numpad-key numpad-key-op numpad-key--op numpad-operator">÷</button>
-          <button data-key="×" class="numpad-key numpad-key-op numpad-key--op numpad-operator">×</button>
-          <button data-key="BACK" class="numpad-key numpad-key-func">⌫</button>
+          <button type="button" data-key="C" class="numpad-key numpad-key-func">C</button>
+          <button type="button" data-key="÷" class="numpad-key numpad-key-op numpad-key--op numpad-operator">÷</button>
+          <button type="button" data-key="×" class="numpad-key numpad-key-op numpad-key--op numpad-operator">×</button>
+          <button type="button" data-key="BACK" class="numpad-key numpad-key-func">⌫</button>
 
-          <button data-key="7" class="numpad-key">7</button>
-          <button data-key="8" class="numpad-key">8</button>
-          <button data-key="9" class="numpad-key">9</button>
-          <button data-key="-" class="numpad-key numpad-key-op numpad-key--op numpad-operator">-</button>
+          <button type="button" data-key="7" class="numpad-key">7</button>
+          <button type="button" data-key="8" class="numpad-key">8</button>
+          <button type="button" data-key="9" class="numpad-key">9</button>
+          <button type="button" data-key="-" class="numpad-key numpad-key-op numpad-key--op numpad-operator">-</button>
 
-          <button data-key="4" class="numpad-key">4</button>
-          <button data-key="5" class="numpad-key">5</button>
-          <button data-key="6" class="numpad-key">6</button>
-          <button data-key="+" class="numpad-key numpad-key-op numpad-key--op numpad-operator">+</button>
+          <button type="button" data-key="4" class="numpad-key">4</button>
+          <button type="button" data-key="5" class="numpad-key">5</button>
+          <button type="button" data-key="6" class="numpad-key">6</button>
+          <button type="button" data-key="+" class="numpad-key numpad-key-op numpad-key--op numpad-operator">+</button>
 
-          <button data-key="1" class="numpad-key">1</button>
-          <button data-key="2" class="numpad-key">2</button>
-          <button data-key="3" class="numpad-key">3</button>
-          <button data-key="=" class="numpad-key numpad-key-eq key-equal">=</button>
+          <button type="button" data-key="1" class="numpad-key">1</button>
+          <button type="button" data-key="2" class="numpad-key">2</button>
+          <button type="button" data-key="3" class="numpad-key">3</button>
+          <button type="button" data-key="=" class="numpad-key numpad-key-eq key-equal">=</button>
 
-          <button data-key="%" class="numpad-key numpad-key-func">%</button>
-          <button data-key="0" class="numpad-key">0</button>
-          <button data-key="," class="numpad-key numpad-key-op numpad-operator">,</button>
+          <button type="button" data-key="%" class="numpad-key numpad-key-func">%</button>
+          <button type="button" data-key="0" class="numpad-key">0</button>
+          <button type="button" data-key="," class="numpad-key numpad-key-op numpad-operator">,</button>
         </div>
 
         <button type="button" class="numpad-commit" id="numpad-btn-commit">✓</button>
       </div>
     </div>
 
-  <div id=a9-overlay class=a9-hidden aria-hidden=true>
-    <div class=a9-panel role=dialog aria-label="Slæb i % lommeregner" tabindex=-1>
-      <button type=button class=a9-close id=a9-btn-close aria-label="Luk lommeregner">✕</button>
-      <div class=a9-display>
-        <div class=a9-display-top id=a9-display-expression></div>
-        <div class=a9-display-mid id=a9-display-previous></div>
-        <div class=a9-display-main id=a9-display-current>0</div>
+  <div id="a9-overlay" class="a9-hidden">
+    <div class="a9-panel" role="dialog" aria-label="Slæb i % lommeregner" tabindex="-1">
+      <button type="button" class="a9-close" id="a9-btn-close" aria-label="Luk lommeregner">✕</button>
+      <div class="a9-display">
+        <div class="a9-display-top" id="a9-display-expression"></div>
+        <div class="a9-display-mid" id="a9-display-previous"></div>
+        <div class="a9-display-main" id="a9-display-current">0</div>
       </div>
-      <div class=a9-actions>
-        <button type=button class=a9-copy id=a9-btn-copy>📋 Kopiér formel</button>
+      <div class="a9-actions">
+        <button type="button" class="a9-copy" id="a9-btn-copy">📋 Kopiér formel</button>
       </div>
-      <div class=a9-grid>
-        <button data-a9-key=C class="a9-key a9-func" type=button>C</button>
-        <button data-a9-key=MC class="a9-key a9-func" type=button>mc</button>
-        <button data-a9-key=MR class="a9-key a9-func" type=button>mr</button>
-        <button data-a9-key=M- class="a9-key a9-func" type=button>m-</button>
-        <button data-a9-key=M+ class="a9-key a9-func" type=button>m+</button>
+      <div class="a9-grid">
+        <button data-a9-key="C" class="a9-key a9-func" type="button">C</button>
+        <button data-a9-key="MC" class="a9-key a9-func" type="button">mc</button>
+        <button data-a9-key="MR" class="a9-key a9-func" type="button">mr</button>
+        <button data-a9-key="M-" class="a9-key a9-func" type="button">m-</button>
+        <button data-a9-key="M+" class="a9-key a9-func" type="button">m+</button>
 
-        <button data-a9-key=BACK class="a9-key a9-func" type=button>⌫</button>
-        <button data-a9-key=÷ class="a9-key a9-op" type=button>÷</button>
-        <button data-a9-key=× class="a9-key a9-op" type=button>×</button>
-        <button data-a9-key=- class="a9-key a9-op" type=button>-</button>
+        <button data-a9-key="BACK" class="a9-key a9-func" type="button">⌫</button>
+        <button data-a9-key="÷" class="a9-key a9-op" type="button">÷</button>
+        <button data-a9-key="×" class="a9-key a9-op" type="button">×</button>
+        <button data-a9-key="-" class="a9-key a9-op" type="button">-</button>
 
-        <button data-a9-key=7 class=a9-key type=button>7</button>
-        <button data-a9-key=8 class=a9-key type=button>8</button>
-        <button data-a9-key=9 class=a9-key type=button>9</button>
-        <button data-a9-key=+ class="a9-key a9-op" type=button>+</button>
+        <button data-a9-key="7" class="a9-key" type="button">7</button>
+        <button data-a9-key="8" class="a9-key" type="button">8</button>
+        <button data-a9-key="9" class="a9-key" type="button">9</button>
+        <button data-a9-key="+" class="a9-key a9-op" type="button">+</button>
 
-        <button data-a9-key=4 class=a9-key type=button>4</button>
-        <button data-a9-key=5 class=a9-key type=button>5</button>
-        <button data-a9-key=6 class=a9-key type=button>6</button>
-        <button data-a9-key== class="a9-key a9-eq" type=button>=</button>
+        <button data-a9-key="4" class="a9-key" type="button">4</button>
+        <button data-a9-key="5" class="a9-key" type="button">5</button>
+        <button data-a9-key="6" class="a9-key" type="button">6</button>
+        <button data-a9-key="=" class="a9-key a9-eq" type="button">=</button>
 
-        <button data-a9-key=1 class=a9-key type=button>1</button>
-        <button data-a9-key=2 class=a9-key type=button>2</button>
-        <button data-a9-key=3 class=a9-key type=button>3</button>
-        <button data-a9-key=% class="a9-key a9-func" type=button>%</button>
+        <button data-a9-key="1" class="a9-key" type="button">1</button>
+        <button data-a9-key="2" class="a9-key" type="button">2</button>
+        <button data-a9-key="3" class="a9-key" type="button">3</button>
+        <button data-a9-key="%" class="a9-key a9-func" type="button">%</button>
 
-        <button data-a9-key=0 class="a9-key a9-wide" type=button>0</button>
-        <button data-a9-key=, class=a9-key type=button>,</button>
+        <button data-a9-key="0" class="a9-key a9-wide" type="button">0</button>
+        <button data-a9-key="," class="a9-key" type="button">,</button>
       </div>
-      <button type=button class=a9-commit id=a9-btn-commit>✓ Brug som slæb %</button>
+      <button type="button" class="a9-commit" id="a9-btn-commit">✓ Brug som slæb %</button>
     </div>
   </div>
 
 <script src="js/version.js"></script>
 <script type="module" src="main.js"></script>
+</body>
+</html>
