@@ -16,7 +16,8 @@
     "algolia:upload": "node tools/algolia-upload-materials.js"
   },
   "dependencies": {
-    "algoliasearch": "^4.24.0"
+    "algoliasearch": "^4.24.0",
+    "chromium": "^3.0.3"
   },
   "devDependencies": {
     "html-validate": "^10.4.0",
