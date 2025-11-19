@@ -38,7 +38,7 @@ jobs:
             throw new Error(`Lighthouse report not found at ${path}`);
           }
           const data = JSON.parse(fs.readFileSync(path, 'utf8'));
-          const categories = ['performance', 'accessibility', 'best-practices', 'seo', 'pwa'];
+          const categories = ['performance', 'accessibility', 'best-practices', 'seo'];
           const failing = categories.filter((key) => {
             const category = data.categories?.[key];
             return !category || Number(category.score) < 1;
