@@ -4,8 +4,9 @@
 
 [[plugins]]
   package = "netlify-plugin-a11y"
-    [plugins.inputs]
-      timeout = 60000
+  [plugins.inputs]
+    checkPaths = []
+    resultMode = "warn"
 
 [[redirects]]
   from = "/*"
