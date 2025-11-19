@@ -930,13 +930,21 @@ function setupListSelectors() {
   if (!container) return;
   const warningId = 'systemSelectionWarning';
   const duplicateWarningId = 'systemDuplicateWarning';
+  const numberFormatter = new Intl.NumberFormat('da-DK');
   const optionsHtml = systemOptions
     .map(option => {
       const checked = selectedSystemKeys.has(option.key) ? 'checked' : '';
+      const materialCount = Array.isArray(option.dataset) ? option.dataset.length : 0;
+      const detailText = materialCount
+        ? `${numberFormatter.format(materialCount)} materialer`
+        : 'Systemvalg';
       return `
-        <label class="system-option">
-          <input type="checkbox" value="${option.key}" ${checked}>
-          <span>${option.label}</span>
+        <label class="system-option" data-system="${option.key}">
+          <input type="checkbox" value="${option.key}" aria-label="${option.label}" ${checked}>
+          <span class="system-option__content">
+            <span class="system-option__name">${option.label}</span>
+            <span class="system-option__meta">${detailText}</span>
+          </span>
         </label>
       `;
     })

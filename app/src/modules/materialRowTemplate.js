@@ -122,10 +122,26 @@ export function createMaterialRow (item, {
   const lineTotal = toNumber(item.price) * toNumber(item.quantity)
   sumElement.textContent = formatCurrency(lineTotal)
 
-  row.appendChild(nameElement)
-  row.appendChild(qtyInput)
-  row.appendChild(priceInput)
-  row.appendChild(sumElement)
+  const nameCell = document.createElement('div')
+  nameCell.className = 'material-cell material-name-cell'
+  nameCell.appendChild(nameElement)
+
+  const qtyCell = document.createElement('div')
+  qtyCell.className = 'material-cell material-qty-cell'
+  qtyCell.appendChild(qtyInput)
+
+  const priceCell = document.createElement('div')
+  priceCell.className = 'material-cell material-price-cell'
+  priceCell.appendChild(priceInput)
+
+  const sumCell = document.createElement('div')
+  sumCell.className = 'material-cell material-total-cell'
+  sumCell.appendChild(sumElement)
+
+  row.appendChild(nameCell)
+  row.appendChild(qtyCell)
+  row.appendChild(priceCell)
+  row.appendChild(sumCell)
 
   const hasQty = toNumber(qtyInput.value) > 0
   row.toggleAttribute('data-has-qty', hasQty)
