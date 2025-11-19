@@ -1,0 +1,35 @@
+name: SuperTest
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: supertest-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  super-test:
+    runs-on: ubuntu-latest
+
+    env:
+      # Sæt til den rigtige offentlige URL for Cssmate
+      LHCI_URL: https://cssmate.netlify.app
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run SuperTest (build + HTML + links + Lighthouse 100/100)
+        run: npm run test:super
