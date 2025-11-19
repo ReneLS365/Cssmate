@@ -84,17 +84,25 @@ function showUpdateBanner (currentVersion, previousVersion) {
 }
 
 (function setupVersionCheck () {
-  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') return
+  if (typeof window === 'undefined') return
 
   const version = getCurrentAppVersion()
   const STORAGE_KEY = 'cssmate_app_version'
-  const previous = window.localStorage.getItem(STORAGE_KEY)
 
-  if (previous && previous !== version) {
-    showUpdateBanner(version, previous)
+  try {
+    const storage = window.localStorage
+    if (!storage) return
+
+    const previous = storage.getItem(STORAGE_KEY)
+
+    if (previous && previous !== version) {
+      showUpdateBanner(version, previous)
+    }
+
+    storage.setItem(STORAGE_KEY, version)
+  } catch (error) {
+    console.warn('Unable to access localStorage for version check', error)
   }
-
-  window.localStorage.setItem(STORAGE_KEY, version)
 })()
 
 const IOS_INSTALL_PROMPT_DISMISSED_KEY = 'csmate.iosInstallPromptDismissed'
