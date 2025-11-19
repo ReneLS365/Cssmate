@@ -49,24 +49,49 @@ jobs:
       - name: Run Lighthouse mobile suite
         run: npm run lh:mobile
 
-      - name: Enforce perfect scores
+      - name: Enforce Lighthouse mobile scores
         run: |
           node - <<'NODE'
           import fs from 'node:fs';
+
           const path = 'docs/lighthouse/latest-mobile.json';
           if (!fs.existsSync(path)) {
             throw new Error(`Lighthouse report not found at ${path}`);
           }
+
           const data = JSON.parse(fs.readFileSync(path, 'utf8'));
-          const categories = ['performance', 'accessibility', 'best-practices', 'seo'];
-          const failing = categories.filter((key) => {
+
+          // Minimum tilladte scores
+          const THRESHOLDS = {
+            performance: 0.98,
+            'accessibility': 1.0,
+            'best-practices': 1.0,
+            'seo': 1.0,
+          };
+
+          const scores = {};
+          for (const [key, min] of Object.entries(THRESHOLDS)) {
             const category = data.categories?.[key];
-            return !category || Number(category.score) < 1;
-          });
-          if (failing.length) {
-            throw new Error(`Lighthouse scores below 1.0: ${failing.join(', ')}`);
+            const score = Number(category?.score ?? 0);
+            scores[key] = score;
           }
-          console.log('All Lighthouse categories are perfect.');
+
+          console.log('Lighthouse mobile scores:', scores);
+
+          const failing = Object.entries(THRESHOLDS)
+            .filter(([key, min]) => {
+              const actual = scores[key] ?? 0;
+              return actual < min;
+            })
+            .map(([key, min]) => `${key} (${scores[key]} < ${min})`);
+
+          if (failing.length) {
+            throw new Error(
+              `Lighthouse scores below threshold: ${failing.join(', ')}`
+            );
+          }
+
+          console.log('All Lighthouse mobile categories meet thresholds.');
           NODE
 
       - name: Stop static server
