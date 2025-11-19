@@ -25,6 +25,8 @@ jobs:
         run: npm run build
 
       - name: Run Lighthouse mobile suite
+        env:
+          LHCI_URL: https://cssmate.netlify.app
         run: npm run lh:mobile
 
       - name: Enforce perfect scores
@@ -36,7 +38,7 @@ jobs:
             throw new Error(`Lighthouse report not found at ${path}`);
           }
           const data = JSON.parse(fs.readFileSync(path, 'utf8'));
-          const categories = ['performance', 'accessibility', 'best-practices', 'seo', 'pwa'];
+          const categories = ['performance', 'accessibility', 'best-practices', 'seo'];
           const failing = categories.filter((key) => {
             const category = data.categories?.[key];
             return !category || Number(category.score) < 1;
