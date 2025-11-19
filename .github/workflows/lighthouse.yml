@@ -1,0 +1,48 @@
+name: Lighthouse mobile gate
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build project
+        run: npm run build
+
+      - name: Run Lighthouse mobile suite
+        run: npm run lh:mobile
+
+      - name: Enforce perfect scores
+        run: |
+          node - <<'NODE'
+          import fs from 'node:fs';
+          const path = 'docs/lighthouse/latest-mobile.json';
+          if (!fs.existsSync(path)) {
+            throw new Error(`Lighthouse report not found at ${path}`);
+          }
+          const data = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const categories = ['performance', 'accessibility', 'best-practices', 'seo', 'pwa'];
+          const failing = categories.filter((key) => {
+            const category = data.categories?.[key];
+            return !category || Number(category.score) < 1;
+          });
+          if (failing.length) {
+            throw new Error(`Lighthouse scores below 1.0: ${failing.join(', ')}`);
+          }
+          console.log('All Lighthouse categories are perfect.');
+          NODE

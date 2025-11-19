@@ -6,6 +6,10 @@
   "scripts": {
     "bump-sw-version": "node scripts/bump-sw-version.js",
     "update-prices": "node scripts/update-price-lists.js",
-    "build": "npm run bump-sw-version"
+    "build": "npm run bump-sw-version",
+    "lh:mobile": "lighthouse https://sscaff.netlify.app --form-factor=mobile --screenEmulation.mobile=true --only-categories=performance,accessibility,best-practices,seo,pwa --chrome-flags=\"--headless\" --output=json --output-path=./docs/lighthouse/latest-mobile.json"
+  },
+  "devDependencies": {
+    "lighthouse": "^12.8.2"
   }
 }
