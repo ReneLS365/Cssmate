@@ -1,4 +1,11 @@
-importScripts('/js/version.js')
+const swBaseUrl = typeof self !== 'undefined' && self.location ? new URL(self.location.href) : null
+const versionScriptUrl = swBaseUrl ? new URL('./js/version.js', swBaseUrl) : null
+
+if (versionScriptUrl) {
+  importScripts(versionScriptUrl.href)
+} else {
+  importScripts('/js/version.js')
+}
 
 const CACHE_VERSION = (typeof self.CSSMATE_APP_VERSION === 'string'
   ? self.CSSMATE_APP_VERSION
