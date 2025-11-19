@@ -649,6 +649,12 @@ function createSystemMaterialState(system) {
   if (!system || !Array.isArray(system.items)) return [];
   return system.items
     .filter(item => {
+      const category = typeof item?.category === 'string'
+        ? item.category.toLowerCase()
+        : 'material';
+      if (category && category !== 'material' && category !== 'materiale') {
+        return false;
+      }
       const rawName = item?.name || item?.navn || item?.beskrivelse || '';
       const key = normalizeKey(String(rawName).trim());
       return key && !EXCLUDED_MATERIAL_KEYS.includes(key);
@@ -664,6 +670,9 @@ function createSystemMaterialState(system) {
         unit: item?.unit || item?.enhed || '',
         quantity: 0,
         systemKey: system.id,
+        category: typeof item?.category === 'string'
+          ? item.category.toLowerCase()
+          : 'material',
       };
     });
 }
@@ -843,23 +852,26 @@ function aggregateSelectedSystemData() {
   datasets.forEach(item => {
     if (!item) return;
     const idKey = item.id != null ? String(item.id) : null;
-    const nameKey = item.name ? normalizeKey(item.name) : null;
-    const existingByName = nameKey ? seenNames.get(nameKey) : null;
+    const baseNameKey = item.name ? normalizeKey(item.name) : null;
+    const scopedNameKey = baseNameKey
+      ? `${item.systemKey || 'global'}::${baseNameKey}`
+      : null;
+    const existingByName = scopedNameKey ? seenNames.get(scopedNameKey) : null;
     if (existingByName && existingByName !== item) {
       duplicateNames.add(existingByName.name);
       duplicateNames.add(item.name);
       return;
     }
 
-    const existingById = idKey ? seenIds.get(idKey) : null;
-    if (existingById && existingById !== item) {
-      const existingNameKey = existingById.name ? normalizeKey(existingById.name) : null;
-      if (existingNameKey && nameKey && existingNameKey === nameKey) {
-        duplicateNames.add(existingById.name);
-        duplicateNames.add(item.name);
-        return;
-      }
-      conflictingIds.add(existingById.name);
+      const existingById = idKey ? seenIds.get(idKey) : null;
+      if (existingById && existingById !== item) {
+        const existingNameKey = existingById.name ? normalizeKey(existingById.name) : null;
+        if (existingNameKey && baseNameKey && existingNameKey === baseNameKey) {
+          duplicateNames.add(existingById.name);
+          duplicateNames.add(item.name);
+          return;
+        }
+        conflictingIds.add(existingById.name);
       conflictingIds.add(item.name);
     }
 
@@ -867,8 +879,8 @@ function aggregateSelectedSystemData() {
     if (idKey) {
       seenIds.set(idKey, item);
     }
-    if (nameKey) {
-      seenNames.set(nameKey, item);
+    if (scopedNameKey) {
+      seenNames.set(scopedNameKey, item);
     }
   });
 
@@ -1857,7 +1869,7 @@ function validateSagsinfo() {
     el.classList.toggle('invalid', !fieldValid);
   });
 
-  ['btnExportCSV', 'btnExportAll', 'btnExportZip', 'btnPrint'].forEach(id => {
+  ['btnExportZip', 'btnPrint'].forEach(id => {
     const btn = getDomElement(id);
     if (btn) btn.disabled = !isValid;
   });
@@ -1914,24 +1926,6 @@ function formatDateForDisplay(value) {
   return String(value);
 }
 
-function setEkompletStatus(message, variant = 'success') {
-  const statusEl = document.getElementById('ekompletStatus');
-  if (!statusEl) return;
-  statusEl.classList.remove('success', 'error');
-  if (!message) {
-    statusEl.textContent = '';
-    statusEl.setAttribute('hidden', '');
-    return;
-  }
-  if (variant === 'success') {
-    statusEl.classList.add('success');
-  } else if (variant === 'error') {
-    statusEl.classList.add('error');
-  }
-  statusEl.textContent = message;
-  statusEl.removeAttribute('hidden');
-}
-
 function getExcelSystemInputs() {
   if (typeof document === 'undefined') return [];
   return Array.from(document.querySelectorAll('input[name="akkordExcelSystem"][type="checkbox"]'));
@@ -1984,13 +1978,10 @@ function initExcelSystemSelector() {
   });
 }
 
-function requireExcelSystemSelection(options = {}) {
+function requireExcelSystemSelection() {
   const selection = getExcelSystemSelectionFromInputs();
   if (selection.length === 0) {
     const message = 'Vælg mindst ét Excel 25-ark under "Eksport & deling".';
-    if (options.forEkomplet) {
-      setEkompletStatus(message, 'error');
-    }
     updateActionHint(message, 'error');
     return null;
   }
@@ -2053,46 +2044,15 @@ async function exportExcelSelection(job, systems) {
 }
 
 function initExportButtons() {
-  const btnCSV = document.getElementById('btnExportCSV');
-  const btnAll = document.getElementById('btnExportAll');
   const btnZip = document.getElementById('btnExportZip');
-  const btnEkomplet = document.getElementById('btnExportEkomplet');
-
-  if (btnCSV) btnCSV.addEventListener('click', () => onExportCSV());
-  if (btnAll) btnAll.addEventListener('click', () => onExportAll());
-  if (btnZip) btnZip.addEventListener('click', () => onExportZip());
-  if (btnEkomplet) btnEkomplet.addEventListener('click', () => onExportEkomplet());
-
-  [btnAll, btnZip, btnEkomplet].forEach(button => {
-    if (!button) return;
+  if (btnZip) {
+    btnZip.addEventListener('click', () => onExportZip());
     const prime = () => prefetchExportLibs();
-    button.addEventListener('pointerenter', prime, { once: true });
-    button.addEventListener('focus', prime, { once: true });
-  });
+    btnZip.addEventListener('pointerenter', prime, { once: true });
+    btnZip.addEventListener('focus', prime, { once: true });
+  }
 
   initExcelSystemSelector();
-}
-
-function onExportCSV() {
-  if (!requireExcelSystemSelection()) return;
-  try {
-    downloadCSV();
-    updateActionHint('CSV er klar til download.', 'success');
-  } catch (error) {
-    console.error('CSV eksport fejlede', error);
-    updateActionHint('Kunne ikke eksportere CSV.', 'error');
-  }
-}
-
-async function onExportAll() {
-  if (!requireExcelSystemSelection()) return;
-  try {
-    await exportAll();
-    updateActionHint('JSON eksport gemt.', 'success');
-  } catch (error) {
-    console.error('JSON eksport fejlede', error);
-    updateActionHint('Kunne ikke eksportere JSON.', 'error');
-  }
 }
 
 async function onExportZip() {
@@ -2103,40 +2063,6 @@ async function onExportZip() {
   } catch (error) {
     console.error('ZIP eksport fejlede', error);
     updateActionHint('Kunne ikke eksportere ZIP.', 'error');
-  }
-}
-
-async function onExportEkomplet() {
-  const excelSelection = requireExcelSystemSelection({ forEkomplet: true });
-  if (!excelSelection) return;
-  const button = document.getElementById('btnExportEkomplet');
-  if (!button) return;
-  const originalLabel = button.textContent;
-  button.disabled = true;
-  button.textContent = 'Eksporterer…';
-  try {
-    const exported = await exportToEKomplet();
-    if (exported === false) {
-      return;
-    }
-
-    const job = syncActiveJobState();
-    const excelResult = await exportExcelSelection(job, excelSelection);
-    if (!excelResult || excelResult.count === 0) {
-      setEkompletStatus('E-komplet fil er klar, men Excel-ark blev ikke genereret.', 'error');
-      updateActionHint('Excel-ark blev ikke genereret.', 'error');
-      return;
-    }
-    const message = buildExcelExportMessage(excelResult);
-    setEkompletStatus(`E-komplet fil og Excel er klar. ${message}`, 'success');
-    updateActionHint(`E-komplet fil og Excel er klar. ${message}`, 'success');
-  } catch (error) {
-    console.error('E-komplet/Excel eksport fejlede', error);
-    setEkompletStatus('Eksporten fejlede. Prøv igen.', 'error');
-    updateActionHint('Eksporten fejlede. Prøv igen.', 'error');
-  } finally {
-    button.disabled = false;
-    button.textContent = originalLabel;
   }
 }
 
@@ -3023,177 +2949,6 @@ function beregnLon() {
 }
 
 
-async function exportToEKomplet() {
-  if (!validateSagsinfo()) {
-    setEkompletStatus('Udfyld Sagsinfo før du indberetter til E-komplet.', 'error');
-    updateActionHint('Udfyld Sagsinfo for at indberette.', 'error');
-    return false;
-  }
-
-  const data = lastEkompletData;
-  if (!data) {
-    setEkompletStatus('Beregn løn først, så alle data er opdaterede.', 'error');
-    return false;
-  }
-
-  const rows = [];
-  const sagsinfo = data.sagsinfo || {};
-  const jobTypeLabel = data.jobType === 'demontage' ? 'Demontage (50%)' : 'Montage';
-
-  rows.push(['Sektion', 'Felt', 'Værdi']);
-  rows.push(['Sagsinfo', 'Sagsnummer', sagsinfo.sagsnummer || '']);
-  rows.push(['Sagsinfo', 'Navn', sagsinfo.navn || '']);
-  rows.push(['Sagsinfo', 'Adresse', sagsinfo.adresse || '']);
-  rows.push(['Sagsinfo', 'Dato', formatDateForDisplay(sagsinfo.dato || '')]);
-  rows.push([]);
-
-  rows.push(['Materialer', 'Varenr', 'Beskrivelse', 'Antal', 'Sats', 'Linjesum']);
-  if (Array.isArray(data.materialer) && data.materialer.length > 0) {
-    data.materialer.forEach(item => {
-      rows.push([
-        'Materiale',
-        item.varenr || '',
-        item.name || '',
-        formatNumberForCSV(item.quantity || 0),
-        formatNumberForCSV(item.unitPrice || 0),
-        formatNumberForCSV(item.lineTotal || 0),
-      ]);
-    });
-  } else {
-    rows.push(['Materiale', '', 'Ingen registrering', '0', '0,00', '0,00']);
-  }
-  rows.push([]);
-
-  rows.push(['Arbejdere', 'Navn', 'Timer', 'Uddannelse', 'Mentortillæg', 'Udd.tillæg', 'Sats', 'Linjesum']);
-  if (Array.isArray(data.arbejdere) && data.arbejdere.length > 0) {
-    data.arbejdere.forEach(worker => {
-      rows.push([
-        'Arbejder',
-        worker.name || '',
-        formatNumberForCSV(worker.hours || 0),
-        worker.uddLabel || worker.udd || '',
-        formatNumberForCSV(worker.mentortillaeg || 0),
-        formatNumberForCSV(worker.uddannelsesTillaeg || 0),
-        formatNumberForCSV(worker.rate || 0),
-        formatNumberForCSV(worker.total || 0),
-      ]);
-    });
-  } else {
-    rows.push(['Arbejder', 'Ingen timer registreret', '0', '', '0,00', '0,00', '0,00', '0,00']);
-  }
-  rows.push([]);
-
-  rows.push(['Tillæg', 'Type', 'Antal/Procent', 'Sats', 'Beløb']);
-  const extras = data.extras || {};
-  rows.push([
-    'Tillæg',
-    'Slæb',
-    formatPercentForCSV(extras.slaebePct || 0),
-    formatNumberForCSV(data.montagepris || 0),
-    formatNumberForCSV(extras.slaebeBelob || 0),
-  ]);
-  const slaebFormulaNote = (extras.slaebeFormulaText || '').trim();
-  if (slaebFormulaNote) {
-    rows.push([
-      'Tillæg',
-      'A9 slæb-formel',
-      extras.slaebeFormulaText,
-      '',
-      ''
-    ]);
-  }
-  const boringHuller = extras.boringHuller || {};
-  rows.push([
-    'Tillæg',
-    'Boring af huller',
-    formatNumberForCSV(boringHuller.antal || 0),
-    formatNumberForCSV(boringHuller.pris || 0),
-    formatNumberForCSV(boringHuller.total || 0),
-  ]);
-  const lukHuller = extras.lukHuller || {};
-  rows.push([
-    'Tillæg',
-    'Luk af hul',
-    formatNumberForCSV(lukHuller.antal || 0),
-    formatNumberForCSV(lukHuller.pris || 0),
-    formatNumberForCSV(lukHuller.total || 0),
-  ]);
-  const boringBeton = extras.boringBeton || {};
-  rows.push([
-    'Tillæg',
-    'Boring i beton',
-    formatNumberForCSV(boringBeton.antal || 0),
-    formatNumberForCSV(boringBeton.pris || 0),
-    formatNumberForCSV(boringBeton.total || 0),
-  ]);
-  const opskydeligt = extras.opskydeligtRaekvaerk || {};
-  rows.push([
-    'Tillæg',
-    'Opskydeligt rækværk',
-    formatNumberForCSV(opskydeligt.antal || 0),
-    formatNumberForCSV(opskydeligt.pris || 0),
-    formatNumberForCSV(opskydeligt.total || 0),
-  ]);
-  const kilometer = extras.kilometer || {};
-  rows.push([
-    'Tillæg',
-    'Kilometer',
-    formatNumberForCSV(kilometer.antal || 0),
-    formatNumberForCSV(kilometer.pris || 0),
-    formatNumberForCSV(kilometer.total || 0),
-  ]);
-  const traelle = data.traelle || {};
-  rows.push([
-    'Tillæg',
-    'Tralleløft 0,35 m',
-    formatNumberForCSV(traelle.antal35 || 0),
-    formatNumberForCSV(traelle.rate35 || 0),
-    formatNumberForCSV((traelle.antal35 || 0) * (traelle.rate35 || 0)),
-  ]);
-  rows.push([
-    'Tillæg',
-    'Tralleløft 0,50 m',
-    formatNumberForCSV(traelle.antal50 || 0),
-    formatNumberForCSV(traelle.rate50 || 0),
-    formatNumberForCSV((traelle.antal50 || 0) * (traelle.rate50 || 0)),
-  ]);
-  rows.push([]);
-
-  rows.push(['Projekt', 'Felt', 'Værdi']);
-  rows.push(['Projekt', 'Arbejdstype', jobTypeLabel]);
-  rows.push(['Projekt', 'Montagepris', formatNumberForCSV(data.montagepris || 0)]);
-  rows.push(['Projekt', 'Demontagepris', formatNumberForCSV(data.demontagepris || 0)]);
-  rows.push(['Projekt', 'Materialer', formatNumberForCSV(data.totals?.materialer || 0)]);
-  rows.push(['Projekt', 'Ekstraarbejde', formatNumberForCSV(data.totals?.ekstraarbejde || 0)]);
-  rows.push(['Projekt', 'Slæbebeløb', formatNumberForCSV(data.totals?.slaebeBelob || 0)]);
-  rows.push(['Projekt', 'Materialesum (info)', formatNumberForCSV(data.totals?.materialeSumInfo || 0)]);
-  rows.push(['Projekt', 'Kilometer', formatNumberForCSV(data.totals?.kilometerPris || 0)]);
-  rows.push(['Projekt', 'Tralleløft i alt', formatNumberForCSV(data.totals?.traelleSum || 0)]);
-  rows.push(['Projekt', 'Samlet akkordsum', formatNumberForCSV(data.totals?.akkordsum || 0)]);
-  rows.push(['Projekt', 'Timer', formatNumberForCSV(data.totals?.timer || 0)]);
-  rows.push(['Projekt', 'Timepris (uden tillæg)', formatNumberForCSV(data.totals?.akkordTimeLon || 0)]);
-  rows.push(['Projekt', 'Lønsum', formatNumberForCSV(data.totals?.loensum || 0)]);
-  rows.push(['Projekt', 'Projektsum', formatNumberForCSV(data.totals?.projektsum || 0)]);
-
-  const csvContent = rows
-    .map(row => row.map(cell => escapeCSV(cell ?? '')).join(';'))
-    .join('\n');
-
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const baseName = sanitizeFilename(sagsinfo.sagsnummer || 'sag') || 'sag';
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `${baseName}-ekomplet.csv`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-
-  return true;
-}
-
-
 // --- CSV-eksport ---
 function buildCSVPayload(customSagsnummer, options = {}) {
   if (!options?.skipValidation && !validateSagsinfo()) {
@@ -3337,27 +3092,6 @@ function buildCSVPayload(customSagsnummer, options = {}) {
     fileName: `${baseName}.csv`,
     originalName: info.sagsnummer,
   };
-}
-
-function downloadCSV(customSagsnummer, options = {}) {
-  const payload = buildCSVPayload(customSagsnummer, options);
-  if (!payload) return false;
-  const blob = new Blob([payload.content], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = payload.fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-  updateActionHint('CSV er gemt til din enhed.', 'success');
-  return true;
-}
-
-function generateCSVString(options = {}) {
-  const payload = buildCSVPayload(options?.customSagsnummer, options);
-  return payload ? payload.content : '';
 }
 
 // --- PDF-eksport (html2canvas + jsPDF) ---
@@ -3672,18 +3406,6 @@ async function exportZip() {
 }
 
 // --- Samlet eksport ---
-async function exportAll(customSagsnummer) {
-  if (!validateSagsinfo()) {
-    updateActionHint('Udfyld Sagsinfo for at eksportere.', 'error');
-    return;
-  }
-  const sagsnummer = customSagsnummer || beregnLon();
-  if (!sagsnummer) return;
-  downloadCSV(sagsnummer, { skipBeregn: true, skipValidation: true });
-  await exportPDF(sagsnummer, { skipBeregn: true });
-  updateActionHint('Eksport af PDF og CSV er fuldført.', 'success');
-}
-
 // --- CSV-import for optælling ---
 function importJSONProject(file) {
   const reader = new FileReader();

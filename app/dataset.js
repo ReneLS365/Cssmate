@@ -100,10 +100,10 @@ export const BOSTA_DATA = [
   { varenr: 'B098', navn: 'Opskydeligt rækværk', enhed: 'stk', pris: 9.67 },
   { varenr: 'B099', navn: 'Borring i beton', enhed: 'stk', pris: 11.49 },
   { varenr: 'B100', navn: 'Huller', enhed: 'stk', pris: 4.7 },
-  { varenr: 'B101', navn: 'Km.', enhed: 'stk', pris: 2.12 },
-  { varenr: 'B102', navn: 'Udd. tillæg 1', enhed: 'stk', pris: 42.98 },
-  { varenr: 'B103', navn: 'Udd. tillæg 2', enhed: 'stk', pris: 49.38 },
-  { varenr: 'B104', navn: 'Mentortillæg', enhed: 'stk', pris: 22.26 },
+  { varenr: 'B101', navn: 'Km.', enhed: 'stk', pris: 2.12, category: 'wage' },
+  { varenr: 'B102', navn: 'Udd. tillæg 1', enhed: 'stk', pris: 42.98, category: 'wage' },
+  { varenr: 'B103', navn: 'Udd. tillæg 2', enhed: 'stk', pris: 49.38, category: 'wage' },
+  { varenr: 'B104', navn: 'Mentortillæg', enhed: 'stk', pris: 22.26, category: 'wage' },
 ];
 
 export const HAKI_DATA = [
@@ -170,10 +170,10 @@ export const HAKI_DATA = [
   { varenr: 'H061', navn: 'Opskydeligt rækværk', enhed: 'stk', pris: 9.67 },
   { varenr: 'H062', navn: 'Borring i beton', enhed: 'stk', pris: 11.49 },
   { varenr: 'H063', navn: 'Huller', enhed: 'stk', pris: 4.7 },
-  { varenr: 'H064', navn: 'Km.', enhed: 'stk', pris: 2.12 },
-  { varenr: 'H065', navn: 'Udd. tillæg 1', enhed: 'stk', pris: 42.98 },
-  { varenr: 'H066', navn: 'Udd. tillæg 2', enhed: 'stk', pris: 49.38 },
-  { varenr: 'H067', navn: 'Mentortillæg', enhed: 'stk', pris: 22.26 },
+  { varenr: 'H064', navn: 'Km.', enhed: 'stk', pris: 2.12, category: 'wage' },
+  { varenr: 'H065', navn: 'Udd. tillæg 1', enhed: 'stk', pris: 42.98, category: 'wage' },
+  { varenr: 'H066', navn: 'Udd. tillæg 2', enhed: 'stk', pris: 49.38, category: 'wage' },
+  { varenr: 'H067', navn: 'Mentortillæg', enhed: 'stk', pris: 22.26, category: 'wage' },
 ];
 
 export const MODEX_DATA = [
@@ -282,6 +282,7 @@ function normalizeSystemItems(items = []) {
     name: item.navn || item.name || item.beskrivelse || '',
     unit: item.enhed || item.unit || '',
     price: Number(item.pris ?? item.price ?? 0) || 0,
+    category: typeof item.category === 'string' ? item.category.trim().toLowerCase() : 'material',
   }));
 }
 

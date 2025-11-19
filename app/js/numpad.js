@@ -9,7 +9,6 @@ let activeInput = null
 let currentValue = '0'
 let expression = ''
 let mutationObserver = null
-let pendingBind = false
 const boundInputs = new WeakSet()
 let lastFocusedInput = null
 let baseValue = 0
@@ -84,41 +83,52 @@ function handleNumpadFocus (event) {
   showNumpadForInput(input)
 }
 
+function handleNumpadPointerDown (event) {
+  const input = event.currentTarget
+  if (!(input instanceof HTMLInputElement)) return
+  if (isNumpadOpen()) return
+  if (document.activeElement !== input) return
+  event.preventDefault()
+  showNumpadForInput(input)
+}
+
 function blockNativeInput (event) {
   event.preventDefault()
 }
 
-function bindInputs () {
-  const inputs = document.querySelectorAll(NUMPAD_SELECTOR)
-  inputs.forEach(input => {
-    if (!(input instanceof HTMLInputElement) || boundInputs.has(input)) return
+function bindInputElement (input) {
+  if (!(input instanceof HTMLInputElement) || boundInputs.has(input)) return
 
-    input.setAttribute('readonly', 'readonly')
-    input.setAttribute('inputmode', 'none')
-    input.classList.add('numpad-readonly')
+  input.setAttribute('readonly', 'readonly')
+  input.setAttribute('inputmode', 'none')
+  input.classList.add('numpad-readonly')
 
-    const wantsNumpad = input.dataset.numpad === 'true' || (input.type === 'number' && input.dataset.numpad !== 'off')
+  const wantsNumpad = input.dataset.numpad === 'true' || (input.type === 'number' && input.dataset.numpad !== 'off')
 
-    if (wantsNumpad) {
-      input.addEventListener('focus', handleNumpadFocus)
-      input.addEventListener('beforeinput', blockNativeInput)
-    }
+  if (wantsNumpad) {
+    input.addEventListener('focus', handleNumpadFocus)
+    input.addEventListener('pointerdown', handleNumpadPointerDown)
+    input.addEventListener('beforeinput', blockNativeInput)
+  }
 
-    boundInputs.add(input)
-  })
+  boundInputs.add(input)
 }
 
-function scheduleBind () {
-  if (pendingBind) return
-  pendingBind = true
-  const run = () => {
-    pendingBind = false
-    bindInputs()
+function bindInputs () {
+  const inputs = document.querySelectorAll(NUMPAD_SELECTOR)
+  inputs.forEach(bindInputElement)
+}
+
+function bindInputsInSubtree (node) {
+  if (!node) return
+  if (node instanceof HTMLInputElement && node.matches(NUMPAD_SELECTOR)) {
+    bindInputElement(node)
   }
-  if (typeof requestAnimationFrame === 'function') {
-    requestAnimationFrame(run)
-  } else {
-    setTimeout(run, 0)
+  if (node instanceof Element || node instanceof DocumentFragment) {
+    const nested = node.querySelectorAll?.(NUMPAD_SELECTOR)
+    if (nested && nested.length > 0) {
+      nested.forEach(bindInputElement)
+    }
   }
 }
 
@@ -129,19 +139,9 @@ function observeNumpadInputs () {
   mutationObserver = new MutationObserver(mutations => {
     for (const mutation of mutations) {
       if (mutation.type === 'childList') {
-        for (const node of mutation.addedNodes) {
-          if (!(node instanceof HTMLElement)) continue
-          if (node.matches(NUMPAD_SELECTOR) || node.querySelector(NUMPAD_SELECTOR)) {
-            scheduleBind()
-            return
-          }
-        }
+        mutation.addedNodes.forEach(bindInputsInSubtree)
       } else if (mutation.type === 'attributes') {
-        const target = mutation.target
-        if (target instanceof HTMLElement && target.matches(NUMPAD_SELECTOR)) {
-          scheduleBind()
-          return
-        }
+        bindInputsInSubtree(mutation.target)
       }
     }
   })
