@@ -139,7 +139,11 @@ function registerServiceWorker() {
   }
 
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js', { scope: '/' })
+    const baseUrl = new URL('.', window.location.href);
+    const swUrl = new URL('service-worker.js', baseUrl);
+    const scope = baseUrl.pathname.endsWith('/') ? baseUrl.pathname : `${baseUrl.pathname}/`;
+
+    navigator.serviceWorker.register(swUrl.href, { scope })
       .catch(async error => {
         const offline = navigator.onLine === false;
         const transientErrors = new Set(['AbortError', 'NetworkError']);
