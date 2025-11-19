@@ -12,7 +12,11 @@
     "test:links": "linkinator app --silent --recurse --skip \"mailto:*\" --skip \"http://*\" --skip \"https://*\"",
     "test:lh:mobile": "lighthouse \"$LHCI_URL\" --form-factor=mobile --screenEmulation.mobile=true --only-categories=performance,accessibility,best-practices,seo,pwa --chrome-flags=\"--headless --no-sandbox --disable-dev-shm-usage --ignore-certificate-errors\" --output=json --output-path=./docs/lighthouse/latest-mobile.json",
     "test:lh:enforce": "node tools/lh-enforce.js",
-    "test:super": "npm run build && npm run test:html && npm run test:links && npm run test:lh:mobile && npm run test:lh:enforce"
+    "test:super": "npm run build && npm run test:html && npm run test:links && npm run test:lh:mobile && npm run test:lh:enforce",
+    "algolia:upload": "node tools/algolia-upload-materials.js"
+  },
+  "dependencies": {
+    "algoliasearch": "^4.24.0"
   },
   "devDependencies": {
     "html-validate": "^10.4.0",
