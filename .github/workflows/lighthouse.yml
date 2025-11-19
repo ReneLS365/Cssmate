@@ -25,6 +25,8 @@ jobs:
         run: npm run build
 
       - name: Run Lighthouse mobile suite
+        env:
+          LHCI_URL: https://cssmate.netlify.app
         run: npm run lh:mobile
 
       - name: Enforce perfect scores
