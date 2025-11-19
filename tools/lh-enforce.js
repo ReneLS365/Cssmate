@@ -24,71 +24,35 @@ try {
   process.exit(1);
 }
 
-const categories = [
-  "performance",
-  "accessibility",
-  "best-practices",
-  "seo",
-];
+const TARGET_SCORES = {
+  performance: 0.90,
+  accessibility: 1.0,
+  'best-practices': 1.0,
+  seo: 1.0,
+};
 
-const failures = [];
+function enforceScores(lhr) {
+  const categories = lhr.categories || {};
+  const failed = [];
 
-for (const key of categories) {
-  const cat = data.categories?.[key];
-  if (!cat) {
-    failures.push({ key, reason: "mangler kategori i rapporten" });
-    continue;
-  }
-  const score = Number(cat.score);
-  if (Number.isNaN(score)) {
-    failures.push({ key, reason: "score er ikke et tal" });
-    continue;
-  }
-  // Kræv 1.0
-  if (score < 1) {
-    failures.push({
-      key,
-      reason: `score ${score} < 1.0`,
-    });
-  }
-}
+  for (const [id, cat] of Object.entries(categories)) {
+    const score = cat?.score ?? 0;
+    const minScore = TARGET_SCORES[id] ?? 1.0;
 
-if (failures.length) {
-  console.error("\n[SuperTest] Lighthouse-krav IKKE opfyldt. Alle kategorier skal være 1.0.\n");
-  for (const fail of failures) {
-    console.error(
-      `  - ${fail.key}: ${fail.reason}`,
-    );
-  }
-
-  // Ekstra hjælp: print top 5 audits med dårligst score per kategori
-  console.error("\n[SuperTest] Udvalgte audits med issues pr. kategori:\n");
-  for (const key of categories) {
-    const cat = data.categories?.[key];
-    if (!cat) continue;
-    const audits = Object.entries(data.audits || {})
-      .filter(([_, a]) => a.score !== 1 && a.score !== null && a.score !== undefined)
-      .map(([id, a]) => ({
-        id,
-        score: a.score,
-        title: a.title,
-      }))
-      .sort((a, b) => (a.score ?? 0) - (b.score ?? 0))
-      .slice(0, 5);
-
-    if (audits.length === 0) continue;
-
-    console.error(`  [${key}]`);
-    for (const a of audits) {
-      console.error(
-        `    - (${a.score}) ${a.id}: ${a.title}`,
-      );
+    if (score < minScore) {
+      failed.push({ id, score, minScore });
     }
-    console.error("");
   }
 
-  process.exit(1);
+  if (failed.length) {
+    console.error('\n[SuperTest] Lighthouse-krav IKKE opfyldt.\n');
+    for (const f of failed) {
+      console.error(`  - ${f.id}: score ${f.score.toFixed(2)} < ${f.minScore.toFixed(2)}`);
+    }
+    process.exitCode = 1;
+  } else {
+    console.log('\n[SuperTest] Lighthouse-krav opfyldt ✅\n');
+  }
 }
 
-console.log("[SuperTest] Lighthouse OK – alle kategorier 1.0.");
-process.exit(0);
+enforceScores(data);

@@ -204,27 +204,29 @@ button{cursor:pointer}
 }
 .material-row,
 .csm-row {
-  display: grid;
-  grid-template-columns: var(--materials-grid-desktop);
-  column-gap: 10px;
-  row-gap: 6px;
+  display: flex;
   align-items: center;
-  padding: 10px 12px;
-  min-height: 40px;
+  gap: 0.75rem;
+  padding: 8px 12px;
+  min-height: 44px;
   border-radius: var(--radius-md);
-  border:1px solid var(--border);
+  border: 1px solid var(--border);
   background: var(--panel);
 }
 
 .material-row + .material-row,
-.csm-row + .csm-row { margin-top: 8px; }
+.csm-row + .csm-row {
+  margin-top: 8px;
+}
 
 .material-row.manual,
-.csm-row.manual { background: var(--elev); }
+.csm-row.manual {
+  background: var(--elev);
+}
 
-.csm-row input,
-.material-row input {
-  height: 40px;
+.material-row input,
+.csm-row input {
+  height: 38px;
   padding: 0 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -236,29 +238,59 @@ button{cursor:pointer}
   font-size: 0.95rem;
 }
 
-.csm-row input[readonly],
-.material-row input[readonly] {
+.material-row input[readonly],
+.csm-row input[readonly] {
   background: var(--panel-muted);
   color: var(--muted);
   cursor: default;
 }
 
-.csm-row input:focus,
-.material-row input:focus { border-color: var(--accent); background: var(--elev); }
+.material-row input:focus,
+.csm-row input:focus {
+  border-color: var(--accent);
+  background: var(--elev);
+}
 
-.csm-name { min-width: 140px; text-align: left; }
-.manual .csm-name { font-weight: 600; }
+.material-row .material-name,
+.csm-row .material-name,
+.csm-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-.csm-qty,
-.csm-price,
-.mat-qty,
-.mat-price {
+.material-row .material-name.manual-name,
+.csm-row .material-name.manual-name {
+  font-weight: 600;
+}
+
+.material-row .material-qty,
+.csm-row .material-qty,
+.material-row .material-price,
+.csm-row .material-price {
+  flex: 0 0 auto;
   text-align: right;
 }
 
+.material-row .material-qty,
+.csm-row .material-qty {
+  width: 64px;
+}
+
+.material-row .material-price,
+.csm-row .material-price {
+  width: 72px;
+}
+
+.material-row .material-sum,
+.csm-row .material-sum,
 .csm-sum,
 .mat-sum {
-  height: 40px;
+  width: 96px;
+  min-height: 38px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -268,6 +300,9 @@ button{cursor:pointer}
   border-radius: var(--radius-md);
   color: var(--text);
   font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  flex: 0 0 auto;
 }
 
 .csm-row--custom { all: unset; }
@@ -547,16 +582,17 @@ button{cursor:pointer}
 @media (max-width:400px){
   .material-row,
   .csm-row{
-    grid-template-columns:var(--materials-grid-mobile);
-    column-gap:6px;
+    gap:0.5rem;
+    padding-inline:10px;
   }
 
   .material-row .mat-name,
   .csm-row .mat-name,
+  .material-row .material-name,
+  .csm-row .material-name,
   .csm-name{
     font-size:0.9rem;
     line-height:1.25;
-    word-break:break-word;
   }
 
   .material-row input,
@@ -569,14 +605,26 @@ button{cursor:pointer}
 @media (max-width:340px){
   .material-row,
   .csm-row{
-    grid-template-columns:repeat(2,minmax(0,1fr));
-    grid-auto-rows:auto;
+    flex-wrap:wrap;
+    row-gap:6px;
   }
 
   .material-row .mat-name,
   .csm-row .mat-name,
+  .material-row .material-name,
+  .csm-row .material-name,
   .csm-name{
-    grid-column:1 / -1;
+    flex:1 1 100%;
+    white-space:normal;
+  }
+
+  .material-row .material-sum,
+  .csm-row .material-sum,
+  .csm-sum,
+  .mat-sum{
+    width:auto;
+    flex:1 1 100%;
+    justify-content:flex-end;
   }
 }
 

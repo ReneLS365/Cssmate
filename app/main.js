@@ -537,7 +537,15 @@ function setupA9Integration() {
 }
 
 function formatCurrency(value) {
-  return new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value || 0);
+  const amount = typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : Number.parseFloat(value) || 0;
+  return new Intl.NumberFormat('da-DK', {
+    style: 'currency',
+    currency: 'DKK',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(amount);
 }
 
 function toNumber(value) {
@@ -1159,7 +1167,7 @@ function refreshMaterialRowDisplay(id) {
     if (typeof window !== 'undefined' && typeof window.updateMaterialLine === 'function') {
       window.updateMaterialLine(row, { formatPrice: true, shouldUpdateTotals: false });
     } else {
-      const formatted = `${formatCurrency(toNumber(item.price) * toNumber(item.quantity))} kr`;
+      const formatted = formatCurrency(toNumber(item.price) * toNumber(item.quantity));
       if (lineOutput instanceof HTMLInputElement) {
         lineOutput.value = formatted;
       } else {
@@ -1186,7 +1194,7 @@ function renderCurrency(target, value) {
     elements = Array.from(target);
   }
   if (elements.length === 0) return;
-  const text = `${formatCurrency(value)} kr`;
+  const text = formatCurrency(value);
   elements.forEach(el => {
     el.textContent = text;
   });
@@ -1566,7 +1574,7 @@ function renderJobHistorySummary(entry) {
     tbody.appendChild(row);
     return;
   }
-  const formatRate = value => (value > 0 ? `${formatCurrency(value)} kr` : '–');
+  const formatRate = value => (value > 0 ? formatCurrency(value) : '–');
   const values = [
     summary.date || '–',
     summary.timer > 0 ? formatNumber(summary.timer) : '–',
@@ -3173,20 +3181,20 @@ async function exportPDFBlob(customSagsnummer, options = {}) {
   function formatReviewValue(row) {
     switch (row.format) {
       case 'currency': {
-        const amount = `${formatCurrency(row.value)} kr`;
+        const amount = formatCurrency(row.value);
         if (!row.info) return amount;
         let infoText = '';
         if (row.info.type === 'percent') {
           infoText = `${formatNumber(row.info.percent)} %`;
         } else if (row.info.type === 'qtyPrice') {
           const qtyLabel = row.info.unitLabel ? `${formatNumber(row.info.qty)} ${row.info.unitLabel}` : formatNumber(row.info.qty);
-          infoText = `${qtyLabel} × ${formatCurrency(row.info.unitPrice)} kr`;
+          infoText = `${qtyLabel} × ${formatCurrency(row.info.unitPrice)}`;
         } else if (row.info.type === 'trolley') {
           const qtyText = row.info.qty ? `${formatNumber(row.info.qty)} løft` : '';
           const entryText = Array.isArray(row.info.entries)
             ? row.info.entries
               .filter(entry => entry && Number(entry.qty) > 0)
-              .map(entry => `${formatNumber(entry.qty)} × ${formatCurrency(entry.unitPrice)} kr`)
+              .map(entry => `${formatNumber(entry.qty)} × ${formatCurrency(entry.unitPrice)}`)
               .join(' · ')
             : '';
           infoText = [qtyText, entryText].filter(Boolean).join(' · ');
@@ -3295,7 +3303,7 @@ async function exportPDFBlob(customSagsnummer, options = {}) {
               const total = qty * price;
               const manualIndex = manualMaterials.indexOf(item);
               const label = item.manual ? (item.name?.trim() || `Manuelt materiale ${manualIndex + 1}`) : item.name;
-              return `<tr><td>${escapeHtml(item.id)}</td><td>${escapeHtml(label)}</td><td>${qty.toLocaleString('da-DK', { maximumFractionDigits: 2 })}</td><td>${formatCurrency(price)} kr</td><td>${formatCurrency(total)} kr</td></tr>`;
+              return `<tr><td>${escapeHtml(item.id)}</td><td>${escapeHtml(label)}</td><td>${qty.toLocaleString('da-DK', { maximumFractionDigits: 2 })}</td><td>${formatCurrency(price)}</td><td>${formatCurrency(total)}</td></tr>`;
             }).join('')}
           </tbody>
         </table>
@@ -3314,7 +3322,7 @@ async function exportPDFBlob(customSagsnummer, options = {}) {
               const rate = toNumber(entry.rate);
               const total = hours * rate;
               const type = entry.type || `Arbejdstype ${index + 1}`;
-              return `<tr><td>${escapeHtml(type)}</td><td>${hours.toLocaleString('da-DK', { maximumFractionDigits: 2 })}</td><td>${formatCurrency(rate)} kr</td><td>${formatCurrency(total)} kr</td></tr>`;
+              return `<tr><td>${escapeHtml(type)}</td><td>${hours.toLocaleString('da-DK', { maximumFractionDigits: 2 })}</td><td>${formatCurrency(rate)}</td><td>${formatCurrency(total)}</td></tr>`;
             }).join('')}
           </tbody>
         </table>
@@ -3330,8 +3338,8 @@ async function exportPDFBlob(customSagsnummer, options = {}) {
     <section>
       <h3>Løn & projektsum</h3>
       <div class="totals">
-        <div><strong>Lønsum</strong><div>${formatCurrency(laborSum)} kr</div></div>
-        <div><strong>Projektsum</strong><div>${formatCurrency(projectSum)} kr</div></div>
+        <div><strong>Lønsum</strong><div>${formatCurrency(laborSum)}</div></div>
+        <div><strong>Projektsum</strong><div>${formatCurrency(projectSum)}</div></div>
       </div>
     </section>
     <section>

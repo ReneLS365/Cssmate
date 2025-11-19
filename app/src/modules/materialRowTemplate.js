@@ -16,6 +16,8 @@ export function createMaterialRow (item, {
   formatCurrency = value => {
     const number = Number.isFinite(value) ? value : 0
     return new Intl.NumberFormat('da-DK', {
+      style: 'currency',
+      currency: 'DKK',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     }).format(number)
@@ -42,29 +44,36 @@ export function createMaterialRow (item, {
   const sanitizedId = String(item.id).replace(/[^a-zA-Z0-9_-]+/g, '-')
   const qtyInputId = `qty-${sanitizedId}`
 
-  const nameInput = document.createElement('input')
-  nameInput.type = 'text'
-  nameInput.className = `csm-name mat-name${item.manual ? ' manual-name' : ''}`
-  nameInput.dataset.id = item.id
-  nameInput.placeholder = 'Materiale'
-  nameInput.setAttribute('aria-label', 'Materialenavn')
+  const nameBaseClass = 'material-name csm-name mat-name'
   const baseName = item.name || ''
+  let nameInput = null
+  let nameElement = null
   if (item.manual) {
+    nameInput = document.createElement('input')
+    nameInput.type = 'text'
+    nameInput.className = `${nameBaseClass} manual-name`
+    nameInput.dataset.id = item.id
+    nameInput.placeholder = 'Materiale'
+    nameInput.setAttribute('aria-label', 'Materialenavn')
     nameInput.value = baseName
+    nameElement = nameInput
   } else {
+    const display = document.createElement('div')
+    display.className = nameBaseClass
     const systemLabel = item.systemKey ? (systemLabelMap?.get(item.systemKey) || item.systemKey) : ''
     const displayName = systemLabel ? `${baseName} (${systemLabel})` : baseName
-    nameInput.value = displayName
-    nameInput.readOnly = true
-    nameInput.tabIndex = -1
-    nameInput.title = `Varenr. ${item.id}`
-    nameInput.id = `name-${sanitizedId}`
-    nameInput.setAttribute('aria-readonly', 'true')
+    display.textContent = displayName
+    display.title = `Varenr. ${item.id}`
+    display.id = `name-${sanitizedId}`
+    display.setAttribute('aria-label', 'Materialenavn')
+    display.setAttribute('role', 'text')
+    display.setAttribute('aria-readonly', 'true')
+    nameElement = display
   }
 
   const qtyInput = document.createElement('input')
   qtyInput.type = 'number'
-  qtyInput.className = 'csm-qty qty mat-qty'
+  qtyInput.className = 'material-qty csm-qty qty mat-qty'
   qtyInput.dataset.id = item.id
   qtyInput.id = qtyInputId
   qtyInput.name = `qty[${item.id}]`
@@ -81,7 +90,7 @@ export function createMaterialRow (item, {
 
   const priceInput = document.createElement('input')
   priceInput.type = 'number'
-  priceInput.className = 'csm-price price mat-price'
+  priceInput.className = 'material-price csm-price price mat-price'
   priceInput.dataset.id = item.id
   priceInput.id = `price-${sanitizedId}`
   priceInput.name = `price[${item.id}]`
@@ -107,13 +116,13 @@ export function createMaterialRow (item, {
   }
 
   const sumElement = document.createElement('div')
-  sumElement.className = 'csm-sum mat-line mat-sum'
+  sumElement.className = 'material-sum csm-sum mat-line mat-sum'
   sumElement.setAttribute('data-sum', '')
   sumElement.setAttribute('aria-label', 'Linjetotal')
   const lineTotal = toNumber(item.price) * toNumber(item.quantity)
-  sumElement.textContent = `${formatCurrency(lineTotal)} kr`
+  sumElement.textContent = formatCurrency(lineTotal)
 
-  row.appendChild(nameInput)
+  row.appendChild(nameElement)
   row.appendChild(qtyInput)
   row.appendChild(priceInput)
   row.appendChild(sumElement)
@@ -136,6 +145,8 @@ export function attachRowHandlers (row, {
   formatCurrency = value => {
     const number = Number.isFinite(value) ? value : 0
     return new Intl.NumberFormat('da-DK', {
+      style: 'currency',
+      currency: 'DKK',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     }).format(number)
@@ -152,7 +163,7 @@ export function attachRowHandlers (row, {
     const quantity = toNumber(qty.value || 0)
     const unitPrice = toNumber(price.value || 0)
     const total = quantity * unitPrice
-    sum.textContent = `${formatCurrency(total)} kr`
+    sum.textContent = formatCurrency(total)
     const hasQty = quantity > 0
     row.toggleAttribute('data-has-qty', hasQty)
     row.dataset.hasQty = hasQty ? 'true' : 'false'
