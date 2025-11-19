@@ -79,15 +79,19 @@ jobs:
           name: dist
           path: dist
 
-  lighthouse:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - uses: actions/checkout@v4
-      - run: |
-          npm ci
-          npx serve dist --listen 8080 &
-          sleep 3
+    lighthouse:
+      runs-on: ubuntu-latest
+      needs: build
+      steps:
+        - uses: actions/checkout@v4
+        - uses: actions/download-artifact@v4
+          with:
+            name: dist
+            path: dist
+        - run: |
+            npm ci
+            npx serve dist --listen 8080 &
+            sleep 3
       - uses: treosh/lighthouse-ci-action@v10
         with:
           urls: 'http://localhost:8080'
