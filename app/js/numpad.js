@@ -16,6 +16,8 @@ let baseValue = 0
 let activeOperator = null
 let expressionParts = []
 let suppressNextFocus = false
+const NUMPAD_HIDE_DELAY = 180
+let overlayHideTimer = null
 
 function isNumpadOpen () {
   return Boolean(overlay && !overlay.classList.contains('numpad-hidden'))
@@ -171,6 +173,12 @@ function showNumpadForInput (input) {
 
   updateDisplays()
 
+  if (overlayHideTimer) {
+    clearTimeout(overlayHideTimer)
+    overlayHideTimer = null
+  }
+  overlay.removeAttribute('hidden')
+  overlay.removeAttribute('inert')
   overlay.classList.remove('numpad-hidden')
   overlay.setAttribute('aria-hidden', 'false')
   if (document?.documentElement) {
@@ -212,6 +220,15 @@ function hideNumpad ({ commit = false } = {}) {
 
   overlay.classList.add('numpad-hidden')
   overlay.setAttribute('aria-hidden', 'true')
+  overlay.setAttribute('inert', '')
+  if (overlayHideTimer) {
+    clearTimeout(overlayHideTimer)
+  }
+  overlayHideTimer = setTimeout(() => {
+    if (overlay) {
+      overlay.setAttribute('hidden', '')
+    }
+  }, NUMPAD_HIDE_DELAY)
   activeInput = null
   if (document?.documentElement) {
     document.documentElement.classList.remove('np-open')

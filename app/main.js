@@ -1,4 +1,3 @@
-import { MATERIAL_SYSTEMS, getSystemList, getAllSystems } from './dataset.js'
 import { initMaterialsScrollLock } from './src/modules/materialsScrollLock.js'
 import { calculateTotals } from './src/modules/calculateTotals.js'
 import { normalizeKey } from './src/lib/string-utils.js'
@@ -626,6 +625,24 @@ const AKKORD_EXCEL_SYSTEMS = [
   { id: 'modex', label: 'MODEX 2025' },
 ];
 const AKKORD_EXCEL_STORAGE_KEY = 'csmate.akkordExcelSystem';
+let systemDatasets = {};
+let dataBosta = [];
+let dataHaki = [];
+let dataModex = [];
+let dataAlfix = [];
+let systemOptions = [];
+let systemLabelMap = new Map();
+const selectedSystemKeys = new Set();
+let excelSystemSelectionCache = new Set(['bosta']);
+let datasetModulePromise = null;
+let materialsReady = false;
+
+function loadMaterialDatasetModule () {
+  if (!datasetModulePromise) {
+    datasetModulePromise = import('./dataset.js');
+  }
+  return datasetModulePromise;
+}
 
 // --- Scaffold Part Lists ---
 function createSystemMaterialState(system) {
@@ -651,33 +668,39 @@ function createSystemMaterialState(system) {
     });
 }
 
-function buildSystemDatasets() {
-  const datasets = {};
-  getAllSystems().forEach(system => {
-    datasets[system.id] = createSystemMaterialState(system);
+async function ensureMaterialDatasets () {
+  if (systemOptions.length) {
+    return systemOptions;
+  }
+
+  const mod = await loadMaterialDatasetModule();
+  const allSystems = typeof mod.getAllSystems === 'function' ? mod.getAllSystems() : [];
+  systemDatasets = {};
+  allSystems.forEach(system => {
+    systemDatasets[system.id] = createSystemMaterialState(system);
   });
-  return datasets;
+
+  dataBosta = systemDatasets.bosta ?? [];
+  dataHaki = systemDatasets.haki ?? [];
+  dataModex = systemDatasets.modex ?? [];
+  dataAlfix = systemDatasets.alfix ?? [];
+
+  systemOptions = allSystems.map(system => ({
+    key: system.id,
+    label: system.label,
+    dataset: systemDatasets[system.id] ?? [],
+  }));
+
+  const labelEntries = Object.keys(mod.MATERIAL_SYSTEMS || {}).map(key => {
+    const system = typeof mod.getSystemList === 'function' ? mod.getSystemList(key) : null;
+    return [key, system?.label ?? key];
+  });
+  systemLabelMap = new Map(labelEntries);
+
+  materialsReady = true;
+  ensureSystemSelection();
+  return systemOptions;
 }
-
-const systemDatasets = buildSystemDatasets();
-const dataBosta = systemDatasets.bosta ?? [];
-const dataHaki = systemDatasets.haki ?? [];
-const dataModex = systemDatasets.modex ?? [];
-const dataAlfix = systemDatasets.alfix ?? [];
-
-const systemOptions = getAllSystems().map(system => ({
-  key: system.id,
-  label: system.label,
-  dataset: systemDatasets[system.id] ?? [],
-}));
-
-const systemLabelMap = new Map(Object.keys(MATERIAL_SYSTEMS).map(key => {
-  const system = getSystemList(key);
-  return [key, system?.label ?? key];
-}));
-
-const selectedSystemKeys = new Set(systemOptions.length ? [systemOptions[0].key] : []);
-let excelSystemSelectionCache = new Set(['bosta']);
 
 function ensureSystemSelection() {
   if (selectedSystemKeys.size === 0 && systemOptions.length) {
@@ -950,6 +973,18 @@ function syncSystemSelectorState() {
 function renderOptaelling() {
   const container = getDomElement('optaellingContainer');
   if (!container) return;
+  if (!materialsReady) {
+    container.textContent = '';
+    const loading = document.createElement('p');
+    loading.className = 'empty-state';
+    loading.textContent = 'Indlæser materialelister...';
+    container.appendChild(loading);
+    if (materialsVirtualListController) {
+      materialsVirtualListController.controller.destroy?.();
+      materialsVirtualListController = null;
+    }
+    return;
+  }
   syncSystemSelectorState();
 
   const activeItems = getActiveMaterialList();
@@ -3933,9 +3968,16 @@ async function hardResetApp() {
 // --- Initialization ---
 let appInitialized = false;
 
-function initApp() {
+async function initApp() {
   if (appInitialized) return;
   appInitialized = true;
+
+  try {
+    await ensureMaterialDatasets();
+  } catch (error) {
+    console.error('Kunne ikke indlæse materialelisterne.', error);
+    updateActionHint('Kunne ikke indlæse materialelisterne. Prøv at genindlæse siden.', 'error');
+  }
 
   initTabs();
 
@@ -3952,18 +3994,11 @@ function initApp() {
     });
   }
 
-  setupListSelectors();
-  renderOptaelling();
   addWorker();
-
-  setupCSVImport();
-
-  populateRecentCases();
 
   setupGuideModal();
   setupAdminControls();
   setupA9Integration();
-  initExportButtons();
 
   const akkordBtn = document.getElementById('btnExportAkkord');
   if (akkordBtn) {
@@ -4015,7 +4050,6 @@ function initApp() {
   });
 
   validateSagsinfo();
-  updateTotals(true);
   setupNumpad();
   setupMobileKeyboardDismissal();
   setupServiceWorkerMessaging();
@@ -4040,10 +4074,31 @@ function initApp() {
       }
     });
   }
+
+  ensureMaterialDatasets()
+    .then(() => {
+      setupListSelectors();
+      renderOptaelling();
+      setupCSVImport();
+      populateRecentCases();
+      initExportButtons();
+      updateTotals(true);
+    })
+    .catch(error => {
+      console.error('Materialelister kunne ikke indlæses', error);
+      updateActionHint('Kunne ikke indlæse materialelisterne. Opdater siden for at prøve igen.', 'error');
+    });
+}
+
+function startApp () {
+  initApp().catch(error => {
+    console.error('CSMate init fejlede', error);
+    updateActionHint('Kunne ikke initialisere appen. Opdater siden for at prøve igen.', 'error');
+  });
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initApp, { once: true });
+  document.addEventListener('DOMContentLoaded', startApp, { once: true });
 } else {
-  initApp();
+  startApp();
 }
