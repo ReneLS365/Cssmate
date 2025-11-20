@@ -11,7 +11,6 @@ import { createVirtualMaterialsList } from './src/modules/materialsvirtuallist.j
 import { initClickGuard } from './src/ui/guards/clickguard.js'
 import { setAdminOk, restoreAdminState, isAdminUnlocked } from './src/state/admin.js'
 import { exportAkkordExcelForActiveJob } from './src/export/akkord-excel.js'
-import { exportAkkord } from './js/akkord-export.js'
 import { setActiveJob } from './src/state/jobs.js'
 import './boot-inline.js'
 
@@ -2129,12 +2128,20 @@ async function exportExcelSelection(job, systems) {
 }
 
 function initExportButtons() {
+  const primeExports = () => prefetchExportLibs();
+
+  const btnPdf = document.getElementById('btnExportAkkord');
+  if (btnPdf) {
+    btnPdf.addEventListener('click', () => onExportPdf());
+    btnPdf.addEventListener('pointerenter', primeExports, { once: true });
+    btnPdf.addEventListener('focus', primeExports, { once: true });
+  }
+
   const btnZip = document.getElementById('btnExportZip');
   if (btnZip) {
     btnZip.addEventListener('click', () => onExportZip());
-    const prime = () => prefetchExportLibs();
-    btnZip.addEventListener('pointerenter', prime, { once: true });
-    btnZip.addEventListener('focus', prime, { once: true });
+    btnZip.addEventListener('pointerenter', primeExports, { once: true });
+    btnZip.addEventListener('focus', primeExports, { once: true });
   }
 
   const btnJson = document.getElementById('btnExportJson');
@@ -2166,6 +2173,15 @@ async function onExportZip() {
   } catch (error) {
     console.error('ZIP eksport fejlede', error);
     updateActionHint('Kunne ikke eksportere ZIP.', 'error');
+  }
+}
+
+async function onExportPdf() {
+  try {
+    await exportPDF();
+  } catch (error) {
+    console.error('PDF eksport fejlede', error);
+    updateActionHint('Kunne ikke eksportere PDF.', 'error');
   }
 }
 
@@ -4120,15 +4136,6 @@ async function initApp() {
   setupGuideModal();
   setupAdminControls();
   setupA9Integration();
-
-  const akkordBtn = document.getElementById('btnExportAkkord');
-  if (akkordBtn) {
-    akkordBtn.addEventListener('click', () => {
-      const hasSelectedJobs = Boolean(document.querySelector('[data-job-select]:checked, [data-job-select][aria-checked="true"]'));
-      const mode = hasSelectedJobs ? 'selected' : 'current';
-      exportAkkord({ mode });
-    });
-  }
 
   document.getElementById('btnBeregnLon')?.addEventListener('click', () => beregnLon());
   document.getElementById('btnPrint')?.addEventListener('click', () => {
