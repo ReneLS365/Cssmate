@@ -3,35 +3,25 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const swPath = path.join(__dirname, '..', 'app', 'service-worker.js')
+const swPath = path.join(__dirname, '..', 'service-worker.js')
 
-function formatVersionDate(date) {
-  const parts = [
-    date.getUTCFullYear(),
-    String(date.getUTCMonth() + 1).padStart(2, '0'),
-    String(date.getUTCDate()).padStart(2, '0'),
-    'T',
-    String(date.getUTCHours()).padStart(2, '0'),
-    String(date.getUTCMinutes()).padStart(2, '0'),
-    String(date.getUTCSeconds()).padStart(2, '0'),
-    'Z'
-  ]
-  return parts.join('')
+function formatVersionTag(date = new Date()) {
+  const stamp = date.toISOString().replace(/[-:.TZ]/g, '')
+  return `sscaff-v-${stamp}`
 }
 
 async function main() {
   const swSource = await readFile(swPath, 'utf8')
-  const timestamp = formatVersionDate(new Date())
-  const versionTag = `V-${timestamp}`
-  const pattern = /const SW_VERSION = ".*?";?/
-  if (!pattern.test(swSource)) {
-    console.warn('bump-sw-version: SW_VERSION placeholder was not found – skipping update')
+  const versionPattern = /const CACHE_VERSION = ['"].*?['"]/m
+  if (!versionPattern.test(swSource)) {
+    console.warn('bump-sw-version: CACHE_VERSION placeholder not found – skipping update')
     return
   }
 
-  const updatedSource = swSource.replace(pattern, `const SW_VERSION = "${versionTag}";`)
+  const nextTag = formatVersionTag()
+  const updatedSource = swSource.replace(versionPattern, `const CACHE_VERSION = '${nextTag}'`)
   await writeFile(swPath, updatedSource, 'utf8')
-  console.log('bump-sw-version: Updated SW_VERSION to', versionTag)
+  console.log('bump-sw-version: Updated CACHE_VERSION to', nextTag)
 }
 
 main().catch(error => {
