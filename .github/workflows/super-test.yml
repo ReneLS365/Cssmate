@@ -49,8 +49,8 @@ jobs:
           echo "Local server did not become reachable" >&2
           exit 1
 
-      - name: Run SuperTest (build + HTML + links + Lighthouse 100/100)
-        run: npm run test:super
+      - name: Release guard (build + HTML + links + Lighthouse 100/100)
+        run: npm run release:guard
 
       - name: Stop static server
         if: always()
