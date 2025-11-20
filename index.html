@@ -216,7 +216,24 @@
       </div>
     </fieldset>
 
-    <section class="overview overview-inline">
+    <fieldset class="no-print">
+      <legend>Medarbejdere</legend>
+      <div id="workers"></div>
+      <div class="row">
+        <button id="btnAddWorker" type="button">+ Tilføj mand</button>
+      </div>
+    </fieldset>
+
+    <div class="row no-print btn-group">
+      <button id="btnBeregnLon" type="button" data-role="primary">Beregn løn</button>
+    </div>
+
+    <fieldset data-lon-output hidden>
+      <legend>Resultat</legend>
+      <div id="lonResult"></div>
+    </fieldset>
+
+    <section class="overview overview-inline" data-lon-output hidden>
       <div class="totals">
         <div>
           <span>Materialesum</span>
@@ -233,15 +250,12 @@
       </div>
     </section>
 
-    <div class="row no-print btn-group">
-      <button id="btnBeregnLon" type="button" data-role="primary">Beregn løn</button>
-      <button id="btnPrint" type="button" disabled data-role="primary">Print</button>
-    </div>
-    <fieldset class="no-print export-panel">
+    <fieldset class="no-print export-panel" data-lon-output hidden>
       <legend>Eksport &amp; deling</legend>
       <div class="export-actions" role="group" aria-label="Eksport muligheder">
-        <button id="btnExportZip" type="button">ZIP</button>
+        <button id="btnPrint" type="button" disabled data-role="primary">Print</button>
         <button id="btnExportAkkord" type="button">Eksporter akkordseddel</button>
+        <button id="btnExportZip" type="button">ZIP</button>
       </div>
       <fieldset class="export-system-selector">
         <legend>Excel 25-ark</legend>
@@ -264,18 +278,6 @@
           </label>
         </div>
       </fieldset>
-    </fieldset>
-    <fieldset>
-      <legend>Resultat</legend>
-      <div id="lonResult"></div>
-    </fieldset>
-
-    <fieldset class="no-print">
-      <legend>Medarbejdere</legend>
-      <div id="workers"></div>
-      <div class="row">
-        <button id="btnAddWorker" type="button">+ Tilføj mand</button>
-      </div>
     </fieldset>
   </section>
 
