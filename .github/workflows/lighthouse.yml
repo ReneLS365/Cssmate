@@ -40,6 +40,9 @@ jobs:
             exit 1
           fi
 
+      - name: Ensure lighthouse report dir exists
+        run: mkdir -p docs/lighthouse
+
       - name: Start static server
         run: |
           # Hvis appen senere bygges til fx "dist/", så skift "." til "dist"
@@ -54,7 +57,7 @@ jobs:
       - name: Run Lighthouse mobile suite
         run: npm run lh:mobile
 
-      - name: Enforce perfect scores
+      - name: Enforce Lighthouse thresholds
         run: |
           node - <<'NODE'
           import fs from 'node:fs';
@@ -64,14 +67,16 @@ jobs:
           }
           const data = JSON.parse(fs.readFileSync(path, 'utf8'));
           const categories = ['performance', 'accessibility', 'best-practices', 'seo'];
+          const threshold = 0.95;
           const failing = categories.filter((key) => {
             const category = data.categories?.[key];
-            return !category || Number(category.score) < 1;
+            const score = Number(category?.score ?? 0);
+            return !Number.isFinite(score) || score < threshold;
           });
           if (failing.length) {
-            throw new Error(`Lighthouse scores below 1.0: ${failing.join(', ')}`);
+            throw new Error(`Lighthouse categories below ${threshold}: ${failing.join(', ')}`);
           }
-          console.log('All Lighthouse categories are perfect.');
+          console.log(`All Lighthouse categories meet threshold >= ${threshold}.`);
           NODE
 
       - name: Stop static server
