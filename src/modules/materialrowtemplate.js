@@ -38,7 +38,7 @@ export function createMaterialRow (item, {
 
   const nameInput = document.createElement('input')
   nameInput.type = 'text'
-  nameInput.className = `csm-name mat-name${item.manual ? ' manual-name' : ''}`
+  nameInput.className = `csm-name mat-name material-name${item.manual ? ' manual-name' : ''}`
   nameInput.dataset.id = item.id
   nameInput.placeholder = 'Materiale'
   nameInput.setAttribute('aria-label', 'Materialenavn')
@@ -58,7 +58,7 @@ export function createMaterialRow (item, {
 
   const qtyInput = document.createElement('input')
   qtyInput.type = 'number'
-  qtyInput.className = 'csm-qty qty mat-qty'
+  qtyInput.className = 'csm-qty qty mat-qty material-qty'
   qtyInput.dataset.id = item.id
   qtyInput.id = qtyInputId
   qtyInput.name = `qty[${item.id}]`
@@ -75,7 +75,7 @@ export function createMaterialRow (item, {
 
   const priceInput = document.createElement('input')
   priceInput.type = 'number'
-  priceInput.className = 'csm-price price mat-price'
+  priceInput.className = 'csm-price price mat-price material-price'
   priceInput.dataset.id = item.id
   priceInput.id = `price-${sanitizedId}`
   priceInput.name = `price[${item.id}]`
@@ -101,7 +101,7 @@ export function createMaterialRow (item, {
   }
 
   const sumElement = document.createElement('div')
-  sumElement.className = 'csm-sum mat-line mat-sum'
+  sumElement.className = 'csm-sum mat-line mat-sum material-total'
   sumElement.setAttribute('data-sum', '')
   sumElement.setAttribute('aria-label', 'Linjetotal')
   const lineTotal = toNumber(item.price) * toNumber(item.quantity)
