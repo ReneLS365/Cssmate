@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <!-- Snapshot of the first material row rendered by createMaterialRow in src/modules/materialrowtemplate.js.
+       Markup is generated via DOM creation (e.g. row.className = `material-row mat-row csm-row${item.manual ? ' manual' : ''}` and inputs appended in order). -->
+  <meta charset="utf-8">
+  <title>Materialerække debug</title>
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="../print.css" media="print">
+  <link rel="stylesheet" href="../css/numpad.css">
+  <link rel="stylesheet" href="../css/a9-calc.css">
+  <link rel="stylesheet" href="../src/styles/fixes.css">
+  <link rel="stylesheet" href="/css/pwa.css">
+</head>
+<body>
+  <div class="material-row mat-row csm-row" data-item-id="B001" data-system="bosta" data-has-qty="false">
+    <input type="text" class="csm-name mat-name material-name" data-id="B001" placeholder="Materiale" aria-label="Materialenavn" value="Spindelfod kort (Bosta)" readonly tabindex="-1" title="Varenr. B001" id="name-B001" aria-readonly="true">
+    <input type="number" class="csm-qty qty mat-qty material-qty" data-id="B001" id="qty-B001" name="qty[B001]" inputmode="decimal" autocomplete="off" step="0.01" data-numpad="true" data-numpad-field="qty-B001" placeholder="0" aria-label="Antal" value="0">
+    <input type="number" class="csm-price price mat-price material-price" data-id="B001" id="price-B001" name="price[B001]" inputmode="decimal" autocomplete="off" step="0.01" data-numpad="true" data-numpad-field="price-B001" aria-label="Enhedspris" data-price="2.675425" data-requires-admin="true" readonly value="2.68">
+    <div class="csm-sum mat-line mat-sum material-total" data-sum="" aria-label="Linjetotal">0,00 kr</div>
+  </div>
+</body>
+</html>
