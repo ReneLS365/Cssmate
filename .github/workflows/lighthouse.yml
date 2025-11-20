@@ -21,6 +21,9 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            .github/workflows/lighthouse.yml
 
       - name: Install dependencies
         run: npm ci
@@ -28,23 +31,25 @@ jobs:
       - name: Build project
         run: npm run build
 
+      - name: Inspect build output
+        run: |
+          echo "Repo root files:"
+          ls -la
+          if [ ! -f "index.html" ]; then
+            echo "ERROR: index.html not found in repo root. Lighthouse expects static site at repo root." >&2
+            exit 1
+          fi
+
       - name: Start static server
         run: |
-          npx http-server app -p 4173 --silent &
+          # Hvis appen senere bygges til fx "dist/", så skift "." til "dist"
+          # npx --yes http-server dist -p 4173 --silent &
+          npx --yes http-server . -p 4173 --silent &
           echo $! > server.pid
 
       - name: Wait for local server
         run: |
-          for attempt in {1..20}; do
-            if curl -sf "$LHCI_URL" >/dev/null; then
-              echo "Local server is reachable"
-              exit 0
-            fi
-            echo "Attempt ${attempt} failed, retrying in 1s"
-            sleep 1
-          done
-          echo "Local server did not become reachable" >&2
-          exit 1
+          npx --yes wait-on http://127.0.0.1:4173 --timeout 60000
 
       - name: Run Lighthouse mobile suite
         run: npm run lh:mobile
