@@ -207,11 +207,10 @@ button{cursor:pointer}
 .materials-body{display:flex;flex-direction:column;gap:8px;width:100%}
 .material-row,
 .csm-row {
-  display: grid;
-  grid-template-columns: var(--materials-grid-desktop);
-  column-gap: 10px;
-  row-gap: 6px;
+  display: flex;
   align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
   padding: 10px 12px;
   min-height: 40px;
   border-radius: var(--radius-md);
@@ -251,9 +250,10 @@ button{cursor:pointer}
 
 .csm-name { min-width: 140px; text-align: left; }
 .manual .csm-name { font-weight: 600; }
-.material-name{min-width:140px;text-align:left}
-.material-qty,.material-price{text-align:right}
-.material-total{text-align:right;white-space:nowrap}
+.material-name{min-width:140px;text-align:left;flex:1 1 var(--name-col);min-width:0}
+.material-qty{flex:0 0 var(--qty-col);max-width:var(--qty-col)}
+.material-price{flex:0 0 var(--price-col);max-width:var(--price-col)}
+.material-total{flex:0 0 var(--total-col);max-width:var(--total-col);text-align:right;white-space:nowrap}
 
 .csm-qty,
 .csm-price,
@@ -427,7 +427,7 @@ button{cursor:pointer}
   header .bar{padding-inline:8px;}
 
   .material-row,
-  .csm-row{column-gap:4px;padding-inline:10px;}
+  .csm-row{gap:6px;padding-inline:10px;}
 }
 
 @media print{
@@ -499,10 +499,7 @@ button{cursor:pointer}
 
 @media (max-width:400px){
   .material-row,
-  .csm-row{
-    grid-template-columns:var(--materials-grid-mobile);
-    column-gap:6px;
-  }
+  .csm-row{ gap: 6px; }
 
   .material-row .mat-name,
   .csm-row .mat-name,
