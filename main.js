@@ -151,7 +151,6 @@ if (typeof window !== 'undefined') {
   })
 }
 
-
 function isKnownTabId(tabId) {
   return typeof tabId === 'string' && KNOWN_TAB_IDS.has(tabId)
 }

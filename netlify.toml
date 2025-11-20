@@ -2,12 +2,6 @@
   command = "npm run build"
   publish = "app"
 
-[[plugins]]
-  package = "netlify-plugin-a11y"
-  [plugins.inputs]
-    checkPaths = []
-    resultMode = "warn"
-
 [[redirects]]
   from = "/*"
   to = "/index.html"
