@@ -1267,21 +1267,6 @@ function performTotalsUpdate() {
     demontageField.value = (montageBase * 0.5).toFixed(2);
   }
 
-  if (typeof updateMaterialVisibility === 'function') {
-    updateMaterialVisibility();
-  }
-}
-
-function updateMaterialVisibility() {
-  const showSelectedOnly = getDomElement('showSelectedOnly');
-  const only = !!showSelectedOnly?.checked;
-  const container = getDomElement('optaellingContainer');
-  const rows = container ? container.querySelectorAll('.material-row') : [];
-
-  rows.forEach(row => {
-    const qty = toNumber(row.querySelector('input.qty,input.quantity')?.value);
-    row.style.display = (!only || qty > 0) ? '' : 'none';
-  });
 }
 
 function updateTotals(options = {}) {
@@ -3707,13 +3692,6 @@ async function initApp() {
   if (optaellingContainer) {
     optaellingContainer.addEventListener('input', handleOptaellingInput);
     optaellingContainer.addEventListener('change', handleOptaellingInput);
-  }
-
-  const showSelectedInput = getDomElement('showSelectedOnly');
-  if (showSelectedInput) {
-    showSelectedInput.addEventListener('change', () => {
-      updateMaterialVisibility();
-    });
   }
 
   addWorker();
