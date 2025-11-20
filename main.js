@@ -1154,11 +1154,17 @@ function findMaterialRowElement(id) {
 function updateQty(id, val) {
   const item = findMaterialById(id);
   if (!item) return;
-  item.quantity = toNumber(val);
+  const previousQuantity = toNumber(item.quantity);
+  const newQuantity = toNumber(val);
+  item.quantity = newQuantity;
   refreshMaterialRowDisplay(id);
   updateTotals();
   if (showOnlySelectedMaterials) {
-    renderOptaelling();
+    const wasSelected = previousQuantity > 0;
+    const isSelected = newQuantity > 0;
+    if (wasSelected !== isSelected) {
+      renderOptaelling();
+    }
   }
 }
 
