@@ -1000,21 +1000,7 @@ function renderOptaelling() {
   const container = getDomElement('optaellingContainer');
   if (!container) return;
 
-  let controls = container.querySelector('.materials-controls');
-  if (!controls) {
-    controls = document.createElement('div');
-    controls.className = 'materials-controls';
-    const toggleId = 'toggleSelectedMaterials';
-    controls.innerHTML = `
-      <label class="toggle">
-        <input type="checkbox" id="${toggleId}" />
-        <span>Vis kun valgte materialer</span>
-      </label>
-    `;
-    container.appendChild(controls);
-  }
-
-  const selectedToggle = controls.querySelector('input[type="checkbox"]');
+  const selectedToggle = document.getElementById('showSelectedOnly');
   if (selectedToggle) {
     selectedToggle.checked = showOnlySelectedMaterials;
     selectedToggle.onchange = () => {
@@ -1023,19 +1009,12 @@ function renderOptaelling() {
     };
   }
 
-  let body = container.querySelector('.materials-body');
-  if (!body) {
-    body = document.createElement('div');
-    body.className = 'materials-body';
-    container.appendChild(body);
-  }
-
   const showEmptyState = message => {
-    body.textContent = '';
+    container.textContent = '';
     const paragraph = document.createElement('p');
     paragraph.className = 'empty-state';
     paragraph.textContent = message;
-    body.appendChild(paragraph);
+    container.appendChild(paragraph);
     if (materialsVirtualListController) {
       materialsVirtualListController.controller.destroy?.();
       materialsVirtualListController = null;
@@ -1064,21 +1043,14 @@ function renderOptaelling() {
     return;
   }
 
-  let zoomWrapper = body.querySelector('.mat-zoom');
-  if (!zoomWrapper) {
-    body.textContent = '';
-    zoomWrapper = document.createElement('div');
-    zoomWrapper.className = 'mat-zoom';
-    body.appendChild(zoomWrapper);
-  } else {
-    body.querySelectorAll('.empty-state').forEach(node => node.remove());
-  }
+  container.querySelectorAll('.empty-state').forEach(node => node.remove());
 
-  let list = zoomWrapper.querySelector('.materials-list');
+  let list = container.querySelector('.materials-list');
   if (!list) {
+    container.textContent = '';
     list = document.createElement('div');
     list.className = 'materials-list csm-materials-list';
-    zoomWrapper.appendChild(list);
+    container.appendChild(list);
   }
   list.classList.add('csm-materials-list');
 
