@@ -2567,17 +2567,37 @@ function applyImportedAkkordData(data) {
   })).filter(entry => entry.quantity > 0 || entry.name || entry.id);
 
   const wage = payload.wage || {};
-  const hours = toNumber(wage.montageHours ?? wage.demontageHours ?? wage.totalHours);
-  const hourlyRate = toNumber(wage.hourlyRate);
+  const wageWorkers = Array.isArray(wage.workers)
+    ? wage.workers
+    : Array.isArray(payload.workers)
+      ? payload.workers
+      : Array.isArray(payload.labor)
+        ? payload.labor
+        : [];
   const labor = [];
-  if (hours > 0 || hourlyRate > 0) {
-    labor.push({
-      type: jobType,
-      hours,
-      rate: hourlyRate,
-      udd: wage.educationLevel || '',
-      mentortillaeg: toNumber(wage.mentorAllowance),
+  if (wageWorkers.length) {
+    wageWorkers.forEach(entry => {
+      const hours = toNumber(entry?.hours);
+      const rate = toNumber(entry?.rate ?? entry?.hourlyWithAllowances ?? entry?.hourlyRate);
+      const udd = entry?.udd || entry?.education || entry?.educationLevel || '';
+      const mentortillaeg = toNumber(entry?.mentortillaeg ?? entry?.mentorAllowance);
+      const type = entry?.type || jobType;
+      if (hours > 0 || rate > 0 || type) {
+        labor.push({ type, hours, rate, udd, mentortillaeg });
+      }
     });
+  } else {
+    const hours = toNumber(wage.montageHours ?? wage.demontageHours ?? wage.totalHours);
+    const hourlyRate = toNumber(wage.hourlyRate);
+    if (hours > 0 || hourlyRate > 0) {
+      labor.push({
+        type: jobType,
+        hours,
+        rate: hourlyRate,
+        udd: wage.educationLevel || wage.udd || '',
+        mentortillaeg: toNumber(wage.mentorAllowance),
+      });
+    }
   }
 
   const systems = Array.isArray(payload.systems)
@@ -2585,6 +2605,14 @@ function applyImportedAkkordData(data) {
     : payload.system
       ? [normalizeExcelSystemId(payload.system)]
       : Array.from(selectedSystemKeys);
+
+  const traelleSum = toNumber(extras.tralleløft ?? extras.tralleloeft ?? extras.tralleløft);
+  let traelle35 = extras.traelle35 ?? extras.tralle35 ?? extras.tralleloeft35 ?? extras.tralleløft35;
+  let traelle50 = extras.traelle50 ?? extras.tralle50 ?? extras.tralleloeft50 ?? extras.tralleløft50;
+  if (!traelle35 && !traelle50 && Number.isFinite(traelleSum) && traelleSum > 0) {
+    const derived35 = traelleSum / TRAELLE_RATE35;
+    traelle35 = Number.isFinite(derived35) ? derived35.toFixed(2) : '';
+  }
 
   const snapshot = {
     sagsinfo: {
@@ -2609,8 +2637,8 @@ function applyImportedAkkordData(data) {
       antalBoringBeton: extras.boringBeton ?? extras.antalBoringBeton ?? 0,
       opskydeligtRaekvaerk: extras.opskydeligt ?? extras.opskydeligtRaekvaerk ?? 0,
       km: extras.km ?? extras.kilometer ?? 0,
-      traelle35: extras.traelle35 ?? extras.tralle35 ?? '',
-      traelle50: extras.traelle50 ?? extras.tralle50 ?? '',
+      traelle35,
+      traelle50,
     },
     totals: payload.totals || {},
   };
@@ -3361,6 +3389,8 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
 
   const ekstraarbejdeModel = {
     tralleløft: tralleSum,
+    traelle35: tralleState?.n35 || 0,
+    traelle50: tralleState?.n50 || 0,
     huller: toNumber(document.getElementById('antalBoringHuller')?.value) * BORING_HULLER_RATE,
     lukAfHul: toNumber(document.getElementById('antalLukHuller')?.value) * LUK_HULLER_RATE,
     boringBeton: toNumber(document.getElementById('antalBoringBeton')?.value) * BORING_BETON_RATE,
@@ -3424,6 +3454,13 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
       numWorkers: laborTotals.length || workerCount || 0,
       hourlyRate: hourlyBase,
       educationLevel: laborTotals.find(entry => entry.udd)?.udd || '',
+      workers: labor.map(entry => ({
+        type: entry?.type || jobType,
+        hours: toNumber(entry?.hours),
+        rate: toNumber(entry?.rate),
+        udd: entry?.udd || '',
+        mentortillaeg: toNumber(entry?.mentortillaeg),
+      })),
       totalAkkordSum: totalsFallback.samletAkkordsum,
     },
     totals: {
