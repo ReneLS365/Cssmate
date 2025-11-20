@@ -204,10 +204,11 @@ button{cursor:pointer}
 }
 .material-row,
 .csm-row {
-  display: flex;
-  flex-wrap: nowrap;
+  display: grid;
+  grid-template-columns: var(--materials-grid-desktop);
+  column-gap: 10px;
+  row-gap: 6px;
   align-items: center;
-  gap: 10px;
   padding: 10px 12px;
   min-height: 40px;
   border-radius: var(--radius-md);
@@ -247,10 +248,8 @@ button{cursor:pointer}
 
 .csm-name { min-width: 140px; text-align: left; }
 .manual .csm-name { font-weight: 600; }
-.material-name{min-width:140px;text-align:left;flex:1 1 var(--name-col);min-width:0}
-.material-qty{flex:0 0 var(--qty-col);max-width:var(--qty-col)}
-.material-price{flex:0 0 var(--price-col);max-width:var(--price-col)}
-.material-total{flex:0 0 var(--total-col);max-width:var(--total-col);text-align:right;white-space:nowrap}
+.material-name{min-width:140px;text-align:left}
+.material-total{text-align:right;white-space:nowrap}
 
 .csm-qty,
 .csm-price,
@@ -271,32 +270,21 @@ button{cursor:pointer}
   border-radius: var(--radius-md);
   color: var(--text);
   font-size: 0.95rem;
-  flex: 0 0 var(--total-col);
-  max-width: var(--total-col);
 }
 
-@media (max-width: 340px) {
+@media (max-width:400px){
   .material-row,
   .csm-row {
-    flex-wrap: wrap;
-    align-items: flex-start;
+    grid-template-columns:var(--materials-grid-mobile);
+    column-gap:6px;
   }
 
-  .material-name,
-  .csm-name {
-    flex: 1 1 100%;
-    min-width: 0;
-  }
-
-  .material-qty,
-  .material-price,
-  .material-total,
-  .csm-qty,
-  .csm-price,
-  .csm-sum {
-    flex: 1 1 calc(33.333% - 6px);
-    max-width: calc(33.333% - 6px);
-    min-width: 0;
+  .material-row .mat-name,
+  .csm-row .mat-name,
+  .csm-name{
+    font-size:0.9rem;
+    line-height:1.25;
+    word-break:break-word;
   }
 }
 
