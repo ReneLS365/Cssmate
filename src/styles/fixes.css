@@ -92,6 +92,14 @@
   width: 100%;
 }
 
+@media (max-width: 400px) {
+  .material-row,
+  .mat-row.csm-row {
+    grid-template-columns: var(--materials-grid-mobile);
+    column-gap: 6px;
+  }
+}
+
 .material-row .csm-name,
 .mat-row.csm-row .csm-name {
   overflow: hidden;
