@@ -637,6 +637,7 @@ let excelSystemSelectionCache = new Set(['bosta']);
 let datasetModulePromise = null;
 let materialsReady = false;
 let showOnlySelectedMaterials = false;
+let lonOutputsRevealed = false;
 
 function loadMaterialDatasetModule () {
   if (!datasetModulePromise) {
@@ -2613,6 +2614,16 @@ async function loadLocalData(key) {
   return data ? JSON.parse(data) : null;
 }
 
+function showLonOutputSections() {
+  if (lonOutputsRevealed) return;
+  lonOutputsRevealed = true;
+  const sections = document.querySelectorAll('[data-lon-output]');
+  sections.forEach(section => {
+    section.hidden = false;
+    section.removeAttribute('hidden');
+  });
+}
+
 function beregnLon() {
   const info = collectSagsinfo();
   const sagsnummer = info.sagsnummer?.trim() || 'uspecified';
@@ -2956,6 +2967,7 @@ function beregnLon() {
     };
   }
 
+  showLonOutputSections();
   persistProjectSnapshot();
 
   return sagsnummer;

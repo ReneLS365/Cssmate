@@ -9,7 +9,7 @@ if (versionScriptUrl) {
   importScripts('/js/version.js')
 }
 
-const CACHE_VERSION = 'sscaff-v-20251120151221252' // updated automatically by bump script
+const CACHE_VERSION = 'sscaff-v-20251120180921531' // updated automatically by bump script
 const CACHE_NAME = 'sscaff-' + CACHE_VERSION
 const PRECACHE_URLS = [
   '/',
@@ -69,34 +69,19 @@ self.addEventListener('install', event => {
 })
 
 self.addEventListener('activate', event => {
-  event.waitUntil((async () => {
-    const cacheKeys = await caches.keys()
-    const staleCaches = cacheKeys.filter(key => {
-      const isCurrent = key === CACHE_NAME
-      const isKnown = key.startsWith('sscaff-') || key.startsWith('cssmate-cache-') || key.startsWith('cssmate-')
-      return !isCurrent && isKnown
-    })
-
-    const freshCache = await caches.open(CACHE_NAME)
-    for (const key of staleCaches) {
-      const cache = await caches.open(key)
-      const requests = await cache.keys()
-      await Promise.all(requests.map(async request => {
-        const alreadyCached = await freshCache.match(request)
-        if (alreadyCached) return
-
-        const response = await cache.match(request)
-        if (response) {
-          await freshCache.put(request, response)
-        }
-      }))
-    }
-
-    await Promise.all(staleCaches.map(key => caches.delete(key)))
-    await self.clients.claim()
-    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-    clients.forEach(client => client.postMessage({ type: 'SSCaff_NEW_VERSION' }))
-  })())
+  event.waitUntil(
+    caches.keys()
+      .then(keys => Promise.all(
+        keys
+          .filter(key => key.startsWith('sscaff-') && key !== CACHE_NAME)
+          .map(key => caches.delete(key))
+      ))
+      .then(() => self.clients.claim())
+      .then(() => self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
+      .then(clients => {
+        clients.forEach(client => client.postMessage({ type: 'SSCaff_NEW_VERSION' }))
+      })
+  )
 })
 
 self.addEventListener('fetch', event => {
