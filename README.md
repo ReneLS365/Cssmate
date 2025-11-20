@@ -24,6 +24,9 @@ CSMate er en letvægtsudgave af den oprindelige Cssmate-applikation, målrettet 
 - `npm run test:lh:mobile` – kører Lighthouse mod et givent URL (default `LHCI_URL`) med mobilprofil og deterministiske throttling-flags.
 - `npm run test:lh:enforce` – læser `docs/lighthouse/latest-mobile.json` og fejler hvis scorerne falder.
 - `npm run test:super` – kombineret testflow der kører build + samtlige audits.
+- `npm run release:guard` – samlekommando til PR/merge, kører hele test:super-flowet og validerer at Lighthouse-rapporten scorer 1.0 i alle kategorier.
+
+Pull requests må kun merges når `npm run release:guard` er grøn (kører automatisk i GitHub Actions på push/PR til `main`).
 
 ## CODEx Autonomous CI Bootstrapper
 
