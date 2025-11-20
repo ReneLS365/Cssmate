@@ -623,6 +623,7 @@ const AKKORD_EXCEL_SYSTEMS = [
   { id: 'bosta', label: 'BOSTA 2025' },
   { id: 'haki', label: 'HAKI 2025' },
   { id: 'modex', label: 'MODEX 2025' },
+  { id: 'alfix', label: 'ALFIX 2025' },
 ];
 const AKKORD_EXCEL_STORAGE_KEY = 'csmate.akkordExcelSystem';
 let systemDatasets = {};
@@ -637,6 +638,7 @@ let excelSystemSelectionCache = new Set(['bosta']);
 let datasetModulePromise = null;
 let materialsReady = false;
 let showOnlySelectedMaterials = false;
+let lastRenderShowSelected = null;
 let lonOutputsRevealed = false;
 
 function loadMaterialDatasetModule () {
@@ -1006,6 +1008,7 @@ function renderOptaelling() {
     selectedToggle.checked = showOnlySelectedMaterials;
     selectedToggle.onchange = () => {
       showOnlySelectedMaterials = selectedToggle.checked;
+      lastRenderShowSelected = null;
       renderOptaelling();
     };
   }
@@ -1068,6 +1071,12 @@ function renderOptaelling() {
     }
     return result
   }
+
+  if (lastRenderShowSelected !== showOnlySelectedMaterials && materialsVirtualListController) {
+    materialsVirtualListController.controller.destroy?.();
+    materialsVirtualListController = null;
+  }
+  lastRenderShowSelected = showOnlySelectedMaterials;
 
   if (!materialsVirtualListController || materialsVirtualListController.container !== list) {
     const controller = createVirtualMaterialsList({
@@ -1422,6 +1431,27 @@ async function saveProject(data) {
   }
 }
 
+async function deleteProjectById(id) {
+  if (!Number.isFinite(id) || id <= 0) return false;
+  try {
+    const db = await openDB();
+    if (!db) return false;
+    const tx = db.transaction(DB_STORE, 'readwrite');
+    const completion = new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve(true);
+      tx.onabort = () => reject(tx.error || new Error('Transaktionen blev afbrudt'));
+      tx.onerror = () => reject(tx.error || new Error('Transaktionen fejlede'));
+    });
+    const store = tx.objectStore(DB_STORE);
+    store.delete(Number(id));
+    await completion;
+    return true;
+  } catch (error) {
+    console.warn('Kunne ikke slette sag', error);
+    return false;
+  }
+}
+
 async function getRecentProjects() {
   try {
     const db = await openDB();
@@ -1520,9 +1550,45 @@ function renderHistoryList(entries = recentCasesCache) {
     if (parts.length) {
       li.appendChild(meta);
     }
+    const actions = document.createElement('div');
+    actions.className = 'history-list__actions';
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'history-list__delete';
+    deleteBtn.dataset.id = entry.id;
+    deleteBtn.dataset.action = 'delete-history';
+    deleteBtn.textContent = 'Slet';
+    actions.appendChild(deleteBtn);
+    li.appendChild(actions);
     list.appendChild(li);
   });
   setHistoryListBusy(false);
+}
+
+function setupHistoryListActions() {
+  const list = getDomElement('historyList');
+  if (!list || list.dataset.boundDelete === 'true') return;
+  list.dataset.boundDelete = 'true';
+  list.addEventListener('click', async event => {
+    const button = event.target instanceof HTMLElement
+      ? event.target.closest('[data-action="delete-history"]')
+      : null;
+    if (!button) return;
+    const id = Number(button.dataset.id);
+    if (!(id > 0)) return;
+    const ok = window.confirm('Er du sikker på, at du vil slette denne sag?');
+    if (!ok) return;
+    button.disabled = true;
+    const deleted = await deleteProjectById(id);
+    if (!deleted) {
+      button.disabled = false;
+      return;
+    }
+    recentCasesCache = recentCasesCache.filter(entry => Number(entry?.id) !== id);
+    syncRecentProjectsGlobal(recentCasesCache);
+    renderHistoryList(recentCasesCache);
+    populateRecentCases();
+  });
 }
 
 function findHistoryEntryById(id) {
@@ -1622,6 +1688,7 @@ async function populateRecentCases() {
   const button = getDomElement('btnLoadHistoryJob');
   const hasHistoryUi = Boolean(select || getDomElement('historyList'));
   if (!hasHistoryUi) return;
+  setupHistoryListActions();
   setHistoryListBusy(true);
   const cases = await getRecentProjects();
   recentCasesCache = cases;

@@ -26,6 +26,8 @@ export function createMaterialRow (item, {
     throw new Error('Item with valid id is required')
   }
 
+  // LAYOUT-LOCK: HTML-struktur og rækkefølge af kolonner i materialerækker
+  // må IKKE ændres uden samtidig at opdatere relevante tests.
   const row = document.createElement('div')
   row.className = `material-row mat-row csm-row${item.manual ? ' manual' : ''}`
   row.dataset.itemId = item.id
@@ -38,7 +40,7 @@ export function createMaterialRow (item, {
 
   const nameInput = document.createElement('input')
   nameInput.type = 'text'
-  nameInput.className = `csm-name mat-name material-name${item.manual ? ' manual-name' : ''}`
+  nameInput.className = `csm-name mat-name material-name col-name${item.manual ? ' manual-name' : ''}`
   nameInput.dataset.id = item.id
   nameInput.placeholder = 'Materiale'
   nameInput.setAttribute('aria-label', 'Materialenavn')
@@ -58,7 +60,7 @@ export function createMaterialRow (item, {
 
   const qtyInput = document.createElement('input')
   qtyInput.type = 'number'
-  qtyInput.className = 'csm-qty qty mat-qty material-qty'
+  qtyInput.className = 'csm-qty qty mat-qty material-qty col-qty'
   qtyInput.dataset.id = item.id
   qtyInput.id = qtyInputId
   qtyInput.name = `qty[${item.id}]`
@@ -75,7 +77,7 @@ export function createMaterialRow (item, {
 
   const priceInput = document.createElement('input')
   priceInput.type = 'number'
-  priceInput.className = 'csm-price price mat-price material-price'
+  priceInput.className = 'csm-price price mat-price material-price col-price'
   priceInput.dataset.id = item.id
   priceInput.id = `price-${sanitizedId}`
   priceInput.name = `price[${item.id}]`
@@ -101,7 +103,7 @@ export function createMaterialRow (item, {
   }
 
   const sumElement = document.createElement('div')
-  sumElement.className = 'csm-sum mat-line mat-sum material-total'
+  sumElement.className = 'csm-sum mat-line mat-sum material-total col-total'
   sumElement.setAttribute('data-sum', '')
   sumElement.setAttribute('aria-label', 'Linjetotal')
   const lineTotal = toNumber(item.price) * toNumber(item.quantity)
