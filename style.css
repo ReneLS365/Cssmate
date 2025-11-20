@@ -607,6 +607,3 @@ button{cursor:pointer}
 .approval-badge[data-status="godkendt"]{background:rgba(93,201,133,0.18);color:#8adbae;border-color:rgba(93,201,133,0.4)}
 .approval-badge[data-status="afvist"]{background:rgba(214,102,102,0.18);color:#ff9b9b;border-color:rgba(214,102,102,0.4)}
 
-/* Debug outlines for material rows (kept to visualize rendered layout) */
-.material-row{outline:1px solid red !important}
-.material-row>*{outline:1px dashed lime !important}
