@@ -636,6 +636,7 @@ const selectedSystemKeys = new Set();
 let excelSystemSelectionCache = new Set(['bosta']);
 let datasetModulePromise = null;
 let materialsReady = false;
+let showOnlySelectedMaterials = false;
 
 function loadMaterialDatasetModule () {
   if (!datasetModulePromise) {
@@ -906,6 +907,19 @@ function getActiveMaterialList() {
   return aggregateSelectedSystemData();
 }
 
+function getRenderMaterials() {
+  const activeItems = getActiveMaterialList();
+  const combined = Array.isArray(activeItems)
+    ? activeItems.concat(manualMaterials)
+    : manualMaterials.slice();
+
+  if (!showOnlySelectedMaterials) {
+    return combined;
+  }
+
+  return combined.filter(item => toNumber(item?.quantity) > 0);
+}
+
 function findMaterialById(id) {
   const allSets = [dataBosta, dataHaki, dataModex, dataAlfix, manualMaterials];
   for (const list of allSets) {
@@ -985,46 +999,79 @@ function syncSystemSelectorState() {
 function renderOptaelling() {
   const container = getDomElement('optaellingContainer');
   if (!container) return;
-  if (!materialsReady) {
-    container.textContent = '';
-    const loading = document.createElement('p');
-    loading.className = 'empty-state';
-    loading.textContent = 'Indlæser materialelister...';
-    container.appendChild(loading);
+
+  let controls = container.querySelector('.materials-controls');
+  if (!controls) {
+    controls = document.createElement('div');
+    controls.className = 'materials-controls';
+    const toggleId = 'toggleSelectedMaterials';
+    controls.innerHTML = `
+      <label class="toggle">
+        <input type="checkbox" id="${toggleId}" />
+        <span>Vis kun valgte materialer</span>
+      </label>
+    `;
+    container.appendChild(controls);
+  }
+
+  const selectedToggle = controls.querySelector('input[type="checkbox"]');
+  if (selectedToggle) {
+    selectedToggle.checked = showOnlySelectedMaterials;
+    selectedToggle.onchange = () => {
+      showOnlySelectedMaterials = selectedToggle.checked;
+      renderOptaelling();
+    };
+  }
+
+  let body = container.querySelector('.materials-body');
+  if (!body) {
+    body = document.createElement('div');
+    body.className = 'materials-body';
+    container.appendChild(body);
+  }
+
+  const showEmptyState = message => {
+    body.textContent = '';
+    const paragraph = document.createElement('p');
+    paragraph.className = 'empty-state';
+    paragraph.textContent = message;
+    body.appendChild(paragraph);
     if (materialsVirtualListController) {
       materialsVirtualListController.controller.destroy?.();
       materialsVirtualListController = null;
     }
+  };
+
+  if (!materialsReady) {
+    showEmptyState('Indlæser materialelister...');
     return;
   }
   syncSystemSelectorState();
 
   const activeItems = getActiveMaterialList();
-  const items = Array.isArray(activeItems)
+  const combinedItems = Array.isArray(activeItems)
     ? activeItems.concat(manualMaterials)
     : manualMaterials.slice();
+  const items = getRenderMaterials();
 
-  if (!items.length) {
-    container.textContent = '';
-    const message = document.createElement('p');
-    message.className = 'empty-state';
-    message.textContent = 'Ingen systemer valgt. Vælg et eller flere systemer for at starte optællingen.';
-    container.appendChild(message);
-    if (materialsVirtualListController) {
-      materialsVirtualListController.controller.destroy?.();
-      materialsVirtualListController = null;
-    }
+  if (!combinedItems.length) {
+    showEmptyState('Ingen systemer valgt. Vælg et eller flere systemer for at starte optællingen.');
     return;
   }
 
-  let zoomWrapper = container.querySelector('.mat-zoom');
+  if (!items.length) {
+    showEmptyState('Ingen materialer med antal.');
+    return;
+  }
+
+  let zoomWrapper = body.querySelector('.mat-zoom');
   if (!zoomWrapper) {
-    container.textContent = '';
+    body.textContent = '';
     zoomWrapper = document.createElement('div');
     zoomWrapper.className = 'mat-zoom';
-    container.appendChild(zoomWrapper);
+    body.appendChild(zoomWrapper);
   } else {
-    container.querySelectorAll('.empty-state').forEach(node => node.remove());
+    body.querySelectorAll('.empty-state').forEach(node => node.remove());
   }
 
   let list = zoomWrapper.querySelector('.materials-list');
@@ -1107,9 +1154,18 @@ function findMaterialRowElement(id) {
 function updateQty(id, val) {
   const item = findMaterialById(id);
   if (!item) return;
-  item.quantity = toNumber(val);
+  const previousQuantity = toNumber(item.quantity);
+  const newQuantity = toNumber(val);
+  item.quantity = newQuantity;
   refreshMaterialRowDisplay(id);
   updateTotals();
+  if (showOnlySelectedMaterials) {
+    const wasSelected = previousQuantity > 0;
+    const isSelected = newQuantity > 0;
+    if (wasSelected !== isSelected) {
+      renderOptaelling();
+    }
+  }
 }
 
 function updatePrice(id, val) {

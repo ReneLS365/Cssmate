@@ -202,6 +202,9 @@ button{cursor:pointer}
   flex-direction: column;
   width: 100%;
 }
+.materials-controls{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.materials-controls .toggle{display:inline-flex;align-items:center;gap:10px;font-weight:600}
+.materials-body{display:flex;flex-direction:column;gap:8px;width:100%}
 .material-row,
 .csm-row {
   display: grid;
@@ -248,6 +251,9 @@ button{cursor:pointer}
 
 .csm-name { min-width: 140px; text-align: left; }
 .manual .csm-name { font-weight: 600; }
+.material-name{min-width:140px;text-align:left}
+.material-qty,.material-price{text-align:right}
+.material-total{text-align:right;white-space:nowrap}
 
 .csm-qty,
 .csm-price,
@@ -510,20 +516,6 @@ button{cursor:pointer}
   .csm-row input{
     font-size:0.9rem;
     padding-inline:10px;
-  }
-}
-
-@media (max-width:340px){
-  .material-row,
-  .csm-row{
-    grid-template-columns:repeat(2,minmax(0,1fr));
-    grid-auto-rows:auto;
-  }
-
-  .material-row .mat-name,
-  .csm-row .mat-name,
-  .csm-name{
-    grid-column:1 / -1;
   }
 }
 
