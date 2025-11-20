@@ -118,7 +118,7 @@ jobs:
           npm version patch --no-git-tag-version
           echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
       - run: |
-          sed -i "s/CACHE_VERSION = .*/CACHE_VERSION = \"$VERSION\";/g" app/service-worker.js
+          sed -i "s/CACHE_VERSION = .*/CACHE_VERSION = \"$VERSION\";/g" service-worker.js
       - run: |
           git config user.email "ci@github.com"
           git config user.name "Codex CI"
@@ -204,7 +204,7 @@ test('App loads', async () => {
 write(
   'ci/check-sw.js',
   `const fs = require('fs');
-const sw = fs.readFileSync('app/service-worker.js', 'utf8');
+const sw = fs.readFileSync('service-worker.js', 'utf8');
 
 if (!sw.includes('CACHE_VERSION')) {
   console.error('Service worker missing CACHE_VERSION');

@@ -3,7 +3,7 @@
     "company": "Hulmose Stilladser ApS",
     "template": "hulmose",
     "currency": "DKK",
-    "source": "app/dataset.js (BOSTA/HAKI/MODEX/ALFIX*)",
+    "source": "dataset.js (BOSTA/HAKI/MODEX/ALFIX*)",
     "generated": "2025-10-31",
     "admin_code": "3fd932ed5c3da33973a205e2b111718537bd089e6516eb077cbc6176b5b6db0d",
     "systems": [

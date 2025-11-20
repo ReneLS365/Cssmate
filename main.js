@@ -8,7 +8,7 @@ import { ensureExportLibs, ensureZipLib, prefetchExportLibs } from './src/featur
 import { setupNumpad } from './js/numpad.js'
 import { exportMeta, setSlaebFormulaText } from './js/export-meta.js'
 import { createVirtualMaterialsList } from './src/modules/materialsVirtualList.js'
-import { initClickGuard } from './src/ui/Guards/ClickGuard.js'
+import { initClickGuard } from './src/ui/guards/clickguard.js'
 import { setAdminOk, restoreAdminState, isAdminUnlocked } from './src/state/admin.js'
 import { exportAkkordExcelForActiveJob } from './src/export/akkord-excel.js'
 import { exportAkkord } from './js/akkord-export.js'
@@ -3519,10 +3519,19 @@ function setupMobileKeyboardDismissal() {
 
 function setupServiceWorkerMessaging() {
   if (!('serviceWorker' in navigator)) return;
+  let hasReloaded = false;
+
   navigator.serviceWorker.addEventListener('message', event => {
-    if (event.data?.type === 'CSMATE_UPDATED') {
+    const messageType = event.data?.type;
+    if (messageType === 'CSMATE_UPDATED' || messageType === 'SSCaff_NEW_VERSION') {
       window.location.reload();
     }
+  });
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hasReloaded) return;
+    hasReloaded = true;
+    window.location.reload();
   });
 }
 

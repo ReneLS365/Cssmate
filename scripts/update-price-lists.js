@@ -3,8 +3,8 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const datasetPath = path.join(__dirname, '..', 'app', 'dataset.js')
-const priceSourcePath = path.join(__dirname, '..', 'app', 'complete_lists.json')
+const datasetPath = path.join(__dirname, '..', 'dataset.js')
+const priceSourcePath = path.join(__dirname, '..', 'complete_lists.json')
 
 function normalizeLabel(value = '') {
   return value
