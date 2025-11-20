@@ -40,6 +40,9 @@ jobs:
             exit 1
           fi
 
+      - name: Ensure lighthouse report dir exists
+        run: mkdir -p docs/lighthouse
+
       - name: Start static server
         run: |
           # Hvis appen senere bygges til fx "dist/", så skift "." til "dist"
