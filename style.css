@@ -275,6 +275,31 @@ button{cursor:pointer}
   max-width: var(--total-col);
 }
 
+@media (max-width: 340px) {
+  .material-row,
+  .csm-row {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .material-name,
+  .csm-name {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .material-qty,
+  .material-price,
+  .material-total,
+  .csm-qty,
+  .csm-price,
+  .csm-sum {
+    flex: 1 1 calc(33.333% - 6px);
+    max-width: calc(33.333% - 6px);
+    min-width: 0;
+  }
+}
+
 .csm-row--custom { all: unset; }
 .csm-row--custom * { all: unset; }
 
