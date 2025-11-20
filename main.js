@@ -1998,6 +1998,10 @@ function formatPercentForCSV(value) {
   return `${num.toFixed(2).replace('.', ',')} %`;
 }
 
+function collectJobType() {
+  return document.getElementById('jobType')?.value || 'montage';
+}
+
 function formatDateForDisplay(value) {
   if (!value) return '';
   const date = new Date(value);
@@ -2131,6 +2135,24 @@ function initExportButtons() {
     const prime = () => prefetchExportLibs();
     btnZip.addEventListener('pointerenter', prime, { once: true });
     btnZip.addEventListener('focus', prime, { once: true });
+  }
+
+  const btnJson = document.getElementById('btnExportJson');
+  if (btnJson) {
+    btnJson.addEventListener('click', () => exportAkkordJsonFile());
+  }
+
+  const importBtn = document.getElementById('btnImportAkkord');
+  const importInput = document.getElementById('akkordImportInput');
+  if (importBtn && importInput) {
+    importBtn.addEventListener('click', () => importInput.click());
+    importInput.addEventListener('change', event => {
+      const file = event.target.files?.[0];
+      if (file) {
+        handleAkkordImport(file);
+        importInput.value = '';
+      }
+    });
   }
 
   initExcelSystemSelector();
@@ -2520,6 +2542,121 @@ function setupCSVImport() {
       fileInput.value = '';
     }
   });
+}
+
+function applyImportedAkkordData(data) {
+  if (!data || typeof data !== 'object') {
+    updateActionHint('Kunne ikke læse akkordseddel-data.', 'error');
+    return;
+  }
+  const payload = data.data && !data.materials ? data.data : data;
+  const jobType = (payload.type || payload.jobType || 'montage').toLowerCase();
+  const extras = payload.extras || {};
+  const materialsSource = Array.isArray(payload.materials)
+    ? payload.materials
+    : Array.isArray(payload.lines)
+      ? payload.lines
+      : [];
+
+  const materials = materialsSource.map(item => ({
+    id: item.id || item.varenr || '',
+    name: item.name || item.label || item.title || '',
+    price: toNumber(item.unitPrice ?? item.price),
+    quantity: toNumber(item.qty ?? item.quantity ?? item.amount),
+    system: item.system || item.systemKey || inferSystemFromLine(item),
+  })).filter(entry => entry.quantity > 0 || entry.name || entry.id);
+
+  const wage = payload.wage || {};
+  const wageWorkers = Array.isArray(wage.workers)
+    ? wage.workers
+    : Array.isArray(payload.workers)
+      ? payload.workers
+      : Array.isArray(payload.labor)
+        ? payload.labor
+        : [];
+  const labor = [];
+  if (wageWorkers.length) {
+    wageWorkers.forEach(entry => {
+      const hours = toNumber(entry?.hours);
+      const rate = toNumber(entry?.rate ?? entry?.hourlyWithAllowances ?? entry?.hourlyRate);
+      const udd = entry?.udd || entry?.education || entry?.educationLevel || '';
+      const mentortillaeg = toNumber(entry?.mentortillaeg ?? entry?.mentorAllowance);
+      const type = entry?.type || jobType;
+      if (hours > 0 || rate > 0 || type) {
+        labor.push({ type, hours, rate, udd, mentortillaeg });
+      }
+    });
+  } else {
+    const hours = toNumber(wage.montageHours ?? wage.demontageHours ?? wage.totalHours);
+    const hourlyRate = toNumber(wage.hourlyRate);
+    if (hours > 0 || hourlyRate > 0) {
+      labor.push({
+        type: jobType,
+        hours,
+        rate: hourlyRate,
+        udd: wage.educationLevel || wage.udd || '',
+        mentortillaeg: toNumber(wage.mentorAllowance),
+      });
+    }
+  }
+
+  const systems = Array.isArray(payload.systems)
+    ? payload.systems
+    : payload.system
+      ? [normalizeExcelSystemId(payload.system)]
+      : Array.from(selectedSystemKeys);
+
+  const traelleSum = toNumber(extras.tralleløft ?? extras.tralleloeft ?? extras.tralleløft);
+  let traelle35 = extras.traelle35 ?? extras.tralle35 ?? extras.tralleloeft35 ?? extras.tralleløft35;
+  let traelle50 = extras.traelle50 ?? extras.tralle50 ?? extras.tralleloeft50 ?? extras.tralleløft50;
+  if (!traelle35 && !traelle50 && Number.isFinite(traelleSum) && traelleSum > 0) {
+    const derived35 = traelleSum / TRAELLE_RATE35;
+    traelle35 = Number.isFinite(derived35) ? derived35.toFixed(2) : '';
+  }
+
+  const snapshot = {
+    sagsinfo: {
+      sagsnummer: payload.jobId || payload.caseNo || payload.id || '',
+      navn: payload.jobName || payload.name || payload.title || '',
+      adresse: payload.jobAddress || payload.address || payload.site || '',
+      kunde: payload.customer || payload.kunde || '',
+      dato: payload.createdAt || payload.date || '',
+      montoer: payload.montageWorkers || payload.demontageWorkers || payload.worker || payload.montor || '',
+    },
+    systems,
+    materials,
+    labor,
+    extras: {
+      jobType,
+      montagepris: extras.montagepris,
+      demontagepris: extras.demontagepris,
+      slaebePct: extras.slaebePct,
+      slaebeFormulaText: extras.slaebeFormulaText,
+      antalBoringHuller: extras.huller ?? extras.antalBoringHuller ?? 0,
+      antalLukHuller: extras.lukAfHul ?? extras.antalLukHuller ?? 0,
+      antalBoringBeton: extras.boringBeton ?? extras.antalBoringBeton ?? 0,
+      opskydeligtRaekvaerk: extras.opskydeligt ?? extras.opskydeligtRaekvaerk ?? 0,
+      km: extras.km ?? extras.kilometer ?? 0,
+      traelle35,
+      traelle50,
+    },
+    totals: payload.totals || {},
+  };
+
+  applyProjectSnapshot(snapshot, { skipHint: true });
+  updateActionHint('Akkordseddel er importeret. Bekræft arbejdstype og tal.', 'success');
+}
+
+async function handleAkkordImport(file) {
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    applyImportedAkkordData(parsed);
+  } catch (error) {
+    console.error('Kunne ikke importere akkordseddel', error);
+    updateActionHint('Kunne ikke importere akkordseddel-filen.', 'error');
+  }
 }
 
 function handleImportFile(file) {
@@ -3186,6 +3323,162 @@ function buildCSVPayload(customSagsnummer, options = {}) {
   };
 }
 
+// --- Akkordseddel JSON-eksport ---
+/**
+ * Akkordseddel JSON-format (v1)
+ * {
+ *   "version": 1,
+ *   "type": "montage" | "demontage",
+ *   "jobId": "string",
+ *   "jobName": "string",
+ *   "createdAt": "ISO-8601 string",
+ *   "system": "Bosta" | "Haki" | "Alfix" | "Mixed" | ...,
+ *   "systems": ["bosta", "haki", ...],
+ *   "materials": [
+ *     {
+ *       "id": "BOSTA_073X257",
+ *       "name": "0,73 x 2,57 dæk",
+ *       "qty": 42,
+ *       "unitPrice": 12.34,
+ *       "lineTotal": 518.28
+ *     }
+ *   ],
+ *   "extras": {
+ *     "km": 37,
+ *     "tralleløft": 4,
+ *     "huller": 3,
+ *     "lukAfHul": 2,
+ *     "boringBeton": 6,
+ *     "opskydeligt": 0,
+ *     "slaebePct": 0,
+ *     "slaebeBelob": 0
+ *   },
+ *   "wage": {
+ *     "montageHours": 40,
+ *     "demontageHours": 0,
+ *     "numWorkers": 2,
+ *     "hourlyRate": 320.50,
+ *     "educationLevel": "",
+ *     "totalAkkordSum": 12345.67
+ *   }
+ * }
+ */
+function buildAkkordJsonPayload(customSagsnummer, options = {}) {
+  if (!options?.skipValidation && !validateSagsinfo()) {
+    updateActionHint('Udfyld Sagsinfo for at eksportere.', 'error');
+    return null;
+  }
+  if (!options?.skipBeregn) {
+    beregnLon();
+  }
+
+  const info = collectSagsinfo();
+  if (customSagsnummer) {
+    info.sagsnummer = customSagsnummer;
+  }
+
+  const materials = getAllData().filter(item => toNumber(item.quantity) > 0);
+  const labor = Array.isArray(laborEntries) ? laborEntries : [];
+  const tralleState = computeTraelleTotals();
+  const tralleSum = tralleState && Number.isFinite(tralleState.sum) ? tralleState.sum : 0;
+  const jobType = collectJobType();
+  const jobFactor = jobType === 'demontage' ? 0.5 : 1;
+  const slaebePctInput = toNumber(document.getElementById('slaebePct')?.value);
+  const montageBase = calcMaterialesum() + tralleSum;
+  const slaebeBelob = montageBase * (Number.isFinite(slaebePctInput) ? slaebePctInput / 100 : 0);
+
+  const ekstraarbejdeModel = {
+    tralleløft: tralleSum,
+    traelle35: tralleState?.n35 || 0,
+    traelle50: tralleState?.n50 || 0,
+    huller: toNumber(document.getElementById('antalBoringHuller')?.value) * BORING_HULLER_RATE,
+    lukAfHul: toNumber(document.getElementById('antalLukHuller')?.value) * LUK_HULLER_RATE,
+    boringBeton: toNumber(document.getElementById('antalBoringBeton')?.value) * BORING_BETON_RATE,
+    opskydeligt: toNumber(document.getElementById('antalOpskydeligt')?.value) * OPSKYDELIGT_RATE,
+    km: toNumber(document.getElementById('km')?.value) * KM_RATE,
+    slaebePct: slaebePctInput,
+    slaebeBelob,
+  };
+
+  const laborTotals = labor.map(entry => ({
+    hours: toNumber(entry?.hours),
+    hourlyWithAllowances: toNumber(entry?.rate),
+    udd: entry?.udd || '',
+    mentortillaeg: toNumber(entry?.mentortillaeg),
+  }));
+  const totalHours = laborTotals.reduce((sum, worker) => sum + (Number.isFinite(worker.hours) ? worker.hours : 0), 0);
+  const materialLinesForTotals = materials.map(item => ({
+    qty: toNumber(item.quantity),
+    unitPrice: toNumber(item.price) * jobFactor,
+  }));
+  const totalsFallback = calculateTotals({
+    materialLines: materialLinesForTotals,
+    slaebeBelob,
+    extra: ekstraarbejdeModel,
+    workers: laborTotals,
+    totalHours,
+  });
+
+  const baseName = sanitizeFilename(info.sagsnummer || 'akkordseddel') || 'akkordseddel';
+  const materialsJson = materials.map(item => {
+    const qty = toNumber(item.quantity);
+    const unitPrice = toNumber(item.price) * jobFactor;
+    return {
+      id: item.id,
+      name: item.name,
+      qty,
+      unitPrice,
+      lineTotal: qty * unitPrice,
+      system: inferSystemFromLine(item) || getPreferredExcelSystem(),
+    };
+  });
+
+  const hourlyBase = toNumber(
+    lastJobSummary?.hourlyBase
+    ?? totalsFallback.timeprisUdenTillaeg
+    ?? totalsFallback.hourlyBase
+  );
+  const jobPayload = {
+    version: 1,
+    type: jobType,
+    jobId: info.sagsnummer || info.navn || info.adresse || baseName,
+    jobName: info.navn || info.adresse || info.sagsnummer || 'Akkordseddel',
+    createdAt: new Date().toISOString(),
+    system: getPreferredExcelSystem(),
+    systems: Array.from(selectedSystemKeys),
+    materials: materialsJson,
+    extras: ekstraarbejdeModel,
+    wage: {
+      montageHours: jobType === 'montage' ? totalHours : 0,
+      demontageHours: jobType === 'demontage' ? totalHours : 0,
+      numWorkers: laborTotals.length || workerCount || 0,
+      hourlyRate: hourlyBase,
+      educationLevel: laborTotals.find(entry => entry.udd)?.udd || '',
+      workers: labor.map(entry => ({
+        type: entry?.type || jobType,
+        hours: toNumber(entry?.hours),
+        rate: toNumber(entry?.rate),
+        udd: entry?.udd || '',
+        mentortillaeg: toNumber(entry?.mentortillaeg),
+      })),
+      totalAkkordSum: totalsFallback.samletAkkordsum,
+    },
+    totals: {
+      materialsSum: totalsFallback.materialer,
+      extrasSum: totalsFallback.ekstraarbejde,
+      haulSum: totalsFallback.slaeb,
+      projectSum: totalsFallback.projektsum,
+    },
+  };
+
+  return {
+    content: JSON.stringify(jobPayload, null, 2),
+    baseName,
+    fileName: `${baseName}.json`,
+    data: jobPayload,
+  };
+}
+
 // --- PDF-eksport (html2canvas + jsPDF) ---
 async function exportPDFBlob(customSagsnummer, options = {}) {
   if (!options?.skipValidation && !validateSagsinfo()) {
@@ -3475,10 +3768,14 @@ async function exportZip() {
     if (!csvPayload) return;
     const pdfPayload = await exportPDFBlob(csvPayload.originalName || csvPayload.baseName, { skipValidation: true, skipBeregn: true });
     if (!pdfPayload) return;
+    const jsonPayload = buildAkkordJsonPayload(csvPayload.originalName || csvPayload.baseName, { skipValidation: true, skipBeregn: true });
 
     const zip = new JSZip();
     zip.file(csvPayload.fileName, csvPayload.content);
     zip.file(pdfPayload.fileName, pdfPayload.blob);
+    if (jsonPayload) {
+      zip.file(jsonPayload.fileName, jsonPayload.content);
+    }
 
     const zipBlob = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(zipBlob);
@@ -3495,6 +3792,14 @@ async function exportZip() {
     console.error('ZIP eksport fejlede', error);
     updateActionHint('ZIP eksport fejlede. Prøv igen.', 'error');
   }
+}
+
+function exportAkkordJsonFile() {
+  const payload = buildAkkordJsonPayload();
+  if (!payload) return;
+  const blob = new Blob([payload.content], { type: 'application/json' });
+  triggerBlobDownload(blob, payload.fileName);
+  updateActionHint('Akkordseddel (JSON) er gemt.', 'success');
 }
 
 // --- Samlet eksport ---
