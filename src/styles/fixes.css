@@ -81,3 +81,56 @@
   bottom: auto !important;
   transform: none !important;
 }
+
+/* === Materialerække 4-kolonne grid og debug-outline === */
+.material-row,
+.mat-row.csm-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 70px 70px 90px;
+  column-gap: 0.5rem;
+  align-items: center;
+  width: 100%;
+}
+
+@media (max-width: 400px) {
+  .material-row,
+  .mat-row.csm-row {
+    grid-template-columns: var(--materials-grid-mobile);
+    column-gap: 6px;
+  }
+}
+
+.material-row .csm-name,
+.mat-row.csm-row .csm-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.material-row .csm-qty,
+.material-row .csm-price,
+.material-row .csm-sum,
+.mat-row.csm-row .csm-qty,
+.mat-row.csm-row .csm-price,
+.mat-row.csm-row .csm-sum {
+  text-align: right;
+}
+
+.material-row input,
+.mat-row.csm-row input,
+.material-row .csm-sum,
+.mat-row.csm-row .csm-sum {
+  display: block;
+  width: auto;
+  max-width: 100%;
+}
+
+.material-row,
+.mat-row.csm-row {
+  outline: 1px solid rgba(255, 0, 0, 0.3);
+}
+
+.material-row > *,
+.mat-row.csm-row > * {
+  outline: 1px dashed rgba(0, 255, 0, 0.3);
+}
