@@ -2271,6 +2271,22 @@ function buildAkkordData(options = {}) {
     slaebeBelob,
   };
 
+  const extras = {
+    jobType,
+    slaebePct: extraInputs.slaebePctInput,
+    slaebeBelob,
+    slaebeFormulaText: exportMeta.slaebFormulaText || '',
+    antalBoringHuller: extraInputs.boringHuller,
+    antalLukHuller: extraInputs.lukHuller,
+    antalBoringBeton: extraInputs.boringBeton,
+    boringBeton: extraInputs.boringBeton,
+    boring: extraInputs.boringBeton,
+    opskydeligtRaekvaerk: extraInputs.opskydeligt,
+    km: extraInputs.km,
+    traelle35: tralleState?.n35 || 0,
+    traelle50: tralleState?.n50 || 0,
+  };
+
   const laborTotals = labor.map(entry => ({
     hours: toNumber(entry?.hours),
     hourlyWithAllowances: toNumber(entry?.rate),
@@ -2300,7 +2316,7 @@ function buildAkkordData(options = {}) {
     slaebePctInput: extraInputs.slaebePctInput,
     slaebeBelob,
     extraInputs,
-    extras: ekstraarbejdeModel,
+    extras,
     laborTotals,
     totalHours,
     totals,
