@@ -1,5 +1,6 @@
 import { ensureZipLib } from '../src/features/export/lazy-libs.js';
 import { exportPDFBlob } from './export-pdf.js';
+import { buildAkkordCSV } from './akkord-csv.js';
 
 function getSagsnummer(data) {
   const fallback = 'akkordseddel';
@@ -21,7 +22,6 @@ function downloadBlob(blob, filename) {
 export async function exportZipFromAkkord(data) {
   const { JSZip } = await ensureZipLib();
   const zip = new JSZip();
-
   const safeData = data || {};
   const sagsnummer = getSagsnummer(safeData);
   const baseName = `${sagsnummer}-akkordseddel`;
@@ -34,15 +34,11 @@ export async function exportZipFromAkkord(data) {
     zip.file(`${baseName}.pdf`, pdfPayload.blob);
   }
 
-  if (typeof window !== 'undefined' && typeof window.cssmateBuildCSVPayload === 'function') {
-    try {
-      const csvPayload = window.cssmateBuildCSVPayload(sagsnummer, { skipValidation: true, skipBeregn: true });
-      if (csvPayload?.content) {
-        zip.file(`${baseName}.csv`, csvPayload.content);
-      }
-    } catch (error) {
-      console.error('CSV eksport fejlede', error);
-    }
+  try {
+    const csv = buildAkkordCSV(safeData);
+    zip.file(`${baseName}.csv`, csv);
+  } catch (error) {
+    console.error('CSV eksport fejlede', error);
   }
 
   const blob = await zip.generateAsync({ type: 'blob' });

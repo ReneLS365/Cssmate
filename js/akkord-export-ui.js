@@ -22,11 +22,16 @@ function handlePrintAkkord() {
 
 function handleExportAkkordPDF() {
   const data = buildAkkordData();
-  exportPDFBlob(data).then((payload) => {
-    if (!payload?.blob) return;
-    const filename = payload.fileName || `${data.meta?.sagsnummer || 'akkordseddel'}-akkordseddel.pdf`;
-    downloadBlob(payload.blob, filename);
-  });
+  const sagsnr = (data.meta && data.meta.sagsnummer) || 'UKENDT';
+  exportPDFBlob(data)
+    .then((payload) => {
+      if (!payload?.blob) return;
+      const filename = payload.fileName || `${sagsnr}-akkordseddel.pdf`;
+      downloadBlob(payload.blob, filename);
+    })
+    .catch((error) => {
+      console.error('PDF export failed', error);
+    });
 }
 
 function handleExportAkkordJSON() {
