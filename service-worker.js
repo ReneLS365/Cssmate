@@ -15,6 +15,7 @@ const PRECACHE_URLS = [
   '/',
   '/index.html',
   '/main.js',
+  '/main.min.js',
   '/boot-inline.js',
   '/style.css',
   '/print.css',
