@@ -2326,6 +2326,7 @@ function buildRawAkkordData(options = {}) {
   const cache = typeof window !== 'undefined' ? window.__beregnLonCache : null;
   const jobType = collectJobType();
   const jobFactor = jobType === 'demontage' ? 0.5 : 1;
+  const excelSystems = getStoredExcelSystems();
 
   const extraInputs = {
     boringHuller: toNumber(document.getElementById('antalBoringHuller')?.value),
@@ -2405,6 +2406,7 @@ function buildRawAkkordData(options = {}) {
     adresse: info.adresse,
     navn: info.navn,
     systems: Array.from(selectedSystemKeys),
+    excelSystems,
     createdAt: new Date().toISOString(),
   };
 
@@ -2417,6 +2419,7 @@ function buildRawAkkordData(options = {}) {
     jobType,
     jobFactor,
     systems: Array.from(selectedSystemKeys),
+    excelSystems,
     tralleState,
     tralleSum,
     materialLinesForTotals,
@@ -3635,7 +3638,23 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
     tralleState,
     tralleSum,
     createdAt,
+    systems: dataSystems,
+    excelSystems: dataExcelSystems,
+    meta: dataMeta,
   } = data;
+
+  const excelSystems = Array.isArray(dataExcelSystems)
+    ? dataExcelSystems
+    : Array.isArray(dataMeta?.excelSystems)
+      ? dataMeta.excelSystems
+      : getStoredExcelSystems();
+  const systems = Array.isArray(dataSystems) && dataSystems.length
+    ? dataSystems
+    : Array.isArray(dataMeta?.systems)
+      ? dataMeta.systems
+      : Array.from(selectedSystemKeys);
+  const mergedSystems = Array.from(new Set([...(systems || []), ...(excelSystems || [])]));
+  const preferredSystem = excelSystems[0] || systems[0] || getPreferredExcelSystem();
 
   const laborList = Array.isArray(labor) ? labor : [];
   const laborTotals = Array.isArray(laborTotalsRaw)
@@ -3673,7 +3692,7 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
       qty,
       unitPrice,
       lineTotal: qty * unitPrice,
-      system: inferSystemFromLine(item) || getPreferredExcelSystem(),
+      system: inferSystemFromLine(item) || preferredSystem || getPreferredExcelSystem(),
     };
   });
 
@@ -3693,8 +3712,9 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
     site: info.adresse || '',
     worker: info.montoer || '',
     createdAt: createdAt || new Date().toISOString(),
-    system: getPreferredExcelSystem(),
-    systems: Array.from(selectedSystemKeys),
+    system: preferredSystem || getPreferredExcelSystem(),
+    systems: mergedSystems,
+    excelSystems,
     materials: materialsJson,
     extras,
     extraInputs: extraInputs || {},
@@ -3725,7 +3745,8 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
     info: infoPayload,
     meta: {
       ...infoPayload,
-      systems: Array.from(selectedSystemKeys),
+      systems: mergedSystems,
+      excelSystems,
       createdAt: createdAt || new Date().toISOString(),
       version: AKKORD_JSON_VERSION,
     },
