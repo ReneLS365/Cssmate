@@ -3618,14 +3618,27 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
     jobType,
     jobFactor,
     extras,
-    laborTotals,
-    totalHours,
+    laborTotals: laborTotalsRaw,
+    totalHours: totalHoursRaw,
     totals,
     extraInputs,
     tralleState,
     tralleSum,
     createdAt,
   } = data;
+
+  const laborList = Array.isArray(labor) ? labor : [];
+  const laborTotals = Array.isArray(laborTotalsRaw)
+    ? laborTotalsRaw
+    : laborList.map(entry => ({
+      hours: toNumber(entry?.hours),
+      hourlyWithAllowances: toNumber(entry?.rate),
+      udd: entry?.udd || '',
+      mentortillaeg: toNumber(entry?.mentortillaeg),
+    }));
+  const totalHours = Number.isFinite(totalHoursRaw)
+    ? totalHoursRaw
+    : laborTotals.reduce((sum, worker) => sum + (Number.isFinite(worker.hours) ? worker.hours : 0), 0);
 
   const infoPayload = {
     sagsnummer: info.sagsnummer || '',
@@ -3684,7 +3697,7 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
       numWorkers: laborTotals.length || workerCount || 0,
       hourlyRate: hourlyBase,
       educationLevel: laborTotals.find(entry => entry.udd)?.udd || '',
-      workers: labor.map(entry => ({
+      workers: laborList.map(entry => ({
         type: entry?.type || jobType,
         hours: toNumber(entry?.hours),
         rate: toNumber(entry?.rate),
