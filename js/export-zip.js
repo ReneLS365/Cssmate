@@ -102,13 +102,14 @@ export async function exportZipFromAkkord(data, options = {}) {
     if (excelSelection.length > 0) {
       const excelPayloads = await exportExcelFromAkkordData(safeData, excelSelection);
       if (!excelPayloads.length) {
-        throw new Error('Excel eksport fejlede');
+        console.warn('Excel eksport springes over: ingen understøttede templates for valgt system');
+      } else {
+        excelPayloads.forEach(entry => {
+          if (!entry?.blob || !entry?.fileName) return;
+          zip.file(entry.fileName, entry.blob);
+          files.push(entry.fileName);
+        });
       }
-      excelPayloads.forEach(entry => {
-        if (!entry?.blob || !entry?.fileName) return;
-        zip.file(entry.fileName, entry.blob);
-        files.push(entry.fileName);
-      });
     }
 
     try {
