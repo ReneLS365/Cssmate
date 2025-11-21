@@ -43,11 +43,14 @@ jobs:
       - name: Ensure lighthouse report dir exists
         run: mkdir -p docs/lighthouse
 
+      - name: Build minified JS
+        run: npm run build:min-js
+
       - name: Start static server
         run: |
           # Hvis appen senere bygges til fx "dist/", så skift "." til "dist"
           # npx --yes http-server dist -p 4173 --silent &
-          npx --yes http-server . -p 4173 --silent &
+          npm run start:ci &
           echo $! > server.pid
 
       - name: Wait for local server
