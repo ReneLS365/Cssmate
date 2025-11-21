@@ -100,10 +100,14 @@
       </div>
     </fieldset>
 
-    <fieldset>
-      <legend>Status</legend>
-      <p class="hint">Udfyld Sagsinfo og Optælling for at aktivere eksport.</p>
-      <p id="actionHint" class="hint no-print" role="status" aria-live="polite" aria-atomic="true">
+    <fieldset class="no-print">
+      <legend>Importér akkordseddel</legend>
+      <p class="hint">Indlæs en tidligere sag fra JSON-formatet for at genoptage eller lave demontage.</p>
+      <div class="form-actions">
+        <button id="btn-import-akkord" type="button">Importér akkordseddel</button>
+        <input id="akkordImportInput" type="file" accept="application/json,.json" hidden>
+      </div>
+      <p id="actionHint" class="hint" role="status" aria-live="polite" aria-atomic="true">
         Udfyld Sagsinfo for at fortsætte.
       </p>
     </fieldset>
@@ -267,8 +271,6 @@
           <button id="btn-export-akkord-pdf" type="button">Eksporter akkordseddel</button>
           <button id="btn-export-akkord-zip" type="button">ZIP</button>
           <button id="btn-export-akkord-json" type="button">Eksportér JSON</button>
-          <button id="btn-import-akkord" type="button">Importér akkordseddel</button>
-          <input id="akkordImportInput" type="file" accept="application/json,.json" hidden>
         </div>
       </fieldset>
       <fieldset class="export-system-selector">
