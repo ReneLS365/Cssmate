@@ -1,25 +1,52 @@
 let exportLibsPromise = null
 let zipLibPromise = null
 
-const JSPDF_URL = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.es.min.js'
-const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.esm.js'
-const JSZIP_URL = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.esm.min.js'
+const JSPDF_LOCAL_URL = '/js/vendor/jspdf.es.min.js'
+const JSPDF_CDN_URL = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.es.min.js'
+
+const HTML2CANVAS_LOCAL_URL = '/js/vendor/html2canvas.esm.js'
+const HTML2CANVAS_CDN_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.esm.js'
+
+const JSZIP_LOCAL_URL = '/js/vendor/jszip.esm.min.js'
+const JSZIP_CDN_URL = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js'
+
+async function loadWithFallback (sources, resolver, label) {
+  let lastError = null
+  for (const source of sources) {
+    try {
+      const mod = await import(source)
+      return resolver(mod)
+    } catch (error) {
+      lastError = error
+      console.warn(`Kunne ikke indlæse ${label} fra ${source}`, error)
+    }
+  }
+  if (lastError) throw lastError
+  throw new Error(`Kunne ikke indlæse ${label}`)
+}
 
 async function loadJsPDF () {
-  const mod = await import(JSPDF_URL)
-  if (mod?.jsPDF) return mod.jsPDF
-  if (mod?.default?.jsPDF) return mod.default.jsPDF
-  return mod?.default || mod
+  return loadWithFallback(
+    [JSPDF_LOCAL_URL, JSPDF_CDN_URL],
+    mod => mod?.jsPDF || mod?.default?.jsPDF || mod?.default || mod,
+    'jsPDF'
+  )
 }
 
 async function loadHtml2Canvas () {
-  const mod = await import(HTML2CANVAS_URL)
-  return mod?.default || mod?.html2canvas || mod
+  return loadWithFallback(
+    [HTML2CANVAS_LOCAL_URL, HTML2CANVAS_CDN_URL],
+    mod => mod?.default || mod?.html2canvas || mod,
+    'html2canvas'
+  )
 }
 
 async function loadJSZip () {
-  const mod = await import(JSZIP_URL)
-  return mod?.default || mod
+  return loadWithFallback(
+    [JSZIP_LOCAL_URL, JSZIP_CDN_URL],
+    mod => mod?.JSZip || mod?.default?.JSZip || mod?.default || mod || globalThis.JSZip,
+    'JSZip'
+  )
 }
 
 export async function ensureExportLibs () {
