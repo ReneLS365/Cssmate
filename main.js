@@ -1369,6 +1369,10 @@ function updateActionHint(message = '', variant = 'info') {
   hint.style.display = '';
 }
 
+if (typeof window !== 'undefined') {
+  window.cssmateUpdateActionHint = updateActionHint;
+}
+
 function promisifyRequest(request) {
   if (!request) return Promise.resolve(undefined);
   return new Promise((resolve, reject) => {
@@ -2395,16 +2399,23 @@ function buildAkkordData(options = {}) {
   const sagsnummer = info.sagsnummer || 'akkordseddel';
   const meta = {
     sagsnummer,
-    dato: new Date().toISOString(),
+    dato: info.dato || new Date().toISOString(),
+    kunde: info.kunde,
+    adresse: info.adresse,
+    navn: info.navn,
+    systems: Array.from(selectedSystemKeys),
+    createdAt: new Date().toISOString(),
   };
 
   return {
+    version: '1.0',
     info,
     materials,
     labor,
     cache,
     jobType,
     jobFactor,
+    systems: Array.from(selectedSystemKeys),
     tralleState,
     tralleSum,
     materialLinesForTotals,
@@ -2417,6 +2428,7 @@ function buildAkkordData(options = {}) {
     totalHours,
     totals,
     meta,
+    createdAt: meta.createdAt,
   };
 }
 
@@ -2750,13 +2762,26 @@ function applyImportedAkkordData(data) {
     return;
   }
   const payload = data.data && !data.materials ? data.data : data;
+  const version = payload.version || payload.meta?.version;
+  if (version && version !== 1 && version !== '1.0') {
+    console.warn('Uventet akkordseddel-version', version);
+  }
   const jobType = (payload.type || payload.jobType || 'montage').toLowerCase();
-  const extras = payload.extras || {};
+  const extras = payload.extras || payload.akkord || {};
+  const infoBlock = payload.info || payload.meta || {};
   const materialsSource = Array.isArray(payload.materials)
     ? payload.materials
     : Array.isArray(payload.lines)
       ? payload.lines
-      : [];
+      : Array.isArray(payload.linjer)
+        ? payload.linjer.map(line => ({
+          id: line.varenr,
+          name: line.navn,
+          qty: line.antal,
+          unitPrice: line.stkPris,
+          system: line.system,
+        }))
+        : [];
 
   const materials = materialsSource.map(item => ({
     id: item.id || item.varenr || '',
@@ -2804,7 +2829,9 @@ function applyImportedAkkordData(data) {
     ? payload.systems
     : payload.system
       ? [normalizeExcelSystemId(payload.system)]
-      : Array.from(selectedSystemKeys);
+      : Array.isArray(infoBlock.systems)
+        ? infoBlock.systems
+        : Array.from(selectedSystemKeys);
 
   const traelleSum = toNumber(extras.tralleløft ?? extras.tralleloeft ?? extras.tralleløft);
   let traelle35 = extras.traelle35 ?? extras.tralle35 ?? extras.tralleloeft35 ?? extras.tralleløft35;
@@ -2816,12 +2843,12 @@ function applyImportedAkkordData(data) {
 
   const snapshot = {
     sagsinfo: {
-      sagsnummer: payload.jobId || payload.caseNo || payload.id || '',
-      navn: payload.jobName || payload.name || payload.title || '',
-      adresse: payload.jobAddress || payload.address || payload.site || '',
-      kunde: payload.customer || payload.kunde || '',
-      dato: payload.createdAt || payload.date || '',
-      montoer: payload.montageWorkers || payload.demontageWorkers || payload.worker || payload.montor || '',
+      sagsnummer: payload.jobId || infoBlock.sagsnummer || payload.caseNo || payload.id || '',
+      navn: payload.jobName || infoBlock.navn || payload.name || payload.title || '',
+      adresse: payload.jobAddress || payload.address || payload.site || infoBlock.adresse || '',
+      kunde: payload.customer || payload.kunde || infoBlock.kunde || '',
+      dato: payload.createdAt || payload.date || infoBlock.dato || '',
+      montoer: payload.montageWorkers || payload.demontageWorkers || payload.worker || payload.montor || infoBlock.montoer || '',
     },
     systems,
     materials,
@@ -3536,7 +3563,7 @@ if (typeof window !== 'undefined') {
 /**
  * Akkordseddel JSON-format (v1)
  * {
- *   "version": 1,
+ *   "version": "1.0",
  *   "type": "montage" | "demontage",
  *   "jobId": "string",
  *   "jobName": "string",
@@ -3572,7 +3599,7 @@ if (typeof window !== 'undefined') {
  *   }
  * }
  */
-const AKKORD_JSON_VERSION = 1;
+const AKKORD_JSON_VERSION = '1.0';
 
 function buildAkkordJsonPayload(customSagsnummer, options = {}) {
   if (!options?.skipValidation && !validateSagsinfo()) {
@@ -3594,9 +3621,26 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
     laborTotals,
     totalHours,
     totals,
+    extraInputs,
+    tralleState,
+    tralleSum,
+    createdAt,
   } = data;
 
-  const baseName = sanitizeFilename(info.sagsnummer || 'akkordseddel') || 'akkordseddel';
+  const infoPayload = {
+    sagsnummer: info.sagsnummer || '',
+    navn: info.navn || '',
+    adresse: info.adresse || '',
+    kunde: info.kunde || '',
+    dato: info.dato || '',
+    montoer: info.montoer || '',
+  };
+
+  const baseName = sanitizeFilename([
+    infoPayload.sagsnummer || 'akkordseddel',
+    infoPayload.kunde || '',
+    (infoPayload.dato || '').slice(0, 10),
+  ].filter(Boolean).join('-')) || 'akkordseddel';
   const materialsJson = materials.map(item => {
     const qty = toNumber(item.quantity);
     const unitPrice = toNumber(item.price) * jobFactor;
@@ -3620,11 +3664,20 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
     type: jobType,
     jobId: info.sagsnummer || info.navn || info.adresse || baseName,
     jobName: info.navn || info.adresse || info.sagsnummer || 'Akkordseddel',
-    createdAt: new Date().toISOString(),
+    jobAddress: info.adresse || '',
+    customer: info.kunde || '',
+    address: info.adresse || '',
+    site: info.adresse || '',
+    worker: info.montoer || '',
+    createdAt: createdAt || new Date().toISOString(),
     system: getPreferredExcelSystem(),
     systems: Array.from(selectedSystemKeys),
     materials: materialsJson,
     extras,
+    extraInputs: extraInputs || {},
+    jobFactor,
+    tralleState: tralleState || {},
+    tralleSum: tralleSum || 0,
     wage: {
       montageHours: jobType === 'montage' ? totalHours : 0,
       demontageHours: jobType === 'demontage' ? totalHours : 0,
@@ -3646,6 +3699,13 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
       haulSum: totals.slaeb,
       projectSum: totals.projektsum,
     },
+    info: infoPayload,
+    meta: {
+      ...infoPayload,
+      systems: Array.from(selectedSystemKeys),
+      createdAt: createdAt || new Date().toISOString(),
+      version: AKKORD_JSON_VERSION,
+    },
   };
 
   return {
@@ -3653,6 +3713,16 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
     baseName,
     fileName: `${baseName}.json`,
     data: jobPayload,
+  };
+}
+
+if (typeof window !== 'undefined') {
+  window.cssmateBuildAkkordJsonPayload = (options = {}) => {
+    if (typeof options === 'string') {
+      return buildAkkordJsonPayload(options, {});
+    }
+    const { customSagsnummer, ...rest } = options || {};
+    return buildAkkordJsonPayload(customSagsnummer, rest);
   };
 }
 

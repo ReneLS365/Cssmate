@@ -23,7 +23,7 @@ function buildZipBaseName(data) {
   const parts = ['akkord'];
   if (info.kunde) parts.push(info.kunde);
   if (info.sagsnummer) parts.push(info.sagsnummer);
-  const dato = info.dato || new Date().toISOString().slice(0, 10);
+  const dato = info.dato || data?.createdAt || new Date().toISOString().slice(0, 10);
   if (dato) parts.push(dato);
   const sanitized = parts.map(sanitizeFilename).filter(Boolean);
   return sanitized.length ? sanitized.join('-') : 'akkordseddel';
@@ -51,46 +51,68 @@ function notifyZipExport(detail) {
   window.dispatchEvent(new CustomEvent('cssmate:zip-exported', { detail: payload }));
 }
 
-export async function exportZipFromAkkord(data) {
+export async function exportZipFromAkkord(data, options = {}) {
   const { JSZip } = await ensureZipLib();
   const zip = new JSZip();
   const safeData = data || {};
   const sagsnummer = getSagsnummer(safeData);
-  const baseName = buildZipBaseName(safeData);
+  const baseName = sanitizeFilename(options.baseName || safeData.baseName || buildZipBaseName(safeData));
 
   const files = [];
 
-  const jsonName = `${baseName}.json`;
-  const json = JSON.stringify(safeData, null, 2);
-  zip.file(jsonName, json);
-  files.push(jsonName);
-
   try {
+    const jsonPayload = buildJsonFile(safeData, baseName);
+    if (!jsonPayload) throw new Error('JSON eksport fejlede');
+    zip.file(jsonPayload.name, jsonPayload.content);
+    files.push(jsonPayload.name);
+
     const pdfPayload = await exportPDFBlob(safeData, {
       skipValidation: false,
       skipBeregn: false,
       customSagsnummer: sagsnummer,
     });
-    if (pdfPayload?.blob) {
-      const pdfName = pdfPayload.fileName || `${baseName}.pdf`;
-      zip.file(pdfName, pdfPayload.blob);
-      files.push(pdfName);
+    if (!pdfPayload?.blob) throw new Error('PDF eksport fejlede');
+    const pdfName = pdfPayload.fileName || `${baseName}.pdf`;
+    zip.file(pdfName, pdfPayload.blob);
+    files.push(pdfName);
+
+    try {
+      const csv = buildAkkordCSV(safeData);
+      const csvName = `${baseName}.csv`;
+      zip.file(csvName, csv);
+      files.push(csvName);
+    } catch (error) {
+      console.error('CSV eksport fejlede', error);
     }
-  } catch (error) {
-    console.error('PDF eksport fejlede', error);
-  }
 
-  try {
-    const csv = buildAkkordCSV(safeData);
-    const csvName = `${baseName}.csv`;
-    zip.file(csvName, csv);
-    files.push(csvName);
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const zipName = `${baseName}.zip`;
+    downloadBlob(blob, zipName);
+    notifyZipExport({ baseName, zipName, files });
+    if (typeof window !== 'undefined' && typeof window.cssmateUpdateActionHint === 'function') {
+      window.cssmateUpdateActionHint('ZIP med PDF og JSON er gemt.', 'success');
+    }
+    return { zipName, files };
   } catch (error) {
-    console.error('CSV eksport fejlede', error);
+    console.error('ZIP eksport fejlede', error);
+    if (typeof window !== 'undefined' && typeof window.cssmateUpdateActionHint === 'function') {
+      window.cssmateUpdateActionHint('ZIP eksport fejlede. Prøv igen.', 'error');
+    }
+    throw error;
   }
+}
 
-  const blob = await zip.generateAsync({ type: 'blob' });
-  const zipName = `${baseName}.zip`;
-  downloadBlob(blob, zipName);
-  notifyZipExport({ baseName, zipName, files });
+function buildJsonFile(data, baseName) {
+  if (typeof window !== 'undefined' && typeof window.cssmateBuildAkkordJsonPayload === 'function') {
+    const payload = window.cssmateBuildAkkordJsonPayload({
+      data,
+      customSagsnummer: baseName,
+      skipValidation: true,
+      skipBeregn: true,
+    });
+    if (payload?.content) {
+      return { name: payload.fileName || `${baseName}.json`, content: payload.content };
+    }
+  }
+  return { name: `${baseName}.json`, content: JSON.stringify(data, null, 2) };
 }

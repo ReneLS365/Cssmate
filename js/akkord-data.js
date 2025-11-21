@@ -21,10 +21,11 @@ function getRawAkkordData() {
   return {
     info: {
       sagsnummer,
-      kunde: document.getElementById('kunde')?.value || '',
-      adresse: document.getElementById('adresse')?.value || '',
-      navn: document.getElementById('navn')?.value || '',
+      kunde: document.getElementById('sagskunde')?.value || '',
+      adresse: document.getElementById('sagsadresse')?.value || '',
+      navn: document.getElementById('sagsnavn')?.value || '',
       dato: document.getElementById('sagsdato')?.value || new Date().toISOString().slice(0, 10),
+      montoer: document.getElementById('sagsmontoer')?.value || '',
     },
     materials: [],
     totals: {},
@@ -33,6 +34,7 @@ function getRawAkkordData() {
     extraInputs: {},
     tralleSum: 0,
     tralleState: {},
+    systems: [],
   };
 }
 
@@ -91,14 +93,20 @@ export function buildAkkordData() {
   const raw = getRawAkkordData() || {};
   const jobFactor = Number(raw.jobFactor ?? 1) || 1;
   const linjer = mapMaterialLines(raw, jobFactor);
-  const meta = raw.info || {};
+  const metaInfo = raw.info || {};
+  const metaSource = raw.meta || {};
+  const systems = Array.isArray(raw.systems)
+    ? raw.systems
+    : Array.isArray(metaSource.systems)
+      ? metaSource.systems
+      : [];
   const totalMaterialer = linjer.reduce((sum, line) => sum + Number(line.linjeBelob || 0), 0);
 
   const inputs = raw.extraInputs || {};
   const extrasSource = raw.extras || {};
 
-  const kmAntal = Number(inputs.km ?? extrasSource.kmAntal ?? 0) || 0;
-  const kmBelob = Number(extrasSource.km ?? (kmAntal * KM_RATE)) || 0;
+  const kmAntal = Number(inputs.km ?? extrasSource.kmAntal ?? extrasSource.km ?? 0) || 0;
+  const kmBelob = Number(extrasSource.kmBelob ?? extrasSource.km ?? (kmAntal * KM_RATE)) || 0;
   const kmSats = kmAntal ? kmBelob / kmAntal : KM_RATE;
   const slaebProcent = Number(inputs.slaebePctInput ?? extrasSource.slaebePct ?? 0) || 0;
   const slaebBelob = Number(raw.slaebeBelob ?? extrasSource.slaebeBelob ?? 0) || 0;
@@ -115,25 +123,63 @@ export function buildAkkordData() {
     ?? totalMaterialer + kmBelob + slaebBelob + ekstraSum,
   );
 
+  const info = {
+    sagsnummer: metaInfo.sagsnummer || metaSource.sagsnummer || metaInfo.caseNo || 'UKENDT',
+    kunde: metaInfo.kunde || metaSource.kunde || metaInfo.customer || '',
+    adresse: metaInfo.adresse || metaSource.adresse || metaInfo.site || metaSource.site || metaInfo.address || '',
+    navn: metaInfo.navn || metaSource.navn || metaInfo.task || metaSource.task || '',
+    dato: metaInfo.dato || metaSource.dato || new Date().toISOString().slice(0, 10),
+    montoer: metaInfo.montoer || metaSource.montoer || '',
+  };
+
+  const akkord = {
+    km: kmAntal,
+    kmSats,
+    kmBelob,
+    slaebProcent,
+    slaebBelob,
+    ekstraarbejde,
+    totalMaterialer,
+    totalAkkord,
+  };
+
+  const createdAt = raw.createdAt || metaSource.createdAt || new Date().toISOString();
+  const extras = {
+    ...extrasSource,
+    km: kmBelob,
+    kmAntal,
+    slaebePct: slaebProcent,
+    slaebeBelob,
+    tralleState: raw.tralleState || {},
+    tralleSum: raw.tralleSum || 0,
+    ekstraarbejde,
+  };
+
   return {
-    version: 1,
+    version: '1.0',
     meta: {
-      sagsnummer: meta.sagsnummer || meta.caseNo || 'UKENDT',
-      kunde: meta.kunde || meta.customer || '',
-      adresse: meta.adresse || meta.site || meta.address || '',
-      beskrivelse: meta.navn || meta.task || '',
-      dato: meta.dato || new Date().toISOString().slice(0, 10),
+      ...info,
+      beskrivelse: info.navn,
+      systems,
+      createdAt,
     },
-    akkord: {
-      km: kmAntal,
-      kmSats,
-      kmBelob,
-      slaebProcent,
-      slaebBelob,
-      ekstraarbejde,
-      totalMaterialer,
+    info,
+    systems,
+    akkord,
+    extras,
+    linjer,
+    materials: Array.isArray(raw.materials) ? raw.materials : [],
+    labor: Array.isArray(raw.labor) ? raw.labor : [],
+    totals: {
+      ...totals,
       totalAkkord,
     },
-    linjer,
+    extraInputs: inputs,
+    jobType: raw.jobType || 'montage',
+    jobFactor,
+    tralleState: raw.tralleState || {},
+    tralleSum: raw.tralleSum || 0,
+    cache: raw.cache || null,
+    createdAt,
   };
 }
