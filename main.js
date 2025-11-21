@@ -1826,7 +1826,6 @@ function collectProjectSnapshot(exportInfo) {
 }
 
 async function persistProjectSnapshot(exportInfo) {
-  if (!exportInfo || exportInfo.type !== 'zip') return;
   try {
     const snapshot = collectProjectSnapshot(exportInfo);
     await saveProject(snapshot);
@@ -3377,6 +3376,8 @@ function beregnLon() {
   }
 
   showLonOutputSections();
+
+  persistProjectSnapshot();
 
   return sagsnummer;
 }
