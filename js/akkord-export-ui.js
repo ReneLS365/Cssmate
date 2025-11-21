@@ -23,7 +23,7 @@ function handlePrintAkkord() {
 function handleExportAkkordPDF() {
   const data = buildAkkordData();
   const sagsnr = (data.meta && data.meta.sagsnummer) || 'UKENDT';
-  exportPDFBlob(data)
+  exportPDFBlob(data, { skipValidation: false, skipBeregn: false, customSagsnummer: sagsnr })
     .then((payload) => {
       if (!payload?.blob) return;
       const filename = payload.fileName || `${sagsnr}-akkordseddel.pdf`;

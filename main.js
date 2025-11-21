@@ -1740,6 +1740,23 @@ async function populateRecentCases() {
   updateHistorySummaryFromSelect();
 }
 
+let zipHistoryBound = false;
+function setupZipExportHistoryHook() {
+  if (zipHistoryBound || typeof window === 'undefined') return;
+  zipHistoryBound = true;
+  window.addEventListener('cssmate:zip-exported', event => {
+    const detail = event?.detail || {};
+    const exportInfo = {
+      type: 'zip',
+      baseName: detail.baseName || '',
+      zipName: detail.zipName || '',
+      files: Array.isArray(detail.files) ? detail.files : [],
+      timestamp: detail.timestamp || Date.now(),
+    };
+    persistProjectSnapshot(exportInfo);
+  });
+}
+
 function collectExtrasState() {
   const getValue = id => getDomElement(id)?.value ?? '';
   return {
@@ -1758,7 +1775,7 @@ function collectExtrasState() {
   };
 }
 
-function collectProjectSnapshot() {
+function collectProjectSnapshot(exportInfo) {
   const materials = getAllData().map(item => ({
     id: item.id,
     name: item.name,
@@ -1783,8 +1800,9 @@ function collectProjectSnapshot() {
     totals.mentorRate = lastJobSummary.mentorRate;
   }
 
-  return {
-    timestamp: Date.now(),
+  const now = Date.now();
+  const snapshot = {
+    timestamp: now,
     sagsinfo: collectSagsinfo(),
     systems: Array.from(selectedSystemKeys),
     materials,
@@ -1792,11 +1810,24 @@ function collectProjectSnapshot() {
     extras: collectExtrasState(),
     totals,
   };
+  if (exportInfo && exportInfo.type === 'zip') {
+    snapshot.exportInfo = {
+      type: 'zip',
+      baseName: exportInfo.baseName || '',
+      zipName: exportInfo.zipName || '',
+      files: Array.isArray(exportInfo.files)
+        ? exportInfo.files.filter(Boolean)
+        : [],
+      exportedAt: exportInfo.timestamp || now,
+    };
+  }
+
+  return snapshot;
 }
 
-async function persistProjectSnapshot() {
+async function persistProjectSnapshot(exportInfo) {
   try {
-    const snapshot = collectProjectSnapshot();
+    const snapshot = collectProjectSnapshot(exportInfo);
     await saveProject(snapshot);
     await populateRecentCases();
   } catch (error) {
@@ -3345,6 +3376,7 @@ function beregnLon() {
   }
 
   showLonOutputSections();
+
   persistProjectSnapshot();
 
   return sagsnummer;
@@ -4301,6 +4333,7 @@ async function initApp() {
   setupMobileKeyboardDismissal();
   setupServiceWorkerMessaging();
   setupPWAInstallPrompt();
+  setupZipExportHistoryHook();
 
   document.getElementById('btnHardResetApp')?.addEventListener('click', () => {
     hardResetApp();
