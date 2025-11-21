@@ -2,8 +2,8 @@
 // Enkel statisk server til Lighthouse CI.
 // Bruges kun i CI, ikke i produktion.
 
-const express = require('express');
-const path = require('path');
+import express from 'express';
+import path from 'node:path';
 
 const PORT = process.env.PORT || process.argv[2] || 4173;
 // Juster DIR hvis der findes en build-mappe. Hvis appen kører direkte fra repo-roden, lad den være som nu.
