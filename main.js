@@ -1882,6 +1882,101 @@ function applyLaborSnapshot(labor = []) {
   populateWorkersFromLabor(laborEntries);
 }
 
+function mapAkkordJsonV1ToSnapshot(payload = {}) {
+  const jobType = payload.type || payload.extras?.jobType || 'montage';
+  const extras = { ...(payload.extras || {}), jobType };
+  const wageWorkers = Array.isArray(payload.wage?.workers) ? payload.wage.workers : [];
+  const workerNames = wageWorkers
+    .map(worker => worker?.name || worker?.worker || '')
+    .filter(Boolean)
+    .join(', ');
+
+  const info = {
+    sagsnummer: payload.jobId || payload.info?.sagsnummer || '',
+    navn: payload.jobName || payload.info?.navn || '',
+    adresse: payload.info?.adresse || payload.info?.address || payload.site || payload.address || '',
+    kunde: payload.customer || payload.info?.kunde || '',
+    dato: normalizeDateValue(payload.createdAt || payload.info?.dato),
+    montoer: workerNames || payload.info?.montoer || '',
+  };
+
+  const systems = Array.isArray(payload.systems) && payload.systems.length
+    ? payload.systems
+    : payload.system
+      ? [payload.system]
+      : [];
+
+  const materials = Array.isArray(payload.materials)
+    ? payload.materials
+      .map(item => ({
+        id: item?.id || item?.varenr || item?.lineId || '',
+        name: item?.name || item?.label || '',
+        quantity: toNumber(item?.qty ?? item?.quantity ?? 0),
+        price: toNumber(item?.unitPrice ?? item?.price ?? 0),
+      }))
+      .filter(entry => entry.id || entry.name)
+    : [];
+
+  const labor = wageWorkers.length
+    ? wageWorkers.map(worker => ({
+      type: worker?.type || jobType,
+      hours: toNumber(worker?.hours ?? worker?.time ?? 0),
+      rate: toNumber(worker?.rate ?? worker?.hourlyWithAllowances ?? payload.wage?.hourlyRate),
+      udd: worker?.udd || worker?.educationLevel || payload.wage?.educationLevel || '',
+      mentortillaeg: toNumber(worker?.mentortillaeg),
+    }))
+    : Array.isArray(payload.labor)
+      ? payload.labor
+      : [];
+
+  const totals = payload.totals
+    ? {
+      materialSum: toNumber(payload.totals.materialsSum ?? payload.totals.materialSum),
+      laborSum: toNumber(payload.totals.laborSum ?? payload.totals.laborSumWithAllowance),
+    }
+    : payload.summary
+      ? {
+        materialSum: toNumber(payload.summary.materialSum),
+        laborSum: toNumber(payload.summary.laborSum),
+      }
+      : undefined;
+
+  return {
+    sagsinfo: info,
+    systems,
+    materials,
+    labor,
+    extras,
+    totals,
+  };
+}
+
+function normalizeLegacyJsonSnapshot(snapshot = {}) {
+  const jobType = snapshot.type || snapshot.jobType || snapshot.extras?.jobType || 'montage';
+  const extras = { ...(snapshot.extras || {}), jobType };
+  const info = { ...(snapshot.sagsinfo || snapshot.info || {}) };
+  if (!info.dato && snapshot.createdAt) {
+    info.dato = normalizeDateValue(snapshot.createdAt);
+  }
+
+  return {
+    sagsinfo: info,
+    systems: Array.isArray(snapshot.systems) ? snapshot.systems : snapshot.system ? [snapshot.system] : [],
+    materials: Array.isArray(snapshot.materials) ? snapshot.materials : [],
+    labor: Array.isArray(snapshot.labor) ? snapshot.labor : [],
+    extras,
+    totals: snapshot.totals || snapshot.summary,
+  };
+}
+
+function normalizeImportedJsonSnapshot(snapshot = {}) {
+  const version = Number(snapshot?.version);
+  if (Number.isFinite(version) && version >= AKKORD_JSON_VERSION) {
+    return mapAkkordJsonV1ToSnapshot(snapshot);
+  }
+  return normalizeLegacyJsonSnapshot(snapshot);
+}
+
 function applyProjectSnapshot(snapshot, options = {}) {
   if (!snapshot || typeof snapshot !== 'object') return;
   const info = snapshot.sagsinfo || {};
@@ -3489,6 +3584,8 @@ function buildCSVPayload(customSagsnummer, options = {}) {
  *   }
  * }
  */
+const AKKORD_JSON_VERSION = 1;
+
 function buildAkkordJsonPayload(customSagsnummer, options = {}) {
   if (!options?.skipValidation && !validateSagsinfo()) {
     updateActionHint('Udfyld Sagsinfo for at eksportere.', 'error');
@@ -3498,7 +3595,7 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
     beregnLon();
   }
 
-  const data = buildAkkordData({ customSagsnummer });
+  const data = options?.data || buildAkkordData({ customSagsnummer });
   const {
     info,
     materials,
@@ -3531,7 +3628,7 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
     ?? totals.hourlyBase
   );
   const jobPayload = {
-    version: 1,
+    version: AKKORD_JSON_VERSION,
     type: jobType,
     jobId: info.sagsnummer || info.navn || info.adresse || baseName,
     jobName: info.navn || info.adresse || info.sagsnummer || 'Akkordseddel',
@@ -3580,7 +3677,7 @@ async function exportPDFBlob(customSagsnummer, options = {}) {
   if (!options?.skipBeregn) {
     beregnLon();
   }
-  const data = buildAkkordData({ customSagsnummer });
+  const data = options?.data || buildAkkordData({ customSagsnummer });
   const {
     info,
     materials,
@@ -3841,9 +3938,18 @@ async function exportZip() {
     beregnLon();
     const csvPayload = buildCSVPayload(null, { skipValidation: true, skipBeregn: true });
     if (!csvPayload) return;
-    const pdfPayload = await exportPDFBlob(csvPayload.originalName || csvPayload.baseName, { skipValidation: true, skipBeregn: true });
+    const sharedData = buildAkkordData({ customSagsnummer: csvPayload.originalName || csvPayload.baseName });
+    const pdfPayload = await exportPDFBlob(csvPayload.originalName || csvPayload.baseName, {
+      skipValidation: true,
+      skipBeregn: true,
+      data: sharedData,
+    });
     if (!pdfPayload) return;
-    const jsonPayload = buildAkkordJsonPayload(csvPayload.originalName || csvPayload.baseName, { skipValidation: true, skipBeregn: true });
+    const jsonPayload = buildAkkordJsonPayload(csvPayload.originalName || csvPayload.baseName, {
+      skipValidation: true,
+      skipBeregn: true,
+      data: sharedData,
+    });
 
     const zip = new JSZip();
     zip.file(csvPayload.fileName, csvPayload.content);
@@ -3855,7 +3961,7 @@ async function exportZip() {
     const zipBlob = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(zipBlob);
     const link = document.createElement('a');
-    const baseName = csvPayload.baseName || pdfPayload.baseName || 'akkordseddel';
+    const baseName = jsonPayload?.baseName || csvPayload.baseName || pdfPayload.baseName || 'akkordseddel';
     link.href = url;
     link.download = `${baseName}.zip`;
     document.body.appendChild(link);
@@ -3889,7 +3995,8 @@ function importJSONProject(file) {
         throw new Error('Ugyldigt JSON format');
       }
       const snapshot = parsed.data && !parsed.sagsinfo ? parsed.data : parsed;
-      applyProjectSnapshot(snapshot, { skipHint: true });
+      const normalized = normalizeImportedJsonSnapshot(snapshot);
+      applyProjectSnapshot(normalized, { skipHint: true });
       updateActionHint('JSON sag er indlæst.', 'success');
     } catch (error) {
       console.error('Kunne ikke importere JSON', error);
