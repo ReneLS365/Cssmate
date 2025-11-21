@@ -14,10 +14,15 @@ const app = express();
 
 const compressiblePattern = /\.(?:html?|css|js|json|txt|webmanifest|svg)$/i;
 
+function shouldCompress (pathname = '') {
+  if (!pathname || pathname === '/') return true;
+  return compressiblePattern.test(pathname);
+}
+
 app.use((req, res, next) => {
   const acceptEncoding = req.headers['accept-encoding'] || '';
   const alreadyEncoded = res.getHeader('Content-Encoding');
-  if (!compressiblePattern.test(req.path) || alreadyEncoded || !acceptEncoding.includes('gzip')) {
+  if (!shouldCompress(req.path) || alreadyEncoded || !acceptEncoding.includes('gzip')) {
     return next();
   }
 

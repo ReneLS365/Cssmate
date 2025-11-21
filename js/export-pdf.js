@@ -90,12 +90,17 @@ function normalizePdfData(data) {
   return data;
 }
 
-export async function exportPDFBlob(data) {
+export async function exportPDFBlob(data, options = {}) {
+  const normalizedData = normalizePdfData(data);
+  const skipValidation = options.skipValidation ?? false;
+  const skipBeregn = options.skipBeregn ?? false;
+  const customSagsnummer = options.customSagsnummer;
+
   if (typeof window !== 'undefined' && typeof window.cssmateExportPDFBlob === 'function') {
-    return window.cssmateExportPDFBlob(undefined, {
-      skipValidation: true,
-      skipBeregn: true,
-      data: normalizePdfData(data),
+    return window.cssmateExportPDFBlob(customSagsnummer, {
+      skipValidation,
+      skipBeregn,
+      data: normalizedData,
     });
   }
   console.error('PDF eksport er ikke tilgængelig.');
