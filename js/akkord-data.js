@@ -6,6 +6,28 @@ const BORING_BETON_RATE = 11.49;
 const OPSKYDELIGT_RATE = 9.67;
 const KM_RATE = 2.12;
 
+const SUPPORTED_EXCEL_SYSTEMS = ['bosta', 'haki', 'modex', 'alfix'];
+
+function sanitizeSystemList(list) {
+  if (!list) return [];
+  const array = Array.isArray(list)
+    ? list
+    : (typeof list === 'string'
+      ? [list]
+      : (list && typeof list[Symbol.iterator] === 'function'
+        ? Array.from(list)
+        : []));
+  const unique = [];
+  array.forEach(entry => {
+    const normalized = typeof entry === 'string' ? entry.trim().toLowerCase() : '';
+    if (!normalized || !SUPPORTED_EXCEL_SYSTEMS.includes(normalized)) return;
+    if (!unique.includes(normalized)) {
+      unique.push(normalized);
+    }
+  });
+  return unique;
+}
+
 function getRawAkkordData() {
   if (typeof window !== 'undefined') {
     const rawBuilder = window.cssmateBuildAkkordDataRaw || window.cssmateBuildAkkordData;
@@ -18,6 +40,10 @@ function getRawAkkordData() {
     }
   }
   const sagsnummer = document.getElementById('sagsnummer')?.value || 'ukendt';
+  const excelSelection = Array.from(document.querySelectorAll('input[name="akkordExcelSystem"][type="checkbox"]'))
+    .filter(input => input.checked)
+    .map(input => (input.value || '').toString().toLowerCase())
+    .filter(Boolean);
   return {
     info: {
       sagsnummer,
@@ -27,6 +53,9 @@ function getRawAkkordData() {
       dato: document.getElementById('sagsdato')?.value || new Date().toISOString().slice(0, 10),
       montoer: document.getElementById('sagsmontoer')?.value || '',
     },
+    meta: {
+      excelSystems: excelSelection,
+    },
     materials: [],
     totals: {},
     extras: {},
@@ -35,6 +64,7 @@ function getRawAkkordData() {
     tralleSum: 0,
     tralleState: {},
     systems: [],
+    excelSystems: excelSelection,
   };
 }
 
@@ -89,8 +119,11 @@ function buildEkstraarbejde(raw) {
   return extras;
 }
 
-export function buildAkkordData() {
-  const raw = getRawAkkordData() || {};
+export function buildAkkordData(rawInput) {
+  const candidate = rawInput?.raw || rawInput;
+  const raw = (candidate && (candidate.info || candidate.materials || candidate.materialer || candidate.meta || candidate.extras))
+    ? candidate
+    : getRawAkkordData() || {};
   const jobFactor = Number(raw.jobFactor ?? 1) || 1;
   const linjer = mapMaterialLines(raw, jobFactor);
   const metaInfo = raw.info || {};
@@ -100,6 +133,11 @@ export function buildAkkordData() {
     : Array.isArray(metaSource.systems)
       ? metaSource.systems
       : [];
+  const excelSystems = sanitizeSystemList(
+    raw.excelSystems
+    || metaSource.excelSystems
+    || systems,
+  );
   const totalMaterialer = linjer.reduce((sum, line) => sum + Number(line.linjeBelob || 0), 0);
 
   const inputs = raw.extraInputs || {};
@@ -161,10 +199,12 @@ export function buildAkkordData() {
       ...info,
       beskrivelse: info.navn,
       systems,
+      excelSystems,
       createdAt,
     },
     info,
     systems,
+    excelSystems,
     akkord,
     extras,
     linjer,

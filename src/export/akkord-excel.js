@@ -224,7 +224,77 @@ export async function exportAkkordExcelForActiveJob(jobOverride, systemOverride)
     return [];
   }
 
-  const systems = resolveSystems(job, systemOverride);
+  return exportExcelJob(job, systemOverride);
+}
+
+function normalizeMaterialsFromAkkord(akkordData) {
+  const primary = Array.isArray(akkordData?.materials) ? akkordData.materials : [];
+  const fallback = Array.isArray(akkordData?.linjer) ? akkordData.linjer : [];
+  const source = primary.length ? primary : fallback;
+  return source
+    .map(line => {
+      const name = (line?.name || line?.label || line?.navn || '').trim();
+      const qty = Number(line?.quantity ?? line?.qty ?? line?.antal ?? 0);
+      if (!name || !Number.isFinite(qty) || qty <= 0) return null;
+      const system = normalizeSystem(line?.system || line?.systemKey || line?.kategori);
+      return {
+        id: line?.id || line?.varenr || '',
+        name,
+        label: name,
+        quantity: qty,
+        qty,
+        system,
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildJobFromAkkordData(akkordData) {
+  if (!akkordData) return null;
+  const infoSource = akkordData.info || akkordData.meta || {};
+  const systems = normalizeSystemList(akkordData.systems || akkordData.meta?.systems || []);
+  const excelSystems = normalizeSystemList(
+    akkordData.excelSystems || akkordData.meta?.excelSystems || systems,
+  );
+  const sagsinfo = {
+    sagsnummer: infoSource.sagsnummer || '',
+    navn: infoSource.navn || infoSource.beskrivelse || '',
+    adresse: infoSource.adresse || '',
+    kunde: infoSource.kunde || '',
+    dato: infoSource.dato || akkordData.createdAt || new Date().toISOString().slice(0, 10),
+    systems,
+    excelSystems,
+  };
+  const materials = normalizeMaterialsFromAkkord(akkordData);
+  const primarySystem = excelSystems[0] || systems[0] || '';
+  return {
+    id: sagsinfo.sagsnummer || sagsinfo.navn || sagsinfo.adresse || 'akkord',
+    caseNo: sagsinfo.sagsnummer || '',
+    site: sagsinfo.adresse || '',
+    address: sagsinfo.adresse || '',
+    task: sagsinfo.navn || '',
+    title: sagsinfo.navn || '',
+    customer: sagsinfo.kunde || '',
+    date: sagsinfo.dato || '',
+    montageWorkers: infoSource.montoer || '',
+    demontageWorkers: infoSource.montoer || '',
+    montor: infoSource.montoer || '',
+    worker: infoSource.montoer || '',
+    system: primarySystem,
+    systems,
+    excelSystems,
+    sagsinfo,
+    materialer: materials,
+  };
+}
+
+async function exportExcelJob(job, systemOverride) {
+  if (!job) {
+    console.warn('Excel-akkord eksport sprang over – ingen aktive data.');
+    return [];
+  }
+
+  const systems = resolveSystems(job, systemOverride ?? job?.excelSystems);
   if (systems.length === 0) {
     console.warn('Excel-akkord eksport sprang over – ingen understøttede systemer valgt.');
     return [];
@@ -260,4 +330,9 @@ export async function exportAkkordExcelForActiveJob(jobOverride, systemOverride)
   }
 
   return results;
+}
+
+export async function exportExcelFromAkkordData(akkordData, systemOverride) {
+  const job = buildJobFromAkkordData(akkordData);
+  return exportExcelJob(job, systemOverride ?? job?.excelSystems);
 }
