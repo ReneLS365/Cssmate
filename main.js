@@ -4,9 +4,10 @@ import { normalizeKey } from './src/lib/string-utils.js'
 import { EXCLUDED_MATERIAL_KEYS, shouldExcludeMaterialEntry } from './src/lib/materials/exclusions.js'
 import { createMaterialRow } from './src/modules/materialrowtemplate.js'
 import { sha256Hex, constantTimeEquals } from './src/lib/sha256.js'
-import { ensureExportLibs, ensureZipLib, prefetchExportLibs } from './src/features/export/lazy-libs.js'
+import { ensureExportLibs, ensureZipLib } from './src/features/export/lazy-libs.js'
 import { setupNumpad } from './js/numpad.js'
 import { exportMeta, setSlaebFormulaText } from './js/export-meta.js'
+import { initExportPanel } from './js/akkord-export-ui.js'
 import { createVirtualMaterialsList } from './src/modules/materialsvirtuallist.js'
 import { initClickGuard } from './src/ui/guards/clickguard.js'
 import { setAdminOk, restoreAdminState, isAdminUnlocked } from './src/state/admin.js'
@@ -2045,7 +2046,7 @@ function validateSagsinfo() {
     el.classList.toggle('invalid', !fieldValid);
   });
 
-  ['btnExportZip', 'btnPrint'].forEach(id => {
+  ['btn-export-akkord-zip', 'btn-print-akkord'].forEach(id => {
     const btn = getDomElement(id);
     if (btn) btn.disabled = !isValid;
   });
@@ -2223,71 +2224,6 @@ async function exportExcelSelection(job, systems) {
   return downloadExcelPayloads(payloads, job);
 }
 
-function initExportButtons() {
-  const primeExports = () => prefetchExportLibs();
-
-  const btnPdf = document.getElementById('btnExportAkkord');
-  if (btnPdf) {
-    btnPdf.addEventListener('click', () => onExportPdf());
-    btnPdf.addEventListener('pointerenter', primeExports, { once: true });
-    btnPdf.addEventListener('focus', primeExports, { once: true });
-  }
-
-  const btnZip = document.getElementById('btnExportZip');
-  if (btnZip) {
-    btnZip.addEventListener('click', () => onExportZip());
-    btnZip.addEventListener('pointerenter', primeExports, { once: true });
-    btnZip.addEventListener('focus', primeExports, { once: true });
-  }
-
-  const btnJson = document.getElementById('btnExportJson');
-  if (btnJson) {
-    btnJson.addEventListener('click', () => exportAkkordJsonFile());
-  }
-
-  const importBtn = document.getElementById('btnImportAkkord');
-  const importInput = document.getElementById('akkordImportInput');
-  if (importBtn && importInput) {
-    importBtn.addEventListener('click', () => importInput.click());
-    importInput.addEventListener('change', event => {
-      const file = event.target.files?.[0];
-      if (file) {
-        handleAkkordImport(file);
-        importInput.value = '';
-      }
-    });
-  }
-
-  initExcelSystemSelector();
-}
-
-async function onExportZip() {
-  if (!requireExcelSystemSelection()) return;
-  try {
-    await exportZip();
-    updateActionHint('ZIP eksport gemt.', 'success');
-  } catch (error) {
-    console.error('ZIP eksport fejlede', error);
-    updateActionHint('Kunne ikke eksportere ZIP.', 'error');
-  }
-}
-
-async function onExportPdf() {
-  try {
-    const info = collectSagsinfo();
-    const fileNameParts = [info.sagsnummer, info.navn, info.montoer]
-      .map(value => (value || '').trim())
-      .filter(Boolean);
-    const baseName = fileNameParts.length
-      ? sanitizeFilename(fileNameParts.join('_'))
-      : undefined;
-    await exportPDF(undefined, { baseName });
-  } catch (error) {
-    console.error('PDF eksport fejlede', error);
-    updateActionHint('Kunne ikke eksportere PDF.', 'error');
-  }
-}
-
 function inferSystemFromLine(line) {
   if (!line) return '';
   if (line.system) return line.system;
@@ -2425,6 +2361,12 @@ function buildAkkordData(options = {}) {
     totalHours,
   });
 
+  const sagsnummer = info.sagsnummer || 'akkordseddel';
+  const meta = {
+    sagsnummer,
+    dato: new Date().toISOString(),
+  };
+
   return {
     info,
     materials,
@@ -2443,7 +2385,12 @@ function buildAkkordData(options = {}) {
     laborTotals,
     totalHours,
     totals,
+    meta,
   };
+}
+
+if (typeof window !== 'undefined') {
+  window.cssmateBuildAkkordData = buildAkkordData;
 }
 
 function syncActiveJobState() {
@@ -2879,6 +2826,10 @@ async function handleAkkordImport(file) {
     console.error('Kunne ikke importere akkordseddel', error);
     updateActionHint('Kunne ikke importere akkordseddel-filen.', 'error');
   }
+}
+
+if (typeof window !== 'undefined') {
+  window.cssmateHandleAkkordImport = handleAkkordImport;
 }
 
 function handleImportFile(file) {
@@ -3545,6 +3496,10 @@ function buildCSVPayload(customSagsnummer, options = {}) {
   };
 }
 
+if (typeof window !== 'undefined') {
+  window.cssmateBuildCSVPayload = buildCSVPayload;
+}
+
 // --- Akkordseddel JSON-eksport ---
 /**
  * Akkordseddel JSON-format (v1)
@@ -3913,6 +3868,10 @@ async function exportPDFBlob(customSagsnummer, options = {}) {
   } finally {
     document.body.removeChild(wrapper);
   }
+}
+
+if (typeof window !== 'undefined') {
+  window.cssmateExportPDFBlob = exportPDFBlob;
 }
 
 async function exportPDF(customSagsnummer, options = {}) {
@@ -4305,13 +4264,6 @@ async function initApp() {
   setupA9Integration();
 
   document.getElementById('btnBeregnLon')?.addEventListener('click', () => beregnLon());
-  document.getElementById('btnPrint')?.addEventListener('click', () => {
-    if (validateSagsinfo()) {
-      window.print();
-    } else {
-      updateActionHint('Udfyld Sagsinfo for at kunne printe.', 'error');
-    }
-  });
 
   document.getElementById('btnAddWorker')?.addEventListener('click', () => addWorker());
 
@@ -4376,7 +4328,8 @@ async function initApp() {
       renderOptaelling();
       setupCSVImport();
       populateRecentCases();
-      initExportButtons();
+      initExportPanel();
+      initExcelSystemSelector();
       updateTotals(true);
     })
     .catch(error => {
