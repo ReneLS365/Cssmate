@@ -147,6 +147,18 @@ export function buildAkkordData(rawInput) {
   };
 
   const createdAt = raw.createdAt || metaSource.createdAt || new Date().toISOString();
+  const laborList = Array.isArray(raw.labor) ? raw.labor : [];
+  const laborTotals = Array.isArray(raw.laborTotals)
+    ? raw.laborTotals
+    : laborList.map(entry => ({
+      hours: Number(entry?.hours ?? 0) || 0,
+      hourlyWithAllowances: Number(entry?.rate ?? 0) || 0,
+      udd: entry?.udd || '',
+      mentortillaeg: Number(entry?.mentortillaeg ?? 0) || 0,
+    }));
+  const totalHours = Number.isFinite(raw.totalHours)
+    ? raw.totalHours
+    : laborTotals.reduce((sum, worker) => sum + (Number.isFinite(worker.hours) ? worker.hours : 0), 0);
   const extras = {
     ...extrasSource,
     km: kmBelob,
@@ -172,7 +184,9 @@ export function buildAkkordData(rawInput) {
     extras,
     linjer,
     materials: Array.isArray(raw.materials) ? raw.materials : [],
-    labor: Array.isArray(raw.labor) ? raw.labor : [],
+    labor: laborList,
+    laborTotals,
+    totalHours,
     totals: {
       ...totals,
       totalAkkord,
