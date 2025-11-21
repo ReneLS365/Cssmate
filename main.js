@@ -1884,6 +1884,7 @@ function applyLaborSnapshot(labor = []) {
 
 function mapAkkordJsonV1ToSnapshot(payload = {}) {
   const jobType = payload.type || payload.extras?.jobType || 'montage';
+  const jobFactor = jobType === 'demontage' ? 0.5 : 1;
   const extras = { ...(payload.extras || {}), jobType };
   const wageWorkers = Array.isArray(payload.wage?.workers) ? payload.wage.workers : [];
   const workerNames = wageWorkers
@@ -1912,7 +1913,7 @@ function mapAkkordJsonV1ToSnapshot(payload = {}) {
         id: item?.id || item?.varenr || item?.lineId || '',
         name: item?.name || item?.label || '',
         quantity: toNumber(item?.qty ?? item?.quantity ?? 0),
-        price: toNumber(item?.unitPrice ?? item?.price ?? 0),
+        price: toNumber(item?.unitPrice ?? item?.price ?? 0) / jobFactor,
       }))
       .filter(entry => entry.id || entry.name)
     : [];
