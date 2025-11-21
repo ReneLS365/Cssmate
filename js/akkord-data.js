@@ -89,8 +89,11 @@ function buildEkstraarbejde(raw) {
   return extras;
 }
 
-export function buildAkkordData() {
-  const raw = getRawAkkordData() || {};
+export function buildAkkordData(rawInput) {
+  const candidate = rawInput?.raw || rawInput;
+  const raw = (candidate && (candidate.info || candidate.materials || candidate.materialer || candidate.meta || candidate.extras))
+    ? candidate
+    : getRawAkkordData() || {};
   const jobFactor = Number(raw.jobFactor ?? 1) || 1;
   const linjer = mapMaterialLines(raw, jobFactor);
   const metaInfo = raw.info || {};

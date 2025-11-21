@@ -8,6 +8,7 @@ import { ensureExportLibs, ensureZipLib } from './src/features/export/lazy-libs.
 import { setupNumpad } from './js/numpad.js'
 import { exportMeta, setSlaebFormulaText } from './js/export-meta.js'
 import { initExportPanel } from './js/akkord-export-ui.js'
+import { buildAkkordData as buildSharedAkkordData } from './js/akkord-data.js'
 import { createVirtualMaterialsList } from './src/modules/materialsvirtuallist.js'
 import { initClickGuard } from './src/ui/guards/clickguard.js'
 import { setAdminOk, restoreAdminState, isAdminUnlocked } from './src/state/admin.js'
@@ -2314,7 +2315,7 @@ function buildAkkordJobSnapshot(data = lastEkompletData) {
   return job;
 }
 
-function buildAkkordData(options = {}) {
+function buildRawAkkordData(options = {}) {
   const info = collectSagsinfo();
   if (options.customSagsnummer) {
     info.sagsnummer = options.customSagsnummer;
@@ -2433,7 +2434,16 @@ function buildAkkordData(options = {}) {
 }
 
 if (typeof window !== 'undefined') {
-  window.cssmateBuildAkkordData = buildAkkordData;
+  window.cssmateBuildAkkordDataRaw = buildRawAkkordData
+}
+
+function buildAkkordData(options = {}) {
+  const raw = buildRawAkkordData(options)
+  return buildSharedAkkordData(raw)
+}
+
+if (typeof window !== 'undefined') {
+  window.cssmateBuildAkkordData = buildAkkordData
 }
 
 function syncActiveJobState() {
