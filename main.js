@@ -2224,6 +2224,89 @@ function buildAkkordJobSnapshot(data = lastEkompletData) {
   return job;
 }
 
+function buildAkkordData(options = {}) {
+  const info = collectSagsinfo();
+  if (options.customSagsnummer) {
+    info.sagsnummer = options.customSagsnummer;
+  }
+
+  const materials = getAllData().filter(item => toNumber(item.quantity) > 0);
+  const labor = Array.isArray(laborEntries) ? laborEntries : [];
+  const cache = typeof window !== 'undefined' ? window.__beregnLonCache : null;
+  const jobType = collectJobType();
+  const jobFactor = jobType === 'demontage' ? 0.5 : 1;
+
+  const extraInputs = {
+    boringHuller: toNumber(document.getElementById('antalBoringHuller')?.value),
+    lukHuller: toNumber(document.getElementById('antalLukHuller')?.value),
+    boringBeton: toNumber(document.getElementById('antalBoringBeton')?.value),
+    opskydeligt: toNumber(document.getElementById('antalOpskydeligt')?.value),
+    km: toNumber(document.getElementById('km')?.value),
+    slaebePctInput: toNumber(document.getElementById('slaebePct')?.value),
+  };
+
+  const tralleState = computeTraelleTotals();
+  const tralleSum = tralleState && Number.isFinite(tralleState.sum) ? tralleState.sum : 0;
+  const materialLinesForTotals = materials.map(item => ({
+    qty: toNumber(item.quantity),
+    unitPrice: toNumber(item.price) * jobFactor,
+  }));
+
+  const montageBase = calcMaterialesum() + tralleSum;
+  const slaebePct = Number.isFinite(extraInputs.slaebePctInput) ? (extraInputs.slaebePctInput / 100) : 0;
+  const slaebeBelob = montageBase * slaebePct;
+
+  const ekstraarbejdeModel = {
+    tralleløft: tralleSum,
+    traelle35: tralleState?.n35 || 0,
+    traelle50: tralleState?.n50 || 0,
+    huller: extraInputs.boringHuller * BORING_HULLER_RATE,
+    lukAfHul: extraInputs.lukHuller * LUK_HULLER_RATE,
+    boringBeton: extraInputs.boringBeton * BORING_BETON_RATE,
+    boring: extraInputs.boringBeton * BORING_BETON_RATE,
+    opskydeligt: extraInputs.opskydeligt * OPSKYDELIGT_RATE,
+    km: extraInputs.km * KM_RATE,
+    oevrige: 0,
+    slaebePct: extraInputs.slaebePctInput,
+    slaebeBelob,
+  };
+
+  const laborTotals = labor.map(entry => ({
+    hours: toNumber(entry?.hours),
+    hourlyWithAllowances: toNumber(entry?.rate),
+    udd: entry?.udd || '',
+    mentortillaeg: toNumber(entry?.mentortillaeg),
+  }));
+  const totalHours = laborTotals.reduce((sum, worker) => sum + (Number.isFinite(worker.hours) ? worker.hours : 0), 0);
+  const totals = calculateTotals({
+    materialLines: materialLinesForTotals,
+    slaebeBelob,
+    extra: ekstraarbejdeModel,
+    workers: laborTotals,
+    totalHours,
+  });
+
+  return {
+    info,
+    materials,
+    labor,
+    cache,
+    jobType,
+    jobFactor,
+    tralleState,
+    tralleSum,
+    materialLinesForTotals,
+    montageBase,
+    slaebePctInput: extraInputs.slaebePctInput,
+    slaebeBelob,
+    extraInputs,
+    extras: ekstraarbejdeModel,
+    laborTotals,
+    totalHours,
+    totals,
+  };
+}
+
 function syncActiveJobState() {
   const job = buildAkkordJobSnapshot();
   if (job) {
@@ -3372,52 +3455,18 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
     beregnLon();
   }
 
-  const info = collectSagsinfo();
-  if (customSagsnummer) {
-    info.sagsnummer = customSagsnummer;
-  }
-
-  const materials = getAllData().filter(item => toNumber(item.quantity) > 0);
-  const labor = Array.isArray(laborEntries) ? laborEntries : [];
-  const tralleState = computeTraelleTotals();
-  const tralleSum = tralleState && Number.isFinite(tralleState.sum) ? tralleState.sum : 0;
-  const jobType = collectJobType();
-  const jobFactor = jobType === 'demontage' ? 0.5 : 1;
-  const slaebePctInput = toNumber(document.getElementById('slaebePct')?.value);
-  const montageBase = calcMaterialesum() + tralleSum;
-  const slaebeBelob = montageBase * (Number.isFinite(slaebePctInput) ? slaebePctInput / 100 : 0);
-
-  const ekstraarbejdeModel = {
-    tralleløft: tralleSum,
-    traelle35: tralleState?.n35 || 0,
-    traelle50: tralleState?.n50 || 0,
-    huller: toNumber(document.getElementById('antalBoringHuller')?.value) * BORING_HULLER_RATE,
-    lukAfHul: toNumber(document.getElementById('antalLukHuller')?.value) * LUK_HULLER_RATE,
-    boringBeton: toNumber(document.getElementById('antalBoringBeton')?.value) * BORING_BETON_RATE,
-    opskydeligt: toNumber(document.getElementById('antalOpskydeligt')?.value) * OPSKYDELIGT_RATE,
-    km: toNumber(document.getElementById('km')?.value) * KM_RATE,
-    slaebePct: slaebePctInput,
-    slaebeBelob,
-  };
-
-  const laborTotals = labor.map(entry => ({
-    hours: toNumber(entry?.hours),
-    hourlyWithAllowances: toNumber(entry?.rate),
-    udd: entry?.udd || '',
-    mentortillaeg: toNumber(entry?.mentortillaeg),
-  }));
-  const totalHours = laborTotals.reduce((sum, worker) => sum + (Number.isFinite(worker.hours) ? worker.hours : 0), 0);
-  const materialLinesForTotals = materials.map(item => ({
-    qty: toNumber(item.quantity),
-    unitPrice: toNumber(item.price) * jobFactor,
-  }));
-  const totalsFallback = calculateTotals({
-    materialLines: materialLinesForTotals,
-    slaebeBelob,
-    extra: ekstraarbejdeModel,
-    workers: laborTotals,
+  const data = buildAkkordData({ customSagsnummer });
+  const {
+    info,
+    materials,
+    labor,
+    jobType,
+    jobFactor,
+    extras,
+    laborTotals,
     totalHours,
-  });
+    totals,
+  } = data;
 
   const baseName = sanitizeFilename(info.sagsnummer || 'akkordseddel') || 'akkordseddel';
   const materialsJson = materials.map(item => {
@@ -3435,8 +3484,8 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
 
   const hourlyBase = toNumber(
     lastJobSummary?.hourlyBase
-    ?? totalsFallback.timeprisUdenTillaeg
-    ?? totalsFallback.hourlyBase
+    ?? totals.timeprisUdenTillaeg
+    ?? totals.hourlyBase
   );
   const jobPayload = {
     version: 1,
@@ -3447,7 +3496,7 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
     system: getPreferredExcelSystem(),
     systems: Array.from(selectedSystemKeys),
     materials: materialsJson,
-    extras: ekstraarbejdeModel,
+    extras,
     wage: {
       montageHours: jobType === 'montage' ? totalHours : 0,
       demontageHours: jobType === 'demontage' ? totalHours : 0,
@@ -3461,13 +3510,13 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
         udd: entry?.udd || '',
         mentortillaeg: toNumber(entry?.mentortillaeg),
       })),
-      totalAkkordSum: totalsFallback.samletAkkordsum,
+      totalAkkordSum: totals.samletAkkordsum,
     },
     totals: {
-      materialsSum: totalsFallback.materialer,
-      extrasSum: totalsFallback.ekstraarbejde,
-      haulSum: totalsFallback.slaeb,
-      projectSum: totalsFallback.projektsum,
+      materialsSum: totals.materialer,
+      extrasSum: totals.ekstraarbejde,
+      haulSum: totals.slaeb,
+      projectSum: totals.projektsum,
     },
   };
 
@@ -3488,57 +3537,34 @@ async function exportPDFBlob(customSagsnummer, options = {}) {
   if (!options?.skipBeregn) {
     beregnLon();
   }
-  const info = collectSagsinfo();
-  if (customSagsnummer) {
-    info.sagsnummer = customSagsnummer;
-  }
-  const cache = typeof window !== 'undefined' ? window.__beregnLonCache : null;
-  const materials = getAllData().filter(item => toNumber(item.quantity) > 0);
-  const labor = Array.isArray(laborEntries) ? laborEntries : [];
-  const tralleState = computeTraelleTotals();
-  const tralleSum = tralleState && Number.isFinite(tralleState.sum) ? tralleState.sum : 0;
-  const jobType = document.getElementById('jobType')?.value || 'montage';
-  const jobFactor = jobType === 'demontage' ? 0.5 : 1;
-  const materialLinesForTotals = materials.map(item => ({
-    qty: toNumber(item.quantity),
-    unitPrice: toNumber(item.price) * jobFactor,
-  }));
-  const montageBase = calcMaterialesum() + tralleSum;
-  const slaebePctInput = toNumber(document.getElementById('slaebePct')?.value);
-  const slaebeBelob = montageBase * (Number.isFinite(slaebePctInput) ? slaebePctInput / 100 : 0);
-  const ekstraarbejdeModel = {
-    tralleløft: tralleSum,
-    huller: toNumber(document.getElementById('antalBoringHuller')?.value) * BORING_HULLER_RATE,
-    boring: toNumber(document.getElementById('antalBoringBeton')?.value) * BORING_BETON_RATE,
-    lukAfHul: toNumber(document.getElementById('antalLukHuller')?.value) * LUK_HULLER_RATE,
-    opskydeligt: toNumber(document.getElementById('antalOpskydeligt')?.value) * OPSKYDELIGT_RATE,
-    km: toNumber(document.getElementById('km')?.value) * KM_RATE,
-    oevrige: 0,
-  };
-  const laborTotals = labor.map(entry => ({
-    hours: toNumber(entry?.hours),
-    hourlyWithAllowances: toNumber(entry?.rate),
-  }));
-  const totalHours = laborTotals.reduce((sum, worker) => sum + (Number.isFinite(worker.hours) ? worker.hours : 0), 0);
-  const totalsFallback = calculateTotals({
-    materialLines: materialLinesForTotals,
+  const data = buildAkkordData({ customSagsnummer });
+  const {
+    info,
+    materials,
+    labor,
+    extras,
+    tralleState,
+    tralleSum,
+    slaebePctInput,
     slaebeBelob,
-    extra: ekstraarbejdeModel,
-    workers: laborTotals,
+    laborTotals,
     totalHours,
-  });
+    totals,
+    cache,
+    extraInputs,
+  } = data;
 
   const materialSum = cache && Number.isFinite(cache.materialSum)
     ? cache.materialSum
-    : totalsFallback.materialer;
-  const extraSum = totalsFallback.ekstraarbejde;
-  const haulSum = totalsFallback.slaeb;
+    : totals.materialer;
+  const extraSum = totals.ekstraarbejde;
+  const haulSum = totals.slaeb;
   const laborSum = cache && Number.isFinite(cache.laborSum)
     ? cache.laborSum
-    : totalsFallback.montoerLonMedTillaeg;
+    : totals.montoerLonMedTillaeg;
   const projectSum = cache && Number.isFinite(cache.projectSum)
     ? cache.projectSum
-    : totalsFallback.projektsum;
+    : totals.projektsum;
 
   const wrapper = document.createElement('div');
   wrapper.className = 'export-preview';
@@ -3591,15 +3617,21 @@ async function exportPDFBlob(customSagsnummer, options = {}) {
     }
   }
 
+  const antalBoringHuller = extraInputs.boringHuller;
+  const antalLukHuller = extraInputs.lukHuller;
+  const antalBoringBeton = extraInputs.boringBeton;
+  const antalOpskydeligt = extraInputs.opskydeligt;
+  const antalKm = extraInputs.km;
+
   const reviewRows = [
     { id: 'materials', label: '1. Materialer', format: 'currency', value: materialSum },
     { id: 'extraWork', label: '2. Ekstra arbejde', format: 'currency', value: extraSum },
     { id: 'extra-sled', label: '   Slæb', format: 'currency', value: slaebeBelob, subtle: true, info: { type: 'percent', percent: slaebePctInput } },
-    { id: 'extra-km', label: '   Kilometer', format: 'currency', value: ekstraarbejdeModel.km, subtle: true, info: { type: 'qtyPrice', qty: antalKm, unitPrice: KM_RATE, unitLabel: 'km' } },
-    { id: 'extra-holes', label: '   Boring af huller', format: 'currency', value: ekstraarbejdeModel.huller, subtle: true, info: { type: 'qtyPrice', qty: antalBoringHuller, unitPrice: BORING_HULLER_RATE } },
-    { id: 'extra-close-hole', label: '   Luk af hul', format: 'currency', value: ekstraarbejdeModel.lukAfHul, subtle: true, info: { type: 'qtyPrice', qty: antalLukHuller, unitPrice: LUK_HULLER_RATE } },
-    { id: 'extra-concrete', label: '   Boring i beton', format: 'currency', value: ekstraarbejdeModel.boring, subtle: true, info: { type: 'qtyPrice', qty: antalBoringBeton, unitPrice: BORING_BETON_RATE } },
-    { id: 'extra-folding-rail', label: '   Opslåeligt rækværk', format: 'currency', value: ekstraarbejdeModel.opskydeligt, subtle: true, info: { type: 'qtyPrice', qty: antalOpskydeligt, unitPrice: OPSKYDELIGT_RATE } },
+    { id: 'extra-km', label: '   Kilometer', format: 'currency', value: extras.km, subtle: true, info: { type: 'qtyPrice', qty: antalKm, unitPrice: KM_RATE, unitLabel: 'km' } },
+    { id: 'extra-holes', label: '   Boring af huller', format: 'currency', value: extras.huller, subtle: true, info: { type: 'qtyPrice', qty: antalBoringHuller, unitPrice: BORING_HULLER_RATE } },
+    { id: 'extra-close-hole', label: '   Luk af hul', format: 'currency', value: extras.lukAfHul, subtle: true, info: { type: 'qtyPrice', qty: antalLukHuller, unitPrice: LUK_HULLER_RATE } },
+    { id: 'extra-concrete', label: '   Boring i beton', format: 'currency', value: extras.boring, subtle: true, info: { type: 'qtyPrice', qty: antalBoringBeton, unitPrice: BORING_BETON_RATE } },
+    { id: 'extra-folding-rail', label: '   Opslåeligt rækværk', format: 'currency', value: extras.opskydeligt, subtle: true, info: { type: 'qtyPrice', qty: antalOpskydeligt, unitPrice: OPSKYDELIGT_RATE } },
     {
       id: 'extra-trolley',
       label: '   Tralleløft',
@@ -3615,7 +3647,7 @@ async function exportPDFBlob(customSagsnummer, options = {}) {
         ]
       }
     },
-    { id: 'accordSum', label: '3. Samlet akkordsum', format: 'currency', value: totalsFallback.samletAkkordsum, emphasize: true },
+    { id: 'accordSum', label: '3. Samlet akkordsum', format: 'currency', value: totals.samletAkkordsum, emphasize: true },
     { id: 'hours', label: '4. Timer', format: 'hours', value: totalHours },
     { id: 'team', label: '5. Medarbejdere & timer', format: 'team', value: { workersCount: workerCountDisplay, hours: totalHours } }
   ];
