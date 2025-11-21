@@ -9,7 +9,7 @@ if (versionScriptUrl) {
   importScripts('/js/version.js')
 }
 
-const CACHE_VERSION = 'sscaff-v-20251120224211852' // updated automatically by bump script
+const CACHE_VERSION = 'sscaff-v-20251121001300998' // updated automatically by bump script
 const CACHE_NAME = 'sscaff-' + CACHE_VERSION
 const PRECACHE_URLS = [
   '/',
@@ -25,6 +25,10 @@ const PRECACHE_URLS = [
   '/js/akkord-export.js',
   '/js/export-meta.js',
   '/js/numpad.js',
+  '/js/vendor/html2canvas.esm.js',
+  '/js/vendor/jspdf.es.min.js',
+  '/js/vendor/jszip.esm.min.js',
+  '/js/vendor/jszip.min.js',
   '/js/version.js',
   '/dataset.js',
   '/manifest.webmanifest',
