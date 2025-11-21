@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [ "main" ]
 
+defaults:
+  run:
+    shell: bash
+    working-directory: ${{ github.workspace }}
+
 jobs:
   lighthouse:
     runs-on: ubuntu-latest
