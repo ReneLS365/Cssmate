@@ -116,16 +116,24 @@ function buildExcelFilename(job, system) {
   return `Akkordseddel_${safeCase}_${systemLabel || 'SYSTEM'}.xlsx`;
 }
 
+const templateCache = new Map();
+
 async function loadTemplate(system, xlsx) {
   const templatePath = TEMPLATE_PATHS[system];
   if (!templatePath) {
     throw new Error(`Ukendt system: ${system}`);
   }
-  const response = await fetch(templatePath);
-  if (!response.ok) {
-    throw new Error(`Kunne ikke hente template: ${templatePath}`);
+
+  let buffer = templateCache.get(system);
+  if (!buffer) {
+    const response = await fetch(templatePath);
+    if (!response.ok) {
+      throw new Error(`Kunne ikke hente template: ${templatePath}`);
+    }
+    buffer = await response.arrayBuffer();
+    templateCache.set(system, buffer);
   }
-  const buffer = await response.arrayBuffer();
+
   const workbook = xlsx.read(buffer, { type: 'array' });
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
