@@ -2178,7 +2178,14 @@ async function onExportZip() {
 
 async function onExportPdf() {
   try {
-    await exportPDF();
+    const info = collectSagsinfo();
+    const fileNameParts = [info.sagsnummer, info.navn, info.montoer]
+      .map(value => (value || '').trim())
+      .filter(Boolean);
+    const baseName = fileNameParts.length
+      ? sanitizeFilename(fileNameParts.join('_'))
+      : undefined;
+    await exportPDF(undefined, { baseName });
   } catch (error) {
     console.error('PDF eksport fejlede', error);
     updateActionHint('Kunne ikke eksportere PDF.', 'error');
@@ -2295,12 +2302,16 @@ function buildAkkordData(options = {}) {
     antalBoringHuller: extraInputs.boringHuller,
     antalLukHuller: extraInputs.lukHuller,
     antalBoringBeton: extraInputs.boringBeton,
-    boringBeton: extraInputs.boringBeton,
-    boring: extraInputs.boringBeton,
+    boringBeton: ekstraarbejdeModel.boring,
+    boring: ekstraarbejdeModel.boring,
+    huller: ekstraarbejdeModel.huller,
+    lukAfHul: ekstraarbejdeModel.lukAfHul,
     opskydeligtRaekvaerk: extraInputs.opskydeligt,
-    km: extraInputs.km,
+    opskydeligt: ekstraarbejdeModel.opskydeligt,
+    km: ekstraarbejdeModel.km,
     traelle35: tralleState?.n35 || 0,
     traelle50: tralleState?.n50 || 0,
+    tralleløft: tralleSum,
   };
 
   const laborTotals = labor.map(entry => ({
@@ -3794,7 +3805,7 @@ async function exportPDFBlob(customSagsnummer, options = {}) {
     const canvas = await html2canvas(wrapper, { scale: 2, backgroundColor: '#ffffff' });
     const doc = new jsPDF({ unit: 'px', format: [canvas.width, canvas.height] });
     doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, canvas.width, canvas.height);
-    const baseName = sanitizeFilename(info.sagsnummer || 'akkordseddel');
+    const baseName = sanitizeFilename(options.baseName || info.sagsnummer || 'akkordseddel');
     const blob = doc.output('blob');
     return { blob, baseName, fileName: `${baseName}.pdf` };
   } catch (err) {
