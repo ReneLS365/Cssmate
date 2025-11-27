@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test": "node --test",
     "bump:sw": "node scripts/bump-sw-version.js",
     "bump-sw-version": "node scripts/bump-sw-version.js",
     "update-prices": "node scripts/update-price-lists.js",
