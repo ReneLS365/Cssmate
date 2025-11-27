@@ -126,3 +126,43 @@ test('export buttons trigger their actions correctly', async t => {
   await buttons['#btn-import-akkord'].click();
   assert.equal(handleImportAkkordMock.mock.calls.length, 1, 'import handler invoked');
 });
+
+test('import button reports failures to the user', async t => {
+  const buttons = {
+    '#btn-import-akkord': createButton('#btn-import-akkord'),
+  };
+
+  const actionHints = [];
+  const originalWindow = globalThis.window;
+  const originalDocument = globalThis.document;
+
+  globalThis.window = {
+    cssmateUpdateActionHint: (message, variant) => {
+      actionHints.push({ message, variant });
+    },
+  };
+
+  globalThis.document = {
+    querySelector: selector => buttons[selector] || null,
+  };
+
+  const consoleError = mock.method(console, 'error', () => {});
+  const handleImportAkkordMock = mock.fn(() => Promise.reject(new Error('boom')));
+
+  setExportDependencies({ handleImportAkkord: handleImportAkkordMock });
+
+  t.after(() => {
+    setExportDependencies({});
+    mock.restoreAll();
+    globalThis.window = originalWindow;
+    globalThis.document = originalDocument;
+  });
+
+  initExportPanel();
+
+  await buttons['#btn-import-akkord'].click();
+
+  assert.equal(handleImportAkkordMock.mock.calls.length, 1, 'import handler invoked');
+  assert.equal(consoleError.mock.calls.length, 1, 'import errors are logged');
+  assert.deepEqual(actionHints[0], { message: 'Import fejlede. Prøv igen.', variant: 'error' });
+});

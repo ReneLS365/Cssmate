@@ -67,6 +67,15 @@ function handleExportAkkordZIP() {
     });
 }
 
+async function handleImportAkkordAction() {
+  try {
+    await handleImportAkkordImpl();
+  } catch (error) {
+    console.error('Import akkordseddel failed', error);
+    notifyAction('Import fejlede. Prøv igen.', 'error');
+  }
+}
+
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
