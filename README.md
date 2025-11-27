@@ -35,7 +35,14 @@ CSMate er en letvægtsudgave af den oprindelige Cssmate-applikation, målrettet 
 
 Åbn `http://localhost:4174/debug/material-row-debug.html` under udvikling for at se den rå markup fra optællingsfanens materialerække med identisk styling som appen bruger.
 
-Pull requests må kun merges når `npm run release:guard` er grøn (kører automatisk i GitHub Actions på push/PR til `main`).
+## CI & Codex
+
+- Push og PR mod `main` kører automatisk GitHub Actions, som bygger, kører tests (`npm test`) og laver et Lighthouse-check med tærskel 0,95 på alle kategorier.
+- Nightly workflow kører dagligt kl. 03:00 UTC med `npm ci`, `npm run build` og hele testsuiten (inkl. app-flow smoken), så buildet forbliver sundt.
+- Lokalt kan du spejle CI ved at køre:
+  - `npm ci`
+  - `npm run build`
+  - `npm test`
 
 ## CODEx Autonomous CI Bootstrapper
 

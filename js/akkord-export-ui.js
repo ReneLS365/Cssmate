@@ -13,7 +13,7 @@ export function initExportPanel() {
   bind('#btn-export-akkord-pdf', handleExportAkkordPDF);
   bind('#btn-export-akkord-zip', handleExportAkkordZIP);
   bind('#btn-export-akkord-json', handleExportAkkordJSON);
-  bind('#btn-import-akkord', () => handleImportAkkordImpl());
+  bind('#btn-import-akkord', () => handleImportAkkordAction());
 }
 
 function bind(sel, fn) {
