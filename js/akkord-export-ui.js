@@ -3,12 +3,17 @@ import { exportPDFBlob } from './export-pdf.js';
 import { exportZipFromAkkord } from './export-zip.js';
 import { handleImportAkkord } from './import-akkord.js';
 
+let buildAkkordDataImpl = buildAkkordData;
+let exportPDFBlobImpl = exportPDFBlob;
+let exportZipFromAkkordImpl = exportZipFromAkkord;
+let handleImportAkkordImpl = handleImportAkkord;
+
 export function initExportPanel() {
   bind('#btn-print-akkord', handlePrintAkkord);
   bind('#btn-export-akkord-pdf', handleExportAkkordPDF);
   bind('#btn-export-akkord-zip', handleExportAkkordZIP);
   bind('#btn-export-akkord-json', handleExportAkkordJSON);
-  bind('#btn-import-akkord', handleImportAkkord);
+  bind('#btn-import-akkord', () => handleImportAkkordImpl());
 }
 
 function bind(sel, fn) {
@@ -21,10 +26,10 @@ function handlePrintAkkord() {
 }
 
 function handleExportAkkordPDF() {
-  const data = buildAkkordData();
+  const data = buildAkkordDataImpl();
   const meta = getExportMeta(data);
   const baseName = buildBaseName(meta);
-  exportPDFBlob(data, { skipValidation: false, skipBeregn: false, customSagsnummer: meta.sagsnummer })
+  exportPDFBlobImpl(data, { skipValidation: false, skipBeregn: false, customSagsnummer: meta.sagsnummer })
     .then((payload) => {
       if (!payload?.blob) throw new Error('Mangler PDF payload');
       const filename = payload.fileName || `${baseName}.pdf`;
@@ -38,7 +43,7 @@ function handleExportAkkordPDF() {
 }
 
 function handleExportAkkordJSON() {
-  const data = buildAkkordData();
+  const data = buildAkkordDataImpl();
   const meta = getExportMeta(data);
   const baseName = buildBaseName(meta);
   const payload = buildJsonPayload(data, baseName);
@@ -52,9 +57,9 @@ function handleExportAkkordJSON() {
 }
 
 function handleExportAkkordZIP() {
-  const data = buildAkkordData();
+  const data = buildAkkordDataImpl();
   const baseName = buildBaseName(getExportMeta(data));
-  exportZipFromAkkord(data, { baseName })
+  exportZipFromAkkordImpl(data, { baseName })
     .then(() => notifyAction('ZIP er klar til download.', 'success'))
     .catch((err) => {
       console.error('ZIP export failed', err);
@@ -114,4 +119,19 @@ function notifyAction(message, variant) {
   if (typeof window !== 'undefined' && typeof window.cssmateUpdateActionHint === 'function') {
     window.cssmateUpdateActionHint(message, variant);
   }
+}
+
+export function setExportDependencies(overrides = {}) {
+  buildAkkordDataImpl = typeof overrides.buildAkkordData === 'function'
+    ? overrides.buildAkkordData
+    : buildAkkordData;
+  exportPDFBlobImpl = typeof overrides.exportPDFBlob === 'function'
+    ? overrides.exportPDFBlob
+    : exportPDFBlob;
+  exportZipFromAkkordImpl = typeof overrides.exportZipFromAkkord === 'function'
+    ? overrides.exportZipFromAkkord
+    : exportZipFromAkkord;
+  handleImportAkkordImpl = typeof overrides.handleImportAkkord === 'function'
+    ? overrides.handleImportAkkord
+    : handleImportAkkord;
 }
