@@ -363,17 +363,30 @@
     hidden
   >
     <fieldset>
-      <legend>Hurtig hjælp</legend>
+      <legend>Sådan bruger du akkordsedlen</legend>
       <ol>
-        <li>Udfyld alle felter i <strong>Sagsinfo</strong>.</li>
-        <li>Vælg systemer og registrér materialer under <strong>Optælling</strong>.</li>
-        <li>Beregn og eksporter fra <strong>Løn</strong>.</li>
+        <li>Udfyld <strong>Sagsinfo</strong> med sagsnummer, kunde, adresse, montører og dato.</li>
+        <li>Gå til <strong>Optælling</strong>, vælg system og indtast antal materialer.</li>
+        <li>Åbn <strong>Løn</strong>, vælg arbejdstype, timer, km og eventuelt ekstraarbejde.</li>
+        <li>Tjek <strong>Resultat</strong> og brug <strong>Eksport &amp; deling</strong> til PDF, JSON eller ZIP.</li>
+        <li>Find tidligere sager under <strong>Historik</strong> for hurtig genindlæsning.</li>
       </ol>
     </fieldset>
     <fieldset>
-      <legend>Support</legend>
-      <p class="hint">Kontakt administratoren hvis data skal nulstilles eller hvis eksporten fejler.</p>
-      <p class="hint">Se også logfilerne i <code>/debug</code>-mappen for fejlfinding.</p>
+      <legend>Typiske fejl &amp; løsninger</legend>
+      <ul>
+        <li><strong>Ekstraarbejde er 0 kr:</strong> Tjek at antal for huller/boring/tralleløft er udfyldt.</li>
+        <li><strong>Ingen fil downloades:</strong> Slå evt. popup-blokering fra eller tillad downloads fra browseren.</li>
+        <li><strong>Sagen er væk:</strong> Kig i <strong>Historik</strong> eller genindlæs en gemt JSON-fil.</li>
+      </ul>
+    </fieldset>
+    <fieldset>
+      <legend>Admin-tilstand</legend>
+      <ul>
+        <li>Admin-koden <strong>StilAce</strong> låser prisfelter og avancerede muligheder op.</li>
+        <li>Bruges kun af ansvarlige/admin – almindelige brugere skal forblive i normal tilstand.</li>
+        <li>Påvirker eksport og opsætning, men ændrer ikke de underliggende beregningsregler.</li>
+      </ul>
     </fieldset>
   </section>
           </div>
@@ -447,7 +460,12 @@
           <button type="button" data-key="," class="numpad-key numpad-key-op numpad-operator">,</button>
         </div>
 
-        <button type="button" class="numpad-commit" id="numpad-btn-commit">✓</button>
+        <p class="numpad-hint">Brug tastatur eller knapperne herover, og tryk Enter eller Gem for at opdatere feltet.</p>
+
+        <button type="button" class="numpad-commit" id="numpad-btn-commit">
+          <span class="numpad-commit__label">Gem</span>
+          <span aria-hidden="true" class="numpad-commit__icon">✓</span>
+        </button>
       </div>
     </div>
 
