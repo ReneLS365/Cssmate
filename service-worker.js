@@ -9,7 +9,7 @@ if (versionScriptUrl) {
   importScripts('/js/version.js')
 }
 
-const CACHE_VERSION = 'sscaff-v-20251121075757964' // updated automatically by bump script
+const CACHE_VERSION = 'sscaff-v-20251128090000000' // updated automatically by bump script
 const CACHE_NAME = 'sscaff-' + CACHE_VERSION
 const PRECACHE_URLS = [
   '/',

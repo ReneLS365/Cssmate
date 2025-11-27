@@ -2,6 +2,7 @@ import { ensureZipLib } from '../src/features/export/lazy-libs.js';
 import { exportPDFBlob } from './export-pdf.js';
 import { buildAkkordCSV } from './akkord-csv.js';
 import { exportExcelFromAkkordData } from '../src/export/akkord-excel.js';
+import { buildAkkordJsonPayload } from './export-json.js';
 
 function sanitizeFilename(value) {
   return (value || 'akkord')
@@ -84,10 +85,10 @@ export async function exportZipFromAkkord(data, options = {}) {
   const excelSelection = normalizeExcelSystems(options.excelSystems || safeData.excelSystems || safeData.meta?.excelSystems);
 
   try {
-    const jsonPayload = buildJsonFile(safeData, baseName);
-    if (!jsonPayload) throw new Error('JSON eksport fejlede');
-    zip.file(jsonPayload.name, jsonPayload.content);
-    files.push(jsonPayload.name);
+    const jsonPayload = buildAkkordJsonPayload(safeData, baseName, { skipValidation: true, skipBeregn: true });
+    if (!jsonPayload?.content) throw new Error('JSON eksport fejlede');
+    zip.file(jsonPayload.fileName, jsonPayload.content);
+    files.push(jsonPayload.fileName);
 
     const pdfPayload = await exportPDFBlob(safeData, {
       skipValidation: false,
@@ -136,19 +137,4 @@ export async function exportZipFromAkkord(data, options = {}) {
     }
     throw error;
   }
-}
-
-function buildJsonFile(data, baseName) {
-  if (typeof window !== 'undefined' && typeof window.cssmateBuildAkkordJsonPayload === 'function') {
-    const payload = window.cssmateBuildAkkordJsonPayload({
-      data,
-      customSagsnummer: baseName,
-      skipValidation: true,
-      skipBeregn: true,
-    });
-    if (payload?.content) {
-      return { name: payload.fileName || `${baseName}.json`, content: payload.content };
-    }
-  }
-  return { name: `${baseName}.json`, content: JSON.stringify(data, null, 2) };
 }

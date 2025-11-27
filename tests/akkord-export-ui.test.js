@@ -106,22 +106,23 @@ test('export buttons trigger their actions correctly', async t => {
 
   await buttons['#btn-print-akkord'].click();
   assert.equal(printSpy.mock.calls.length, 1, 'print called once');
+  assert.deepEqual(actionHints[0], { message: 'Printvindue åbnet.', variant: 'success' });
 
   await buttons['#btn-export-akkord-pdf'].click();
   assert.equal(akkordDataMock.mock.calls.length, 1, 'akkord data built for PDF');
   assert.equal(exportPDFBlobMock.mock.calls.length, 1, 'PDF export invoked');
   assert.equal(downloads[0]?.download, 'custom.pdf', 'PDF download is queued');
-  assert.deepEqual(actionHints[0], { message: 'PDF er gemt til din enhed.', variant: 'success' });
+  assert.deepEqual(actionHints[1], { message: 'PDF er gemt til din enhed.', variant: 'success' });
 
   await buttons['#btn-export-akkord-zip'].click();
   assert.equal(akkordDataMock.mock.calls.length, 2, 'akkord data built for ZIP');
   assert.equal(exportZipFromAkkordMock.mock.calls.length, 1, 'ZIP export invoked');
-  assert.deepEqual(actionHints[1], { message: 'ZIP er klar til download.', variant: 'success' });
+  assert.deepEqual(actionHints[2], { message: 'ZIP er klar til download.', variant: 'success' });
 
   await buttons['#btn-export-akkord-json'].click();
   assert.equal(akkordDataMock.mock.calls.length, 3, 'akkord data built for JSON');
   assert.equal(downloads[1]?.download, 'SA-1-Kunde-2024-05-10.json', 'JSON download is queued');
-  assert.deepEqual(actionHints[2], { message: 'Akkordseddel (JSON) er gemt.', variant: 'success' });
+  assert.deepEqual(actionHints[3], { message: 'Akkordseddel (JSON) er gemt.', variant: 'success' });
 
   await buttons['#btn-import-akkord'].click();
   assert.equal(handleImportAkkordMock.mock.calls.length, 1, 'import handler invoked');

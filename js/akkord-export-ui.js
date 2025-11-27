@@ -2,6 +2,7 @@ import { buildAkkordData } from './akkord-data.js';
 import { exportPDFBlob } from './export-pdf.js';
 import { exportZipFromAkkord } from './export-zip.js';
 import { handleImportAkkord } from './import-akkord.js';
+import { buildAkkordJsonPayload } from './export-json.js';
 
 let buildAkkordDataImpl = buildAkkordData;
 let exportPDFBlobImpl = exportPDFBlob;
@@ -13,7 +14,7 @@ export function initExportPanel() {
   bind('#btn-export-akkord-pdf', handleExportAkkordPDF);
   bind('#btn-export-akkord-zip', handleExportAkkordZIP);
   bind('#btn-export-akkord-json', handleExportAkkordJSON);
-  bind('#btn-import-akkord', () => handleImportAkkordAction());
+  bind('#btn-import-akkord', (event) => handleImportAkkordAction(event));
 }
 
 function bind(sel, fn) {
@@ -31,11 +32,17 @@ function notifyHistory(type, detail = {}) {
   window.dispatchEvent(new CustomEvent('cssmate:exported', { detail: payload }));
 }
 
-function handlePrintAkkord() {
+function handlePrintAkkord(event) {
+  const button = event?.currentTarget;
+  const done = setBusy(button, true);
   window.print();
+  notifyAction('Printvindue åbnet.', 'success');
+  done();
 }
 
-function handleExportAkkordPDF() {
+function handleExportAkkordPDF(event) {
+  const button = event?.currentTarget;
+  const done = setBusy(button, true);
   const data = buildAkkordDataImpl();
   const meta = getExportMeta(data);
   const baseName = buildBaseName(meta);
@@ -50,26 +57,38 @@ function handleExportAkkordPDF() {
     .catch((error) => {
       console.error('PDF export failed', error);
       notifyAction('PDF eksport fejlede. Prøv igen.', 'error');
-    });
+    })
+    .finally(() => done());
 }
 
-function handleExportAkkordJSON() {
-  const data = buildAkkordDataImpl();
-  const meta = getExportMeta(data);
-  const baseName = buildBaseName(meta);
-  const payload = buildJsonPayload(data, baseName);
-  if (!payload?.content) {
-    notifyAction('Kunne ikke bygge JSON-eksporten.', 'error');
-    return;
+function handleExportAkkordJSON(event) {
+  const button = event?.currentTarget;
+  const done = setBusy(button, true);
+  try {
+    const data = buildAkkordDataImpl();
+    const meta = getExportMeta(data);
+    const baseName = buildBaseName(meta);
+    const payload = buildAkkordJsonPayload(data, baseName);
+    if (!payload?.content) {
+      notifyAction('Kunne ikke bygge JSON-eksporten.', 'error');
+      return;
+    }
+    const blob = new Blob([payload.content], { type: 'application/json' });
+    const fileName = payload.fileName || `${baseName}.json`;
+    downloadBlob(blob, fileName);
+    notifyAction('Akkordseddel (JSON) er gemt.', 'success');
+    notifyHistory('json', { baseName, fileName });
+  } catch (error) {
+    console.error('JSON export failed', error);
+    notifyAction('JSON eksport fejlede. Prøv igen.', 'error');
+  } finally {
+    done();
   }
-  const blob = new Blob([payload.content], { type: 'application/json' });
-  const fileName = payload.fileName || `${baseName}.json`;
-  downloadBlob(blob, fileName);
-  notifyAction('Akkordseddel (JSON) er gemt.', 'success');
-  notifyHistory('json', { baseName, fileName });
 }
 
-function handleExportAkkordZIP() {
+function handleExportAkkordZIP(event) {
+  const button = event?.currentTarget;
+  const done = setBusy(button, true);
   const data = buildAkkordDataImpl();
   const baseName = buildBaseName(getExportMeta(data));
   exportZipFromAkkordImpl(data, { baseName })
@@ -77,15 +96,21 @@ function handleExportAkkordZIP() {
     .catch((err) => {
       console.error('ZIP export failed', err);
       notifyAction('ZIP eksport fejlede. Prøv igen.', 'error');
-    });
+    })
+    .finally(() => done());
 }
 
-async function handleImportAkkordAction() {
+async function handleImportAkkordAction(event) {
+  const button = event?.currentTarget;
+  const done = setBusy(button, true);
   try {
     await handleImportAkkordImpl();
+    notifyAction('Import gennemført.', 'success');
   } catch (error) {
     console.error('Import akkordseddel failed', error);
     notifyAction('Import fejlede. Prøv igen.', 'error');
+  } finally {
+    done();
   }
 }
 
@@ -124,23 +149,27 @@ function buildBaseName(meta) {
   return sanitizeFilename(parts.join('-') || 'akkordseddel');
 }
 
-function buildJsonPayload(data, baseName) {
-  if (typeof window !== 'undefined' && typeof window.cssmateBuildAkkordJsonPayload === 'function') {
-    const payload = window.cssmateBuildAkkordJsonPayload({
-      data,
-      customSagsnummer: baseName,
-      skipValidation: true,
-      skipBeregn: true,
-    });
-    if (payload?.content) return payload;
-  }
-  return { content: JSON.stringify(data, null, 2), fileName: `${baseName}.json` };
-}
-
 function notifyAction(message, variant) {
   if (typeof window !== 'undefined' && typeof window.cssmateUpdateActionHint === 'function') {
     window.cssmateUpdateActionHint(message, variant);
   }
+}
+
+function setBusy(button, busy) {
+  if (!button) {
+    return () => {};
+  }
+  if (busy) {
+    if (button.dataset.busy === '1') return () => {};
+    button.dataset.busy = '1';
+    button.disabled = true;
+    button.classList.add('is-busy');
+    return () => setBusy(button, false);
+  }
+  delete button.dataset.busy;
+  button.disabled = false;
+  button.classList.remove('is-busy');
+  return () => {};
 }
 
 export function setExportDependencies(overrides = {}) {
