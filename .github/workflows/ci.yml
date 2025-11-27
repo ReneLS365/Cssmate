@@ -43,7 +43,9 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run build
+      - run: |
+          npm run build
+          npm run build:min-js
       - name: Set build outputs
         id: build-meta
         run: |
@@ -85,7 +87,9 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run build
+      - run: |
+          npm run build
+          npm run build:min-js
       - name: Download build artifact
         if: ${{ needs.build.outputs.has_dist == 'true' }}
         uses: actions/download-artifact@v4
