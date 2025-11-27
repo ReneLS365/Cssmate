@@ -3463,6 +3463,7 @@ function beregnLon() {
   }
 
   showLonOutputSections();
+  persistProjectSnapshot();
   return sagsnummer;
 }
 
