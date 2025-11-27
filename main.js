@@ -2,6 +2,7 @@ import { initMaterialsScrollLock } from './src/modules/materialsscrolllock.js'
 import { calculateTotals } from './src/modules/calculatetotals.js'
 import { normalizeKey } from './src/lib/string-utils.js'
 import { EXCLUDED_MATERIAL_KEYS, shouldExcludeMaterialEntry } from './src/lib/materials/exclusions.js'
+import { resolveKmInputValue } from './src/lib/extras-helpers.js'
 import { createMaterialRow } from './src/modules/materialrowtemplate.js'
 import { sha256Hex, constantTimeEquals } from './src/lib/sha256.js'
 import { ensureExportLibs, ensureZipLib } from './src/features/export/lazy-libs.js'
@@ -1764,6 +1765,8 @@ function setupZipExportHistoryHook() {
 
 function collectExtrasState() {
   const getValue = id => getDomElement(id)?.value ?? '';
+  const kmAntal = toNumber(getValue('km'));
+  const kmBelob = kmAntal * KM_RATE;
   return {
     jobType: getDomElement('jobType')?.value || 'montage',
     montagepris: getValue('montagepris'),
@@ -1774,7 +1777,10 @@ function collectExtrasState() {
     antalLukHuller: getValue('antalLukHuller'),
     antalBoringBeton: getValue('antalBoringBeton'),
     opskydeligtRaekvaerk: getValue('antalOpskydeligt'),
-    km: getValue('km'),
+    km: kmBelob,
+    kmBelob,
+    kmAntal,
+    kmIsAmount: true,
     traelle35: getValue('traelleloeft35'),
     traelle50: getValue('traelleloeft50'),
   };
@@ -1858,7 +1864,7 @@ function applyExtrasSnapshot(extras = {}) {
   assign('antalLukHuller', extras.antalLukHuller);
   assign('antalBoringBeton', extras.antalBoringBeton);
   assign('antalOpskydeligt', extras.opskydeligtRaekvaerk);
-  assign('km', extras.km);
+  assign('km', resolveKmInputValue(extras, KM_RATE));
   assign('traelleloeft35', extras.traelle35);
   assign('traelleloeft50', extras.traelle50);
 
@@ -2854,6 +2860,11 @@ function applyImportedAkkordData(data) {
     traelle35 = Number.isFinite(derived35) ? derived35.toFixed(2) : '';
   }
 
+  const kmAntal = Number(resolveKmInputValue(extras, KM_RATE));
+  const kmBelob = Number.isFinite(kmAntal) && kmAntal >= 0
+    ? kmAntal * KM_RATE
+    : toNumber(extras.kmBelob ?? extras.km ?? extras.kilometer ?? 0);
+
   const snapshot = {
     sagsinfo: {
       sagsnummer: payload.jobId || infoBlock.sagsnummer || payload.caseNo || payload.id || '',
@@ -2876,7 +2887,10 @@ function applyImportedAkkordData(data) {
       antalLukHuller: extras.lukAfHul ?? extras.antalLukHuller ?? 0,
       antalBoringBeton: extras.boringBeton ?? extras.antalBoringBeton ?? 0,
       opskydeligtRaekvaerk: extras.opskydeligt ?? extras.opskydeligtRaekvaerk ?? 0,
-      km: extras.km ?? extras.kilometer ?? 0,
+      km: kmBelob,
+      kmBelob,
+      kmAntal: Number.isFinite(kmAntal) && kmAntal >= 0 ? kmAntal : undefined,
+      kmIsAmount: true,
       traelle35,
       traelle50,
     },

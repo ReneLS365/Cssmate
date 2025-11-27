@@ -1,10 +1,12 @@
+import { DEFAULT_KM_RATE, resolveKmInputValue } from '../src/lib/extras-helpers.js';
+
 const TRAELLE_RATE35 = 10.44;
 const TRAELLE_RATE50 = 14.62;
 const BORING_HULLER_RATE = 4.70;
 const LUK_HULLER_RATE = 3.45;
 const BORING_BETON_RATE = 11.49;
 const OPSKYDELIGT_RATE = 9.67;
-const KM_RATE = 2.12;
+const KM_RATE = DEFAULT_KM_RATE;
 
 const SUPPORTED_EXCEL_SYSTEMS = ['bosta', 'haki', 'modex', 'alfix'];
 
@@ -142,9 +144,9 @@ export function buildAkkordData(rawInput) {
 
   const inputs = raw.extraInputs || {};
   const extrasSource = raw.extras || {};
-
-  const kmAntal = Number(inputs.km ?? extrasSource.kmAntal ?? extrasSource.km ?? 0) || 0;
-  const kmBelob = Number(extrasSource.kmBelob ?? extrasSource.km ?? (kmAntal * KM_RATE)) || 0;
+  const kmSource = { ...extrasSource, kmAntal: inputs.km ?? extrasSource.kmAntal };
+  const kmAntal = Number(resolveKmInputValue(kmSource, KM_RATE)) || 0;
+  const kmBelob = Number(extrasSource.kmBelob ?? (Number.isFinite(kmAntal) ? kmAntal * KM_RATE : extrasSource.km ?? 0)) || 0;
   const kmSats = kmAntal ? kmBelob / kmAntal : KM_RATE;
   const slaebProcent = Number(inputs.slaebePctInput ?? extrasSource.slaebePct ?? 0) || 0;
   const slaebBelob = Number(raw.slaebeBelob ?? extrasSource.slaebeBelob ?? 0) || 0;
@@ -197,9 +199,10 @@ export function buildAkkordData(rawInput) {
   const extras = {
     ...extrasSource,
     km: kmBelob,
+    kmBelob,
     kmAntal,
     slaebePct: slaebProcent,
-    slaebeBelob,
+    slaebBelob,
     tralleState: raw.tralleState || {},
     tralleSum: raw.tralleSum || 0,
     ekstraarbejde,
