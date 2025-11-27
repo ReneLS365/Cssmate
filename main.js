@@ -122,6 +122,7 @@ let tabButtons = []
 let tabPanels = []
 const domCache = new Map()
 let deferredInstallPromptEvent = null
+let historyPersistencePaused = false
 
 function setDeferredInstallPromptEvent(event) {
   deferredInstallPromptEvent = event
@@ -151,6 +152,14 @@ if (typeof window !== 'undefined') {
   window.addEventListener('appinstalled', () => {
     setDeferredInstallPromptEvent(null)
   })
+}
+
+function pauseHistoryPersistence () {
+  historyPersistencePaused = true
+}
+
+function resumeHistoryPersistence () {
+  historyPersistencePaused = false
 }
 
 function isKnownTabId(tabId) {
@@ -1761,6 +1770,17 @@ function setupZipExportHistoryHook() {
     };
     persistProjectSnapshot(exportInfo);
   });
+  window.addEventListener('cssmate:exported', event => {
+    const detail = event?.detail || {};
+    const exportInfo = {
+      type: detail.type || 'export',
+      baseName: detail.baseName || '',
+      fileName: detail.fileName || '',
+      files: Array.isArray(detail.files) ? detail.files : [],
+      timestamp: detail.timestamp || Date.now(),
+    };
+    persistProjectSnapshot(exportInfo);
+  });
 }
 
 function collectExtrasState() {
@@ -1837,6 +1857,7 @@ function collectProjectSnapshot(exportInfo) {
 }
 
 async function persistProjectSnapshot(exportInfo) {
+  if (historyPersistencePaused) return;
   try {
     const snapshot = collectProjectSnapshot(exportInfo);
     await saveProject(snapshot);
@@ -2064,11 +2085,16 @@ async function handleLoadCase() {
     record = cases.find(entry => Number(entry.id) === value);
     renderHistoryList(recentCasesCache);
   }
-  if (record && record.data) {
-    applyProjectSnapshot(record.data, { skipHint: false });
-    renderJobHistorySummary(record);
-  } else {
-    updateActionHint('Kunne ikke indlæse den valgte sag.', 'error');
+  pauseHistoryPersistence();
+  try {
+    if (record && record.data) {
+      applyProjectSnapshot(record.data, { skipHint: false });
+      renderJobHistorySummary(record);
+    } else {
+      updateActionHint('Kunne ikke indlæse den valgte sag.', 'error');
+    }
+  } finally {
+    resumeHistoryPersistence();
   }
 }
 
@@ -2897,8 +2923,15 @@ function applyImportedAkkordData(data) {
     totals: payload.totals || {},
   };
 
-  applyProjectSnapshot(snapshot, { skipHint: true });
+  pauseHistoryPersistence();
+  try {
+    applyProjectSnapshot(snapshot, { skipHint: true });
+  } finally {
+    resumeHistoryPersistence();
+  }
+
   updateActionHint('Akkordseddel er importeret. Bekræft arbejdstype og tal.', 'success');
+  persistProjectSnapshot({ type: 'import', source: payload?.meta?.source || 'json' });
 }
 
 async function handleAkkordImport(file) {
@@ -3430,9 +3463,6 @@ function beregnLon() {
   }
 
   showLonOutputSections();
-
-  persistProjectSnapshot();
-
   return sagsnummer;
 }
 
@@ -4441,6 +4471,14 @@ async function initApp() {
   loadHistoryButton?.addEventListener('click', () => handleLoadCase());
 
   ['traelleloeft35', 'traelleloeft50'].forEach(id => {
+    const input = document.getElementById(id);
+    if (input) {
+      input.addEventListener('input', () => updateTotals());
+      input.addEventListener('change', () => updateTotals(true));
+    }
+  });
+
+  ['antalBoringHuller', 'antalLukHuller', 'antalBoringBeton', 'antalOpskydeligt', 'km', 'slaebePct'].forEach(id => {
     const input = document.getElementById(id);
     if (input) {
       input.addEventListener('input', () => updateTotals());
