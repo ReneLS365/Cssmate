@@ -21,6 +21,16 @@ function bind(sel, fn) {
   if (el) el.addEventListener('click', fn);
 }
 
+function notifyHistory(type, detail = {}) {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+  const payload = {
+    type,
+    timestamp: Date.now(),
+    ...detail,
+  };
+  window.dispatchEvent(new CustomEvent('cssmate:exported', { detail: payload }));
+}
+
 function handlePrintAkkord() {
   window.print();
 }
@@ -35,6 +45,7 @@ function handleExportAkkordPDF() {
       const filename = payload.fileName || `${baseName}.pdf`;
       downloadBlob(payload.blob, filename);
       notifyAction('PDF er gemt til din enhed.', 'success');
+      notifyHistory('pdf', { baseName, fileName: filename });
     })
     .catch((error) => {
       console.error('PDF export failed', error);
@@ -52,8 +63,10 @@ function handleExportAkkordJSON() {
     return;
   }
   const blob = new Blob([payload.content], { type: 'application/json' });
-  downloadBlob(blob, payload.fileName || `${baseName}.json`);
+  const fileName = payload.fileName || `${baseName}.json`;
+  downloadBlob(blob, fileName);
   notifyAction('Akkordseddel (JSON) er gemt.', 'success');
+  notifyHistory('json', { baseName, fileName });
 }
 
 function handleExportAkkordZIP() {
