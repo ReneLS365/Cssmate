@@ -2860,10 +2860,13 @@ function applyImportedAkkordData(data) {
     traelle35 = Number.isFinite(derived35) ? derived35.toFixed(2) : '';
   }
 
-  const kmAntal = Number(resolveKmInputValue(extras, KM_RATE));
-  const kmBelob = Number.isFinite(kmAntal) && kmAntal >= 0
-    ? kmAntal * KM_RATE
-    : toNumber(extras.kmBelob ?? extras.km ?? extras.kilometer ?? 0);
+    const kmAntal = Number(resolveKmInputValue(extras, KM_RATE));
+    const providedKmBelob = toNumber(extras.kmBelob ?? extras.km ?? extras.kilometer);
+    const kmBelob = Number.isFinite(providedKmBelob) && providedKmBelob >= 0
+      ? providedKmBelob
+      : Number.isFinite(kmAntal) && kmAntal >= 0
+        ? kmAntal * KM_RATE
+        : 0;
 
   const snapshot = {
     sagsinfo: {
