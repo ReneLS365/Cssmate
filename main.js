@@ -2,7 +2,7 @@ import { initMaterialsScrollLock } from './src/modules/materialsscrolllock.js'
 import { calculateTotals } from './src/modules/calculatetotals.js'
 import { normalizeKey } from './src/lib/string-utils.js'
 import { EXCLUDED_MATERIAL_KEYS, shouldExcludeMaterialEntry } from './src/lib/materials/exclusions.js'
-import { resolveKmInputValue } from './src/lib/extras-helpers.js'
+import { resolveKmBelob, resolveKmInputValue } from './src/lib/extras-helpers.js'
 import { createMaterialRow } from './src/modules/materialrowtemplate.js'
 import { sha256Hex, constantTimeEquals } from './src/lib/sha256.js'
 import { ensureExportLibs, ensureZipLib } from './src/features/export/lazy-libs.js'
@@ -2861,12 +2861,7 @@ function applyImportedAkkordData(data) {
   }
 
     const kmAntal = Number(resolveKmInputValue(extras, KM_RATE));
-    const providedKmBelob = toNumber(extras.kmBelob ?? extras.km ?? extras.kilometer);
-    const kmBelob = Number.isFinite(providedKmBelob) && providedKmBelob >= 0
-      ? providedKmBelob
-      : Number.isFinite(kmAntal) && kmAntal >= 0
-        ? kmAntal * KM_RATE
-        : 0;
+    const kmBelob = resolveKmBelob(extras, KM_RATE);
 
   const snapshot = {
     sagsinfo: {

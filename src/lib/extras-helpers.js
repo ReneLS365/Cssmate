@@ -23,3 +23,19 @@ export function resolveKmInputValue(extras = {}, kmRate = DEFAULT_KM_RATE) {
 
   return '';
 }
+
+export function resolveKmBelob(extras = {}, kmRate = DEFAULT_KM_RATE) {
+  if (!extras || typeof extras !== 'object') return 0;
+
+  const providedKmBelob = Number(extras.kmBelob ?? extras.kilometer);
+  if (Number.isFinite(providedKmBelob) && providedKmBelob >= 0) {
+    return providedKmBelob;
+  }
+
+  const kmAntal = Number(resolveKmInputValue(extras, kmRate));
+  if (Number.isFinite(kmAntal) && kmAntal >= 0 && Number.isFinite(kmRate) && kmRate > 0) {
+    return kmAntal * kmRate;
+  }
+
+  return 0;
+}
