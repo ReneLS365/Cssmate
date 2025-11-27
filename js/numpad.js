@@ -17,6 +17,10 @@ let expressionParts = []
 let suppressNextFocus = false
 const NUMPAD_HIDE_DELAY = 180
 let overlayHideTimer = null
+const NUMPAD_ACTIVE_CLASS = 'numpad-target-active'
+const NUMPAD_COMMIT_READY_CLASS = 'numpad-commit--ready'
+const NUMPAD_COMMITTED_CLASS = 'numpad-committed'
+let initialFieldValue = ''
 
 function isNumpadOpen () {
   return Boolean(overlay && !overlay.classList.contains('numpad-hidden'))
@@ -54,12 +58,7 @@ function initNumpad () {
     closeBtn.addEventListener('click', () => hideNumpad({ commit: false }))
   }
 
-  document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && isNumpadOpen()) {
-      event.preventDefault()
-      hideNumpad({ commit: false })
-    }
-  })
+  document.addEventListener('keydown', handleKeydown)
 
   bindInputs()
   observeNumpadInputs()
@@ -163,6 +162,7 @@ function showNumpadForInput (input) {
   lastFocusedInput = activeInput
 
   const inputValue = activeInput && typeof activeInput.value === 'string' ? activeInput.value : ''
+  initialFieldValue = inputValue
   const initial = normalizeFromField(inputValue)
   currentValue = initial === '' ? '0' : initial
   baseValue = parseNumericValue(currentValue)
@@ -170,6 +170,10 @@ function showNumpadForInput (input) {
   expression = ''
   activeOperator = null
   expressionParts = []
+
+  if (activeInput) {
+    activeInput.classList.add(NUMPAD_ACTIVE_CLASS)
+  }
 
   updateDisplays()
 
@@ -193,6 +197,7 @@ function hideNumpad ({ commit = false } = {}) {
   if (!overlay) return
 
   const focusTarget = lastFocusedInput
+  const commitTarget = activeInput
 
   if (commit && activeInput) {
     const fieldValue = formatForField(currentValue)
@@ -218,6 +223,10 @@ function hideNumpad ({ commit = false } = {}) {
     activeInput.dispatchEvent(customEvent)
   }
 
+  if (commitTarget) {
+    commitTarget.classList.remove(NUMPAD_ACTIVE_CLASS)
+  }
+
   overlay.classList.add('numpad-hidden')
   overlay.setAttribute('aria-hidden', 'true')
   overlay.setAttribute('inert', '')
@@ -230,6 +239,7 @@ function hideNumpad ({ commit = false } = {}) {
     }
   }, NUMPAD_HIDE_DELAY)
   activeInput = null
+  initialFieldValue = ''
   if (document?.documentElement) {
     document.documentElement.classList.remove('np-open')
   }
@@ -243,6 +253,10 @@ function hideNumpad ({ commit = false } = {}) {
     suppressNextFocus = false
   }
   lastFocusedInput = null
+
+  if (commit && commitTarget) {
+    flashCommit(commitTarget)
+  }
 }
 
 function handleCommitClick () {
@@ -258,6 +272,28 @@ function handleCommitClick () {
 
   updateDisplays()
   hideNumpad({ commit: true })
+}
+
+function handleKeydown (event) {
+  if (!isNumpadOpen()) return
+
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    hideNumpad({ commit: false })
+    return
+  }
+
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    handleCommitClick()
+    return
+  }
+
+  const mapped = mapKeyboardKey(event.key)
+  if (!mapped) return
+
+  handleKey(mapped)
+  event.preventDefault()
 }
 
 /* Tast-logic */
@@ -354,6 +390,20 @@ function updateDisplays () {
   expression = getExpressionText()
   displayExpr.textContent = expression
   displayCurrent.textContent = formatNumber(currentValue)
+  updateCommitButtonState()
+}
+
+function updateCommitButtonState () {
+  if (!commitBtn) return
+
+  const numericCurrent = parseNumericValue(currentValue)
+  const numericInitial = parseNumericValue(initialFieldValue)
+  const hasExpression = expressionParts.length > 0 || Boolean(activeOperator)
+  const hasChange = hasExpression || (
+    numericCurrent !== null && numericCurrent !== (numericInitial ?? 0)
+  )
+
+  commitBtn.classList.toggle(NUMPAD_COMMIT_READY_CLASS, hasChange)
 }
 
 function getExpressionText () {
@@ -486,6 +536,26 @@ function normalizeFromField (v) {
 
 function formatForField (v) {
   return formatNumber(v)
+}
+
+function mapKeyboardKey (key) {
+  if (/^\d$/.test(key)) return key
+  if (key === ',' || key === '.') return ','
+  if (key === 'Backspace') return 'BACK'
+  if (key === 'Delete') return 'C'
+  if (key === '+') return '+'
+  if (key === '-') return '-'
+  if (key === '*' || key === 'x' || key === 'X') return '×'
+  if (key === '/') return '÷'
+  if (key === '%') return '%'
+  if (key === '=') return '='
+  return null
+}
+
+function flashCommit (target) {
+  if (!target || !(target instanceof HTMLElement)) return
+  target.classList.add(NUMPAD_COMMITTED_CLASS)
+  setTimeout(() => target.classList.remove(NUMPAD_COMMITTED_CLASS), 420)
 }
 
 /* Public init */
