@@ -4,6 +4,14 @@ import { buildAkkordCSV } from './akkord-csv.js';
 import { exportExcelFromAkkordData } from '../src/export/akkord-excel.js';
 import { buildAkkordJsonPayload } from './export-json.js';
 
+let ensureZipLibImpl = ensureZipLib;
+let exportPDFBlobImpl = exportPDFBlob;
+
+export function setZipExportDependencies(overrides = {}) {
+  ensureZipLibImpl = typeof overrides.ensureZipLib === 'function' ? overrides.ensureZipLib : ensureZipLib;
+  exportPDFBlobImpl = typeof overrides.exportPDFBlob === 'function' ? overrides.exportPDFBlob : exportPDFBlob;
+}
+
 function sanitizeFilename(value) {
   return (value || 'akkord')
     .toString()
@@ -74,7 +82,7 @@ function notifyZipExport(detail) {
 }
 
 export async function exportZipFromAkkord(data, options = {}) {
-  const { JSZip } = await ensureZipLib();
+  const { JSZip } = await ensureZipLibImpl();
   const zip = new JSZip();
   const safeData = data || {};
   const sagsnummer = getSagsnummer(safeData);
@@ -97,7 +105,7 @@ export async function exportZipFromAkkord(data, options = {}) {
     (folders.json || zip).file(jsonPayload.fileName, jsonPayload.content);
     files.push(jsonPath);
 
-    const pdfPayload = await exportPDFBlob(safeData, {
+    const pdfPayload = await exportPDFBlobImpl(safeData, {
       skipValidation: false,
       skipBeregn: false,
       customSagsnummer: sagsnummer,

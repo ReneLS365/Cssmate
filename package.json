@@ -18,6 +18,7 @@
     "test:lh:enforce": "node tools/lh-enforce.js",
     "test:super": "npm run build && npm run test:html && npm run test:links && npm run test:lh:mobile && npm run test:lh:enforce",
     "release:guard": "npm run test:super && node scripts/check-lighthouse-perfect.mjs",
+    "test:export": "node tests/export-files.test.js",
     "dev:mat-debug": "npx http-server . -p 4174 --silent"
   },
   "dependencies": {
@@ -27,8 +28,10 @@
     "express": "^4.18.2",
     "html-validate": "^10.4.0",
     "http-server": "^14.1.1",
+    "jszip": "^3.10.1",
     "lighthouse": "^12.8.2",
     "linkinator": "^7.5.0",
+    "pdf-lib": "^1.17.1",
     "terser": "^5.36.0"
   }
 }
