@@ -220,6 +220,41 @@ let tabPanels = []
 const domCache = new Map()
 let deferredInstallPromptEvent = null
 let historyPersistencePaused = false
+let materialsDataPromise = null
+let materialsUiReadyPromise = null
+
+function ensureMaterialsDataLoad () {
+  if (!materialsDataPromise) {
+    materialsDataPromise = ensureMaterialDatasets().catch(error => {
+      console.error('Kunne ikke indlæse materialelisterne.', error)
+      updateActionHint('Kunne ikke indlæse materialelisterne. Prøv at genindlæse siden.', 'error')
+      materialsDataPromise = null
+      throw error
+    })
+  }
+  return materialsDataPromise
+}
+
+function ensureMaterialsUiReady () {
+  if (!materialsUiReadyPromise) {
+    materialsUiReadyPromise = ensureMaterialsDataLoad()
+      .then(() => {
+        setupListSelectors()
+        renderOptaelling()
+        setupCSVImport()
+        populateRecentCases()
+        initExcelSystemSelector()
+        updateTotals(true)
+      })
+      .catch(error => {
+        console.error('Materiale-UI kunne ikke initialiseres', error)
+        updateActionHint('Kunne ikke initialisere materialelisterne. Opdater siden for at prøve igen.', 'error')
+        materialsUiReadyPromise = null
+        throw error
+      })
+  }
+  return materialsUiReadyPromise
+}
 
 function setDeferredInstallPromptEvent(event) {
   deferredInstallPromptEvent = event
@@ -562,6 +597,10 @@ function setActiveTab(tabId, { focus = false } = {}) {
       }
     }
   } catch {}
+
+  if (nextTabId === 'optaelling') {
+    ensureMaterialsUiReady().catch(() => {});
+  }
 
   if (focus && typeof nextButton.focus === 'function') {
     nextButton.focus();
@@ -4533,13 +4572,7 @@ async function initApp() {
   if (appInitialized) return;
   appInitialized = true;
 
-  try {
-    await ensureMaterialDatasets();
-  } catch (error) {
-    console.error('Kunne ikke indlæse materialelisterne.', error);
-    updateActionHint('Kunne ikke indlæse materialelisterne. Prøv at genindlæse siden.', 'error');
-  }
-
+  ensureMaterialsDataLoad();
   initTabs();
 
   const optaellingContainer = getDomElement('optaellingContainer');
@@ -4604,6 +4637,9 @@ async function initApp() {
     setupPWAInstallPrompt();
   });
   runWhenIdle(() => setupZipExportHistoryHook());
+  runWhenIdle(() => {
+    ensureMaterialsUiReady().catch(() => {});
+  });
 
   document.getElementById('btnHardResetApp')?.addEventListener('click', () => {
     hardResetApp();
@@ -4624,20 +4660,6 @@ async function initApp() {
       }
     });
   }
-
-  ensureMaterialDatasets()
-    .then(() => {
-      setupListSelectors();
-      renderOptaelling();
-      setupCSVImport();
-      populateRecentCases();
-      initExcelSystemSelector();
-      updateTotals(true);
-    })
-    .catch(error => {
-      console.error('Materialelister kunne ikke indlæses', error);
-      updateActionHint('Kunne ikke indlæse materialelisterne. Opdater siden for at prøve igen.', 'error');
-    });
 }
 
 function startApp () {
