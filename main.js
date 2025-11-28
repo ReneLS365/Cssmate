@@ -2,7 +2,7 @@ import { initMaterialsScrollLock } from './src/modules/materialsscrolllock.js'
 import { calculateTotals } from './src/modules/calculatetotals.js'
 import { normalizeKey } from './src/lib/string-utils.js'
 import { EXCLUDED_MATERIAL_KEYS, shouldExcludeMaterialEntry } from './src/lib/materials/exclusions.js'
-import { resolveKmInputValue } from './src/lib/extras-helpers.js'
+import { mergeExtrasKm, resolveKmInputValue } from './src/lib/extras-helpers.js'
 import { createMaterialRow } from './src/modules/materialrowtemplate.js'
 import { sha256Hex, constantTimeEquals } from './src/lib/sha256.js'
 import { setupNumpad } from './js/numpad.js'
@@ -2097,7 +2097,8 @@ function applyLaborSnapshot(labor = []) {
 function mapAkkordJsonV1ToSnapshot(payload = {}) {
   const jobType = payload.type || payload.extras?.jobType || 'montage';
   const jobFactor = jobType === 'demontage' ? 0.5 : 1;
-  const extras = { ...(payload.extras || {}), jobType };
+  const extraInputs = payload.extraInputs || {};
+  const extras = mergeExtrasKm({ ...(payload.extras || {}), jobType }, extraInputs, KM_RATE);
   const wageWorkers = Array.isArray(payload.wage?.workers) ? payload.wage.workers : [];
   const workerNames = wageWorkers
     .map(worker => worker?.name || worker?.worker || '')
@@ -2160,6 +2161,7 @@ function mapAkkordJsonV1ToSnapshot(payload = {}) {
     materials,
     labor,
     extras,
+    extraInputs,
     totals,
   };
 }
@@ -2201,7 +2203,8 @@ function applyProjectSnapshot(snapshot, options = {}) {
   setSagsinfoField('sagsmontoer', info.montoer || '');
 
   applyMaterialsSnapshot(snapshot.materials, snapshot.systems);
-  applyExtrasSnapshot(snapshot.extras);
+  const extras = mergeExtrasKm(snapshot.extras || {}, snapshot.extraInputs || {}, KM_RATE);
+  applyExtrasSnapshot(extras);
   applyLaborSnapshot(snapshot.labor);
 
   if (snapshot.totals) {
@@ -2546,7 +2549,7 @@ function buildRawAkkordData(options = {}) {
     slaebeBelob,
   };
 
-  const extras = {
+  const extras = mergeExtrasKm({
     jobType,
     slaebePct: extraInputs.slaebePctInput,
     slaebeBelob,
@@ -2561,10 +2564,13 @@ function buildRawAkkordData(options = {}) {
     opskydeligtRaekvaerk: extraInputs.opskydeligt,
     opskydeligt: ekstraarbejdeModel.opskydeligt,
     km: ekstraarbejdeModel.km,
+    kmBelob: ekstraarbejdeModel.km,
+    kmAntal: extraInputs.km,
+    kmIsAmount: true,
     traelle35: tralleState?.n35 || 0,
     traelle50: tralleState?.n50 || 0,
     tralleløft: tralleSum,
-  };
+  }, extraInputs, KM_RATE);
 
   const laborTotals = labor.map(entry => ({
     hours: toNumber(entry?.hours),
@@ -2963,7 +2969,8 @@ function applyImportedAkkordData(data) {
     console.warn('Uventet akkordseddel-version', version);
   }
   const jobType = (payload.type || payload.jobType || 'montage').toLowerCase();
-  const extras = payload.extras || payload.akkord || {};
+  const extraInputs = payload.extraInputs || {};
+  const extras = mergeExtrasKm(payload.extras || payload.akkord || {}, extraInputs, KM_RATE);
   const infoBlock = payload.info || payload.meta || {};
   const materialsSource = Array.isArray(payload.materials)
     ? payload.materials
@@ -3071,6 +3078,7 @@ function applyImportedAkkordData(data) {
       traelle35,
       traelle50,
     },
+    extraInputs,
     totals: payload.totals || {},
   };
 
