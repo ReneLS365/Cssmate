@@ -44,6 +44,8 @@ CSMate er en letvægtsudgave af den oprindelige Cssmate-applikation, målrettet 
   - `npm run build`
   - `npm test`
 
+Se også `docs/stage8.md` for den afsluttende QA-checkliste (eksport/round-trip, Lighthouse ≥ 0.95, fuld testpakke og manuel flow-smoke), som bør gennemføres før release.
+
 ## Brugerflow (kort)
 
 1. Udfyld **Sagsinfo** med nummer, navn, adresse, kunde, dato og montør.
