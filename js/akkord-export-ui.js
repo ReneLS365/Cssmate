@@ -186,3 +186,11 @@ export function setExportDependencies(overrides = {}) {
     ? overrides.handleImportAkkord
     : handleImportAkkord;
 }
+
+export {
+  handleExportAkkordPDF,
+  handleExportAkkordZIP,
+  handleExportAkkordJSON,
+  handleImportAkkordAction,
+  handlePrintAkkord,
+};

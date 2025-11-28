@@ -5,15 +5,12 @@ import { EXCLUDED_MATERIAL_KEYS, shouldExcludeMaterialEntry } from './src/lib/ma
 import { resolveKmInputValue } from './src/lib/extras-helpers.js'
 import { createMaterialRow } from './src/modules/materialrowtemplate.js'
 import { sha256Hex, constantTimeEquals } from './src/lib/sha256.js'
-import { ensureExportLibs, ensureZipLib } from './src/features/export/lazy-libs.js'
 import { setupNumpad } from './js/numpad.js'
 import { exportMeta, setSlaebFormulaText } from './js/export-meta.js'
-import { initExportPanel } from './js/akkord-export-ui.js'
 import { buildAkkordData as buildSharedAkkordData } from './js/akkord-data.js'
 import { createVirtualMaterialsList } from './src/modules/materialsvirtuallist.js'
 import { initClickGuard } from './src/ui/guards/clickguard.js'
 import { setAdminOk, restoreAdminState, isAdminUnlocked } from './src/state/admin.js'
-import { exportAkkordExcelForActiveJob } from './src/export/akkord-excel.js'
 import { setActiveJob } from './src/state/jobs.js'
 import './boot-inline.js'
 
@@ -106,6 +103,101 @@ function showUpdateBanner (currentVersion, previousVersion) {
   }
 })()
 
+function runWhenIdle (fn) {
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(fn, { timeout: 1500 })
+    return
+  }
+  setTimeout(fn, 150)
+}
+
+async function ensureExportPanelModule () {
+  if (exportPanelPromise) return exportPanelPromise
+
+  exportPanelPromise = import('./js/akkord-export-ui.js')
+    .then(mod => {
+      if (typeof mod?.initExportPanel === 'function') {
+        mod.initExportPanel()
+      }
+      exportPanelReady = true
+      return mod
+    })
+    .catch(error => {
+      exportPanelPromise = null
+      throw error
+    })
+
+  return exportPanelPromise
+}
+
+function bindLazyExportAction (elementId, handlerName) {
+  const el = typeof document !== 'undefined' ? document.getElementById(elementId) : null
+  if (!el) return
+
+  el.addEventListener('click', async event => {
+    if (exportPanelReady) return
+
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    try {
+      const mod = await ensureExportPanelModule()
+      const handler = mod?.[handlerName]
+      if (typeof handler === 'function') {
+        handler(event)
+      }
+    } catch (error) {
+      console.error('Eksport-panel kunne ikke indlæses', error)
+      updateActionHint('Kunne ikke indlæse eksport-funktionerne. Prøv igen.', 'error')
+    }
+  }, { capture: true })
+}
+
+function setupLazyExportPanelTriggers () {
+  if (typeof document === 'undefined') return
+  const exportPanel = document.querySelector('.export-panel')
+  if (!exportPanel) return
+
+  const warmup = () => {
+    ensureExportPanelModule().catch(error => {
+      console.warn('Kunne ikke forberede eksportpanelet', error)
+    })
+  }
+
+  ;['pointerenter', 'touchstart', 'focusin'].forEach(eventName => {
+    exportPanel.addEventListener(eventName, warmup, { once: true })
+  })
+
+  bindLazyExportAction('btn-export-akkord-pdf', 'handleExportAkkordPDF')
+  bindLazyExportAction('btn-export-akkord-zip', 'handleExportAkkordZIP')
+  bindLazyExportAction('btn-export-akkord-json', 'handleExportAkkordJSON')
+  bindLazyExportAction('btn-import-akkord', 'handleImportAkkordAction')
+  bindLazyExportAction('btn-print-akkord', 'handlePrintAkkord')
+}
+
+async function ensureExportLibsLazy () {
+  if (!exportLibsLoader) {
+    exportLibsLoader = import('./src/features/export/lazy-libs.js')
+      .then(mod => mod.ensureExportLibs())
+  }
+  return exportLibsLoader
+}
+
+async function ensureZipLibLazy () {
+  if (!zipLibLoader) {
+    zipLibLoader = import('./src/features/export/lazy-libs.js')
+      .then(mod => mod.ensureZipLib())
+  }
+  return zipLibLoader
+}
+
+async function loadExcelExporter () {
+  if (!excelExporterLoader) {
+    excelExporterLoader = import('./src/export/akkord-excel.js')
+      .then(mod => mod.exportAkkordExcelForActiveJob)
+  }
+  return excelExporterLoader
+}
+
 const IOS_INSTALL_PROMPT_DISMISSED_KEY = 'csmate.iosInstallPromptDismissed'
 const TAB_STORAGE_KEY = 'csmate:lastTab'
 const LEGACY_TAB_STORAGE_KEYS = ['sscaff:lastTab', 'cssmate:lastActiveTab']
@@ -118,11 +210,51 @@ const PWA_INSTALL_CONSUMED_EVENT = 'csmate:pwa-install-consumed'
 let DEFAULT_ADMIN_CODE_HASH = ''
 let materialsVirtualListController = null
 let currentTabId = null
+let exportPanelReady = false
+let exportPanelPromise = null
+let exportLibsLoader = null
+let zipLibLoader = null
+let excelExporterLoader = null
 let tabButtons = []
 let tabPanels = []
 const domCache = new Map()
 let deferredInstallPromptEvent = null
 let historyPersistencePaused = false
+let materialsDataPromise = null
+let materialsUiReadyPromise = null
+
+function ensureMaterialsDataLoad () {
+  if (!materialsDataPromise) {
+    materialsDataPromise = ensureMaterialDatasets().catch(error => {
+      console.error('Kunne ikke indlæse materialelisterne.', error)
+      updateActionHint('Kunne ikke indlæse materialelisterne. Prøv at genindlæse siden.', 'error')
+      materialsDataPromise = null
+      throw error
+    })
+  }
+  return materialsDataPromise
+}
+
+function ensureMaterialsUiReady () {
+  if (!materialsUiReadyPromise) {
+    materialsUiReadyPromise = ensureMaterialsDataLoad()
+      .then(() => {
+        setupListSelectors()
+        renderOptaelling()
+        setupCSVImport()
+        populateRecentCases()
+        initExcelSystemSelector()
+        updateTotals(true)
+      })
+      .catch(error => {
+        console.error('Materiale-UI kunne ikke initialiseres', error)
+        updateActionHint('Kunne ikke initialisere materialelisterne. Opdater siden for at prøve igen.', 'error')
+        materialsUiReadyPromise = null
+        throw error
+      })
+  }
+  return materialsUiReadyPromise
+}
 
 function setDeferredInstallPromptEvent(event) {
   deferredInstallPromptEvent = event
@@ -465,6 +597,10 @@ function setActiveTab(tabId, { focus = false } = {}) {
       }
     }
   } catch {}
+
+  if (nextTabId === 'optaelling') {
+    ensureMaterialsUiReady().catch(() => {});
+  }
 
   if (focus && typeof nextButton.focus === 'function') {
     nextButton.focus();
@@ -2261,7 +2397,7 @@ async function downloadExcelPayloads(payloads, job) {
     triggerBlobDownload(files[0].blob, files[0].fileName);
     return { count: 1, zipped: false };
   }
-  const { JSZip } = await ensureZipLib();
+  const { JSZip } = await ensureZipLibLazy();
   const zip = new JSZip();
   files.forEach(entry => {
     zip.file(entry.fileName, entry.blob);
@@ -2288,7 +2424,10 @@ async function exportExcelSelection(job, systems) {
   if (requested.length === 0) {
     return { count: 0, zipped: false };
   }
-  const payloads = await exportAkkordExcelForActiveJob(job, requested);
+  const exportExcel = await loadExcelExporter();
+  const payloads = typeof exportExcel === 'function'
+    ? await exportExcel(job, requested)
+    : [];
   return downloadExcelPayloads(payloads, job);
 }
 
@@ -4045,7 +4184,7 @@ async function exportPDFBlob(customSagsnummer, options = {}) {
 
   document.body.appendChild(wrapper);
   try {
-    const { jsPDF, html2canvas } = await ensureExportLibs();
+    const { jsPDF, html2canvas } = await ensureExportLibsLazy();
     const canvas = await html2canvas(wrapper, { scale: 2, backgroundColor: '#ffffff' });
     const doc = new jsPDF({ unit: 'px', format: [canvas.width, canvas.height] });
     doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, canvas.width, canvas.height);
@@ -4085,7 +4224,7 @@ async function exportZip() {
     return;
   }
   try {
-    const { JSZip } = await ensureZipLib();
+    const { JSZip } = await ensureZipLibLazy();
     beregnLon();
     const csvPayload = buildCSVPayload(null, { skipValidation: true, skipBeregn: true });
     if (!csvPayload) return;
@@ -4433,13 +4572,6 @@ async function initApp() {
   if (appInitialized) return;
   appInitialized = true;
 
-  try {
-    await ensureMaterialDatasets();
-  } catch (error) {
-    console.error('Kunne ikke indlæse materialelisterne.', error);
-    updateActionHint('Kunne ikke indlæse materialelisterne. Prøv at genindlæse siden.', 'error');
-  }
-
   initTabs();
 
   const optaellingContainer = getDomElement('optaellingContainer');
@@ -4448,11 +4580,13 @@ async function initApp() {
     optaellingContainer.addEventListener('change', handleOptaellingInput);
   }
 
-  addWorker();
+  runWhenIdle(() => addWorker());
 
-  setupGuideModal();
-  setupAdminControls();
-  setupA9Integration();
+  runWhenIdle(() => {
+    setupGuideModal();
+    setupAdminControls();
+    setupA9Integration();
+  });
 
   document.getElementById('btnBeregnLon')?.addEventListener('click', () => beregnLon());
 
@@ -4496,11 +4630,19 @@ async function initApp() {
   });
 
   validateSagsinfo();
-  setupNumpad();
-  setupMobileKeyboardDismissal();
-  setupServiceWorkerMessaging();
-  setupPWAInstallPrompt();
-  setupZipExportHistoryHook();
+  runWhenIdle(() => {
+    setupNumpad();
+    setupMobileKeyboardDismissal();
+    setupLazyExportPanelTriggers();
+  });
+  runWhenIdle(() => {
+    setupServiceWorkerMessaging();
+    setupPWAInstallPrompt();
+  });
+  runWhenIdle(() => setupZipExportHistoryHook());
+  runWhenIdle(() => {
+    ensureMaterialsDataLoad()?.catch(() => {});
+  });
 
   document.getElementById('btnHardResetApp')?.addEventListener('click', () => {
     hardResetApp();
@@ -4521,21 +4663,6 @@ async function initApp() {
       }
     });
   }
-
-  ensureMaterialDatasets()
-    .then(() => {
-      setupListSelectors();
-      renderOptaelling();
-      setupCSVImport();
-      populateRecentCases();
-      initExportPanel();
-      initExcelSystemSelector();
-      updateTotals(true);
-    })
-    .catch(error => {
-      console.error('Materialelister kunne ikke indlæses', error);
-      updateActionHint('Kunne ikke indlæse materialelisterne. Opdater siden for at prøve igen.', 'error');
-    });
 }
 
 function startApp () {
