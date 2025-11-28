@@ -44,6 +44,19 @@ CSMate er en letvægtsudgave af den oprindelige Cssmate-applikation, målrettet 
   - `npm run build`
   - `npm test`
 
+## Brugerflow (kort)
+
+1. Udfyld **Sagsinfo** med nummer, navn, adresse, kunde, dato og montør.
+2. Vælg system i **Optælling** og indtast materialer via numpad.
+3. Gå til **Løn** for arbejdstype, timer, km og ekstraarbejde og tryk **Beregn løn**.
+4. Eksportér fra **Resultat/Eksport** (PDF/JSON/ZIP), eller genindlæs sager via **Historik**.
+5. Brug **Hjælp**-fanen for hurtige tips og fejlretning.
+
+## Admin-mode
+
+- Koden **StilAce** låser prisfelter og avancerede muligheder op til intern brug.
+- Almindelige brugere bør blive i normal tilstand; admin-mode ændrer ikke beregningslogikken.
+
 ## CODEx Autonomous CI Bootstrapper
 
 For fuldautomatisk CI/CD (inkl. Lighthouse, SW-validering, SuperTest og Netlify deploy) leveres scriptet `codex-bootstrap.js` i roden.
