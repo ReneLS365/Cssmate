@@ -4572,7 +4572,6 @@ async function initApp() {
   if (appInitialized) return;
   appInitialized = true;
 
-  ensureMaterialsDataLoad();
   initTabs();
 
   const optaellingContainer = getDomElement('optaellingContainer');
@@ -4581,11 +4580,13 @@ async function initApp() {
     optaellingContainer.addEventListener('change', handleOptaellingInput);
   }
 
-  addWorker();
+  runWhenIdle(() => addWorker());
 
-  setupGuideModal();
-  setupAdminControls();
-  setupA9Integration();
+  runWhenIdle(() => {
+    setupGuideModal();
+    setupAdminControls();
+    setupA9Integration();
+  });
 
   document.getElementById('btnBeregnLon')?.addEventListener('click', () => beregnLon());
 
@@ -4629,16 +4630,18 @@ async function initApp() {
   });
 
   validateSagsinfo();
-  setupNumpad();
-  setupMobileKeyboardDismissal();
-  setupLazyExportPanelTriggers();
+  runWhenIdle(() => {
+    setupNumpad();
+    setupMobileKeyboardDismissal();
+    setupLazyExportPanelTriggers();
+  });
   runWhenIdle(() => {
     setupServiceWorkerMessaging();
     setupPWAInstallPrompt();
   });
   runWhenIdle(() => setupZipExportHistoryHook());
   runWhenIdle(() => {
-    ensureMaterialsUiReady().catch(() => {});
+    ensureMaterialsDataLoad()?.catch(() => {});
   });
 
   document.getElementById('btnHardResetApp')?.addEventListener('click', () => {
