@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="print.css" media="print" onload="this.media='print'">
   <link rel="preload" href="src/styles/fixes.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
   <link rel="preload" href="/css/pwa.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <link rel="modulepreload" href="/main.min.js">
   <noscript>
     <link rel="stylesheet" href="css/numpad.css">
     <link rel="stylesheet" href="css/a9-calc.css">
@@ -514,7 +515,7 @@
     </div>
   </div>
 
-<script src="js/version.js"></script>
+<script src="js/version.js" defer></script>
 <script type="module" src="main.min.js" defer></script>
 <noscript><link rel="stylesheet" href="style.css"></noscript>
 <noscript><link rel="stylesheet" href="print.css" media="print"></noscript>
