@@ -29,6 +29,7 @@ CSMate er en letvægtsudgave af den oprindelige Cssmate-applikation, målrettet 
 - `npm run test:links` – crawler projektroden og sikrer at interne links virker.
 - `npm run test:lh:mobile` – kører Lighthouse mod et givent URL (default `LHCI_URL`) med mobilprofil og deterministiske throttling-flags.
 - `npm run test:lh:enforce` – læser `docs/lighthouse/latest-mobile.json` og fejler hvis scorerne falder.
+- `npm run test:export` – bygger, mocker eksport-flowet og validerer JSON/PDF/ZIP-indholdet.
 - `npm run test:super` – kombineret testflow der kører build + samtlige audits.
 - `npm run release:guard` – samlekommando til PR/merge, kører hele test:super-flowet og validerer at Lighthouse-rapporten scorer 1.0 i alle kategorier.
 - `npm run dev:mat-debug` – starter en stille http-server på port 4174 for at inspicere debug-sider som `debug/material-row-debug.html`.
@@ -37,14 +38,14 @@ CSMate er en letvægtsudgave af den oprindelige Cssmate-applikation, målrettet 
 
 ## CI & Codex
 
-- Push og PR mod `main` kører automatisk GitHub Actions, som bygger, kører tests (`npm test`) og laver et Lighthouse-check med tærskel 0,95 på alle kategorier.
-- Nightly workflow kører dagligt kl. 03:00 UTC med `npm ci`, `npm run build` og hele testsuiten (inkl. app-flow smoken), så buildet forbliver sundt.
+- Push og PR mod `main` kører automatisk GitHub Actions, som bygger, kører tests (`npm test` + `npm run test:export`) og laver et Lighthouse-check med tærskel 0,95 på alle kategorier (performance gate på ≥0,95).
+- Nightly workflow kører dagligt kl. 03:00 UTC med `npm ci`, `npm run build`, export-test og hele testsuiten (inkl. app-flow smoken), så buildet forbliver sundt.
 - Lokalt kan du spejle CI ved at køre:
   - `npm ci`
   - `npm run build`
   - `npm test`
 
-Se også `docs/stage8.md` for den afsluttende QA-checkliste (eksport/round-trip, Lighthouse ≥ 0.95, fuld testpakke og manuel flow-smoke), som bør gennemføres før release. For fuld automatisering af QA-flowet, se `docs/stage9.md` om automatiske eksport-tests, CI-gating og Lighthouse-krav.
+Se også `docs/stage8.md` for den afsluttende QA-checkliste (eksport/round-trip, Lighthouse ≥ 0.95, fuld testpakke og manuel flow-smoke), som bør gennemføres før release. For fuld automatisering af QA-flowet, kør `npm ci && npm run build && npm test && npm run test:export` lokalt – samme flow som i CI.
 
 ## Brugerflow (kort)
 

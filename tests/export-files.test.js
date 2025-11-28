@@ -1,0 +1,180 @@
+import assert from 'node:assert/strict'
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { promisify } from 'node:util'
+import { exec as execCallback } from 'node:child_process'
+import JSZip from 'jszip'
+import test, { before } from 'node:test'
+import { PDFDocument, StandardFonts } from 'pdf-lib'
+
+const exec = promisify(execCallback)
+
+function createTestData () {
+  return {
+    info: {
+      sagsnummer: 'SA-EXPORT-1',
+      kunde: 'Test Kunde',
+      adresse: 'Eksempelvej 1',
+      navn: 'Testsag',
+      dato: '2024-05-10',
+      montoer: 'Montør M',
+    },
+    meta: {
+      excelSystems: [],
+    },
+    materials: [
+      {
+        id: 'MAT-001',
+        name: 'Testmateriale',
+        quantity: 2,
+        price: 125,
+        system: 'bosta',
+        kategori: 'test',
+        enhed: 'stk',
+      },
+    ],
+    extras: {
+      kmBelob: 100,
+    },
+    extraInputs: {
+      km: 10,
+      slaebePctInput: 5,
+    },
+    tralleState: {
+      n35: 1,
+      n50: 0,
+      sum: 10.44,
+    },
+    totals: {
+      projektsum: 360,
+      totalAkkord: 360,
+      totalMaterialer: 250,
+      slaebBelob: 18.22,
+    },
+    jobType: 'montage',
+    jobFactor: 1,
+  }
+}
+
+async function createMinimalPdf (text) {
+  const pdfDoc = await PDFDocument.create()
+  pdfDoc.setTitle(String(text))
+  pdfDoc.setSubject(String(text))
+  const page = pdfDoc.addPage()
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
+  const { height } = page.getSize()
+  page.drawText(String(text), { x: 48, y: height - 72, size: 12, font })
+  const bytes = await pdfDoc.save({ useObjectStreams: false, compress: false })
+  return Buffer.from(bytes)
+}
+
+before(async () => {
+  await exec('npm run build')
+})
+
+test('generates and validates JSON, PDF, and ZIP exports', async t => {
+  const { buildAkkordJsonPayload } = await import('../js/export-json.js')
+  const data = createTestData()
+  const tmpDir = await mkdtemp(join(tmpdir(), 'cssmate-export-'))
+
+  const jsonPayload = buildAkkordJsonPayload(data, data.info.sagsnummer, { skipValidation: true, skipBeregn: true })
+  assert.ok(jsonPayload?.content, 'JSON payload exists')
+  await writeFile(join(tmpDir, jsonPayload.fileName), jsonPayload.content, 'utf8')
+
+  const parsedJson = JSON.parse(jsonPayload.content)
+  assert.equal(parsedJson.info.sagsnummer, data.info.sagsnummer)
+  assert.equal(parsedJson.info.kunde, data.info.kunde)
+  assert.ok(Array.isArray(parsedJson.materials) || Array.isArray(parsedJson.materialer))
+
+  const pdfBuffer = await createMinimalPdf(`Sagsnummer: ${data.info.sagsnummer} - Kunde: ${data.info.kunde} - Sum: ${data.totals.projektsum}`)
+
+  const { exportZipFromAkkord, setZipExportDependencies } = await import('../js/export-zip.js')
+  setZipExportDependencies({
+    ensureZipLib: async () => ({ JSZip }),
+    exportPDFBlob: async () => ({
+      blob: pdfBuffer,
+      fileName: `${jsonPayload.baseName}.pdf`,
+    }),
+  })
+
+  const downloads = []
+  const anchors = []
+  const originalURL = globalThis.URL
+  const originalDocument = globalThis.document
+  const originalWindow = globalThis.window
+  const originalCustomEvent = globalThis.CustomEvent
+
+  globalThis.URL = {
+    createObjectURL: (blob) => {
+      downloads.push(blob)
+      return 'blob:mock-url'
+    },
+    revokeObjectURL: () => {},
+  }
+
+  globalThis.document = {
+    querySelector: () => null,
+    getElementsByTagName: () => [],
+    createElement: () => {
+      const anchor = {
+        href: '',
+        download: '',
+        click() { anchors.push({ href: this.href, download: this.download }) },
+        remove() {},
+      }
+      return anchor
+    },
+    body: {
+      appendChild() {},
+      removeChild() {},
+    },
+    defaultView: {},
+  }
+
+  globalThis.window = {
+    cssmateUpdateActionHint() {},
+    dispatchEvent() {},
+  }
+
+  globalThis.CustomEvent = class {
+    constructor (type, options = {}) {
+      this.type = type
+      this.detail = options.detail
+    }
+  }
+
+  t.after(() => {
+    setZipExportDependencies({})
+    globalThis.URL = originalURL
+    globalThis.document = originalDocument
+    globalThis.window = originalWindow
+    globalThis.CustomEvent = originalCustomEvent
+  })
+
+  const zipResult = await exportZipFromAkkord(data, { baseName: jsonPayload.baseName })
+  assert.ok(zipResult?.files?.length > 0, 'ZIP export reports files')
+  assert.ok(anchors.some(entry => entry.download.endsWith('.zip')), 'ZIP download is triggered')
+
+  const [zipBlob] = downloads.slice(-1)
+  const zipBuffer = Buffer.from(await zipBlob.arrayBuffer())
+  const zip = await JSZip.loadAsync(zipBuffer)
+
+  const zipJsonFiles = zip.filter((path) => path.endsWith('.json'))
+  assert.ok(zipJsonFiles.length === 1, 'ZIP contains JSON file')
+  const zippedJsonContent = await zipJsonFiles[0].async('string')
+  assert.equal(zippedJsonContent.trim(), jsonPayload.content.trim(), 'JSON inside ZIP matches standalone export')
+
+  const zipPdfFiles = zip.filter((path) => path.endsWith('.pdf'))
+  assert.ok(zipPdfFiles.length === 1, 'ZIP contains PDF file')
+  globalThis.URL = originalURL
+  globalThis.document = originalDocument
+  globalThis.window = originalWindow
+  globalThis.CustomEvent = originalCustomEvent
+  const zippedPdfBuffer = await zipPdfFiles[0].async('nodebuffer')
+  const parsedPdfDoc = await PDFDocument.load(zippedPdfBuffer)
+  const parsedTitle = parsedPdfDoc.getTitle() || ''
+  assert.match(parsedTitle, /SA-EXPORT-1/, 'PDF includes sagsnummer')
+  assert.match(parsedTitle, /Test Kunde/, 'PDF includes customer')
+  assert.match(parsedTitle, /360/, 'PDF includes sum')
+})
