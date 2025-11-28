@@ -83,12 +83,19 @@ export async function exportZipFromAkkord(data, options = {}) {
 
   const files = [];
   const excelSelection = normalizeExcelSystems(options.excelSystems || safeData.excelSystems || safeData.meta?.excelSystems);
+  const folders = {
+    pdf: zip.folder('pdf'),
+    json: zip.folder('json'),
+    excel: zip.folder('excel'),
+    csv: zip.folder('csv'),
+  };
 
   try {
     const jsonPayload = buildAkkordJsonPayload(safeData, baseName, { skipValidation: true, skipBeregn: true });
     if (!jsonPayload?.content) throw new Error('JSON eksport fejlede');
-    zip.file(jsonPayload.fileName, jsonPayload.content);
-    files.push(jsonPayload.fileName);
+    const jsonPath = folders.json ? `json/${jsonPayload.fileName}` : jsonPayload.fileName;
+    (folders.json || zip).file(jsonPayload.fileName, jsonPayload.content);
+    files.push(jsonPath);
 
     const pdfPayload = await exportPDFBlob(safeData, {
       skipValidation: false,
@@ -97,8 +104,9 @@ export async function exportZipFromAkkord(data, options = {}) {
     });
     if (!pdfPayload?.blob) throw new Error('PDF eksport fejlede');
     const pdfName = pdfPayload.fileName || `${baseName}.pdf`;
-    zip.file(pdfName, pdfPayload.blob);
-    files.push(pdfName);
+    const pdfPath = folders.pdf ? `pdf/${pdfName}` : pdfName;
+    (folders.pdf || zip).file(pdfName, pdfPayload.blob);
+    files.push(pdfPath);
 
     if (excelSelection.length > 0) {
       const excelPayloads = await exportExcelFromAkkordData(safeData, excelSelection);
@@ -107,8 +115,9 @@ export async function exportZipFromAkkord(data, options = {}) {
       } else {
         excelPayloads.forEach(entry => {
           if (!entry?.blob || !entry?.fileName) return;
-          zip.file(entry.fileName, entry.blob);
-          files.push(entry.fileName);
+          const path = folders.excel ? `excel/${entry.fileName}` : entry.fileName;
+          (folders.excel || zip).file(entry.fileName, entry.blob);
+          files.push(path);
         });
       }
     }
@@ -116,8 +125,9 @@ export async function exportZipFromAkkord(data, options = {}) {
     try {
       const csv = buildAkkordCSV(safeData);
       const csvName = `${baseName}.csv`;
-      zip.file(csvName, csv);
-      files.push(csvName);
+      const csvPath = folders.csv ? `csv/${csvName}` : csvName;
+      (folders.csv || zip).file(csvName, csv);
+      files.push(csvPath);
     } catch (error) {
       console.error('CSV eksport fejlede', error);
     }

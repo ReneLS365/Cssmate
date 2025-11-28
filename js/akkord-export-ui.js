@@ -43,6 +43,7 @@ function handlePrintAkkord(event) {
 function handleExportAkkordPDF(event) {
   const button = event?.currentTarget;
   const done = setBusy(button, true);
+  notifyAction('Eksporterer akkordseddel (PDF)…', 'info');
   const data = buildAkkordDataImpl();
   const meta = getExportMeta(data);
   const baseName = buildBaseName(meta);
@@ -65,6 +66,7 @@ function handleExportAkkordJSON(event) {
   const button = event?.currentTarget;
   const done = setBusy(button, true);
   try {
+    notifyAction('Eksporterer akkordseddel (JSON)…', 'info');
     const data = buildAkkordDataImpl();
     const meta = getExportMeta(data);
     const baseName = buildBaseName(meta);
@@ -91,11 +93,16 @@ function handleExportAkkordZIP(event) {
   const done = setBusy(button, true);
   const data = buildAkkordDataImpl();
   const baseName = buildBaseName(getExportMeta(data));
+  notifyAction('Pakker ZIP med PDF/JSON…', 'info');
   exportZipFromAkkordImpl(data, { baseName })
-    .then(() => notifyAction('ZIP er klar til download.', 'success'))
+    .then(({ zipName, files } = {}) => {
+      notifyAction('ZIP er klar til download.', 'success');
+      notifyHistory('zip', { baseName, fileName: zipName, files });
+    })
     .catch((err) => {
       console.error('ZIP export failed', err);
-      notifyAction('ZIP eksport fejlede. Prøv igen.', 'error');
+      const message = err?.message ? `ZIP eksport fejlede: ${err.message}` : 'ZIP eksport fejlede. Prøv igen.';
+      notifyAction(message, 'error');
     })
     .finally(() => done());
 }
@@ -108,7 +115,8 @@ async function handleImportAkkordAction(event) {
     notifyAction('Import gennemført.', 'success');
   } catch (error) {
     console.error('Import akkordseddel failed', error);
-    notifyAction('Import fejlede. Prøv igen.', 'error');
+    const message = error?.message ? `Import fejlede: ${error.message}` : 'Import fejlede. Prøv igen.';
+    notifyAction(message, 'error');
   } finally {
     done();
   }
