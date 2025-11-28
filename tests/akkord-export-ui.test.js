@@ -112,17 +112,20 @@ test('export buttons trigger their actions correctly', async t => {
   assert.equal(akkordDataMock.mock.calls.length, 1, 'akkord data built for PDF');
   assert.equal(exportPDFBlobMock.mock.calls.length, 1, 'PDF export invoked');
   assert.equal(downloads[0]?.download, 'custom.pdf', 'PDF download is queued');
-  assert.deepEqual(actionHints[1], { message: 'PDF er gemt til din enhed.', variant: 'success' });
+  assert.deepEqual(actionHints[1], { message: 'Eksporterer akkordseddel (PDF)…', variant: 'info' });
+  assert.deepEqual(actionHints[2], { message: 'PDF er gemt til din enhed.', variant: 'success' });
 
   await buttons['#btn-export-akkord-zip'].click();
   assert.equal(akkordDataMock.mock.calls.length, 2, 'akkord data built for ZIP');
   assert.equal(exportZipFromAkkordMock.mock.calls.length, 1, 'ZIP export invoked');
-  assert.deepEqual(actionHints[2], { message: 'ZIP er klar til download.', variant: 'success' });
+  assert.deepEqual(actionHints[3], { message: 'Pakker ZIP med PDF/JSON…', variant: 'info' });
+  assert.deepEqual(actionHints[4], { message: 'ZIP er klar til download.', variant: 'success' });
 
   await buttons['#btn-export-akkord-json'].click();
   assert.equal(akkordDataMock.mock.calls.length, 3, 'akkord data built for JSON');
   assert.equal(downloads[1]?.download, 'SA-1-Kunde-2024-05-10.json', 'JSON download is queued');
-  assert.deepEqual(actionHints[3], { message: 'Akkordseddel (JSON) er gemt.', variant: 'success' });
+  assert.deepEqual(actionHints[5], { message: 'Eksporterer akkordseddel (JSON)…', variant: 'info' });
+  assert.deepEqual(actionHints[6], { message: 'Akkordseddel (JSON) er gemt.', variant: 'success' });
 
   await buttons['#btn-import-akkord'].click();
   assert.equal(handleImportAkkordMock.mock.calls.length, 1, 'import handler invoked');
@@ -165,5 +168,5 @@ test('import button reports failures to the user', async t => {
 
   assert.equal(handleImportAkkordMock.mock.calls.length, 1, 'import handler invoked');
   assert.equal(consoleError.mock.calls.length, 1, 'import errors are logged');
-  assert.deepEqual(actionHints[0], { message: 'Import fejlede. Prøv igen.', variant: 'error' });
+  assert.deepEqual(actionHints[0], { message: 'Import fejlede: boom', variant: 'error' });
 });

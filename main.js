@@ -161,11 +161,23 @@ function setupLazyExportPanelTriggers () {
     ensureExportPanelModule().catch(error => {
       console.warn('Kunne ikke forberede eksportpanelet', error)
     })
+    ensureExportLibsLazy()?.catch?.(error => console.warn('Kunne ikke loade eksportlibs', error))
+    ensureZipLibLazy()?.catch?.(error => console.warn('Kunne ikke loade ZIP-lib', error))
   }
 
   ;['pointerenter', 'touchstart', 'focusin'].forEach(eventName => {
     exportPanel.addEventListener(eventName, warmup, { once: true })
   })
+
+  if ('IntersectionObserver' in window) {
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) {
+        warmup()
+        observer.disconnect()
+      }
+    }, { rootMargin: '128px' })
+    observer.observe(exportPanel)
+  }
 
   bindLazyExportAction('btn-export-akkord-pdf', 'handleExportAkkordPDF')
   bindLazyExportAction('btn-export-akkord-zip', 'handleExportAkkordZIP')
@@ -3077,11 +3089,21 @@ async function handleAkkordImport(file) {
   if (!file) return;
   try {
     const text = await file.text();
-    const parsed = JSON.parse(text);
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (error) {
+      throw new Error('Ugyldig JSON-fil. Kunne ikke læse eksporten.');
+    }
+    if (!parsed || typeof parsed !== 'object') {
+      throw new Error('Importfilen har et ukendt format.');
+    }
     applyImportedAkkordData(parsed);
   } catch (error) {
     console.error('Kunne ikke importere akkordseddel', error);
-    updateActionHint('Kunne ikke importere akkordseddel-filen.', 'error');
+    const message = error?.message || 'Kunne ikke importere akkordseddel-filen.';
+    updateActionHint(message, 'error');
+    throw error;
   }
 }
 
