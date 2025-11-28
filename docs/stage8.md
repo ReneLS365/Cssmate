@@ -24,7 +24,7 @@ Denne fase samler QA-arbejdet efter Stage 1-7 og fokuserer på eksporternes korr
 2. Bekræft, at treosh/lighthouse-ci-action passerer i CI. Undersøg og optimér (uden logikændringer) hvis scoren svinger under målet.
 
 ### 3. Build og tests
-1. Kør `npm ci`, `npm run build` og alle relevante `npm run test:*`-scripts (fx HTML/links/Lighthouse/SuperTest) samt `npm test`. Inkludér `npm run test:export` for at validere JSON/PDF/ZIP automatisk.
+1. Kør `npm ci`, `npm run build` og alle relevante `npm run test:*`-scripts (fx HTML/links/Lighthouse/SuperTest) samt `npm test`. Inkludér `npm run test:export` for at validere JSON/PDF/ZIP automatisk, og vær opmærksom på at Lighthouse-performance skal lande på mindst 0,95 (grænsen håndhæves via `.lighthouserc.json`).
 2. Fiks alle fejl og advarsler. CI-workflows (inkl. nightly og Lighthouse-job) skal være grønne.
 
 ### 4. Manuel fuld flow-test
@@ -37,7 +37,8 @@ Denne fase samler QA-arbejdet efter Stage 1-7 og fokuserer på eksporternes korr
 - Kør `npm run format-check` og `npm run lint` (hvis tilgængelige) for at sikre style/lint-hygiejne.
 - `npm run build` må ikke udløse warnings. Håndtér sikre warnings hvis de dukker op.
 - `npm run test:export` skal være grøn (JSON/PDF/ZIP valideres mod testdata).
+- Lighthouse skal rapportere ≥ 0,95 i performance (krav i CI-konfigurationen).
 
 ## PR-krav
-- PR skal kort opsummere eksport-/import-validering, Lighthouse-resultater (≥ 0.95), teststatus og resultat af den manuelle fuld flow-test. Inkludér status for `npm run test:export` og performance-gaten (performance ≥ 0.95).
+- PR skal kort opsummere eksport-/import-validering, Lighthouse-resultater (≥ 0.95), teststatus og resultat af den manuelle fuld flow-test. Inkludér status for `npm run test:export` og performance-gaten (performance ≥ 0.95 og fejler PR'en hvis den underskrides).
 - Ingen logikændringer af priser eller satser i Stage 8; fokus er på robusthed, tests og performance.

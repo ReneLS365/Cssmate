@@ -38,14 +38,14 @@ CSMate er en letvægtsudgave af den oprindelige Cssmate-applikation, målrettet 
 
 ## CI & Codex
 
-- Push og PR mod `main` kører automatisk GitHub Actions, som bygger, kører tests (`npm test` + `npm run test:export`) og laver et Lighthouse-check med tærskel 0,95 på alle kategorier (performance gate på ≥0,95).
+- Push og PR mod `main` kører automatisk GitHub Actions, som bygger, kører tests (`npm test` + `npm run test:export`) og laver et Lighthouse-check med tærskel 0,95 på alle kategorier (performance gate er eksplicit sat til ≥0,95).
 - Nightly workflow kører dagligt kl. 03:00 UTC med `npm ci`, `npm run build`, export-test og hele testsuiten (inkl. app-flow smoken), så buildet forbliver sundt.
 - Lokalt kan du spejle CI ved at køre:
   - `npm ci`
   - `npm run build`
   - `npm test`
 
-Se også `docs/stage8.md` for den afsluttende QA-checkliste (eksport/round-trip, Lighthouse ≥ 0.95, fuld testpakke og manuel flow-smoke), som bør gennemføres før release. For fuld automatisering af QA-flowet, kør `npm ci && npm run build && npm test && npm run test:export` lokalt – samme flow som i CI.
+Se også `docs/stage8.md` for den afsluttende QA-checkliste (eksport/round-trip, Lighthouse ≥ 0.95, fuld testpakke og manuel flow-smoke), som bør gennemføres før release. For fuld automatisering af QA-flowet, kør `npm ci && npm run build && npm test && npm run test:export` lokalt – samme flow som i CI, hvor performance-gaten fejler PR'en hvis scoren er under 0,95.
 
 ## Brugerflow (kort)
 
