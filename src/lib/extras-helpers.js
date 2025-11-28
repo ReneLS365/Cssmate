@@ -23,3 +23,28 @@ export function resolveKmInputValue(extras = {}, kmRate = DEFAULT_KM_RATE) {
 
   return '';
 }
+
+export function mergeExtrasKm(extras = {}, extraInputs = {}, kmRate = DEFAULT_KM_RATE) {
+  const merged = { ...(extras || {}) };
+  const kmFromInputs = Number(extraInputs?.km);
+  if (Number.isFinite(kmFromInputs)) {
+    if (!Number.isFinite(merged.kmAntal)) merged.kmAntal = kmFromInputs;
+    if (!Number.isFinite(merged.kmBelob) && Number.isFinite(kmRate)) {
+      merged.kmBelob = kmFromInputs * kmRate;
+    }
+  }
+
+  if (!Number.isFinite(merged.kmBelob) && merged.kmIsAmount && Number.isFinite(merged.km)) {
+    merged.kmBelob = merged.km;
+  }
+
+  if (Number.isFinite(merged.kmAntal) && !Number.isFinite(merged.kmBelob) && Number.isFinite(kmRate)) {
+    merged.kmBelob = merged.kmAntal * kmRate;
+  }
+
+  if (Number.isFinite(merged.kmBelob) && !('kmIsAmount' in merged)) {
+    merged.kmIsAmount = true;
+  }
+
+  return merged;
+}
