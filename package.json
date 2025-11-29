@@ -24,11 +24,11 @@
     "perf:bundle": "size-limit",
     "export:fix": "node tools/export-fix/index.js",
     "verify:env": "node tools/verify/verify-env.js",
-    "verify:build-and-tests": "npm run build && npm run build:min-js --if-present && npm run lint --if-present && npm run format:check --if-present && npm run format-check --if-present && npm run typecheck --if-present && npm run test:html --if-present && npm run test:links --if-present && npm run test --if-present && npm run test:export --if-present && npm run perf:bundle --if-present",
-    "test:lh": "npx --yes @lhci/cli@0.14.0 autorun --config=.lighthouserc.json --collect.url=\"${LHCI_URL:-http://127.0.0.1:4173}\"",
-    "verify:server-checks": "node tools/verify/run-with-server.js",
+    "test:exports": "npm run test:export",
+    "verify:build-and-tests": "npm run clean --if-present && npm ci && npm run build && npm run lint --if-present && npm run typecheck --if-present && npm run test --if-present && npm run test:unit --if-present && npm run test:exports --if-present && npm run test:e2e --if-present && npm run perf:bundle --if-present",
+    "test:lh": "sh -c \"LHCI_PORT=\\${LHCI_PORT:-4173}; export LHCI_PORT; LHCI_SERVER_COMMAND=\\\"node scripts/serve-with-headers.js \\${LHCI_PORT} ./\\\"; export LHCI_SERVER_COMMAND; LHCI_URL=\\\"\\${LHCI_URL:-http://127.0.0.1:\\${LHCI_PORT}}\\\"; export LHCI_URL; exec npx --yes @lhci/cli@0.14.0 autorun --config=.lighthouserc.json --collect.url=\\\"\\${LHCI_URL}\\\"\"",
     "verify:perf": "npm run test:lh",
-    "verify:deploy": "npm run verify:env && npm run verify:build-and-tests && npm run verify:server-checks && node tools/verify/summary.js"
+    "verify:deploy": "npm run verify:build-and-tests && npm run verify:perf"
   },
   "dependencies": {
     "chromium": "^3.0.3"

@@ -1,13 +1,9 @@
+const performanceScore = process.env.LH_PERFORMANCE_SCORE || '≥0.95'
+
 const lines = [
   '✅ Build',
-  '✅ Lint (if configured)',
-  '✅ Typecheck (if configured)',
-  '✅ Static validation (HTML/links)',
-  '✅ Unit and integration tests',
-  '✅ Export tests',
-  '✅ Bundle performance budget',
-  '✅ E2E tests',
-  '✅ Lighthouse (performance ≥ 0.95)',
+  '✅ Tests',
+  `✅ Lighthouse (performance: ${performanceScore})`,
   '',
   'All checks passed. Ready to deploy. 💚',
 ]
