@@ -57,7 +57,7 @@ Se også `docs/stage8.md` for den afsluttende QA-checkliste (eksport/round-trip,
 
 ## Admin-mode
 
-- Koden **StilAce** låser prisfelter og avancerede muligheder op til intern brug.
+- Admin-kode udleveres af administrator og låser prisfelter og avancerede muligheder op til intern brug.
 - Almindelige brugere bør blive i normal tilstand; admin-mode ændrer ikke beregningslogikken.
 
 ## CODEx Autonomous CI Bootstrapper

@@ -757,6 +757,16 @@ let lastEkompletData = null;
 let lastJobSummary = null;
 let recentCasesCache = [];
 
+function buildHistoryKey (data) {
+  const info = data?.sagsinfo || {};
+  const sagsnummer = (info.sagsnummer || '').trim().toLowerCase();
+  if (sagsnummer) return `case:${sagsnummer}`;
+  const navn = (info.navn || '').trim().toLowerCase();
+  const kunde = (info.kunde || '').trim().toLowerCase();
+  if (navn || kunde) return `case:${navn}|${kunde}`;
+  return null;
+}
+
 function syncRecentProjectsGlobal(entries = recentCasesCache) {
   if (typeof window === 'undefined') return;
   const payload = Array.isArray(entries) ? entries.slice() : [];
@@ -1576,13 +1586,42 @@ async function saveProject(data) {
       tx.onerror = () => reject(tx.error || new Error('Transaktionen fejlede'));
     });
     const store = tx.objectStore(DB_STORE);
-    await promisifyRequest(store.add({ data, ts: Date.now() }));
-    const all = await promisifyRequest(store.getAll());
-    if (Array.isArray(all) && all.length > 20) {
-      all.sort((a, b) => (a.ts || 0) - (b.ts || 0));
-      const excess = all.length - 20;
-      for (let index = 0; index < excess; index += 1) {
-        const item = all[index];
+    const now = Date.now();
+    const historyKey = buildHistoryKey(data);
+    const existing = await promisifyRequest(store.getAll());
+    const match = historyKey && Array.isArray(existing)
+      ? existing.find(entry => buildHistoryKey(entry?.data) === historyKey)
+      : null;
+    const record = match && match.id != null
+      ? { ...match, data, ts: now, id: match.id }
+      : { data, ts: now };
+
+    if (record.id != null) {
+      await promisifyRequest(store.put(record));
+    } else {
+      await promisifyRequest(store.add(record));
+    }
+
+    const afterSave = await promisifyRequest(store.getAll());
+    const sorted = Array.isArray(afterSave)
+      ? afterSave.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0))
+      : [];
+    const seenKeys = new Set();
+    const survivors = [];
+    for (const entry of sorted) {
+      const key = buildHistoryKey(entry?.data) || `id:${entry?.id}`;
+      if (seenKeys.has(key)) {
+        if (entry && entry.id != null) {
+          await promisifyRequest(store.delete(entry.id));
+        }
+        continue;
+      }
+      seenKeys.add(key);
+      survivors.push(entry);
+    }
+    if (survivors.length > 20) {
+      const excess = survivors.slice(20);
+      for (const item of excess) {
         if (item && item.id != null) {
           await promisifyRequest(store.delete(item.id));
         }

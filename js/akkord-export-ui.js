@@ -40,26 +40,28 @@ function handlePrintAkkord(event) {
   done();
 }
 
-function handleExportAkkordPDF(event) {
+async function handleExportAkkordPDF(event) {
   const button = event?.currentTarget;
   const done = setBusy(button, true);
-  notifyAction('Eksporterer akkordseddel (PDF)…', 'info');
-  const data = buildAkkordDataImpl();
-  const meta = getExportMeta(data);
-  const baseName = buildBaseName(meta);
-  exportPDFBlobImpl(data, { skipValidation: false, skipBeregn: false, customSagsnummer: meta.sagsnummer })
-    .then((payload) => {
-      if (!payload?.blob) throw new Error('Mangler PDF payload');
-      const filename = payload.fileName || `${baseName}.pdf`;
-      downloadBlob(payload.blob, filename);
-      notifyAction('PDF er gemt til din enhed.', 'success');
-      notifyHistory('pdf', { baseName, fileName: filename });
-    })
-    .catch((error) => {
-      console.error('PDF export failed', error);
-      notifyAction('PDF eksport fejlede. Prøv igen.', 'error');
-    })
-    .finally(() => done());
+  try {
+    notifyAction('Eksporterer akkordseddel (PDF)…', 'info');
+    const data = buildAkkordDataImpl();
+    if (!data) throw new Error('Mangler data til PDF');
+    const meta = getExportMeta(data);
+    const baseName = buildBaseName(meta);
+    const payload = await exportPDFBlobImpl(data, { skipValidation: false, skipBeregn: false, customSagsnummer: meta.sagsnummer });
+    if (!payload?.blob) throw new Error('Mangler PDF payload');
+    const filename = payload.fileName || `${baseName}.pdf`;
+    downloadBlob(payload.blob, filename);
+    notifyAction('PDF er gemt til din enhed.', 'success');
+    notifyHistory('pdf', { baseName, fileName: filename });
+  } catch (error) {
+    console.error('PDF export failed', error);
+    const message = error?.message ? `PDF eksport fejlede: ${error.message}` : 'PDF eksport fejlede. Prøv igen.';
+    notifyAction(message, 'error');
+  } finally {
+    done();
+  }
 }
 
 function handleExportAkkordJSON(event) {
