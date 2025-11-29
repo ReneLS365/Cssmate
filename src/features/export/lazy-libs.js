@@ -5,21 +5,34 @@ const JSPDF_URL = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.es.min.js
 const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.esm.js'
 const JSZIP_URL = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.esm.min.js'
 
+const JSPDF_FALLBACK = new URL('../../../js/vendor/jspdf-esm-wrapper.js', import.meta.url).href
+const HTML2CANVAS_FALLBACK = new URL('../../../js/vendor/html2canvas.esm.js', import.meta.url).href
+const JSZIP_FALLBACK = new URL('../../../js/vendor/jszip-esm-wrapper.js', import.meta.url).href
+
+async function importWithFallback(primaryUrl, fallbackUrl) {
+  try {
+    return await import(primaryUrl)
+  } catch (error) {
+    console.warn(`Kunne ikke indlæse ${primaryUrl}, bruger lokal fallback`, error)
+    return import(fallbackUrl)
+  }
+}
+
 async function loadJsPDF () {
-  const mod = await import(JSPDF_URL)
+  const mod = await importWithFallback(JSPDF_URL, JSPDF_FALLBACK)
   if (mod?.jsPDF) return mod.jsPDF
   if (mod?.default?.jsPDF) return mod.default.jsPDF
   return mod?.default || mod
 }
 
 async function loadHtml2Canvas () {
-  const mod = await import(HTML2CANVAS_URL)
+  const mod = await importWithFallback(HTML2CANVAS_URL, HTML2CANVAS_FALLBACK)
   return mod?.default || mod?.html2canvas || mod
 }
 
 async function loadJSZip () {
-  const mod = await import(JSZIP_URL)
-  return mod?.default || mod
+  const mod = await importWithFallback(JSZIP_URL, JSZIP_FALLBACK)
+  return mod?.JSZip || mod?.default || mod
 }
 
 export async function ensureExportLibs () {
