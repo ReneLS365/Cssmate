@@ -234,6 +234,7 @@ let deferredInstallPromptEvent = null
 let historyPersistencePaused = false
 let materialsDataPromise = null
 let materialsUiReadyPromise = null
+let materialsWarmupScheduled = false
 
 function ensureMaterialsDataLoad () {
   if (!materialsDataPromise) {
@@ -245,6 +246,16 @@ function ensureMaterialsDataLoad () {
     })
   }
   return materialsDataPromise
+}
+
+function warmupMaterialsDataLoad () {
+  if (materialsWarmupScheduled) return
+  materialsWarmupScheduled = true
+  runWhenIdle(() => {
+    ensureMaterialsDataLoad()?.catch(() => {
+      materialsWarmupScheduled = false
+    })
+  })
 }
 
 function ensureMaterialsUiReady () {
@@ -639,6 +650,14 @@ function initTabs() {
     button.addEventListener('click', () => setActiveTab(tabId));
     button.addEventListener('keydown', event => handleTabKeydown(event, index));
   });
+
+  const optaellingButton = tabButtons.find(button => button.dataset.tabId === 'optaelling')
+  if (optaellingButton) {
+    const scheduleWarmup = () => warmupMaterialsDataLoad()
+    ;['pointerenter', 'touchstart', 'focusin'].forEach(eventName => {
+      optaellingButton.addEventListener(eventName, scheduleWarmup, { once: true, passive: true })
+    })
+  }
 
   const storedTabId = getStoredTabId();
   const initialTabId = tabButtons.some(button => button.dataset.tabId === storedTabId)
@@ -4724,9 +4743,6 @@ async function initApp() {
     setupPWAInstallPrompt();
   });
   runWhenIdle(() => setupZipExportHistoryHook());
-  runWhenIdle(() => {
-    ensureMaterialsDataLoad()?.catch(() => {});
-  });
 
   document.getElementById('btnHardResetApp')?.addEventListener('click', () => {
     hardResetApp();
