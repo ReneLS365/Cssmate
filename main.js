@@ -2254,8 +2254,9 @@ function normalizeImportedJsonSnapshot(snapshot = {}) {
   return normalizeLegacyJsonSnapshot(snapshot);
 }
 
-function applyProjectSnapshot(snapshot, options = {}) {
+async function applyProjectSnapshot(snapshot, options = {}) {
   if (!snapshot || typeof snapshot !== 'object') return;
+  await ensureMaterialsDataLoad();
   const info = snapshot.sagsinfo || {};
   setSagsinfoField('sagsnummer', info.sagsnummer || '');
   setSagsinfoField('sagsnavn', info.navn || '');
@@ -2301,7 +2302,7 @@ async function handleLoadCase() {
   pauseHistoryPersistence();
   try {
     if (record && record.data) {
-      applyProjectSnapshot(record.data, { skipHint: false });
+      await applyProjectSnapshot(record.data, { skipHint: false });
       renderJobHistorySummary(record);
     } else {
       updateActionHint('Kunne ikke indlæse den valgte sag.', 'error');
@@ -3020,7 +3021,7 @@ function setupCSVImport() {
   });
 }
 
-function applyImportedAkkordData(data) {
+async function applyImportedAkkordData(data) {
   if (!data || typeof data !== 'object') {
     updateActionHint('Kunne ikke læse akkordseddel-data.', 'error');
     return;
@@ -3146,7 +3147,7 @@ function applyImportedAkkordData(data) {
 
   pauseHistoryPersistence();
   try {
-    applyProjectSnapshot(snapshot, { skipHint: true });
+    await applyProjectSnapshot(snapshot, { skipHint: true });
   } finally {
     resumeHistoryPersistence();
   }
@@ -3168,7 +3169,7 @@ async function handleAkkordImport(file) {
     if (!parsed || typeof parsed !== 'object') {
       throw new Error('Importfilen har et ukendt format.');
     }
-    applyImportedAkkordData(parsed);
+    await applyImportedAkkordData(parsed);
   } catch (error) {
     console.error('Kunne ikke importere akkordseddel', error);
     const message = error?.message || 'Kunne ikke importere akkordseddel-filen.';
@@ -4382,7 +4383,7 @@ function exportAkkordJsonFile() {
 // --- CSV-import for optælling ---
 function importJSONProject(file) {
   const reader = new FileReader();
-  reader.onload = event => {
+  reader.onload = async event => {
     try {
       const text = event.target?.result;
       const parsed = JSON.parse(text);
@@ -4391,7 +4392,7 @@ function importJSONProject(file) {
       }
       const snapshot = parsed.data && !parsed.sagsinfo ? parsed.data : parsed;
       const normalized = normalizeImportedJsonSnapshot(snapshot);
-      applyProjectSnapshot(normalized, { skipHint: true });
+      await applyProjectSnapshot(normalized, { skipHint: true });
       updateActionHint('JSON sag er indlæst.', 'success');
     } catch (error) {
       console.error('Kunne ikke importere JSON', error);
