@@ -234,6 +234,7 @@ let deferredInstallPromptEvent = null
 let historyPersistencePaused = false
 let materialsDataPromise = null
 let materialsUiReadyPromise = null
+let materialsWarmupScheduled = false
 
 function ensureMaterialsDataLoad () {
   if (!materialsDataPromise) {
@@ -245,6 +246,16 @@ function ensureMaterialsDataLoad () {
     })
   }
   return materialsDataPromise
+}
+
+function warmupMaterialsDataLoad () {
+  if (materialsWarmupScheduled) return
+  materialsWarmupScheduled = true
+  runWhenIdle(() => {
+    ensureMaterialsDataLoad()?.catch(() => {
+      materialsWarmupScheduled = false
+    })
+  })
 }
 
 function ensureMaterialsUiReady () {
@@ -639,6 +650,14 @@ function initTabs() {
     button.addEventListener('click', () => setActiveTab(tabId));
     button.addEventListener('keydown', event => handleTabKeydown(event, index));
   });
+
+  const optaellingButton = tabButtons.find(button => button.dataset.tabId === 'optaelling')
+  if (optaellingButton) {
+    const scheduleWarmup = () => warmupMaterialsDataLoad()
+    ;['pointerenter', 'touchstart', 'focusin'].forEach(eventName => {
+      optaellingButton.addEventListener(eventName, scheduleWarmup, { once: true, passive: true })
+    })
+  }
 
   const storedTabId = getStoredTabId();
   const initialTabId = tabButtons.some(button => button.dataset.tabId === storedTabId)
@@ -2235,8 +2254,9 @@ function normalizeImportedJsonSnapshot(snapshot = {}) {
   return normalizeLegacyJsonSnapshot(snapshot);
 }
 
-function applyProjectSnapshot(snapshot, options = {}) {
+async function applyProjectSnapshot(snapshot, options = {}) {
   if (!snapshot || typeof snapshot !== 'object') return;
+  await ensureMaterialsDataLoad();
   const info = snapshot.sagsinfo || {};
   setSagsinfoField('sagsnummer', info.sagsnummer || '');
   setSagsinfoField('sagsnavn', info.navn || '');
@@ -2282,7 +2302,7 @@ async function handleLoadCase() {
   pauseHistoryPersistence();
   try {
     if (record && record.data) {
-      applyProjectSnapshot(record.data, { skipHint: false });
+      await applyProjectSnapshot(record.data, { skipHint: false });
       renderJobHistorySummary(record);
     } else {
       updateActionHint('Kunne ikke indlæse den valgte sag.', 'error');
@@ -3001,7 +3021,7 @@ function setupCSVImport() {
   });
 }
 
-function applyImportedAkkordData(data) {
+async function applyImportedAkkordData(data) {
   if (!data || typeof data !== 'object') {
     updateActionHint('Kunne ikke læse akkordseddel-data.', 'error');
     return;
@@ -3127,7 +3147,7 @@ function applyImportedAkkordData(data) {
 
   pauseHistoryPersistence();
   try {
-    applyProjectSnapshot(snapshot, { skipHint: true });
+    await applyProjectSnapshot(snapshot, { skipHint: true });
   } finally {
     resumeHistoryPersistence();
   }
@@ -3149,7 +3169,7 @@ async function handleAkkordImport(file) {
     if (!parsed || typeof parsed !== 'object') {
       throw new Error('Importfilen har et ukendt format.');
     }
-    applyImportedAkkordData(parsed);
+    await applyImportedAkkordData(parsed);
   } catch (error) {
     console.error('Kunne ikke importere akkordseddel', error);
     const message = error?.message || 'Kunne ikke importere akkordseddel-filen.';
@@ -4363,7 +4383,7 @@ function exportAkkordJsonFile() {
 // --- CSV-import for optælling ---
 function importJSONProject(file) {
   const reader = new FileReader();
-  reader.onload = event => {
+  reader.onload = async event => {
     try {
       const text = event.target?.result;
       const parsed = JSON.parse(text);
@@ -4372,7 +4392,7 @@ function importJSONProject(file) {
       }
       const snapshot = parsed.data && !parsed.sagsinfo ? parsed.data : parsed;
       const normalized = normalizeImportedJsonSnapshot(snapshot);
-      applyProjectSnapshot(normalized, { skipHint: true });
+      await applyProjectSnapshot(normalized, { skipHint: true });
       updateActionHint('JSON sag er indlæst.', 'success');
     } catch (error) {
       console.error('Kunne ikke importere JSON', error);
@@ -4724,9 +4744,6 @@ async function initApp() {
     setupPWAInstallPrompt();
   });
   runWhenIdle(() => setupZipExportHistoryHook());
-  runWhenIdle(() => {
-    ensureMaterialsDataLoad()?.catch(() => {});
-  });
 
   document.getElementById('btnHardResetApp')?.addEventListener('click', () => {
     hardResetApp();
