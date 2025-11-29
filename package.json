@@ -22,7 +22,13 @@
     "test:e2e": "playwright test",
     "dev:mat-debug": "npx http-server . -p 4174 --silent",
     "perf:bundle": "size-limit",
-    "export:fix": "node tools/export-fix/index.js"
+    "export:fix": "node tools/export-fix/index.js",
+    "verify:env": "node tools/verify/verify-env.js",
+    "verify:build-and-tests": "npm run build && npm run build:min-js --if-present && npm run lint --if-present && npm run format:check --if-present && npm run format-check --if-present && npm run typecheck --if-present && npm run test:html --if-present && npm run test:links --if-present && npm run test --if-present && npm run test:export --if-present && npm run perf:bundle --if-present",
+    "test:lh": "npx --yes @lhci/cli@0.14.0 autorun --config=.lighthouserc.json",
+    "verify:server-checks": "node tools/verify/run-with-server.js",
+    "verify:perf": "npm run test:lh",
+    "verify:deploy": "npm run verify:env && npm run verify:build-and-tests && npm run verify:server-checks && node tools/verify/summary.js"
   },
   "dependencies": {
     "chromium": "^3.0.3"
