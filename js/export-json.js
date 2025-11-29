@@ -1,11 +1,15 @@
+import { buildExportModel } from './export-model.js';
+
 export function buildAkkordJsonPayload(data, baseName, options = {}) {
-  const safeData = data || {};
-  const safeBaseName = sanitizeFilename(baseName || options.customSagsnummer || 'akkordseddel');
+  const model = (data?.meta?.caseNumber && Array.isArray(data?.items))
+    ? { ...data, meta: { ...data.meta, exportedAt: data.meta.exportedAt || options.exportedAt || new Date().toISOString() } }
+    : buildExportModel(data, { exportedAt: options.exportedAt });
+  const safeBaseName = sanitizeFilename(baseName || model?.meta?.caseNumber || options.customSagsnummer || 'akkordseddel');
 
   try {
     if (typeof window !== 'undefined' && typeof window.cssmateBuildAkkordJsonPayload === 'function') {
       const payload = window.cssmateBuildAkkordJsonPayload({
-        data: safeData,
+        data: model,
         customSagsnummer: safeBaseName,
         skipValidation: true,
         skipBeregn: true,
@@ -26,7 +30,7 @@ export function buildAkkordJsonPayload(data, baseName, options = {}) {
 
   return {
     fileName: `${safeBaseName}.json`,
-    content: JSON.stringify(safeData, null, 2),
+    content: JSON.stringify(model, null, 2),
     baseName: safeBaseName,
   };
 }

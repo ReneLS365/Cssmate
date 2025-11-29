@@ -1,104 +1,126 @@
 // Brug: const csv = buildAkkordCSV(buildAkkordData());
+import { buildExportModel, formatCsvNumber } from './export-model.js';
+
+const SEP = ';';
+const BOM = '\ufeff';
+
+function csvEscape(val) {
+  if (val === null || val === undefined) return '';
+  const str = String(val);
+  if (str.includes('"') || str.includes(SEP) || str.includes('\n')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+function formatQty(value) {
+  const num = Number(value);
+  if (Number.isInteger(num)) return String(num);
+  return formatCsvNumber(value);
+}
 
 export function buildAkkordCSV(data) {
   if (!data || typeof data !== 'object') {
     throw new Error('buildAkkordCSV: data mangler eller er ugyldig');
   }
 
-  const meta = data.meta || {};
-  const akkord = data.akkord || {};
-  const linjer = Array.isArray(data.linjer) ? data.linjer : [];
-  const ekstra = Array.isArray(akkord.ekstraarbejde) ? akkord.ekstraarbejde : [];
+  const model = (data?.meta?.caseNumber && Array.isArray(data?.items))
+    ? data
+    : buildExportModel(data);
+  const meta = model.meta || {};
+  const totals = model.totals || {};
+  const extras = model.extras || {};
 
-  const sagsnr = meta.sagsnummer || 'UKENDT';
-
-  // Helper: CSV-escaping
-  const v = (val) => {
-    if (val === null || val === undefined) return '';
-    const str = String(val);
-    if (str.includes('"') || str.includes(';') || str.includes('\n')) {
-      return `"${str.replace(/"/g, '""')}"`;
-    }
-    return str;
-  };
-
+  const sagsnr = meta.caseNumber || 'UKENDT';
   const lines = [];
 
   // 1) META-blok
   lines.push('#META;FELT;VÆRDI');
-  lines.push(`#META;version;${v(data.version ?? 1)}`);
-  lines.push(`#META;sagsnummer;${v(meta.sagsnummer || '')}`);
-  lines.push(`#META;kunde;${v(meta.kunde || '')}`);
-  lines.push(`#META;adresse;${v(meta.adresse || '')}`);
-  lines.push(`#META;beskrivelse;${v(meta.beskrivelse || '')}`);
-  lines.push(`#META;dato;${v(meta.dato || new Date().toISOString().slice(0, 10))}`);
-  lines.push(`#META;totalMaterialer;${v(akkord.totalMaterialer ?? '')}`);
-  lines.push(`#META;totalAkkord;${v(akkord.totalAkkord ?? '')}`);
+  lines.push(`#META;version;${csvEscape(meta.version || model.version || '2.0')}`);
+  lines.push(`#META;sagsnummer;${csvEscape(sagsnr)}`);
+  lines.push(`#META;kunde;${csvEscape(meta.customer || '')}`);
+  lines.push(`#META;adresse;${csvEscape(meta.address || '')}`);
+  lines.push(`#META;beskrivelse;${csvEscape(meta.caseName || '')}`);
+  lines.push(`#META;dato;${csvEscape(meta.date || new Date().toISOString().slice(0, 10))}`);
+  lines.push(`#META;system;${csvEscape(meta.system || '')}`);
+  lines.push(`#META;jobType;${csvEscape(meta.jobType || '')}`);
+  lines.push(`#META;totalMaterialer;${csvEscape(formatCsvNumber(totals.materials || 0))}`);
+  lines.push(`#META;totalAkkord;${csvEscape(formatCsvNumber(totals.akkord || 0))}`);
   lines.push('');
 
   // 2) MATERIALER-blok
   lines.push('TYPE;SAG;LINJENR;SYSTEM;KATEGORI;VARENR;NAVN;ENHED;ANTAL;STK_PRIS;LINJE_BELOB');
-  for (const row of linjer) {
+  for (const row of model.items || []) {
     lines.push([
       'MATERIAL',
-      v(sagsnr),
-      v(row.linjeNr ?? ''),
-      v(row.system || ''),
-      v(row.kategori || ''),
-      v(row.varenr || ''),
-      v(row.navn || ''),
-      v(row.enhed || ''),
-      v(row.antal ?? 0),
-      v(row.stkPris ?? 0),
-      v(row.linjeBelob ?? 0)
-    ].join(';'));
+      csvEscape(sagsnr),
+      csvEscape(row.lineNumber ?? ''),
+      csvEscape(row.system || ''),
+      csvEscape(row.category || ''),
+      csvEscape(row.itemNumber || ''),
+      csvEscape(row.name || ''),
+      csvEscape(row.unit || ''),
+      csvEscape(formatQty(row.quantity ?? 0)),
+      csvEscape(formatCsvNumber(row.unitPrice ?? 0)),
+      csvEscape(formatCsvNumber(row.lineTotal ?? 0)),
+    ].join(SEP));
   }
   lines.push('');
 
   // 3) KM / SLÆB / EKSTRA-blok
   lines.push('TYPE;SAG;ART;ANTAL;ENHED;SATS;BELOB;BESKRIVELSE');
 
-  // KM-linje
-  if (akkord.km != null && akkord.km !== '') {
+  if (extras.km?.quantity || extras.km?.amount) {
     lines.push([
       'KM',
-      v(sagsnr),
-      v('Transport km'),
-      v(akkord.km ?? 0),
-      v('km'),
-      v(akkord.kmSats ?? ''),
-      v(akkord.kmBelob ?? ''),
-      v('Transporttillæg (km)')
-    ].join(';'));
+      csvEscape(sagsnr),
+      'Transport km',
+      csvEscape(formatQty(extras.km.quantity || 0)),
+      'km',
+      csvEscape(formatCsvNumber(extras.km.rate || 0)),
+      csvEscape(formatCsvNumber(extras.km.amount || 0)),
+      'Transporttillæg (km)',
+    ].join(SEP));
   }
 
-  // Slæb-linje (antal = procent som info)
-  if (akkord.slaebProcent != null && akkord.slaebProcent !== '') {
+  if (extras.slaeb?.percent || extras.slaeb?.amount) {
     lines.push([
       'SLAEB',
-      v(sagsnr),
-      v('Slæb (%)'),
-      v(akkord.slaebProcent ?? 0),
-      v('%'),
-      v(''),
-      v(akkord.slaebBelob ?? ''),
-      v('Slæbt materiale (procenttillæg)')
-    ].join(';'));
+      csvEscape(sagsnr),
+      'Slæb (%)',
+      csvEscape(formatCsvNumber(extras.slaeb.percent || 0)),
+      '%',
+      '',
+      csvEscape(formatCsvNumber(extras.slaeb.amount || 0)),
+      'Slæbt materiale (procenttillæg)',
+    ].join(SEP));
   }
 
-  // Ekstraarbejde-linjer
-  for (const e of ekstra) {
+  if (extras.tralle?.amount) {
+    lines.push([
+      'TRALLE',
+      csvEscape(sagsnr),
+      'Tralleløft',
+      csvEscape(formatQty((extras.tralle.lifts35 || 0) + (extras.tralle.lifts50 || 0))),
+      'løft',
+      '',
+      csvEscape(formatCsvNumber(extras.tralle.amount || 0)),
+      'Tralleløft samlet',
+    ].join(SEP));
+  }
+
+  for (const e of extras.extraWork || []) {
     lines.push([
       'EKSTRA',
-      v(sagsnr),
-      v(e.type || 'Ekstraarbejde'),
-      v(e.antal ?? 0),
-      v(e.enhed || ''),
-      v(e.sats ?? ''),
-      v(e.belob ?? ''),
-      v(e.tekst || '')
-    ].join(';'));
+      csvEscape(sagsnr),
+      csvEscape(e.type || 'Ekstraarbejde'),
+      csvEscape(formatQty(e.quantity ?? 0)),
+      csvEscape(e.unit || ''),
+      csvEscape(formatCsvNumber(e.rate || 0)),
+      csvEscape(formatCsvNumber(e.amount || 0)),
+      csvEscape(e.description || ''),
+    ].join(SEP));
   }
 
-  return lines.join('\n');
+  return BOM + lines.join('\n');
 }

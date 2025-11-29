@@ -23,15 +23,17 @@ function createTestData () {
     meta: {
       excelSystems: [],
     },
-    materials: [
+    linjer: [
       {
-        id: 'MAT-001',
-        name: 'Testmateriale',
-        quantity: 2,
-        price: 125,
+        linjeNr: 1,
         system: 'bosta',
         kategori: 'test',
+        varenr: 'MAT-001',
+        navn: 'Testmateriale',
         enhed: 'stk',
+        antal: 2,
+        stkPris: 125,
+        linjeBelob: 250,
       },
     ],
     extras: {
@@ -83,9 +85,10 @@ test('generates and validates JSON, PDF, and ZIP exports', async t => {
   await writeFile(join(tmpDir, jsonPayload.fileName), jsonPayload.content, 'utf8')
 
   const parsedJson = JSON.parse(jsonPayload.content)
-  assert.equal(parsedJson.info.sagsnummer, data.info.sagsnummer)
-  assert.equal(parsedJson.info.kunde, data.info.kunde)
-  assert.ok(Array.isArray(parsedJson.materials) || Array.isArray(parsedJson.materialer))
+  assert.equal(parsedJson.meta.caseNumber, data.info.sagsnummer)
+  assert.equal(parsedJson.meta.customer, data.info.kunde)
+  assert.ok(Array.isArray(parsedJson.items))
+  assert.equal(parsedJson.totals.materials, data.totals.totalMaterialer)
 
   const pdfBuffer = await createMinimalPdf(`Sagsnummer: ${data.info.sagsnummer} - Kunde: ${data.info.kunde} - Sum: ${data.totals.projektsum}`)
 
@@ -163,7 +166,19 @@ test('generates and validates JSON, PDF, and ZIP exports', async t => {
   const zipJsonFiles = zip.filter((path) => path.endsWith('.json'))
   assert.ok(zipJsonFiles.length === 1, 'ZIP contains JSON file')
   const zippedJsonContent = await zipJsonFiles[0].async('string')
-  assert.equal(zippedJsonContent.trim(), jsonPayload.content.trim(), 'JSON inside ZIP matches standalone export')
+  const zippedJson = JSON.parse(zippedJsonContent)
+  const standaloneJson = JSON.parse(jsonPayload.content)
+  assert.equal(zippedJson.meta.caseNumber, standaloneJson.meta.caseNumber)
+  assert.equal(zippedJson.totals.akkord, standaloneJson.totals.akkord)
+  assert.equal(zippedJson.totals.materials, standaloneJson.totals.materials)
+  assert.equal(zippedJson.extras.km.amount, standaloneJson.extras.km.amount)
+
+  const zipCsvFiles = zip.filter((path) => path.endsWith('.csv'))
+  assert.ok(zipCsvFiles.length === 1, 'ZIP contains CSV file')
+  const csvContent = await zipCsvFiles[0].async('string')
+  assert.ok(csvContent.startsWith('\ufeff'), 'CSV is UTF-8 with BOM')
+  assert.ok(csvContent.includes('MATERIAL;SA-EXPORT-1'), 'CSV contains case number on material lines')
+  assert.ok(/;250,00/.test(csvContent) || /;250.00/.test(csvContent), 'CSV contains material sum formatted')
 
   const zipPdfFiles = zip.filter((path) => path.endsWith('.pdf'))
   assert.ok(zipPdfFiles.length === 1, 'ZIP contains PDF file')

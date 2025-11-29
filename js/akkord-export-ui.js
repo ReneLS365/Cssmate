@@ -3,6 +3,7 @@ import { exportPDFBlob } from './export-pdf.js';
 import { exportZipFromAkkord } from './export-zip.js';
 import { handleImportAkkord } from './import-akkord.js';
 import { buildAkkordJsonPayload } from './export-json.js';
+import { buildExportModel } from './export-model.js';
 
 let buildAkkordDataImpl = buildAkkordData;
 let exportPDFBlobImpl = exportPDFBlob;
@@ -47,9 +48,10 @@ async function handleExportAkkordPDF(event) {
     notifyAction('Eksporterer akkordseddel (PDF)…', 'info');
     const data = buildAkkordDataImpl();
     if (!data) throw new Error('Mangler data til PDF');
-    const meta = getExportMeta(data);
+    const model = buildExportModel(data);
+    const meta = getExportMeta(model);
     const baseName = buildBaseName(meta);
-    const payload = await exportPDFBlobImpl(data, { skipValidation: false, skipBeregn: false, customSagsnummer: meta.sagsnummer });
+    const payload = await exportPDFBlobImpl(model, { skipValidation: false, skipBeregn: false, customSagsnummer: meta.sagsnummer, model });
     if (!payload?.blob) throw new Error('Mangler PDF payload');
     const filename = payload.fileName || `${baseName}.pdf`;
     downloadBlob(payload.blob, filename);
@@ -71,9 +73,10 @@ function handleExportAkkordJSON(event) {
   try {
     notifyAction('Eksporterer akkordseddel (JSON)…', 'info');
     const data = buildAkkordDataImpl();
-    const meta = getExportMeta(data);
+    const model = buildExportModel(data);
+    const meta = getExportMeta(model);
     const baseName = buildBaseName(meta);
-    const payload = buildAkkordJsonPayload(data, baseName);
+    const payload = buildAkkordJsonPayload(model, baseName);
     if (!payload?.content) {
       notifyAction('Kunne ikke bygge JSON-eksporten.', 'error');
       return;
@@ -95,9 +98,10 @@ function handleExportAkkordZIP(event) {
   const button = event?.currentTarget;
   const done = setBusy(button, true, { busyText: 'Pakker ZIP…', doneText: 'ZIP klar' });
   const data = buildAkkordDataImpl();
-  const baseName = buildBaseName(getExportMeta(data));
+  const model = buildExportModel(data);
+  const baseName = buildBaseName(getExportMeta(model));
   notifyAction('Pakker ZIP med PDF/JSON…', 'info');
-  exportZipFromAkkordImpl(data, { baseName })
+  exportZipFromAkkordImpl(model, { baseName })
     .then(({ zipName, files } = {}) => {
       notifyAction('ZIP er klar til download.', 'success');
       notifyHistory('zip', { baseName, fileName: zipName, files });
@@ -151,9 +155,9 @@ function sanitizeFilename(value) {
 function getExportMeta(data) {
   const meta = data?.meta || data?.info || {};
   return {
-    sagsnummer: meta.sagsnummer || data?.info?.sagsnummer || 'akkordseddel',
-    kunde: meta.kunde || data?.info?.kunde || '',
-    dato: (meta.dato || data?.info?.dato || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
+    sagsnummer: meta.caseNumber || meta.sagsnummer || data?.info?.sagsnummer || 'akkordseddel',
+    kunde: meta.customer || meta.kunde || data?.info?.kunde || '',
+    dato: (meta.date || meta.dato || data?.info?.dato || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
   };
 }
 
