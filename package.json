@@ -19,12 +19,14 @@
     "test:super": "npm run build && npm run test:html && npm run test:links && npm run test:lh:mobile && npm run test:lh:enforce",
     "release:guard": "npm run test:super && node scripts/check-lighthouse-perfect.mjs",
     "test:export": "node tests/export-files.test.js",
+    "test:e2e": "playwright test",
     "dev:mat-debug": "npx http-server . -p 4174 --silent"
   },
   "dependencies": {
     "chromium": "^3.0.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.57.0",
     "express": "^4.18.2",
     "html-validate": "^10.4.0",
     "http-server": "^14.1.1",

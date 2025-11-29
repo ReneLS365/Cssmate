@@ -614,6 +614,10 @@ function setActiveTab(tabId, { focus = false } = {}) {
     ensureMaterialsUiReady().catch(() => {});
   }
 
+  if (nextTabId === 'lon') {
+    ensureWorkersInitialized();
+  }
+
   if (focus && typeof nextButton.focus === 'function') {
     nextButton.focus();
   }
@@ -3268,6 +3272,18 @@ if (adminLoginButton) {
 }
 
 // --- Worker Functions ---
+function ensureWorkersInitialized() {
+  if (workerCount > 0) return
+  const container = document.getElementById('workers')
+  if (!container) return
+  const existing = container.querySelector('.worker-row')
+  if (existing) {
+    workerCount = container.querySelectorAll('.worker-row').length
+    return
+  }
+  addWorker()
+}
+
 function addWorker() {
   workerCount++;
   const w = document.createElement("fieldset");
@@ -3328,6 +3344,7 @@ function showLonOutputSections() {
 }
 
 function beregnLon() {
+  ensureWorkersInitialized();
   const info = collectSagsinfo();
   const sagsnummer = info.sagsnummer?.trim() || 'uspecified';
   const jobType = document.getElementById('jobType')?.value || 'montage';
@@ -4648,8 +4665,6 @@ async function initApp() {
     optaellingContainer.addEventListener('input', handleOptaellingInput);
     optaellingContainer.addEventListener('change', handleOptaellingInput);
   }
-
-  runWhenIdle(() => addWorker());
 
   runWhenIdle(() => {
     setupGuideModal();
