@@ -14,19 +14,41 @@ function sanitizeDate(value) {
 
 function normalizeItems(data = {}) {
   const lines = Array.isArray(data.linjer) ? data.linjer : []
-  return lines
-    .filter(line => line && asNumber(line.antal, 0) !== 0)
-    .map((line, index) => {
-      const quantity = asNumber(line.antal, 0)
-      const unitPrice = asNumber(line.stkPris, 0)
-      const lineTotal = asNumber(line.linjeBelob, quantity * unitPrice)
+  if (lines.length > 0) {
+    return lines
+      .filter(line => line && asNumber(line.antal, 0) !== 0)
+      .map((line, index) => {
+        const quantity = asNumber(line.antal, 0)
+        const unitPrice = asNumber(line.stkPris, 0)
+        const lineTotal = asNumber(line.linjeBelob, quantity * unitPrice)
+        return {
+          lineNumber: line.linjeNr ?? index + 1,
+          system: line.system || '',
+          category: line.kategori || '',
+          itemNumber: line.varenr || line.id || '',
+          name: line.navn || '',
+          unit: line.enhed || 'stk',
+          quantity,
+          unitPrice,
+          lineTotal,
+        }
+      })
+  }
+
+  const materials = Array.isArray(data.materialer) ? data.materialer : []
+  return materials
+    .filter(entry => entry && asNumber(entry.quantity ?? entry.qty ?? entry.antal, 0) !== 0)
+    .map((entry, index) => {
+      const quantity = asNumber(entry.quantity ?? entry.qty ?? entry.antal, 0)
+      const unitPrice = asNumber(entry.unitPrice ?? entry.ackUnitPrice ?? entry.baseUnitPrice ?? entry.pris, 0)
+      const lineTotal = asNumber(entry.lineTotal ?? entry.linjeBelob ?? quantity * unitPrice, quantity * unitPrice)
       return {
-        lineNumber: line.linjeNr ?? index + 1,
-        system: line.system || '',
-        category: line.kategori || '',
-        itemNumber: line.varenr || line.id || '',
-        name: line.navn || '',
-        unit: line.enhed || 'stk',
+        lineNumber: entry.linjeNr ?? entry.lineNumber ?? index + 1,
+        system: entry.systemKey || entry.system || '',
+        category: entry.kategori || '',
+        itemNumber: entry.varenr || entry.id || '',
+        name: entry.name || entry.label || '',
+        unit: entry.enhed || 'stk',
         quantity,
         unitPrice,
         lineTotal,
