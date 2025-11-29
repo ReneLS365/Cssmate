@@ -123,7 +123,7 @@ export function buildExportModel(raw = {}, options = {}) {
 
   const extraWorkTotal = extraWork.reduce((sum, entry) => sum + asNumber(entry.amount, 0), 0)
   const extrasSumProvided = asNumber(totals.ekstraarbejde ?? totals.extraSum ?? totals.extrasSum, 0)
-  const extrasSum = extrasSumProvided || (kmAmount + slaebAmount + extraWorkTotal)
+  const extrasSum = extrasSumProvided || (kmAmount + slaebAmount + tralle.amount + extraWorkTotal)
 
   const materialsSum = asNumber(
     totals.totalMaterialer ?? totals.materialer ?? totals.materialSum ?? akkord.totalMaterialer,
