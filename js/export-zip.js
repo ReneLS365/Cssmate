@@ -3,6 +3,7 @@ import { exportPDFBlob } from './export-pdf.js';
 import { buildAkkordCSV } from './akkord-csv.js';
 import { exportExcelFromAkkordData } from '../src/export/akkord-excel.js';
 import { buildAkkordJsonPayload } from './export-json.js';
+import { buildExportModel } from './export-model.js';
 
 let ensureZipLibImpl = ensureZipLib;
 let exportPDFBlobImpl = exportPDFBlob;
@@ -85,8 +86,9 @@ export async function exportZipFromAkkord(data, options = {}) {
   const { JSZip } = await ensureZipLibImpl();
   const zip = new JSZip();
   const safeData = data || {};
-  const sagsnummer = getSagsnummer(safeData);
-  const baseName = sanitizeFilename(options.baseName || safeData.baseName || buildZipBaseName(safeData));
+  const model = buildExportModel(safeData, { exportedAt: options.exportedAt });
+  const sagsnummer = getSagsnummer(model) || getSagsnummer(safeData);
+  const baseName = sanitizeFilename(options.baseName || model?.meta?.caseNumber || safeData.baseName || buildZipBaseName(model));
   const zipBaseName = `${baseName || 'akkordseddel'}-export`;
 
   const files = [];
@@ -99,16 +101,17 @@ export async function exportZipFromAkkord(data, options = {}) {
   };
 
   try {
-    const jsonPayload = buildAkkordJsonPayload(safeData, baseName, { skipValidation: true, skipBeregn: true });
+    const jsonPayload = buildAkkordJsonPayload(model, baseName, { skipValidation: true, skipBeregn: true });
     if (!jsonPayload?.content) throw new Error('JSON eksport fejlede');
     const jsonPath = folders.json ? `json/${jsonPayload.fileName}` : jsonPayload.fileName;
     (folders.json || zip).file(jsonPayload.fileName, jsonPayload.content);
     files.push(jsonPath);
 
-    const pdfPayload = await exportPDFBlobImpl(safeData, {
+    const pdfPayload = await exportPDFBlobImpl(model, {
       skipValidation: false,
       skipBeregn: false,
       customSagsnummer: sagsnummer,
+      model,
     });
     if (!pdfPayload?.blob) throw new Error('PDF eksport fejlede');
     const pdfName = pdfPayload.fileName || `${baseName}.pdf`;
@@ -116,8 +119,18 @@ export async function exportZipFromAkkord(data, options = {}) {
     (folders.pdf || zip).file(pdfName, pdfPayload.blob);
     files.push(pdfPath);
 
+    try {
+      const csv = buildAkkordCSV(model);
+      const csvName = `${baseName}.csv`;
+      const csvPath = folders.csv ? `csv/${csvName}` : csvName;
+      (folders.csv || zip).file(csvName, csv);
+      files.push(csvPath);
+    } catch (error) {
+      console.error('CSV eksport fejlede', error);
+    }
+
     if (excelSelection.length > 0) {
-      const excelPayloads = await exportExcelFromAkkordData(safeData, excelSelection);
+      const excelPayloads = await exportExcelFromAkkordData(model, excelSelection);
       if (!excelPayloads.length) {
         console.warn('Excel eksport springes over: ingen understøttede templates for valgt system');
       } else {
@@ -128,16 +141,6 @@ export async function exportZipFromAkkord(data, options = {}) {
           files.push(path);
         });
       }
-    }
-
-    try {
-      const csv = buildAkkordCSV(safeData);
-      const csvName = `${baseName}.csv`;
-      const csvPath = folders.csv ? `csv/${csvName}` : csvName;
-      (folders.csv || zip).file(csvName, csv);
-      files.push(csvPath);
-    } catch (error) {
-      console.error('CSV eksport fejlede', error);
     }
 
     const blob = await zip.generateAsync({ type: 'blob' });
