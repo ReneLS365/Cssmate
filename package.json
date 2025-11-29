@@ -21,7 +21,8 @@
     "test:export": "node tests/export-files.test.js",
     "test:e2e": "playwright test",
     "dev:mat-debug": "npx http-server . -p 4174 --silent",
-    "perf:bundle": "size-limit"
+    "perf:bundle": "size-limit",
+    "export:fix": "node tools/export-fix/index.js"
   },
   "dependencies": {
     "chromium": "^3.0.3"
@@ -37,7 +38,8 @@
     "linkinator": "^7.5.0",
     "pdf-lib": "^1.17.1",
     "size-limit": "^11.1.4",
-    "terser": "^5.36.0"
+    "terser": "^5.36.0",
+    "xlsx": "^0.18.5"
   },
   "size-limit": [
     {
