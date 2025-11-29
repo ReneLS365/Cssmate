@@ -1,3 +1,5 @@
+import { ensureExportLibs } from '../src/features/export/lazy-libs.js';
+
 function normalizePdfData(data) {
   if (!data) return undefined;
   if (data.legacy) return data.legacy;
@@ -103,6 +105,69 @@ export async function exportPDFBlob(data, options = {}) {
       data: normalizedData,
     });
   }
-  console.error('PDF eksport er ikke tilgængelig.');
-  return null;
+  try {
+    const { jsPDF } = await ensureExportLibs();
+    const doc = new jsPDF();
+    const info = normalizedData?.info || {};
+    const totals = normalizedData?.totals || {};
+    const baseName = sanitizeFilename(customSagsnummer || info.sagsnummer || 'akkordseddel');
+    let y = 16;
+
+    doc.setFontSize(16);
+    doc.text('Akkordseddel', 14, y);
+    y += 10;
+
+    const addLine = (label, value) => {
+      const text = `${label}: ${value}`;
+      const lines = doc.splitTextToSize(text, 180);
+      lines.forEach(line => {
+        if (y > 280) {
+          doc.addPage();
+          y = 16;
+        }
+        doc.text(line, 14, y);
+        y += 8;
+      });
+    };
+
+    addLine('Sagsnummer', info.sagsnummer || '-');
+    addLine('Kunde', info.kunde || '-');
+    addLine('Adresse', info.adresse || '-');
+    addLine('Navn/opgave', info.navn || '-');
+    addLine('Dato', info.dato || '-');
+    addLine('Montørnavne', info.montoer || '-');
+
+    y += 4;
+    doc.setFontSize(14);
+    doc.text('Summer', 14, y);
+    y += 8;
+
+    const materialSum = Number(totals.materialer ?? totals.totalMaterialer ?? 0) || 0;
+    const extraSum = Number(totals.ekstraarbejde ?? 0) || 0;
+    const projectSum = Number(totals.projektsum ?? totals.totalAkkord ?? totals.samletAkkordsum ?? 0) || 0;
+
+    addLine('Materialer', `${formatCurrency(materialSum)} kr`);
+    addLine('Ekstraarbejde', `${formatCurrency(extraSum)} kr`);
+    addLine('Projektsum', `${formatCurrency(projectSum)} kr`);
+
+    const blob = doc.output('blob');
+    return { blob, baseName, fileName: `${baseName}.pdf` };
+  } catch (error) {
+    console.error('PDF eksport er ikke tilgængelig.', error);
+    throw error;
+  }
+}
+
+function formatCurrency(value) {
+  return Number(value || 0).toLocaleString('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function sanitizeFilename(value) {
+  return (value || 'akkord')
+    .toString()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/[^a-z0-9-_]+/gi, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
 }
