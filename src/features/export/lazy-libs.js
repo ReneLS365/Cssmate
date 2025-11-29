@@ -1,13 +1,13 @@
 let exportLibsPromise = null
 let zipLibPromise = null
 
-const JSPDF_URL = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.es.min.js'
+const JSPDF_CDN = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'
 const HTML2CANVAS_URL = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.esm.js'
-const JSZIP_URL = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.esm.min.js'
+const JSZIP_CDN = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js'
 
-const JSPDF_FALLBACK = new URL('../../../js/vendor/jspdf-esm-wrapper.js', import.meta.url).href
-const HTML2CANVAS_FALLBACK = new URL('../../../js/vendor/html2canvas.esm.js', import.meta.url).href
-const JSZIP_FALLBACK = new URL('../../../js/vendor/jszip-esm-wrapper.js', import.meta.url).href
+const JSPDF_LOCAL = new URL('../../../js/vendor/jspdf-esm-wrapper.js', import.meta.url).href
+const HTML2CANVAS_LOCAL = new URL('../../../js/vendor/html2canvas.esm.js', import.meta.url).href
+const JSZIP_LOCAL = new URL('../../../js/vendor/jszip-esm-wrapper.js', import.meta.url).href
 
 async function importWithFallback(primaryUrl, fallbackUrl) {
   try {
@@ -19,19 +19,19 @@ async function importWithFallback(primaryUrl, fallbackUrl) {
 }
 
 async function loadJsPDF () {
-  const mod = await importWithFallback(JSPDF_URL, JSPDF_FALLBACK)
+  const mod = await importWithFallback(JSPDF_LOCAL, JSPDF_CDN)
   if (mod?.jsPDF) return mod.jsPDF
   if (mod?.default?.jsPDF) return mod.default.jsPDF
   return mod?.default || mod
 }
 
 async function loadHtml2Canvas () {
-  const mod = await importWithFallback(HTML2CANVAS_URL, HTML2CANVAS_FALLBACK)
+  const mod = await importWithFallback(HTML2CANVAS_URL, HTML2CANVAS_LOCAL)
   return mod?.default || mod?.html2canvas || mod
 }
 
 async function loadJSZip () {
-  const mod = await importWithFallback(JSZIP_URL, JSZIP_FALLBACK)
+  const mod = await importWithFallback(JSZIP_LOCAL, JSZIP_CDN)
   return mod?.JSZip || mod?.default || mod
 }
 
