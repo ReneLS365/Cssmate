@@ -34,7 +34,7 @@ function notifyHistory(type, detail = {}) {
 
 function handlePrintAkkord(event) {
   const button = event?.currentTarget;
-  const done = setBusy(button, true);
+  const done = setBusy(button, true, { busyText: 'Åbner print…', doneText: 'Klar' });
   window.print();
   notifyAction('Printvindue åbnet.', 'success');
   done();
@@ -42,7 +42,7 @@ function handlePrintAkkord(event) {
 
 async function handleExportAkkordPDF(event) {
   const button = event?.currentTarget;
-  const done = setBusy(button, true);
+  const done = setBusy(button, true, { busyText: 'Eksporterer PDF…', doneText: 'PDF klar' });
   try {
     notifyAction('Eksporterer akkordseddel (PDF)…', 'info');
     const data = buildAkkordDataImpl();
@@ -57,7 +57,8 @@ async function handleExportAkkordPDF(event) {
     notifyHistory('pdf', { baseName, fileName: filename });
   } catch (error) {
     console.error('PDF export failed', error);
-    const message = error?.message ? `PDF eksport fejlede: ${error.message}` : 'PDF eksport fejlede. Prøv igen.';
+    const fallback = 'Der opstod en fejl under PDF-eksporten. Prøv igen – eller kontakt kontoret.';
+    const message = error?.message ? `${fallback} (${error.message})` : fallback;
     notifyAction(message, 'error');
   } finally {
     done();
@@ -66,7 +67,7 @@ async function handleExportAkkordPDF(event) {
 
 function handleExportAkkordJSON(event) {
   const button = event?.currentTarget;
-  const done = setBusy(button, true);
+  const done = setBusy(button, true, { busyText: 'Eksporterer JSON…', doneText: 'JSON klar' });
   try {
     notifyAction('Eksporterer akkordseddel (JSON)…', 'info');
     const data = buildAkkordDataImpl();
@@ -84,7 +85,7 @@ function handleExportAkkordJSON(event) {
     notifyHistory('json', { baseName, fileName });
   } catch (error) {
     console.error('JSON export failed', error);
-    notifyAction('JSON eksport fejlede. Prøv igen.', 'error');
+    notifyAction('Der opstod en fejl under JSON-eksporten. Prøv igen – eller kontakt kontoret.', 'error');
   } finally {
     done();
   }
@@ -92,7 +93,7 @@ function handleExportAkkordJSON(event) {
 
 function handleExportAkkordZIP(event) {
   const button = event?.currentTarget;
-  const done = setBusy(button, true);
+  const done = setBusy(button, true, { busyText: 'Pakker ZIP…', doneText: 'ZIP klar' });
   const data = buildAkkordDataImpl();
   const baseName = buildBaseName(getExportMeta(data));
   notifyAction('Pakker ZIP med PDF/JSON…', 'info');
@@ -103,7 +104,8 @@ function handleExportAkkordZIP(event) {
     })
     .catch((err) => {
       console.error('ZIP export failed', err);
-      const message = err?.message ? `ZIP eksport fejlede: ${err.message}` : 'ZIP eksport fejlede. Prøv igen.';
+      const fallback = 'Der opstod en fejl under ZIP-eksporten. Prøv igen – eller kontakt kontoret.';
+      const message = err?.message ? `${fallback} (${err.message})` : fallback;
       notifyAction(message, 'error');
     })
     .finally(() => done());
@@ -111,13 +113,14 @@ function handleExportAkkordZIP(event) {
 
 async function handleImportAkkordAction(event) {
   const button = event?.currentTarget;
-  const done = setBusy(button, true);
+  const done = setBusy(button, true, { busyText: 'Importerer…', doneText: 'Import klar' });
   try {
     await handleImportAkkordImpl();
     notifyAction('Import gennemført.', 'success');
   } catch (error) {
     console.error('Import akkordseddel failed', error);
-    const message = error?.message ? `Import fejlede: ${error.message}` : 'Import fejlede. Prøv igen.';
+    const fallback = 'Der opstod en fejl under importen. Prøv igen – eller kontakt kontoret.';
+    const message = error?.message ? `${fallback} (${error.message})` : fallback;
     notifyAction(message, 'error');
   } finally {
     done();
@@ -165,20 +168,38 @@ function notifyAction(message, variant) {
   }
 }
 
-function setBusy(button, busy) {
+function setBusy(button, busy, options = {}) {
   if (!button) {
     return () => {};
   }
+  const { busyText, doneText, revertDelay = 1200 } = options;
   if (busy) {
     if (button.dataset.busy === '1') return () => {};
     button.dataset.busy = '1';
+    if (!button.dataset.originalText) {
+      button.dataset.originalText = button.textContent || '';
+    }
     button.disabled = true;
     button.classList.add('is-busy');
-    return () => setBusy(button, false);
+    button.setAttribute('aria-busy', 'true');
+    if (busyText) {
+      button.textContent = busyText;
+    }
+    return (finalText) => setBusy(button, false, { ...options, doneText: finalText || doneText });
   }
   delete button.dataset.busy;
   button.disabled = false;
   button.classList.remove('is-busy');
+  button.removeAttribute('aria-busy');
+  const originalText = button.dataset.originalText || button.textContent || '';
+  if (doneText) {
+    button.textContent = doneText;
+    window.setTimeout(() => {
+      button.textContent = originalText;
+    }, revertDelay);
+  } else {
+    button.textContent = originalText;
+  }
   return () => {};
 }
 

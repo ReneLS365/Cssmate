@@ -168,5 +168,5 @@ test('import button reports failures to the user', async t => {
 
   assert.equal(handleImportAkkordMock.mock.calls.length, 1, 'import handler invoked');
   assert.equal(consoleError.mock.calls.length, 1, 'import errors are logged');
-  assert.deepEqual(actionHints[0], { message: 'Import fejlede: boom', variant: 'error' });
+  assert.deepEqual(actionHints[0], { message: 'Der opstod en fejl under importen. Prøv igen – eller kontakt kontoret. (boom)', variant: 'error' });
 });
