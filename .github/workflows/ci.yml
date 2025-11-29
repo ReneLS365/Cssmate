@@ -23,6 +23,8 @@ jobs:
         run: |
           npm run build
           npm run build:min-js --if-present
+      - name: Check bundle size budget
+        run: npm run perf:bundle
       - name: Lint & format (if present)
         run: npm run lint --if-present && npm run format-check --if-present
       - name: Unit & integration tests

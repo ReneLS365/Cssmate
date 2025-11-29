@@ -131,7 +131,9 @@ button,
 .numpad-key,
 .numpad-commit{-webkit-tap-highlight-color:transparent}
 main{display:block;width:100%}
-.app-root{max-width:540px;margin:0 auto;padding:0 0.75rem 1.5rem;display:flex;flex-direction:column;flex:1 1 auto;min-height:0;width:100%}
+.app-root{max-width:540px;margin:0 auto;padding:0 0.75rem 1.5rem;display:flex;flex-direction:column;flex:1 1 auto;min-height:0;width:100%;position:relative}
+html.app-booting .app-root::after{content:"Loader app…";position:fixed;top:10px;right:12px;padding:6px 10px;background:var(--panel);border:1px solid var(--border);border-radius:10px;color:var(--muted);font-size:0.9rem;box-shadow:0 6px 18px rgba(0,0,0,0.08);z-index:1200;opacity:0.95}
+html.app-ready .app-root::after{display:none}
 .tab-panels{flex:1 1 auto;min-height:0;overflow-y:auto;padding:clamp(0.5rem,2vw,1rem) 0 clamp(1rem,4vw,1.75rem);width:100%;margin:0 auto}
 .tab-panel{min-width:0}
 fieldset{border:1px solid var(--border);background:var(--panel);border-radius:12px;margin:0;padding:var(--pad)}
@@ -170,7 +172,9 @@ button{cursor:pointer}
 .job-history__list{display:flex;flex-direction:column;gap:0.5rem}
 .export-panel{gap:0.75rem}
 .export-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:0.5rem}
-.export-actions button{padding:0.4rem 0.5rem;font-size:0.85rem;border-radius:0.75rem;background:var(--panel-soft);border:1px solid var(--border)}
+.export-actions button{padding:0.4rem 0.5rem;font-size:0.85rem;border-radius:0.75rem;background:var(--panel-soft);border:1px solid var(--border);min-height:44px;position:relative;overflow:hidden}
+.export-actions button.is-busy{color:var(--muted)}
+.export-actions button.is-busy::after{content:"";position:absolute;right:10px;top:50%;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:999px;transform:translateY(-50%);animation:button-spin .9s linear infinite}
 .export-system-selector{display:flex;flex-direction:column;gap:0.35rem;padding:0.75rem;border:1px dashed var(--border);border-radius:10px;background:var(--panel-soft)}
 .export-system-selector legend{padding:0 4px;font-size:0.95rem}
 .export-system-options{display:flex;flex-direction:column;gap:0.35rem}
@@ -179,7 +183,9 @@ button{cursor:pointer}
 .export-system-option__label{font-weight:500}
 .export-system-option__hint{display:block;font-size:0.75rem;color:var(--muted)}
 .export-system-option--inactive .export-system-option__label{opacity:0.7}
-.history-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.35rem;color:var(--muted);font-size:0.9rem}
+.history-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.35rem;color:var(--muted);font-size:0.9rem;position:relative;min-height:3.5rem}
+.history-list.is-loading::before{content:"Henter historik…";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:0.9rem;color:var(--muted);background:linear-gradient(90deg,rgba(0,0,0,0.03),rgba(0,0,0,0.05),rgba(0,0,0,0.03));background-size:200% 100%;animation:history-shimmer 1.2s linear infinite}
+.history-list.is-loading>*{opacity:0.45;pointer-events:none}
 .history-list__item{border:1px solid var(--border);border-radius:10px;padding:0.6rem 0.75rem;display:flex;flex-direction:column;gap:0.15rem;background:var(--panel-soft)}
 .history-list__title{font-weight:600;color:var(--text);font-size:0.95rem}
 .history-list__meta{font-size:0.8rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:0.35rem}
@@ -298,7 +304,7 @@ button{cursor:pointer}
 .totals div{display:flex;flex-direction:column;gap:4px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px}
 .totals span{color:var(--muted);font-size:0.85rem}
 .totals strong{font-size:1.25rem}
-.hint{font-size:0.9rem;color:var(--muted);margin:0}
+.hint{font-size:0.9rem;color:var(--muted);margin:0;min-height:1.2em}
 .hint.error{color:#ff9b9b}
 .hint.success{color:#8adbae}
 .invalid{border-color:#d66;background:rgba(214,102,102,0.15)}
@@ -616,6 +622,8 @@ button{cursor:pointer}
 .numpad-target-active{outline:2px solid var(--accent);outline-offset:3px}
 .numpad-committed{animation:numpad-commit-flash .35s ease}
 @keyframes numpad-commit-flash{0%{box-shadow:0 0 0 0 rgba(34,197,94,.25)}50%{box-shadow:0 0 0 6px rgba(34,197,94,.25)}100%{box-shadow:0 0 0 0 rgba(34,197,94,.05)}}
+@keyframes button-spin{from{transform:translateY(-50%) rotate(0deg)}to{transform:translateY(-50%) rotate(360deg)}}
+@keyframes history-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 
 /* Debug outlines for material rows (kept to visualize rendered layout) */
 .material-row{outline:1px solid red !important}

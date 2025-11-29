@@ -14,6 +14,10 @@ import { setAdminOk, restoreAdminState, isAdminUnlocked } from './src/state/admi
 import { setActiveJob } from './src/state/jobs.js'
 import './boot-inline.js'
 
+if (typeof document !== 'undefined') {
+  document.documentElement.classList.add('app-booting')
+}
+
 function getCurrentAppVersion () {
   if (typeof window !== 'undefined' && typeof window.CSSMATE_APP_VERSION === 'string') {
     return window.CSSMATE_APP_VERSION
@@ -1549,7 +1553,8 @@ function updateActionHint(message = '', variant = 'info') {
   hint.classList.remove('error', 'success');
   if (!message) {
     hint.textContent = DEFAULT_ACTION_HINT;
-    hint.style.display = 'none';
+    hint.style.display = '';
+    hint.style.visibility = 'hidden';
     return;
   }
   hint.textContent = message;
@@ -1559,6 +1564,7 @@ function updateActionHint(message = '', variant = 'info') {
     hint.classList.add('success');
   }
   hint.style.display = '';
+  hint.style.visibility = 'visible';
 }
 
 if (typeof window !== 'undefined') {
@@ -1704,6 +1710,7 @@ function setHistoryListBusy(isBusy) {
   const list = getDomElement('historyList');
   if (!list) return;
   list.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+  list.classList.toggle('is-loading', Boolean(isBusy));
 }
 
 function formatHistoryTimestamp(value) {
@@ -4674,6 +4681,12 @@ async function hardResetApp() {
 // --- Initialization ---
 let appInitialized = false;
 
+function markAppReady () {
+  if (typeof document === 'undefined') return
+  document.documentElement.classList.remove('app-booting')
+  document.documentElement.classList.add('app-ready')
+}
+
 async function initApp() {
   if (appInitialized) return;
   appInitialized = true;
@@ -4766,11 +4779,15 @@ async function initApp() {
   }
 }
 
-function startApp () {
-  initApp().catch(error => {
-    console.error('CSMate init fejlede', error);
-    updateActionHint('Kunne ikke initialisere appen. Opdater siden for at prøve igen.', 'error');
-  });
+async function startApp () {
+  try {
+    await initApp()
+  } catch (error) {
+    console.error('CSMate init fejlede', error)
+    updateActionHint('Kunne ikke initialisere appen. Opdater siden for at prøve igen.', 'error')
+  } finally {
+    markAppReady()
+  }
 }
 
 if (document.readyState === 'loading') {
