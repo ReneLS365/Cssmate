@@ -1,346 +1,230 @@
-import { BOSTA_DATA, HAKI_DATA, MODEX_DATA } from '../../dataset.js'
+import { buildExportModel } from '../../js/export-model.js'
 import { ensureSheetJs } from '../features/export/sheetjs-loader.js'
 
-const SYSTEM_DATA = {
-  bosta: BOSTA_DATA,
-  haki: HAKI_DATA,
-  modex: MODEX_DATA
+const SUPPORTED_SYSTEMS = ['bosta', 'haki', 'modex']
+
+export function getSystemDataset (systemId) {
+  console.warn('getSystemDataset er ikke længere understøttet. Brug eksportmodellen i stedet.', systemId)
+  return []
 }
 
-export function getSystemDataset(systemId) {
-  return SYSTEM_DATA[systemId] || [];
-}
-
-const TEMPLATE_PATHS = {
-  bosta: '/akkord/Bosta25.xlsx',
-  haki: '/akkord/HAKI25.xlsx',
-  modex: '/akkord/MODEX25.xlsx',
-};
-
-const ALLOWED_SYSTEMS = Object.keys(TEMPLATE_PATHS);
-
-function sanitizeFilename(value) {
+function sanitizeFilename (value) {
   return (value || 'akkordseddel')
     .toString()
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
-    .replace(/[^a-z0-9-_]+/gi, '_');
+    .replace(/[^a-z0-9-_]+/gi, '_')
 }
 
-function getLatestJobSnapshot(jobOverride) {
-  if (jobOverride) return jobOverride;
+function getLatestJobSnapshot (jobOverride) {
+  if (jobOverride) return jobOverride
   if (typeof window !== 'undefined' && window.__cssmateLastEkompletData) {
-    return window.__cssmateLastEkompletData;
+    return window.__cssmateLastEkompletData
   }
-  return null;
+  return null
 }
 
-function normalizeSystem(value) {
-  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+function normalizeSystem (value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : ''
 }
 
-function selectSystem(job) {
-  const forced = normalizeSystem(job?.system || job?.systemOverride);
-  if (ALLOWED_SYSTEMS.includes(forced)) {
-    return forced;
-  }
-
-  const primary = normalizeSystem(job?.primarySystem);
-  if (ALLOWED_SYSTEMS.includes(primary)) {
-    return primary;
-  }
-
-  if (Array.isArray(job?.systems)) {
-    for (const system of job.systems) {
-      const normalized = normalizeSystem(system);
-      if (ALLOWED_SYSTEMS.includes(normalized)) {
-        return normalized;
-      }
-    }
-  }
-
-  if (Array.isArray(job?.materialer)) {
-    const counters = new Map();
-    job.materialer.forEach(line => {
-      const key = normalizeSystem(line?.systemKey || line?.system);
-      if (!ALLOWED_SYSTEMS.includes(key)) return;
-      const qty = Number(line?.quantity ?? line?.qty ?? 0);
-      if (!Number.isFinite(qty) || qty <= 0) return;
-      counters.set(key, (counters.get(key) || 0) + qty);
-    });
-    const sorted = Array.from(counters.entries()).sort((a, b) => b[1] - a[1]);
-    if (sorted.length > 0) {
-      return sorted[0][0];
-    }
-  }
-
-  return '';
-}
-
-function normalizeSystemList(value) {
-  if (!value && value !== 0) return [];
+function normalizeSystemList (value) {
+  if (!value && value !== 0) return []
   const list = Array.isArray(value)
     ? value
     : (typeof value === 'string' || (value && typeof value[Symbol.iterator] === 'function')
         ? Array.from(value)
-        : [value]);
-  const unique = [];
+        : [value])
+  const unique = []
   list.forEach(entry => {
-    const normalized = normalizeSystem(entry);
-    if (ALLOWED_SYSTEMS.includes(normalized) && !unique.includes(normalized)) {
-      unique.push(normalized);
+    const normalized = normalizeSystem(entry)
+    if (SUPPORTED_SYSTEMS.includes(normalized) && !unique.includes(normalized)) {
+      unique.push(normalized)
     }
-  });
-  return unique;
+  })
+  return unique
 }
 
-function resolveSystems(job, override) {
-  const overrideList = normalizeSystemList(override);
+function resolveSystemsFromModel (model, override, sourceSystems) {
+  const overrideList = normalizeSystemList(override)
   if (overrideList.length > 0) {
-    return overrideList;
-  }
-  if (Array.isArray(job?.systems)) {
-    const jobList = normalizeSystemList(job.systems);
-    if (jobList.length > 0) {
-      return jobList;
-    }
-  }
-  const fallback = selectSystem(job);
-  return fallback ? [fallback] : [];
-}
-
-function buildExcelFilename(job, system) {
-  const caseNo = job?.sagsinfo?.sagsnummer || job?.caseNo || job?.id || 'sag';
-  const safeCase = sanitizeFilename(caseNo) || 'sag';
-  const systemLabel = (system || '').toString().toUpperCase();
-  return `Akkordseddel_${safeCase}_${systemLabel || 'SYSTEM'}.xlsx`;
-}
-
-const templateCache = new Map();
-
-async function loadTemplate(system, xlsx) {
-  const templatePath = TEMPLATE_PATHS[system];
-  if (!templatePath) {
-    throw new Error(`Ukendt system: ${system}`);
+    return overrideList
   }
 
-  let buffer = templateCache.get(system);
-  if (!buffer) {
-    const response = await fetch(templatePath);
-    if (!response.ok) {
-      throw new Error(`Kunne ikke hente template: ${templatePath}`);
-    }
-    buffer = await response.arrayBuffer();
-    templateCache.set(system, buffer);
+  const sourceList = normalizeSystemList(sourceSystems)
+  if (sourceList.length > 0) {
+    return sourceList
   }
 
-  const workbook = xlsx.read(buffer, { type: 'array' });
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-  if (!sheet) {
-    throw new Error(`Mangler dataark i template: ${templatePath}`);
-  }
-  return { workbook, sheet };
-}
-
-function shouldIncludeManualLines(job, system) {
-  const selected = Array.isArray(job?.systems)
-    ? job.systems.map(normalizeSystem).filter(Boolean)
-    : [];
-  const supported = selected.filter(value => ALLOWED_SYSTEMS.includes(value));
-  if (supported.length === 0) {
-    return false;
-  }
-  if (supported.length === 1) {
-    return supported[0] === system;
-  }
-  return false;
-}
-
-function buildNameToQtyMap(job, system) {
-  const lines = Array.isArray(job?.materialer) ? job.materialer : [];
-  const includeManual = shouldIncludeManualLines(job, system);
-  const map = new Map();
-
-  lines.forEach(line => {
-    const name = (line?.name || line?.label || '').trim();
-    const qty = Number(line?.quantity ?? line?.qty ?? 0);
-    if (!name || !Number.isFinite(qty) || qty <= 0) {
-      return;
-    }
-    const lineSystem = normalizeSystem(line?.systemKey || line?.system);
-    if (lineSystem && lineSystem !== system) {
-      return;
-    }
-    if (!lineSystem && !includeManual) {
-      return;
-    }
-    map.set(name, (map.get(name) || 0) + qty);
-  });
-
-  return map;
-}
-
-function fillLines(sheet, nameToQty, xlsx) {
-  const range = xlsx.utils.decode_range(sheet['!ref']);
-  for (let row = range.s.r; row <= range.e.r; row += 1) {
-    const columns = [
-      { labelCol: 0, priceCol: 1, qtyCol: 2, totalCol: 3 },
-      { labelCol: 4, priceCol: 5, qtyCol: 6, totalCol: 7 },
-    ];
-    columns.forEach(({ labelCol, priceCol, qtyCol, totalCol }) => {
-      const labelAddress = xlsx.utils.encode_cell({ r: row, c: labelCol });
-      const labelValue = sheet[labelAddress]?.v ? String(sheet[labelAddress].v).trim() : '';
-      if (!labelValue || !nameToQty.has(labelValue)) {
-        return;
-      }
-      const qtyValue = nameToQty.get(labelValue);
-      const qtyAddress = xlsx.utils.encode_cell({ r: row, c: qtyCol });
-      const totalAddress = xlsx.utils.encode_cell({ r: row, c: totalCol });
-      const priceAddress = xlsx.utils.encode_cell({ r: row, c: priceCol });
-      sheet[qtyAddress] = { t: 'n', v: qtyValue };
-      sheet[totalAddress] = { t: 'n', f: `${priceAddress}*${qtyAddress}` };
-    });
-  }
-}
-
-function fillHeader(sheet, job) {
-  const info = job?.sagsinfo || {};
-  const date = info.dato || job?.dato || new Date().toLocaleDateString('da-DK');
-  const assignments = [
-    ['B2', info.adresse || ''],
-    ['B3', info.navn || ''],
-    ['B4', info.kunde || ''],
-    ['B5', info.sagsnummer || ''],
-    ['F2', date],
-  ];
-  assignments.forEach(([cell, value]) => {
-    if (!cell) return;
-    if (!sheet[cell]) {
-      sheet[cell] = { t: 's', v: value || '' };
-    } else {
-      sheet[cell].v = value || '';
-    }
-  });
-}
-
-// Eksporter seneste job som Excel-ark baseret på valgte systemer
-export async function exportAkkordExcelForActiveJob(jobOverride, systemOverride) {
-  const job = getLatestJobSnapshot(jobOverride);
-  if (!job) {
-    console.warn('Excel-akkord eksport sprang over – ingen aktive data.');
-    return [];
+  const metaSystem = normalizeSystem(model?.meta?.system)
+  if (metaSystem && SUPPORTED_SYSTEMS.includes(metaSystem)) {
+    return [metaSystem]
   }
 
-  return exportExcelJob(job, systemOverride);
-}
+  const itemSystems = Array.from(new Set((model?.items || [])
+    .map(item => normalizeSystem(item.system))
+    .filter(Boolean)
+    .filter(system => SUPPORTED_SYSTEMS.includes(system))))
 
-function normalizeMaterialsFromAkkord(akkordData) {
-  const primary = Array.isArray(akkordData?.materials) ? akkordData.materials : [];
-  const fallback = Array.isArray(akkordData?.linjer) ? akkordData.linjer : [];
-  const source = primary.length ? primary : fallback;
-  return source
-    .map(line => {
-      const name = (line?.name || line?.label || line?.navn || '').trim();
-      const qty = Number(line?.quantity ?? line?.qty ?? line?.antal ?? 0);
-      if (!name || !Number.isFinite(qty) || qty <= 0) return null;
-      const system = normalizeSystem(line?.system || line?.systemKey || line?.kategori);
-      return {
-        id: line?.id || line?.varenr || '',
-        name,
-        label: name,
-        quantity: qty,
-        qty,
-        system,
-      };
-    })
-    .filter(Boolean);
-}
-
-function buildJobFromAkkordData(akkordData) {
-  if (!akkordData) return null;
-  const infoSource = akkordData.info || akkordData.meta || {};
-  const systems = normalizeSystemList(akkordData.systems || akkordData.meta?.systems || []);
-  const excelSystems = normalizeSystemList(
-    akkordData.excelSystems || akkordData.meta?.excelSystems || systems,
-  );
-  const sagsinfo = {
-    sagsnummer: infoSource.sagsnummer || '',
-    navn: infoSource.navn || infoSource.beskrivelse || '',
-    adresse: infoSource.adresse || '',
-    kunde: infoSource.kunde || '',
-    dato: infoSource.dato || akkordData.createdAt || new Date().toISOString().slice(0, 10),
-    systems,
-    excelSystems,
-  };
-  const materials = normalizeMaterialsFromAkkord(akkordData);
-  const primarySystem = excelSystems[0] || systems[0] || '';
-  return {
-    id: sagsinfo.sagsnummer || sagsinfo.navn || sagsinfo.adresse || 'akkord',
-    caseNo: sagsinfo.sagsnummer || '',
-    site: sagsinfo.adresse || '',
-    address: sagsinfo.adresse || '',
-    task: sagsinfo.navn || '',
-    title: sagsinfo.navn || '',
-    customer: sagsinfo.kunde || '',
-    date: sagsinfo.dato || '',
-    montageWorkers: infoSource.montoer || '',
-    demontageWorkers: infoSource.montoer || '',
-    montor: infoSource.montoer || '',
-    worker: infoSource.montoer || '',
-    system: primarySystem,
-    systems,
-    excelSystems,
-    sagsinfo,
-    materialer: materials,
-  };
-}
-
-async function exportExcelJob(job, systemOverride) {
-  if (!job) {
-    console.warn('Excel-akkord eksport sprang over – ingen aktive data.');
-    return [];
+  if (itemSystems.length > 0) {
+    return itemSystems
   }
 
-  const systems = resolveSystems(job, systemOverride ?? job?.excelSystems);
+  return ['']
+}
+
+function buildExcelFilename (model, system) {
+  const caseNo = model?.meta?.caseNumber || 'sag'
+  const safeCase = sanitizeFilename(caseNo) || 'sag'
+  const label = (system || model?.meta?.system || '').toString().toUpperCase()
+  return `Akkordseddel_${safeCase}_${label || 'SYSTEM'}.xlsx`
+}
+
+function encodeCellAddress (rowIndex, colIndex) {
+  const colLetters = []
+  let n = colIndex + 1
+  while (n > 0) {
+    const rem = (n - 1) % 26
+    colLetters.unshift(String.fromCharCode(65 + rem))
+    n = Math.floor((n - 1) / 26)
+  }
+  return `${colLetters.join('')}${rowIndex + 1}`
+}
+
+function formatNumber (value) {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : 0
+}
+
+function filterItemsForSystem (items, system) {
+  if (!system) return items
+  const normalized = normalizeSystem(system)
+  return items.filter(item => {
+    const itemSystem = normalizeSystem(item.system)
+    return !itemSystem || itemSystem === normalized
+  })
+}
+
+function buildSheetRows (model, system) {
+  const meta = model?.meta || {}
+  const totals = model?.totals || {}
+  const items = filterItemsForSystem(model?.items || [], system)
+  const rows = []
+
+  rows.push(['Akkordseddel'])
+  rows.push([])
+
+  const metaStart = rows.length
+  const metaEntries = [
+    ['Sagsnummer', meta.caseNumber || ''],
+    ['Kunde', meta.customer || ''],
+    ['Adresse', meta.address || ''],
+    ['Navn/opgave', meta.caseName || ''],
+    ['Dato', meta.date || ''],
+    ['System', system || meta.system || ''],
+  ]
+  metaEntries.forEach(entry => rows.push(entry))
+
+  rows.push([])
+  const totalsStart = rows.length
+  rows.push(['Materialer', formatNumber(totals.materials)])
+  rows.push(['Ekstraarbejde', formatNumber(totals.extras)])
+  rows.push(['Akkordsum', formatNumber(totals.akkord ?? totals.project)])
+  rows.push(['Projektsum', formatNumber(totals.project ?? totals.akkord)])
+
+  rows.push([])
+  rows.push(['Varenr', 'Navn', 'Enhed', 'Antal', 'Stk pris', 'Linjetotal'])
+  items.forEach(item => {
+    rows.push([
+      item.itemNumber || item.id || '',
+      item.name || item.label || '',
+      item.unit || 'stk',
+      formatNumber(item.quantity ?? item.qty),
+      formatNumber(item.unitPrice ?? item.price),
+      formatNumber(item.lineTotal ?? item.total),
+    ])
+  })
+
+  const caseCell = encodeCellAddress(metaStart, 1)
+  const dateCell = encodeCellAddress(metaStart + 4, 1)
+  return { rows, caseCell, dateCell, totalsRowStart: totalsStart }
+}
+
+function applyColumnWidths (sheet) {
+  sheet['!cols'] = [
+    { wch: 18 },
+    { wch: 32 },
+    { wch: 14 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: 16 },
+  ]
+}
+
+export function createWorkbookFromModel (model, system, xlsx) {
+  if (!xlsx?.utils) throw new Error('Mangler XLSX utils til at bygge workbook')
+  const { rows, caseCell, dateCell } = buildSheetRows(model, system)
+
+  const sheet = xlsx.utils.aoa_to_sheet(rows)
+  applyColumnWidths(sheet)
+
+  sheet[caseCell] = { t: 's', v: String(model?.meta?.caseNumber || '') }
+  sheet[dateCell] = { t: 's', v: (model?.meta?.date || '').toString().slice(0, 10) }
+
+  const workbook = xlsx.utils.book_new()
+  xlsx.utils.book_append_sheet(workbook, sheet, 'Akkordseddel')
+  return workbook
+}
+
+async function exportModelAsExcel (model, options = {}) {
+  const sourceSystems = options.sourceSystems || model?.meta?.systems || []
+  const systems = resolveSystemsFromModel(model, options.systemOverride, sourceSystems)
   if (systems.length === 0) {
-    console.warn('Excel-akkord eksport sprang over – ingen understøttede systemer valgt.');
-    return [];
+    console.warn('Excel-akkord eksport sprang over – ingen understøttede systemer valgt.')
+    return []
   }
 
-  let xlsx;
+  let xlsx
   try {
-    xlsx = await ensureSheetJs();
+    xlsx = options.xlsx || await ensureSheetJs()
   } catch (error) {
-    console.error('Kunne ikke indlæse SheetJS til Excel eksport.', error);
-    return [];
+    console.error('Kunne ikke indlæse SheetJS til Excel eksport.', error)
+    return []
   }
 
-  const results = [];
-  for (const system of systems) {
-    if (!ALLOWED_SYSTEMS.includes(system)) continue;
+  const results = []
+  systems.forEach(system => {
     try {
-      const { workbook, sheet } = await loadTemplate(system, xlsx);
-      const nameToQty = buildNameToQtyMap(job, system);
-      fillHeader(sheet, job);
-      fillLines(sheet, nameToQty, xlsx);
-
-      const output = xlsx.write(workbook, { bookType: 'xlsx', type: 'array' });
-      const blob = new Blob([output], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const workbook = createWorkbookFromModel(model, system, xlsx)
+      const output = xlsx.write(workbook, { bookType: 'xlsx', type: 'array' })
+      const blob = new Blob([output], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
       results.push({
         system,
         blob,
-        fileName: buildExcelFilename(job, system),
-      });
+        fileName: buildExcelFilename(model, system),
+      })
     } catch (error) {
-      console.error('Excel-akkord eksport fejlede for system:', system, error);
+      console.error('Excel-akkord eksport fejlede for system:', system, error)
     }
-  }
+  })
 
-  return results;
+  return results
 }
 
-export async function exportExcelFromAkkordData(akkordData, systemOverride) {
-  const job = buildJobFromAkkordData(akkordData);
-  return exportExcelJob(job, systemOverride ?? job?.excelSystems);
+export async function exportAkkordExcelForActiveJob (jobOverride, systemOverride) {
+  const job = getLatestJobSnapshot(jobOverride)
+  if (!job) {
+    console.warn('Excel-akkord eksport sprang over – ingen aktive data.')
+    return []
+  }
+
+  const model = buildExportModel(job, { exportedAt: new Date().toISOString() })
+  return exportModelAsExcel(model, { systemOverride, sourceSystems: job?.excelSystems || job?.systems })
+}
+
+export async function exportExcelFromAkkordData (akkordData, systemOverride) {
+  if (!akkordData) return []
+  const model = buildExportModel(akkordData, { exportedAt: akkordData?.exportedAt })
+  const sourceSystems = akkordData?.excelSystems || akkordData?.systems || akkordData?.meta?.systems
+  return exportModelAsExcel(model, { systemOverride, sourceSystems })
 }
