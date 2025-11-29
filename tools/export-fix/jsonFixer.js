@@ -48,7 +48,66 @@ function applyCanonicalKeys (data) {
 export function normalizeJsonModel (raw) {
   const canonical = applyCanonicalKeys(raw)
   const model = buildExportModel(canonical)
-  return model
+
+  const normalized = { ...canonical }
+
+  normalized.version = canonical.version || '1.0'
+  normalized.type = canonical.type || canonical.jobType || model?.meta?.jobType || 'montage'
+
+  if (!normalized.jobId && model?.meta?.caseNumber) {
+    normalized.jobId = model.meta.caseNumber
+  }
+
+  if (!normalized.jobName && model?.meta?.caseName) {
+    normalized.jobName = model.meta.caseName
+  }
+
+  if (!normalized.createdAt && model?.meta?.createdAt) {
+    normalized.createdAt = model.meta.createdAt
+  }
+
+  normalized.info = normalized.info || {}
+  if (model?.meta) {
+    normalized.info.sagsnummer = normalized.info.sagsnummer || model.meta.caseNumber || ''
+    normalized.info.navn = normalized.info.navn || model.meta.caseName || ''
+    normalized.info.adresse = normalized.info.adresse || model.meta.address || ''
+    normalized.info.kunde = normalized.info.kunde || model.meta.customer || ''
+    normalized.info.dato = normalized.info.dato || model.meta.date || ''
+  }
+
+  const materialsFromModel = Array.isArray(model?.items)
+    ? model.items.map(item => ({
+      id: item.itemNumber || item.id || '',
+      name: item.name || '',
+      qty: item.quantity ?? item.qty ?? 0,
+      quantity: item.quantity ?? item.qty ?? 0,
+      unitPrice: item.unitPrice ?? item.price ?? 0,
+    }))
+    : []
+
+  if (!Array.isArray(normalized.materials) || normalized.materials.length === 0) {
+    normalized.materials = materialsFromModel
+  } else {
+    normalized.materials = normalized.materials.map((item, index) => ({
+      id: item?.id || item?.varenr || materialsFromModel[index]?.id || '',
+      name: item?.name || item?.label || materialsFromModel[index]?.name || '',
+      qty: item?.qty ?? item?.quantity ?? item?.antal ?? materialsFromModel[index]?.qty ?? 0,
+      quantity: item?.quantity ?? item?.qty ?? item?.antal ?? materialsFromModel[index]?.quantity ?? 0,
+      unitPrice: item?.unitPrice ?? item?.price ?? materialsFromModel[index]?.unitPrice ?? 0,
+    })).filter(entry => entry.id || entry.name)
+  }
+
+  if (!normalized.totals && model?.totals) {
+    normalized.totals = {
+      materialsSum: model.totals.materials,
+      laborSum: model.wage?.totals?.sum,
+      extrasSum: model.totals.extras,
+      akkordSum: model.totals.akkord,
+      project: model.totals.project,
+    }
+  }
+
+  return normalized
 }
 
 async function backupFile (filePath) {
