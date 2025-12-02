@@ -51,7 +51,13 @@ async function handleExportAkkordPDF(event) {
     const model = buildExportModel(data);
     const meta = getExportMeta(model);
     const baseName = buildBaseName(meta);
-    const payload = await exportPDFBlobImpl(model, { skipValidation: false, skipBeregn: false, customSagsnummer: meta.sagsnummer, model });
+    const payload = await exportPDFBlobImpl(data, {
+      skipValidation: false,
+      skipBeregn: false,
+      customSagsnummer: meta.sagsnummer,
+      model,
+      rawData: data,
+    });
     if (!payload?.blob) throw new Error('Mangler PDF payload');
     const filename = payload.fileName || `${baseName}.pdf`;
     downloadBlob(payload.blob, filename);
@@ -101,7 +107,7 @@ function handleExportAkkordZIP(event) {
   const model = buildExportModel(data);
   const baseName = buildBaseName(getExportMeta(model));
   notifyAction('Pakker ZIP med PDF/JSON…', 'info');
-  exportZipFromAkkordImpl(model, { baseName })
+  exportZipFromAkkordImpl(data, { baseName, model })
     .then(({ zipName, files } = {}) => {
       notifyAction('ZIP er klar til download.', 'success');
       notifyHistory('zip', { baseName, fileName: zipName, files });
