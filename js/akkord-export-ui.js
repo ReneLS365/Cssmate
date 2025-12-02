@@ -47,8 +47,9 @@ async function handleExportAkkordPDF(event) {
   try {
     notifyAction('Eksporterer akkordseddel (PDF)…', 'info');
     const data = buildAkkordDataImpl();
-    if (!data) throw new Error('Mangler data til PDF');
+    if (!data || typeof data !== 'object') throw new Error('Mangler data til PDF');
     const model = buildExportModel(data);
+    if (!model || typeof model !== 'object') throw new Error('Kunne ikke bygge eksportmodel');
     const meta = getExportMeta(model);
     const baseName = buildBaseName(meta);
     const payload = await exportPDFBlobImpl(data, {
