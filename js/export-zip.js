@@ -86,7 +86,7 @@ export async function exportZipFromAkkord(data, options = {}) {
   const { JSZip } = await ensureZipLibImpl();
   const zip = new JSZip();
   const safeData = data || {};
-  const model = buildExportModel(safeData, { exportedAt: options.exportedAt });
+  const model = options?.model || buildExportModel(safeData, { exportedAt: options.exportedAt });
   const sagsnummer = getSagsnummer(model) || getSagsnummer(safeData);
   const baseName = sanitizeFilename(options.baseName || model?.meta?.caseNumber || safeData.baseName || buildZipBaseName(model));
   const zipBaseName = `${baseName || 'akkordseddel'}-export`;
@@ -107,11 +107,12 @@ export async function exportZipFromAkkord(data, options = {}) {
     (folders.json || zip).file(jsonPayload.fileName, jsonPayload.content);
     files.push(jsonPath);
 
-    const pdfPayload = await exportPDFBlobImpl(model, {
+    const pdfPayload = await exportPDFBlobImpl(safeData, {
       skipValidation: false,
       skipBeregn: false,
       customSagsnummer: sagsnummer,
       model,
+      rawData: safeData,
     });
     if (!pdfPayload?.blob) throw new Error('PDF eksport fejlede');
     const pdfName = pdfPayload.fileName || `${baseName}.pdf`;
