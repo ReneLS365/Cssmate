@@ -7,11 +7,11 @@ export function convertMontageToDemontage(raw = {}) {
 
   const items = Array.isArray(raw.items) ? raw.items : [];
   const materials = items.map(item => ({
-    id: item.itemNumber || item.id || '',
+    id: item.itemNumber || item.id || item.varenr || '',
     name: item.name || item.label || item.title || '',
-    qty: Number(item.quantity ?? item.qty ?? 0) || 0,
-    unitPrice: Number(item.unitPrice ?? item.price ?? 0) || 0,
-    system: item.system || raw.meta?.system || ''
+    qty: Number(item.quantity ?? item.qty ?? item.amount ?? item.antal ?? 0) || 0,
+    unitPrice: Number(item.unitPrice ?? item.price ?? item.stkPris ?? 0) || 0,
+    system: item.system || item.systemKey || item.systemId || raw.meta?.system || ''
   }));
 
   const extras = raw.extras || {};

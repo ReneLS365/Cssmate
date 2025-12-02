@@ -4,7 +4,7 @@ import test from 'node:test'
 import { convertMontageToDemontage } from '../js/akkord-converter.js'
 
 function sumMaterials(list = []) {
-  return list.reduce((sum, item) => sum + Number(item.quantity ?? item.qty ?? 0) * Number(item.unitPrice ?? item.price ?? 0), 0)
+  return list.reduce((sum, item) => sum + Number(item.quantity ?? item.qty ?? item.amount ?? item.antal ?? 0) * Number(item.unitPrice ?? item.price ?? item.stkPris ?? 0), 0)
 }
 
 test('convertMontageToDemontage maps export model to demontage payload', () => {
@@ -19,6 +19,7 @@ test('convertMontageToDemontage maps export model to demontage payload', () => {
     items: [
       { itemNumber: 'MAT-100', name: 'Rør', quantity: 3, unitPrice: 12.5, system: 'bosta' },
       { id: 'MAT-200', label: 'Dæk', qty: 2, price: 8 },
+      { varenr: 'MAT-300', title: 'Dækplade', antal: 4, stkPris: 5.75, systemKey: 'alfix' },
     ],
     extras: { km: { quantity: 1 } },
     wage: { workers: [{ name: 'Test', hours: 1, rate: 100 }] },
@@ -35,5 +36,9 @@ test('convertMontageToDemontage maps export model to demontage payload', () => {
   assert.equal(result.materials[0].qty, exportModel.items[0].quantity)
   assert.equal(result.materials[0].unitPrice, exportModel.items[0].unitPrice)
   assert.equal(result.materials[1].system, exportModel.meta.system)
+  assert.equal(result.materials[2].id, exportModel.items[2].varenr)
+  assert.equal(result.materials[2].qty, exportModel.items[2].antal)
+  assert.equal(result.materials[2].unitPrice, exportModel.items[2].stkPris)
+  assert.equal(result.materials[2].system, exportModel.items[2].systemKey)
   assert.equal(sumMaterials(result.materials), sumMaterials(exportModel.items))
 })
