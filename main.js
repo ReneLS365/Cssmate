@@ -3028,9 +3028,10 @@ function setupCSVImport() {
   });
 }
 
-async function applyImportedAkkordData(data) {
+async function applyImportedAkkordData(data, options = {}) {
+  const actionHint = typeof options.updateActionHint === 'function' ? options.updateActionHint : updateActionHint;
   if (!data || typeof data !== 'object') {
-    updateActionHint('Kunne ikke læse akkordseddel-data.', 'error');
+    actionHint('Kunne ikke læse akkordseddel-data.', 'error');
     return;
   }
   const payload = data.data && !data.materials ? data.data : data;
@@ -3038,15 +3039,24 @@ async function applyImportedAkkordData(data) {
   if (version && version !== 1 && version !== '1.0') {
     console.warn('Uventet akkordseddel-version', version);
   }
+  const applySnapshot = typeof options.applySnapshot === 'function' ? options.applySnapshot : applyProjectSnapshot;
+  const persistSnapshot = typeof options.persistSnapshot === 'function' ? options.persistSnapshot : persistProjectSnapshot;
   const jobType = (payload.type || payload.jobType || 'montage').toLowerCase();
   const extraInputs = payload.extraInputs || {};
   const extras = mergeExtrasKm(payload.extras || payload.akkord || {}, extraInputs, KM_RATE);
   const infoBlock = payload.info || payload.meta || {};
-  const materialsSource = Array.isArray(payload.materials)
+  const materialFields = {
+    materials: Array.isArray(payload.materials),
+    lines: Array.isArray(payload.lines),
+    linjer: Array.isArray(payload.linjer),
+    items: Array.isArray(payload.items),
+  };
+  console.info('Forsøger at læse materialer fra import', materialFields);
+  const materialsSource = materialFields.materials
     ? payload.materials
-    : Array.isArray(payload.lines)
+    : materialFields.lines
       ? payload.lines
-      : Array.isArray(payload.linjer)
+      : materialFields.linjer
         ? payload.linjer.map(line => ({
           id: line.varenr,
           name: line.navn,
@@ -3054,7 +3064,23 @@ async function applyImportedAkkordData(data) {
           unitPrice: line.stkPris,
           system: line.system,
         }))
-        : [];
+        : materialFields.items
+          ? payload.items.map(item => ({
+            id: item.itemNumber ?? item.id ?? item.varenr ?? '',
+            name: item.name ?? item.label ?? item.title ?? '',
+            qty: item.qty ?? item.quantity ?? item.amount ?? item.antal,
+            unitPrice: item.unitPrice ?? item.price ?? item.stkPris,
+            system: item.system ?? item.systemKey ?? item.systemId,
+          }))
+          : [];
+
+  if (!materialsSource.length) {
+    const message = 'Kunne ikke læse nogen linjer fra filen.';
+    const availableFields = Object.keys(materialFields).filter(key => materialFields[key]);
+    console.warn('Ingen materialer fundet i import', { availableFields, materialFields });
+    actionHint(message, 'error');
+    throw new Error(message);
+  }
 
   const materials = materialsSource.map(item => ({
     id: item.id || item.varenr || '',
@@ -3121,11 +3147,11 @@ async function applyImportedAkkordData(data) {
 
   const snapshot = {
     sagsinfo: {
-      sagsnummer: payload.jobId || infoBlock.sagsnummer || payload.caseNo || payload.id || '',
-      navn: payload.jobName || infoBlock.navn || payload.name || payload.title || '',
-      adresse: payload.jobAddress || payload.address || payload.site || infoBlock.adresse || '',
-      kunde: payload.customer || payload.kunde || infoBlock.kunde || '',
-      dato: payload.createdAt || payload.date || infoBlock.dato || '',
+      sagsnummer: payload.jobId || infoBlock.sagsnummer || infoBlock.caseNumber || payload.caseNo || payload.id || '',
+      navn: payload.jobName || infoBlock.navn || infoBlock.caseName || payload.name || payload.title || '',
+      adresse: payload.jobAddress || payload.address || payload.site || infoBlock.adresse || infoBlock.address || '',
+      kunde: payload.customer || payload.kunde || infoBlock.kunde || infoBlock.customer || '',
+      dato: payload.createdAt || payload.date || infoBlock.dato || infoBlock.date || '',
       montoer: payload.montageWorkers || payload.demontageWorkers || payload.worker || payload.montor || infoBlock.montoer || '',
     },
     systems,
@@ -3154,13 +3180,13 @@ async function applyImportedAkkordData(data) {
 
   pauseHistoryPersistence();
   try {
-    await applyProjectSnapshot(snapshot, { skipHint: true });
+    await applySnapshot(snapshot, { skipHint: true });
   } finally {
     resumeHistoryPersistence();
   }
 
-  updateActionHint('Akkordseddel er importeret. Bekræft arbejdstype og tal.', 'success');
-  persistProjectSnapshot({ type: 'import', source: payload?.meta?.source || 'json' });
+  actionHint('Akkordseddel er importeret. Bekræft arbejdstype og tal.', 'success');
+  persistSnapshot({ type: 'import', source: payload?.meta?.source || 'json' });
 }
 
 async function handleAkkordImport(file) {
@@ -3188,6 +3214,8 @@ async function handleAkkordImport(file) {
 if (typeof window !== 'undefined') {
   window.cssmateHandleAkkordImport = handleAkkordImport;
 }
+
+export { applyImportedAkkordData };
 
 function handleImportFile(file) {
   if (!file) return;
