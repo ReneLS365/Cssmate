@@ -3147,11 +3147,11 @@ async function applyImportedAkkordData(data, options = {}) {
 
   const snapshot = {
     sagsinfo: {
-      sagsnummer: payload.jobId || infoBlock.sagsnummer || payload.caseNo || payload.id || '',
-      navn: payload.jobName || infoBlock.navn || payload.name || payload.title || '',
-      adresse: payload.jobAddress || payload.address || payload.site || infoBlock.adresse || '',
-      kunde: payload.customer || payload.kunde || infoBlock.kunde || '',
-      dato: payload.createdAt || payload.date || infoBlock.dato || '',
+      sagsnummer: payload.jobId || infoBlock.sagsnummer || infoBlock.caseNumber || payload.caseNo || payload.id || '',
+      navn: payload.jobName || infoBlock.navn || infoBlock.caseName || payload.name || payload.title || '',
+      adresse: payload.jobAddress || payload.address || payload.site || infoBlock.adresse || infoBlock.address || '',
+      kunde: payload.customer || payload.kunde || infoBlock.kunde || infoBlock.customer || '',
+      dato: payload.createdAt || payload.date || infoBlock.dato || infoBlock.date || '',
       montoer: payload.montageWorkers || payload.demontageWorkers || payload.worker || payload.montor || infoBlock.montoer || '',
     },
     systems,
