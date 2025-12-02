@@ -4,3 +4,4 @@ npm-debug.log*
 playwright-report/
 test-results/
 playwright/.cache/
+.lighthouseci/

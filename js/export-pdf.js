@@ -2,11 +2,15 @@ import { ensureExportLibs } from '../src/features/export/lazy-libs.js';
 import { buildExportModel, formatDkk } from './export-model.js';
 
 export async function exportPDFBlob(data, options = {}) {
-  const model = options?.model || buildExportModel(data);
+  const model = options?.model || (data ? buildExportModel(data) : null);
   const rawData = options?.rawData || data;
   const skipValidation = options.skipValidation ?? false;
   const skipBeregn = options.skipBeregn ?? false;
   const customSagsnummer = options.customSagsnummer;
+
+  if (!model || typeof model !== 'object') {
+    throw new Error('Mangler exportmodel til PDF');
+  }
 
   if (typeof window !== 'undefined' && typeof window.cssmateExportPDFBlob === 'function') {
     return window.cssmateExportPDFBlob(customSagsnummer, {

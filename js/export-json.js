@@ -5,11 +5,15 @@ export function buildAkkordJsonPayload(data, baseName, options = {}) {
     ? { ...data, meta: { ...data.meta, exportedAt: data.meta.exportedAt || options.exportedAt || new Date().toISOString() } }
     : buildExportModel(data, { exportedAt: options.exportedAt });
   const safeBaseName = sanitizeFilename(baseName || model?.meta?.caseNumber || options.customSagsnummer || 'akkordseddel');
+  const windowData = data && data.info ? data : null;
+  const canUseWindowBuilder = typeof window !== 'undefined'
+    && typeof window.cssmateBuildAkkordJsonPayload === 'function'
+    && windowData;
 
-  try {
-    if (typeof window !== 'undefined' && typeof window.cssmateBuildAkkordJsonPayload === 'function') {
+  if (canUseWindowBuilder) {
+    try {
       const payload = window.cssmateBuildAkkordJsonPayload({
-        data: model,
+        data: windowData,
         customSagsnummer: safeBaseName,
         skipValidation: true,
         skipBeregn: true,
@@ -22,10 +26,9 @@ export function buildAkkordJsonPayload(data, baseName, options = {}) {
           baseName: payload.baseName || safeBaseName,
         };
       }
+    } catch (error) {
+      console.error('JSON eksport fejlede', error);
     }
-  } catch (error) {
-    console.error('JSON eksport fejlede', error);
-    return null;
   }
 
   return {

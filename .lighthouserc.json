@@ -1,7 +1,10 @@
 {
   "ci": {
     "collect": {
-      "numberOfRuns": 3
+      "numberOfRuns": 3,
+      "settings": {
+        "chromeFlags": "--no-sandbox --disable-dev-shm-usage --headless=old --disable-gpu --disable-software-rasterizer --no-zygote --ignore-certificate-errors --allow-insecure-localhost --proxy-server='direct://' --proxy-bypass-list=* --disable-extensions --disable-features=IsolateOrigins,site-per-process,BlockInsecurePrivateNetworkRequests --disable-site-isolation-trials --remote-allow-origins=*"
+      }
     },
     "assert": {
       "assertions": {
