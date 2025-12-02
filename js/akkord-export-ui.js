@@ -4,6 +4,7 @@ import { exportZipFromAkkord } from './export-zip.js';
 import { handleImportAkkord } from './import-akkord.js';
 import { buildAkkordJsonPayload } from './export-json.js';
 import { buildExportModel } from './export-model.js';
+import { convertMontageToDemontage } from './akkord-converter.js';
 
 let buildAkkordDataImpl = buildAkkordData;
 let exportPDFBlobImpl = exportPDFBlob;
@@ -15,6 +16,7 @@ export function initExportPanel() {
   bind('#btn-export-akkord-pdf', handleExportAkkordPDF);
   bind('#btn-export-akkord-zip', handleExportAkkordZIP);
   bind('#btn-export-akkord-json', handleExportAkkordJSON);
+  bind('#btn-export-akkord-demontage', handleExportDemontageJSON);
   bind('#btn-import-akkord', (event) => handleImportAkkordAction(event));
 }
 
@@ -96,6 +98,29 @@ function handleExportAkkordJSON(event) {
   } catch (error) {
     console.error('JSON export failed', error);
     notifyAction('Der opstod en fejl under JSON-eksporten. Prøv igen – eller kontakt kontoret.', 'error');
+  } finally {
+    done();
+  }
+}
+
+function handleExportDemontageJSON(event) {
+  const button = event?.currentTarget;
+  const done = setBusy(button, true, { busyText: 'Genererer demontage…', doneText: 'Demontage klar' });
+  try {
+    notifyAction('Genererer demontage-JSON…', 'info');
+    const data = buildAkkordDataImpl();
+    const model = buildExportModel(data);
+    const demontage = convertMontageToDemontage(model);
+    const meta = getExportMeta(model);
+    const baseName = buildBaseName({ ...meta, sagsnummer: demontage.meta.caseNumber || meta.sagsnummer });
+    const blob = new Blob([JSON.stringify(demontage, null, 2)], { type: 'application/json' });
+    const fileName = `${baseName}-demontage.json`;
+    downloadBlob(blob, fileName);
+    notifyAction('Demontage klar som JSON.', 'success');
+    notifyHistory('demontage', { baseName, fileName });
+  } catch (error) {
+    console.error('Demontage export failed', error);
+    notifyAction('Der opstod en fejl under demontage-eksporten. Prøv igen – eller kontakt kontoret.', 'error');
   } finally {
     done();
   }
@@ -233,6 +258,7 @@ export {
   handleExportAkkordPDF,
   handleExportAkkordZIP,
   handleExportAkkordJSON,
+  handleExportDemontageJSON,
   handleImportAkkordAction,
   handlePrintAkkord,
 };

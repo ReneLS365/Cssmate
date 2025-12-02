@@ -56,6 +56,12 @@ Se også `docs/stage8.md` for den afsluttende QA-checkliste (eksport/round-trip,
 4. Eksportér fra **Resultat/Eksport** (PDF/JSON/ZIP), eller genindlæs sager via **Historik**.
 5. Brug **Hjælp**-fanen for hurtige tips og fejlretning.
 
+## Montage → Demontage konvertering
+
+- Brug knappen **Generer demontage** i eksportpanelet for at hente en demontage-JSON baseret på den aktuelle montage.
+- JSON-filen kan importeres som en ny demontageopgave.
+- Importen accepterer også montage-eksporter med `items`-feltet og konverterer automatisk linjerne til materialer.
+
 ## Admin-mode
 
 - Admin-kode udleveres af administrator og låser prisfelter og avancerede muligheder op til intern brug.

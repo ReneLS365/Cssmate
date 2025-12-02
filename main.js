@@ -8,6 +8,7 @@ import { sha256Hex, constantTimeEquals } from './src/lib/sha256.js'
 import { setupNumpad } from './js/numpad.js'
 import { exportMeta, setSlaebFormulaText } from './js/export-meta.js'
 import { buildAkkordData as buildSharedAkkordData } from './js/akkord-data.js'
+import { convertMontageToDemontage } from './js/akkord-converter.js'
 import { createVirtualMaterialsList } from './src/modules/materialsvirtuallist.js'
 import { initClickGuard } from './src/ui/guards/clickguard.js'
 import { setAdminOk, restoreAdminState, isAdminUnlocked } from './src/state/admin.js'
@@ -3052,27 +3053,26 @@ async function applyImportedAkkordData(data, options = {}) {
     items: Array.isArray(payload.items),
   };
   console.info('Forsøger at læse materialer fra import', materialFields);
-  const materialsSource = materialFields.materials
-    ? payload.materials
-    : materialFields.lines
-      ? payload.lines
-      : materialFields.linjer
-        ? payload.linjer.map(line => ({
-          id: line.varenr,
-          name: line.navn,
-          qty: line.antal,
-          unitPrice: line.stkPris,
-          system: line.system,
-        }))
-        : materialFields.items
-          ? payload.items.map(item => ({
-            id: item.itemNumber ?? item.id ?? item.varenr ?? '',
-            name: item.name ?? item.label ?? item.title ?? '',
-            qty: item.qty ?? item.quantity ?? item.amount ?? item.antal,
-            unitPrice: item.unitPrice ?? item.price ?? item.stkPris,
-            system: item.system ?? item.systemKey ?? item.systemId,
-          }))
-          : [];
+  let materialsSource;
+
+  if (materialFields.materials) {
+    materialsSource = payload.materials;
+  } else if (materialFields.lines) {
+    materialsSource = payload.lines;
+  } else if (materialFields.linjer) {
+    materialsSource = payload.linjer.map(line => ({
+      id: line.varenr,
+      name: line.navn,
+      qty: line.antal,
+      unitPrice: line.stkPris,
+      system: line.system,
+    }));
+  } else if (materialFields.items) {
+    const demontageLike = convertMontageToDemontage(payload);
+    materialsSource = demontageLike.materials;
+  } else {
+    materialsSource = [];
+  }
 
   if (!materialsSource.length) {
     const message = 'Kunne ikke læse nogen linjer fra filen.';
