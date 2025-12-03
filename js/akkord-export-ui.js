@@ -1,6 +1,5 @@
 import { buildAkkordData } from './akkord-data.js';
 import { exportPDFBlob } from './export-pdf.js';
-import { exportZipFromAkkord } from './export-zip.js';
 import { handleImportAkkord } from './import-akkord.js';
 import { buildAkkordJsonPayload } from './export-json.js';
 import { buildExportModel } from './export-model.js';
@@ -8,17 +7,15 @@ import { convertMontageToDemontage } from './akkord-converter.js';
 
 let buildAkkordDataImpl = buildAkkordData;
 let exportPDFBlobImpl = exportPDFBlob;
-let exportZipFromAkkordImpl = exportZipFromAkkord;
+let buildAkkordJsonPayloadImpl = buildAkkordJsonPayload;
 let handleImportAkkordImpl = handleImportAkkord;
 
-export function initExportPanel() {
-  bind('#btn-print-akkord', handlePrintAkkord);
-  bind('#btn-export-akkord-pdf', handleExportAkkordPDF);
-  bind('#btn-export-akkord-zip', handleExportAkkordZIP);
-  bind('#btn-export-akkord-json', handleExportAkkordJSON);
-  bind('#btn-export-akkord-demontage', handleExportDemontageJSON);
-  bind('#btn-import-akkord', (event) => handleImportAkkordAction(event));
-}
+  export function initExportPanel() {
+    bind('#btn-print-akkord', handlePrintAkkord);
+    bind('#btn-export-akkord-pdf', handleExportAkkordPDF);
+    bind('#btn-export-demontage', handleExportDemontageJson);
+    bind('#btn-import-akkord', (event) => handleImportAkkordAction(event));
+  }
 
 function bind(sel, fn) {
   const el = document.querySelector(sel);
@@ -43,113 +40,77 @@ function handlePrintAkkord(event) {
   done();
 }
 
-async function handleExportAkkordPDF(event) {
-  const button = event?.currentTarget;
-  const done = setBusy(button, true, { busyText: 'Eksporterer PDF…', doneText: 'PDF klar' });
+  async function handleExportAkkordPDF(event) {
+    const button = event?.currentTarget;
+    const done = setBusy(button, true, { busyText: 'Eksporterer…', doneText: 'Filer klar' });
   try {
-    notifyAction('Eksporterer akkordseddel (PDF)…', 'info');
-    const data = buildAkkordDataImpl();
-    if (!data || typeof data !== 'object') throw new Error('Mangler data til PDF');
-    const model = buildExportModel(data);
-    if (!model || typeof model !== 'object') throw new Error('Kunne ikke bygge eksportmodel');
-    const meta = getExportMeta(model);
-    const baseName = buildBaseName(meta);
-    const payload = await exportPDFBlobImpl(data, {
-      skipValidation: false,
-      skipBeregn: false,
-      customSagsnummer: meta.sagsnummer,
-      model,
-      rawData: data,
-    });
-    if (!payload?.blob) throw new Error('Mangler PDF payload');
-    const filename = payload.fileName || `${baseName}.pdf`;
-    downloadBlob(payload.blob, filename);
-    notifyAction('PDF er gemt til din enhed.', 'success');
-    notifyHistory('pdf', { baseName, fileName: filename });
+    notifyAction('Eksporterer akkordseddel (PDF + JSON)…', 'info');
+    const context = buildExportContext();
+    const exportErrors = [];
+
+    try {
+      await exportPdfFromContext(context);
+    } catch (error) {
+      exportErrors.push(error);
+      console.error('PDF export failed', error);
+      const fallback = 'Der opstod en fejl under PDF-eksporten. Prøv igen – eller kontakt kontoret.';
+      const message = error?.message ? `${fallback} (${error.message})` : fallback;
+      notifyAction(message, 'error');
+    }
+
+    try {
+      exportJsonFromContext(context);
+    } catch (error) {
+      exportErrors.push(error);
+      console.error('JSON export failed', error);
+      const fallback = 'Der opstod en fejl under JSON-eksporten. Prøv igen – eller kontakt kontoret.';
+      const message = error?.message ? `${fallback} (${error.message})` : fallback;
+      notifyAction(message, 'error');
+    }
+
+    if (exportErrors.length === 2) {
+      throw exportErrors[0];
+    }
   } catch (error) {
-    console.error('PDF export failed', error);
-    const fallback = 'Der opstod en fejl under PDF-eksporten. Prøv igen – eller kontakt kontoret.';
+    console.error('Export failed', error);
+    const fallback = 'Der opstod en fejl under eksporten. Prøv igen – eller kontakt kontoret.';
     const message = error?.message ? `${fallback} (${error.message})` : fallback;
     notifyAction(message, 'error');
   } finally {
     done();
-  }
-}
-
-function handleExportAkkordJSON(event) {
-  const button = event?.currentTarget;
-  const done = setBusy(button, true, { busyText: 'Eksporterer JSON…', doneText: 'JSON klar' });
-  try {
-    notifyAction('Eksporterer akkordseddel (JSON)…', 'info');
-    const data = buildAkkordDataImpl();
-    const model = buildExportModel(data);
-    const meta = getExportMeta(model);
-    const baseName = buildBaseName(meta);
-    const payload = buildAkkordJsonPayload(model, baseName);
-    if (!payload?.content) {
-      notifyAction('Kunne ikke bygge JSON-eksporten.', 'error');
-      return;
     }
-    const blob = new Blob([payload.content], { type: 'application/json' });
-    const fileName = payload.fileName || `${baseName}.json`;
-    downloadBlob(blob, fileName);
-    notifyAction('Akkordseddel (JSON) er gemt.', 'success');
-    notifyHistory('json', { baseName, fileName });
-  } catch (error) {
-    console.error('JSON export failed', error);
-    notifyAction('Der opstod en fejl under JSON-eksporten. Prøv igen – eller kontakt kontoret.', 'error');
-  } finally {
-    done();
   }
-}
 
-function handleExportDemontageJSON(event) {
-  const button = event?.currentTarget;
-  const done = setBusy(button, true, { busyText: 'Genererer demontage…', doneText: 'Demontage klar' });
-  try {
-    notifyAction('Genererer demontage-JSON…', 'info');
-    const data = buildAkkordDataImpl();
-    const model = buildExportModel(data);
-    const demontage = convertMontageToDemontage(model);
-    const meta = getExportMeta(model);
-    const baseName = buildBaseName({ ...meta, sagsnummer: demontage.meta.caseNumber || meta.sagsnummer });
-    const blob = new Blob([JSON.stringify(demontage, null, 2)], { type: 'application/json' });
-    const fileName = `${baseName}-demontage.json`;
-    downloadBlob(blob, fileName);
-    notifyAction('Demontage klar som JSON.', 'success');
-    notifyHistory('demontage', { baseName, fileName });
-  } catch (error) {
-    console.error('Demontage export failed', error);
-    notifyAction('Der opstod en fejl under demontage-eksporten. Prøv igen – eller kontakt kontoret.', 'error');
-  } finally {
-    done();
-  }
-}
+  async function handleExportDemontageJson(event) {
+    const button = event?.currentTarget;
+    const done = setBusy(button, true, { busyText: 'Eksporterer…', doneText: 'Demontage klar' });
+    try {
+      notifyAction('Eksporterer demontage (JSON)…', 'info');
+      const context = buildExportContext();
+      const demontageModel = convertMontageToDemontage(context.model);
+      const exportedAt = demontageModel?.meta?.exportedAt || new Date().toISOString();
+      const baseName = `${context.baseName}-demontage`;
+      const payload = buildAkkordJsonPayloadImpl(demontageModel, baseName, { exportedAt });
+      if (!payload?.content) throw new Error('Kunne ikke bygge demontage JSON');
 
-function handleExportAkkordZIP(event) {
-  const button = event?.currentTarget;
-  const done = setBusy(button, true, { busyText: 'Pakker ZIP…', doneText: 'ZIP klar' });
-  const data = buildAkkordDataImpl();
-  const model = buildExportModel(data);
-  const baseName = buildBaseName(getExportMeta(model));
-  notifyAction('Pakker ZIP med PDF/JSON…', 'info');
-  exportZipFromAkkordImpl(data, { baseName, model })
-    .then(({ zipName, files } = {}) => {
-      notifyAction('ZIP er klar til download.', 'success');
-      notifyHistory('zip', { baseName, fileName: zipName, files });
-    })
-    .catch((err) => {
-      console.error('ZIP export failed', err);
-      const fallback = 'Der opstod en fejl under ZIP-eksporten. Prøv igen – eller kontakt kontoret.';
-      const message = err?.message ? `${fallback} (${err.message})` : fallback;
+      const blob = new Blob([payload.content], { type: 'application/json' });
+      const fileName = payload.fileName || `${baseName}.json`;
+      downloadBlob(blob, fileName);
+      notifyAction('Demontage (JSON) er gemt.', 'success');
+      notifyHistory('demontage-json', { baseName, fileName });
+    } catch (error) {
+      console.error('Demontage eksport fejlede', error);
+      const fallback = 'Der opstod en fejl under demontage-eksporten. Prøv igen – eller kontakt kontoret.';
+      const message = error?.message ? `${fallback} (${error.message})` : fallback;
       notifyAction(message, 'error');
-    })
-    .finally(() => done());
-}
+    } finally {
+      done();
+    }
+  }
 
-async function handleImportAkkordAction(event) {
-  const button = event?.currentTarget;
-  const done = setBusy(button, true, { busyText: 'Importerer…', doneText: 'Import klar' });
+  async function handleImportAkkordAction(event) {
+    const button = event?.currentTarget;
+    const done = setBusy(button, true, { busyText: 'Importerer…', doneText: 'Import klar' });
   try {
     await handleImportAkkordImpl();
     notifyAction('Import gennemført.', 'success');
@@ -196,6 +157,41 @@ function getExportMeta(data) {
 function buildBaseName(meta) {
   const parts = [meta.sagsnummer, meta.kunde, meta.dato].filter(Boolean);
   return sanitizeFilename(parts.join('-') || 'akkordseddel');
+}
+
+function buildExportContext() {
+  const data = buildAkkordDataImpl();
+  if (!data || typeof data !== 'object') throw new Error('Mangler data til eksport');
+  const model = buildExportModel(data);
+  if (!model || typeof model !== 'object') throw new Error('Kunne ikke bygge eksportmodel');
+  const meta = getExportMeta(model);
+  const baseName = buildBaseName(meta);
+  return { data, model, meta, baseName };
+}
+
+async function exportPdfFromContext(context) {
+  const payload = await exportPDFBlobImpl(context.data, {
+    skipValidation: false,
+    skipBeregn: false,
+    customSagsnummer: context.meta.sagsnummer,
+    model: context.model,
+    rawData: context.data,
+  });
+  if (!payload?.blob) throw new Error('Mangler PDF payload');
+  const filename = payload.fileName || `${context.baseName}.pdf`;
+  downloadBlob(payload.blob, filename);
+  notifyAction('PDF er gemt til din enhed.', 'success');
+  notifyHistory('pdf', { baseName: context.baseName, fileName: filename });
+}
+
+function exportJsonFromContext(context) {
+  const payload = buildAkkordJsonPayloadImpl(context.model, context.baseName);
+  if (!payload?.content) throw new Error('Kunne ikke bygge JSON-eksporten');
+  const blob = new Blob([payload.content], { type: 'application/json' });
+  const fileName = payload.fileName || `${context.baseName}.json`;
+  downloadBlob(blob, fileName);
+  notifyAction('Akkordseddel (JSON) er gemt.', 'success');
+  notifyHistory('json', { baseName: context.baseName, fileName });
 }
 
 function notifyAction(message, variant) {
@@ -246,19 +242,17 @@ export function setExportDependencies(overrides = {}) {
   exportPDFBlobImpl = typeof overrides.exportPDFBlob === 'function'
     ? overrides.exportPDFBlob
     : exportPDFBlob;
-  exportZipFromAkkordImpl = typeof overrides.exportZipFromAkkord === 'function'
-    ? overrides.exportZipFromAkkord
-    : exportZipFromAkkord;
+  buildAkkordJsonPayloadImpl = typeof overrides.buildAkkordJsonPayload === 'function'
+    ? overrides.buildAkkordJsonPayload
+    : buildAkkordJsonPayload;
   handleImportAkkordImpl = typeof overrides.handleImportAkkord === 'function'
     ? overrides.handleImportAkkord
     : handleImportAkkord;
 }
 
-export {
-  handleExportAkkordPDF,
-  handleExportAkkordZIP,
-  handleExportAkkordJSON,
-  handleExportDemontageJSON,
-  handleImportAkkordAction,
-  handlePrintAkkord,
-};
+  export {
+    handleExportAkkordPDF,
+    handleExportDemontageJson,
+    handleImportAkkordAction,
+    handlePrintAkkord,
+  };
