@@ -31,6 +31,7 @@ test('export buttons trigger their actions correctly', async t => {
     '#btn-export-akkord-pdf': createButton('#btn-export-akkord-pdf'),
     '#btn-export-akkord-zip': createButton('#btn-export-akkord-zip'),
     '#btn-export-akkord-json': createButton('#btn-export-akkord-json'),
+    '#btn-export-akkord-demontage': createButton('#btn-export-akkord-demontage'),
     '#btn-import-akkord': createButton('#btn-import-akkord'),
   };
 
@@ -102,6 +103,7 @@ test('export buttons trigger their actions correctly', async t => {
   assert.equal(buttons['#btn-export-akkord-pdf'].listenerCount(), 1, 'PDF button is bound');
   assert.equal(buttons['#btn-export-akkord-zip'].listenerCount(), 1, 'ZIP button is bound');
   assert.equal(buttons['#btn-export-akkord-json'].listenerCount(), 1, 'JSON button is bound');
+  assert.equal(buttons['#btn-export-akkord-demontage'].listenerCount(), 1, 'demontage button is bound');
   assert.equal(buttons['#btn-import-akkord'].listenerCount(), 1, 'import button is bound');
 
   await buttons['#btn-print-akkord'].click();
@@ -126,6 +128,12 @@ test('export buttons trigger their actions correctly', async t => {
   assert.equal(downloads[1]?.download, 'SA-1-Kunde-2024-05-10.json', 'JSON download is queued');
   assert.deepEqual(actionHints[5], { message: 'Eksporterer akkordseddel (JSON)…', variant: 'info' });
   assert.deepEqual(actionHints[6], { message: 'Akkordseddel (JSON) er gemt.', variant: 'success' });
+
+  await buttons['#btn-export-akkord-demontage'].click();
+  assert.equal(akkordDataMock.mock.calls.length, 4, 'akkord data built for demontage');
+  assert.equal(downloads[2]?.download, 'SA-1-Kunde-2024-05-10-demontage.json', 'Demontage download is queued');
+  assert.deepEqual(actionHints[7], { message: 'Genererer demontage-JSON…', variant: 'info' });
+  assert.deepEqual(actionHints[8], { message: 'Demontage klar som JSON.', variant: 'success' });
 
   await buttons['#btn-import-akkord'].click();
   assert.equal(handleImportAkkordMock.mock.calls.length, 1, 'import handler invoked');

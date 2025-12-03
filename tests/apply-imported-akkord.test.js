@@ -150,7 +150,7 @@ test('applyImportedAkkordData imports payloads that only contain items', async t
   const { applyImportedAkkordData } = await import('../main.js')
 
   const payload = {
-    meta: { caseNumber: 'ITEMS-ONLY' },
+    meta: { caseNumber: 'ITEMS-ONLY', system: 'alfix' },
     items: [
       { itemNumber: 'MAT-10', name: 'Plank 2,57', quantity: 4, unitPrice: 12.5, system: 'bosta' },
       { id: 'MAT-11', name: 'Spire', qty: 1, unitPrice: 5 },
@@ -174,6 +174,7 @@ test('applyImportedAkkordData imports payloads that only contain items', async t
   assert.equal(first.quantity, 4)
   assert.equal(first.price, 12.5)
   assert.equal(second.id, 'MAT-11')
+  assert.equal(second.system, 'alfix')
   assert.equal(hints.at(-1).variant, 'success')
 })
 
