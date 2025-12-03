@@ -1,3 +1,28 @@
+// AkkordExportV2 (kanonisk JSON-schema)
+// {
+//   version: '2.0',
+//   source: 'cssmate',
+//   meta: {
+//     caseNumber, caseName, customer, address, date, system, systems, jobType,
+//     jobFactor, createdAt, exportedAt
+//   },
+//   info: { sagsnummer, navn, adresse, kunde, dato, montoer, jobType },
+//   items: [{ lineNumber, system, category, itemNumber, name, unit, quantity, unitPrice, lineTotal }],
+//   extras: {
+//     km: { quantity, rate, amount },
+//     slaeb: { percent, amount },
+//     tralle: { lifts35, lifts50, amount },
+//     extraWork: [...],
+//     fields: {
+//       jobType, montagepris, demontagepris, slaebePct, slaebeFormulaText,
+//       antalBoringHuller, antalLukHuller, antalBoringBeton, opskydeligtRaekvaerk,
+//       kmBelob, kmAntal, kmIsAmount, traelle35, traelle50, tralleSum
+//     }
+//   },
+//   wage: { workers: [...], totals: { hours, sum } },
+//   extraInputs: {...},
+//   totals: { materials, extras, extrasBreakdown, akkord, project }
+// }
 const NUMBER_FORMATTER = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 function asNumber(value, fallback = 0) {
@@ -76,10 +101,11 @@ function normalizeExtraWork(data = {}) {
 
 function normalizeTralle(data = {}) {
   const tralleState = data.tralleState || {}
-  const tralleSum = asNumber(data.tralleSum ?? data.extras?.tralleSum ?? 0, 0)
+  const extras = data.extras || {}
+  const tralleSum = asNumber(data.tralleSum ?? extras.tralleSum ?? extras.tralle ?? 0, 0)
   return {
-    lifts35: asNumber(tralleState.n35, 0),
-    lifts50: asNumber(tralleState.n50, 0),
+    lifts35: asNumber(tralleState.n35 ?? extras.traelle35 ?? extras.tralle35 ?? extras.tralleløft35, 0),
+    lifts50: asNumber(tralleState.n50 ?? extras.traelle50 ?? extras.tralle50 ?? extras.tralleløft50, 0),
     amount: tralleSum,
   }
 }
@@ -126,7 +152,7 @@ function normalizeWage(data = {}) {
 }
 
 export function buildExportModel(raw = {}, options = {}) {
-  const metaInfo = { ...(raw.meta || {}), ...(raw.info || {}) }
+  const metaInfo = { ...(raw.meta || {}), ...(raw.info || {}), ...(raw.sagsinfo || {}) }
   const akkord = raw.akkord || {}
   const extras = raw.extras || {}
   const extraInputs = raw.extraInputs || {}
@@ -170,18 +196,69 @@ export function buildExportModel(raw = {}, options = {}) {
 
   const wage = normalizeWage(raw)
 
+  const jobType = (raw.jobType || metaInfo.jobType || raw.type || 'montage').toLowerCase()
+  const systems = Array.isArray(raw.systems)
+    ? raw.systems
+    : metaInfo.systems && Array.isArray(metaInfo.systems)
+      ? metaInfo.systems
+      : metaInfo.system
+        ? [metaInfo.system]
+        : raw.system
+          ? [raw.system]
+          : []
+
   const meta = {
-    version: metaInfo.version || raw.version || '1.0',
+    version: '2.0',
+    source: 'cssmate',
     caseNumber: metaInfo.caseNumber || metaInfo.sagsnummer || metaInfo.caseNo || 'UKENDT',
     caseName: metaInfo.caseName || metaInfo.navn || metaInfo.beskrivelse || raw.info?.navn || '',
     customer: metaInfo.customer || metaInfo.kunde || raw.info?.kunde || '',
     address: metaInfo.address || metaInfo.adresse || raw.info?.adresse || '',
     date: sanitizeDate(metaInfo.date || metaInfo.dato || raw.info?.dato || raw.createdAt),
-    system: Array.isArray(raw.systems) ? raw.systems[0] : metaInfo.system || raw.system || '',
-    jobType: raw.jobType || 'montage',
+    system: systems[0] || '',
+    systems,
+    jobType,
     jobFactor: asNumber(raw.jobFactor, 1) || 1,
     createdAt: raw.createdAt || metaInfo.createdAt || new Date().toISOString(),
     exportedAt: options.exportedAt || new Date().toISOString(),
+  }
+
+  const info = {
+    sagsnummer: meta.caseNumber,
+    navn: meta.caseName,
+    adresse: meta.address,
+    kunde: meta.customer,
+    dato: meta.date,
+    montoer: metaInfo.montoer || raw.info?.montoer || '',
+    jobType,
+  }
+
+  const extraFields = {
+    jobType,
+    montagepris: extras.montagepris,
+    demontagepris: extras.demontagepris,
+    slaebePct: slaebPercent,
+    slaebeFormulaText: extras.slaebeFormulaText,
+    antalBoringHuller: extras.huller ?? extras.antalBoringHuller ?? extraInputs.boringHuller ?? 0,
+    antalLukHuller: extras.lukAfHul ?? extras.antalLukHuller ?? extraInputs.lukHuller ?? 0,
+    antalBoringBeton: extras.boringBeton ?? extras.antalBoringBeton ?? extraInputs.boringBeton ?? 0,
+    opskydeligtRaekvaerk: extras.opskydeligt ?? extras.opskydeligtRaekvaerk ?? extraInputs.opskydeligt ?? 0,
+    kmBelob: kmAmount,
+    kmAntal: kmQuantity,
+    kmIsAmount: true,
+    traelle35: tralle.lifts35,
+    traelle50: tralle.lifts50,
+    tralleSum: tralle.amount,
+  }
+
+  const extraInputsModel = {
+    ...extraInputs,
+    km: extraInputs.km ?? kmQuantity,
+    slaebePctInput: extraInputs.slaebePctInput ?? slaebPercent,
+    boringHuller: extraInputs.boringHuller ?? extraFields.antalBoringHuller,
+    lukHuller: extraInputs.lukHuller ?? extraFields.antalLukHuller,
+    boringBeton: extraInputs.boringBeton ?? extraFields.antalBoringBeton,
+    opskydeligt: extraInputs.opskydeligt ?? extraFields.opskydeligtRaekvaerk,
   }
 
   const totalsModel = {
@@ -198,7 +275,10 @@ export function buildExportModel(raw = {}, options = {}) {
   }
 
   const model = {
+    version: '2.0',
+    source: 'cssmate',
     meta,
+    info,
     materials,
     items,
     extras: {
@@ -206,8 +286,10 @@ export function buildExportModel(raw = {}, options = {}) {
       slaeb: { percent: slaebPercent, amount: slaebAmount },
       tralle,
       extraWork,
+      fields: extraFields,
     },
     wage,
+    extraInputs: extraInputsModel,
     totals: totalsModel,
   }
 

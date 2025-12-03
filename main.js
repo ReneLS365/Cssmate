@@ -8,6 +8,7 @@ import { sha256Hex, constantTimeEquals } from './src/lib/sha256.js'
 import { setupNumpad } from './js/numpad.js'
 import { exportMeta, setSlaebFormulaText } from './js/export-meta.js'
 import { buildAkkordData as buildSharedAkkordData } from './js/akkord-data.js'
+import { buildExportModel as buildSharedExportModel } from './js/export-model.js'
 import { convertMontageToDemontage } from './js/akkord-converter.js'
 import { createVirtualMaterialsList } from './src/modules/materialsvirtuallist.js'
 import { initClickGuard } from './src/ui/guards/clickguard.js'
@@ -2164,54 +2165,162 @@ function applyLaborSnapshot(labor = []) {
   populateWorkersFromLabor(laborEntries);
 }
 
+function extractVersionNumber(payload = {}) {
+  const versionValue = payload?.version ?? payload?.meta?.version;
+  const numeric = Number(versionValue);
+  if (Number.isFinite(numeric)) return numeric;
+  if (typeof versionValue === 'string') {
+    const parsed = Number.parseFloat(versionValue);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function mapSagsinfoFromPayload(payload = {}) {
+  const meta = payload.meta || {};
+  const info = payload.info || {};
+  return {
+    sagsnummer: payload.jobId || info.sagsnummer || meta.sagsnummer || meta.caseNumber || payload.caseNo || payload.id || '',
+    navn: payload.jobName || info.navn || meta.caseName || meta.navn || payload.name || payload.title || '',
+    adresse: payload.jobAddress || payload.address || payload.site || info.adresse || info.address || meta.adresse || meta.address || '',
+    kunde: payload.customer || payload.kunde || info.kunde || info.customer || meta.customer || meta.kunde || '',
+    dato: normalizeDateValue(info.dato || info.date || meta.date || payload.createdAt || payload.date),
+    montoer: payload.montageWorkers || payload.demontageWorkers || payload.worker || payload.montor || info.montoer || info.montor || meta.montoer || '',
+  };
+}
+
+function collectMaterialsFromPayload(payload = {}, { defaultSystem = '', priceDivisor = 1 } = {}) {
+  let materialsSource = [];
+  if (Array.isArray(payload.materials)) {
+    materialsSource = payload.materials;
+  } else if (Array.isArray(payload.items)) {
+    materialsSource = payload.items;
+  } else if (Array.isArray(payload.lines)) {
+    materialsSource = payload.lines;
+  } else if (Array.isArray(payload.linjer)) {
+    materialsSource = payload.linjer.map(line => ({
+      id: line.varenr,
+      name: line.navn,
+      quantity: line.antal,
+      unitPrice: line.stkPris,
+      system: line.system,
+    }));
+  }
+
+  return materialsSource.map((item, index) => {
+    const quantity = toNumber(item.quantity ?? item.qty ?? item.antal ?? item.amount);
+    const unitPriceRaw = toNumber(item.unitPrice ?? item.price ?? item.stkPris ?? item.ackUnitPrice ?? item.baseUnitPrice);
+    const unitPrice = priceDivisor ? unitPriceRaw / priceDivisor : unitPriceRaw;
+    const system = item.system || item.systemKey || payload.system || payload.meta?.system || defaultSystem || inferSystemFromLine(item);
+    return {
+      id: item.id || item.varenr || item.itemNumber || `line-${index + 1}`,
+      name: item.name || item.label || item.title || '',
+      quantity,
+      price: unitPrice,
+      system,
+    };
+  }).filter(entry => entry && (entry.quantity || entry.name || entry.id));
+}
+
+function mapWageToLaborFromPayload(payload = {}, jobType) {
+  const wage = payload.wage || {};
+  const wageWorkers = Array.isArray(wage.workers)
+    ? wage.workers
+    : Array.isArray(payload.workers)
+      ? payload.workers
+      : Array.isArray(payload.labor)
+        ? payload.labor
+        : [];
+
+  const labor = [];
+  if (wageWorkers.length) {
+    wageWorkers.forEach(entry => {
+      const hours = toNumber(entry?.hours ?? entry?.time);
+      const rate = toNumber(entry?.rate ?? entry?.hourlyWithAllowances ?? entry?.hourlyRate);
+      const udd = entry?.udd || entry?.education || entry?.educationLevel || wage.educationLevel || '';
+      const mentortillaeg = toNumber(entry?.mentortillaeg ?? entry?.mentorAllowance);
+      const type = entry?.type || jobType;
+      if (hours > 0 || rate > 0 || type) {
+        labor.push({ type, hours, rate, udd, mentortillaeg });
+      }
+    });
+  } else {
+    const hours = toNumber(wage.montageHours ?? wage.demontageHours ?? wage.totalHours);
+    const hourlyRate = toNumber(wage.hourlyRate);
+    if (hours > 0 || hourlyRate > 0) {
+      labor.push({
+        type: jobType,
+        hours,
+        rate: hourlyRate,
+        udd: wage.educationLevel || wage.udd || '',
+        mentortillaeg: toNumber(wage.mentorAllowance),
+      });
+    }
+  }
+
+  return labor;
+}
+
+function mapExtrasForSnapshot(payload = {}, jobType) {
+  const extrasPayload = payload.extras || payload.akkord || {};
+  const extraInputs = payload.extraInputs || {};
+  const fieldSet = extrasPayload.fields || extrasPayload.akkordExtras || extrasPayload.snapshot || {};
+  const kmBlock = extrasPayload.km || {};
+  const slaebBlock = extrasPayload.slaeb || {};
+  const tralleBlock = extrasPayload.tralle || {};
+  const kmQuantity = toNumber(kmBlock.quantity ?? extrasPayload.kmAntal ?? extraInputs.km);
+  const kmAmount = toNumber(kmBlock.amount ?? extrasPayload.kmBelob ?? extrasPayload.km);
+
+  const extras = {
+    jobType,
+    montagepris: fieldSet.montagepris ?? extrasPayload.montagepris,
+    demontagepris: fieldSet.demontagepris ?? extrasPayload.demontagepris,
+    slaebePct: toNumber(slaebBlock.percent ?? fieldSet.slaebePct ?? extrasPayload.slaebePct ?? extraInputs.slaebePctInput),
+    slaebeFormulaText: fieldSet.slaebeFormulaText ?? extrasPayload.slaebeFormulaText,
+    antalBoringHuller: toNumber(fieldSet.antalBoringHuller ?? extrasPayload.huller ?? extrasPayload.antalBoringHuller ?? extraInputs.boringHuller),
+    antalLukHuller: toNumber(fieldSet.antalLukHuller ?? extrasPayload.lukAfHul ?? extrasPayload.antalLukHuller ?? extraInputs.lukHuller),
+    antalBoringBeton: toNumber(fieldSet.antalBoringBeton ?? extrasPayload.boringBeton ?? extrasPayload.antalBoringBeton ?? extraInputs.boringBeton),
+    opskydeligtRaekvaerk: toNumber(fieldSet.opskydeligtRaekvaerk ?? extrasPayload.opskydeligt ?? extrasPayload.opskydeligtRaekvaerk ?? extraInputs.opskydeligt),
+    km: kmAmount,
+    kmBelob: kmAmount,
+    kmAntal: Number.isFinite(kmQuantity) ? kmQuantity : undefined,
+    kmIsAmount: true,
+    traelle35: toNumber(tralleBlock.lifts35 ?? fieldSet.traelle35 ?? extrasPayload.tralle35 ?? extrasPayload.traelle35),
+    traelle50: toNumber(tralleBlock.lifts50 ?? fieldSet.traelle50 ?? extrasPayload.tralle50 ?? extrasPayload.traelle50),
+    tralleSum: toNumber(tralleBlock.amount ?? extrasPayload.tralleSum ?? extrasPayload.tralle),
+  };
+
+  const mappedInputs = {
+    ...extraInputs,
+    km: extraInputs.km ?? kmQuantity,
+    slaebePctInput: extraInputs.slaebePctInput ?? extras.slaebePct,
+    boringHuller: extraInputs.boringHuller ?? extras.antalBoringHuller,
+    lukHuller: extraInputs.lukHuller ?? extras.antalLukHuller,
+    boringBeton: extraInputs.boringBeton ?? extras.antalBoringBeton,
+    opskydeligt: extraInputs.opskydeligt ?? extras.opskydeligtRaekvaerk,
+  };
+
+  const extraWork = Array.isArray(extrasPayload.extraWork) ? extrasPayload.extraWork : [];
+  if (extraWork.length) {
+    extras.extraWork = extraWork;
+  }
+
+  return { extras, extraInputs: mappedInputs };
+}
+
 function mapAkkordJsonV1ToSnapshot(payload = {}) {
   const jobType = payload.type || payload.extras?.jobType || 'montage';
   const jobFactor = jobType === 'demontage' ? 0.5 : 1;
-  const extraInputs = payload.extraInputs || {};
-  const extras = mergeExtrasKm({ ...(payload.extras || {}), jobType }, extraInputs, KM_RATE);
-  const wageWorkers = Array.isArray(payload.wage?.workers) ? payload.wage.workers : [];
-  const workerNames = wageWorkers
-    .map(worker => worker?.name || worker?.worker || '')
-    .filter(Boolean)
-    .join(', ');
-
-  const info = {
-    sagsnummer: payload.jobId || payload.info?.sagsnummer || '',
-    navn: payload.jobName || payload.info?.navn || '',
-    adresse: payload.info?.adresse || payload.info?.address || payload.site || payload.address || '',
-    kunde: payload.customer || payload.info?.kunde || '',
-    dato: normalizeDateValue(payload.createdAt || payload.info?.dato),
-    montoer: workerNames || payload.info?.montoer || '',
-  };
-
+  const { extras, extraInputs } = mapExtrasForSnapshot(payload, jobType);
+  const info = mapSagsinfoFromPayload(payload);
   const systems = Array.isArray(payload.systems) && payload.systems.length
     ? payload.systems
     : payload.system
       ? [payload.system]
       : [];
 
-  const materials = Array.isArray(payload.materials)
-    ? payload.materials
-      .map(item => ({
-        id: item?.id || item?.varenr || item?.lineId || '',
-        name: item?.name || item?.label || '',
-        quantity: toNumber(item?.qty ?? item?.quantity ?? 0),
-        price: toNumber(item?.unitPrice ?? item?.price ?? 0) / jobFactor,
-      }))
-      .filter(entry => entry.id || entry.name)
-    : [];
-
-  const labor = wageWorkers.length
-    ? wageWorkers.map(worker => ({
-      type: worker?.type || jobType,
-      hours: toNumber(worker?.hours ?? worker?.time ?? 0),
-      rate: toNumber(worker?.rate ?? worker?.hourlyWithAllowances ?? payload.wage?.hourlyRate),
-      udd: worker?.udd || worker?.educationLevel || payload.wage?.educationLevel || '',
-      mentortillaeg: toNumber(worker?.mentortillaeg),
-    }))
-    : Array.isArray(payload.labor)
-      ? payload.labor
-      : [];
+  const materials = collectMaterialsFromPayload(payload, { defaultSystem: systems[0] || '', priceDivisor: jobFactor || 1 });
+  const labor = mapWageToLaborFromPayload(payload, jobType);
 
   const totals = payload.totals
     ? {
@@ -2236,6 +2345,35 @@ function mapAkkordJsonV1ToSnapshot(payload = {}) {
   };
 }
 
+function mapAkkordJsonV2ToSnapshot(payload = {}) {
+  const jobType = (payload.jobType || payload.type || payload.meta?.jobType || 'montage').toLowerCase();
+  const { extras, extraInputs } = mapExtrasForSnapshot(payload, jobType);
+  const info = mapSagsinfoFromPayload(payload);
+  const systems = Array.isArray(payload.systems) && payload.systems.length
+    ? payload.systems
+    : Array.isArray(payload.meta?.systems)
+      ? payload.meta.systems
+      : payload.meta?.system
+        ? [payload.meta.system]
+        : payload.system
+          ? [payload.system]
+          : [];
+
+  const materials = collectMaterialsFromPayload(payload, { defaultSystem: systems[0] || '', priceDivisor: 1 });
+  const labor = mapWageToLaborFromPayload(payload, jobType);
+  const totals = payload.totals ? { ...payload.totals } : undefined;
+
+  return {
+    sagsinfo: info,
+    systems,
+    materials,
+    labor,
+    extras,
+    extraInputs,
+    totals,
+  };
+}
+
 function normalizeLegacyJsonSnapshot(snapshot = {}) {
   const jobType = snapshot.type || snapshot.jobType || snapshot.extras?.jobType || 'montage';
   const extras = { ...(snapshot.extras || {}), jobType };
@@ -2244,19 +2382,28 @@ function normalizeLegacyJsonSnapshot(snapshot = {}) {
     info.dato = normalizeDateValue(snapshot.createdAt);
   }
 
+  const systems = Array.isArray(snapshot.systems) ? snapshot.systems : snapshot.system ? [snapshot.system] : [];
+  const materials = collectMaterialsFromPayload(snapshot, { defaultSystem: systems[0] || '', priceDivisor: 1 });
+  const extraInputs = snapshot.extraInputs || {};
+  const labor = Array.isArray(snapshot.labor) ? snapshot.labor : [];
+
   return {
     sagsinfo: info,
-    systems: Array.isArray(snapshot.systems) ? snapshot.systems : snapshot.system ? [snapshot.system] : [],
-    materials: Array.isArray(snapshot.materials) ? snapshot.materials : [],
-    labor: Array.isArray(snapshot.labor) ? snapshot.labor : [],
+    systems,
+    materials,
+    labor,
     extras,
+    extraInputs,
     totals: snapshot.totals || snapshot.summary,
   };
 }
 
 function normalizeImportedJsonSnapshot(snapshot = {}) {
-  const version = Number(snapshot?.version);
-  if (Number.isFinite(version) && version >= AKKORD_JSON_VERSION) {
+  const version = extractVersionNumber(snapshot);
+  if (Number.isFinite(version) && version >= 2) {
+    return mapAkkordJsonV2ToSnapshot(snapshot);
+  }
+  if (Number.isFinite(version) && version >= 1) {
     return mapAkkordJsonV1ToSnapshot(snapshot);
   }
   return normalizeLegacyJsonSnapshot(snapshot);
@@ -3036,16 +3183,8 @@ async function applyImportedAkkordData(data, options = {}) {
     return;
   }
   const payload = data.data && !data.materials ? data.data : data;
-  const version = payload.version || payload.meta?.version;
-  if (version && version !== 1 && version !== '1.0') {
-    console.warn('Uventet akkordseddel-version', version);
-  }
   const applySnapshot = typeof options.applySnapshot === 'function' ? options.applySnapshot : applyProjectSnapshot;
   const persistSnapshot = typeof options.persistSnapshot === 'function' ? options.persistSnapshot : persistProjectSnapshot;
-  const jobType = (payload.type || payload.jobType || 'montage').toLowerCase();
-  const extraInputs = payload.extraInputs || {};
-  const extras = mergeExtrasKm(payload.extras || payload.akkord || {}, extraInputs, KM_RATE);
-  const infoBlock = payload.info || payload.meta || {};
   const materialFields = {
     materials: Array.isArray(payload.materials),
     lines: Array.isArray(payload.lines),
@@ -3053,33 +3192,10 @@ async function applyImportedAkkordData(data, options = {}) {
     items: Array.isArray(payload.items),
   };
   console.info('Forsøger at læse materialer fra import', materialFields);
-  let materialsSource;
 
-  if (materialFields.materials) {
-    materialsSource = payload.materials;
-  } else if (materialFields.lines) {
-    materialsSource = payload.lines;
-  } else if (materialFields.linjer) {
-    materialsSource = payload.linjer.map(line => ({
-      id: line.varenr,
-      name: line.navn,
-      qty: line.antal,
-      unitPrice: line.stkPris,
-      system: line.system,
-    }));
-  } else if (materialFields.items) {
-    materialsSource = payload.items.map(item => ({
-      id: item.itemNumber || item.id || '',
-      name: item.name || '',
-      qty: Number(item.quantity ?? item.qty ?? 0) || 0,
-      unitPrice: Number(item.unitPrice ?? item.price ?? 0) || 0,
-      system: item.system || payload.system || payload.meta?.system || '',
-    }));
-  } else {
-    materialsSource = [];
-  }
-
-  if (!materialsSource.length) {
+  const snapshot = normalizeImportedJsonSnapshot(payload);
+  const materials = Array.isArray(snapshot?.materials) ? snapshot.materials : [];
+  if (!materials.length) {
     const message = 'Kunne ikke læse nogen linjer fra filen.';
     const availableFields = Object.keys(materialFields).filter(key => materialFields[key]);
     console.warn('Ingen materialer fundet i import', { availableFields, materialFields });
@@ -3087,105 +3203,26 @@ async function applyImportedAkkordData(data, options = {}) {
     throw new Error(message);
   }
 
-  const materials = materialsSource.map(item => ({
-    id: item.id || item.varenr || '',
-    name: item.name || item.label || item.title || '',
-    price: toNumber(item.unitPrice ?? item.price),
-    quantity: toNumber(item.qty ?? item.quantity ?? item.amount),
-    system: item.system || item.systemKey || inferSystemFromLine(item),
-  })).filter(entry => entry.quantity > 0 || entry.name || entry.id);
+  const normalizedJobType = (snapshot.extras?.jobType || snapshot.extraInputs?.jobType || payload.jobType || payload.type || 'montage').toLowerCase();
+  const systems = Array.isArray(snapshot.systems) && snapshot.systems.length
+    ? snapshot.systems
+    : Array.from(selectedSystemKeys);
 
-  const wage = payload.wage || {};
-  const wageWorkers = Array.isArray(wage.workers)
-    ? wage.workers
-    : Array.isArray(payload.workers)
-      ? payload.workers
-      : Array.isArray(payload.labor)
-        ? payload.labor
-        : [];
-  const labor = [];
-  if (wageWorkers.length) {
-    wageWorkers.forEach(entry => {
-      const hours = toNumber(entry?.hours);
-      const rate = toNumber(entry?.rate ?? entry?.hourlyWithAllowances ?? entry?.hourlyRate);
-      const udd = entry?.udd || entry?.education || entry?.educationLevel || '';
-      const mentortillaeg = toNumber(entry?.mentortillaeg ?? entry?.mentorAllowance);
-      const type = entry?.type || jobType;
-      if (hours > 0 || rate > 0 || type) {
-        labor.push({ type, hours, rate, udd, mentortillaeg });
-      }
-    });
-  } else {
-    const hours = toNumber(wage.montageHours ?? wage.demontageHours ?? wage.totalHours);
-    const hourlyRate = toNumber(wage.hourlyRate);
-    if (hours > 0 || hourlyRate > 0) {
-      labor.push({
-        type: jobType,
-        hours,
-        rate: hourlyRate,
-        udd: wage.educationLevel || wage.udd || '',
-        mentortillaeg: toNumber(wage.mentorAllowance),
-      });
-    }
-  }
+  const extras = { ...(snapshot.extras || {}), jobType: normalizedJobType };
+  const extraInputs = snapshot.extraInputs || {};
 
-  const systems = Array.isArray(payload.systems)
-    ? payload.systems
-    : payload.system
-      ? [normalizeExcelSystemId(payload.system)]
-      : Array.isArray(infoBlock.systems)
-        ? infoBlock.systems
-        : Array.from(selectedSystemKeys);
-
-  const traelleSum = toNumber(extras.tralleløft ?? extras.tralleloeft ?? extras.tralleløft);
-  let traelle35 = extras.traelle35 ?? extras.tralle35 ?? extras.tralleloeft35 ?? extras.tralleløft35;
-  let traelle50 = extras.traelle50 ?? extras.tralle50 ?? extras.tralleloeft50 ?? extras.tralleløft50;
-  if (!traelle35 && !traelle50 && Number.isFinite(traelleSum) && traelleSum > 0) {
-    const derived35 = traelleSum / TRAELLE_RATE35;
-    traelle35 = Number.isFinite(derived35) ? derived35.toFixed(2) : '';
-  }
-
-  const kmAntal = Number(resolveKmInputValue(extras, KM_RATE));
-  const kmBelob = Number.isFinite(kmAntal) && kmAntal >= 0
-    ? kmAntal * KM_RATE
-    : toNumber(extras.kmBelob ?? extras.km ?? extras.kilometer ?? 0);
-
-  const snapshot = {
-    sagsinfo: {
-      sagsnummer: payload.jobId || infoBlock.sagsnummer || infoBlock.caseNumber || payload.caseNo || payload.id || '',
-      navn: payload.jobName || infoBlock.navn || infoBlock.caseName || payload.name || payload.title || '',
-      adresse: payload.jobAddress || payload.address || payload.site || infoBlock.adresse || infoBlock.address || '',
-      kunde: payload.customer || payload.kunde || infoBlock.kunde || infoBlock.customer || '',
-      dato: payload.createdAt || payload.date || infoBlock.dato || infoBlock.date || '',
-      montoer: payload.montageWorkers || payload.demontageWorkers || payload.worker || payload.montor || infoBlock.montoer || '',
-    },
+  const normalizedSnapshot = {
+    ...snapshot,
     systems,
     materials,
-    labor,
-    extras: {
-      jobType,
-      montagepris: extras.montagepris,
-      demontagepris: extras.demontagepris,
-      slaebePct: extras.slaebePct,
-      slaebeFormulaText: extras.slaebeFormulaText,
-      antalBoringHuller: extras.huller ?? extras.antalBoringHuller ?? 0,
-      antalLukHuller: extras.lukAfHul ?? extras.antalLukHuller ?? 0,
-      antalBoringBeton: extras.boringBeton ?? extras.antalBoringBeton ?? 0,
-      opskydeligtRaekvaerk: extras.opskydeligt ?? extras.opskydeligtRaekvaerk ?? 0,
-      km: kmBelob,
-      kmBelob,
-      kmAntal: Number.isFinite(kmAntal) && kmAntal >= 0 ? kmAntal : undefined,
-      kmIsAmount: true,
-      traelle35,
-      traelle50,
-    },
+    extras,
     extraInputs,
-    totals: payload.totals || {},
+    totals: snapshot.totals || payload.totals || {},
   };
 
   pauseHistoryPersistence();
   try {
-    await applySnapshot(snapshot, { skipHint: true });
+    await applySnapshot(normalizedSnapshot, { skipHint: true });
   } finally {
     resumeHistoryPersistence();
   }
@@ -3904,45 +3941,26 @@ if (typeof window !== 'undefined') {
 
 // --- Akkordseddel JSON-eksport ---
 /**
- * Akkordseddel JSON-format (v1)
+ * Akkordseddel JSON-format (v2)
  * {
- *   "version": "1.0",
- *   "type": "montage" | "demontage",
- *   "jobId": "string",
- *   "jobName": "string",
- *   "createdAt": "ISO-8601 string",
- *   "system": "Bosta" | "Haki" | "Alfix" | "Mixed" | ...,
- *   "systems": ["bosta", "haki", ...],
- *   "materials": [
- *     {
- *       "id": "BOSTA_073X257",
- *       "name": "0,73 x 2,57 dæk",
- *       "qty": 42,
- *       "unitPrice": 12.34,
- *       "lineTotal": 518.28
- *     }
- *   ],
- *   "extras": {
- *     "km": 37,
- *     "tralleløft": 4,
- *     "huller": 3,
- *     "lukAfHul": 2,
- *     "boringBeton": 6,
- *     "opskydeligt": 0,
- *     "slaebePct": 0,
- *     "slaebeBelob": 0
+ *   version: '2.0',
+ *   source: 'cssmate',
+ *   meta: { caseNumber, caseName, customer, address, date, system, systems, jobType, jobFactor, createdAt, exportedAt },
+ *   info: { sagsnummer, navn, adresse, kunde, dato, montoer, jobType },
+ *   items: [{ lineNumber, system, category, itemNumber, name, unit, quantity, unitPrice, lineTotal }],
+ *   extras: {
+ *     km: { quantity, rate, amount },
+ *     slaeb: { percent, amount },
+ *     tralle: { lifts35, lifts50, amount },
+ *     extraWork: [...],
+ *     fields: { kmBelob, kmAntal, kmIsAmount, slaebePct, montagepris, demontagepris, antalBoringHuller, antalLukHuller, antalBoringBeton, opskydeligtRaekvaerk, traelle35, traelle50, tralleSum, jobType }
  *   },
- *   "wage": {
- *     "montageHours": 40,
- *     "demontageHours": 0,
- *     "numWorkers": 2,
- *     "hourlyRate": 320.50,
- *     "educationLevel": "",
- *     "totalAkkordSum": 12345.67
- *   }
+ *   wage: { workers: [...], totals: { hours, sum } },
+ *   extraInputs: {...},
+ *   totals: { materials, extras, extrasBreakdown, akkord, project }
  * }
  */
-const AKKORD_JSON_VERSION = '1.0';
+const AKKORD_JSON_VERSION = '2.0';
 
 function buildAkkordJsonPayload(customSagsnummer, options = {}) {
   if (!options?.skipValidation && !validateSagsinfo()) {
@@ -3984,7 +4002,6 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
       ? dataMeta.systems
       : Array.from(selectedSystemKeys);
   const mergedSystems = Array.from(new Set([...(systems || []), ...(excelSystems || [])]));
-  const preferredSystem = excelSystems[0] || systems[0] || getPreferredExcelSystem();
 
   const laborList = Array.isArray(labor) ? labor : [];
   const laborTotals = Array.isArray(laborTotalsRaw)
@@ -4008,85 +4025,36 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
     montoer: info.montoer || '',
   };
 
-  const baseName = sanitizeFilename([
-    infoPayload.sagsnummer || 'akkordseddel',
-    infoPayload.kunde || '',
-    (infoPayload.dato || '').slice(0, 10),
-  ].filter(Boolean).join('-')) || 'akkordseddel';
-  const materialsJson = materials.map(item => {
-    const qty = toNumber(item.quantity);
-    const unitPrice = toNumber(item.price) * jobFactor;
-    return {
-      id: item.id,
-      name: item.name,
-      qty,
-      unitPrice,
-      lineTotal: qty * unitPrice,
-      system: inferSystemFromLine(item) || preferredSystem || getPreferredExcelSystem(),
-    };
-  });
-
-  const hourlyBase = toNumber(
-    lastJobSummary?.hourlyBase
-    ?? totals.timeprisUdenTillaeg
-    ?? totals.hourlyBase
-  );
-  const jobPayload = {
-    version: AKKORD_JSON_VERSION,
-    type: jobType,
-    jobId: info.sagsnummer || info.navn || info.adresse || baseName,
-    jobName: info.navn || info.adresse || info.sagsnummer || 'Akkordseddel',
-    jobAddress: info.adresse || '',
-    customer: info.kunde || '',
-    address: info.adresse || '',
-    site: info.adresse || '',
-    worker: info.montoer || '',
-    createdAt: createdAt || new Date().toISOString(),
-    system: preferredSystem || getPreferredExcelSystem(),
-    systems: mergedSystems,
-    excelSystems,
-    materials: materialsJson,
+  const exportModel = buildSharedExportModel({
+    ...data,
+    jobType,
+    jobFactor,
     extras,
     extraInputs: extraInputs || {},
-    jobFactor,
+    totals,
     tralleState: tralleState || {},
     tralleSum: tralleSum || 0,
-    wage: {
-      montageHours: jobType === 'montage' ? totalHours : 0,
-      demontageHours: jobType === 'demontage' ? totalHours : 0,
-      numWorkers: laborTotals.length || workerCount || 0,
-      hourlyRate: hourlyBase,
-      educationLevel: laborTotals.find(entry => entry.udd)?.udd || '',
-      workers: laborList.map(entry => ({
-        type: entry?.type || jobType,
-        hours: toNumber(entry?.hours),
-        rate: toNumber(entry?.rate),
-        udd: entry?.udd || '',
-        mentortillaeg: toNumber(entry?.mentortillaeg),
-      })),
-      totalAkkordSum: totals.samletAkkordsum,
-    },
-    totals: {
-      materialsSum: totals.materialer,
-      extrasSum: totals.ekstraarbejde,
-      haulSum: totals.slaeb,
-      projectSum: totals.projektsum,
-    },
-    info: infoPayload,
-    meta: {
-      ...infoPayload,
-      systems: mergedSystems,
-      excelSystems,
-      createdAt: createdAt || new Date().toISOString(),
-      version: AKKORD_JSON_VERSION,
-    },
+    createdAt: createdAt || data.createdAt || new Date().toISOString(),
+    systems: mergedSystems,
+  }, { exportedAt: new Date().toISOString() });
+
+  const infoFields = exportModel.info || infoPayload;
+  const baseName = sanitizeFilename([
+    infoFields.sagsnummer || 'akkordseddel',
+    infoFields.kunde || '',
+    (infoFields.dato || '').slice(0, 10),
+  ].filter(Boolean).join('-')) || 'akkordseddel';
+
+  const payload = {
+    ...exportModel,
+    jobType: jobType,
   };
 
   return {
-    content: JSON.stringify(jobPayload, null, 2),
+    content: JSON.stringify(payload, null, 2),
     baseName,
     fileName: `${baseName}.json`,
-    data: jobPayload,
+    data: payload,
   };
 }
 
