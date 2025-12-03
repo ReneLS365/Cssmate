@@ -12,7 +12,7 @@ export function buildAkkordJsonPayload(data, baseName, options = {}) {
     jobType: normalizedJobType,
     meta: { ...baseModel.meta, version: '2.0', source: 'cssmate' },
   };
-  const safeBaseName = sanitizeFilename(baseName || model?.meta?.caseNumber || options.customSagsnummer || 'akkordseddel');
+  const safeBaseName = sanitizeFilename(baseName || baseModel?.meta?.caseNumber || options.customSagsnummer || 'akkordseddel');
   const windowData = data && data.info ? data : null;
   const canUseWindowBuilder = options.useWindowBuilder === true
     && typeof window !== 'undefined'
