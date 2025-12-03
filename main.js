@@ -3068,8 +3068,13 @@ async function applyImportedAkkordData(data, options = {}) {
       system: line.system,
     }));
   } else if (materialFields.items) {
-    const demontageLike = convertMontageToDemontage(payload);
-    materialsSource = demontageLike.materials;
+    materialsSource = payload.items.map(item => ({
+      id: item.itemNumber || item.id || '',
+      name: item.name || '',
+      qty: Number(item.quantity ?? item.qty ?? 0) || 0,
+      unitPrice: Number(item.unitPrice ?? item.price ?? 0) || 0,
+      system: item.system || payload.system || payload.meta?.system || '',
+    }));
   } else {
     materialsSource = [];
   }

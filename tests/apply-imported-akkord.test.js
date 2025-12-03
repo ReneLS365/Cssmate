@@ -131,6 +131,11 @@ test('applyImportedAkkordData rehydrates exported items payload', async t => {
   const payloadContent = buildAkkordJsonPayload(exportModel, exportModel.meta.caseNumber, { skipValidation: true, skipBeregn: true })
   const payload = JSON.parse(payloadContent.content)
 
+  assert.ok(Array.isArray(payload.materials))
+  assert.equal(payload.materials.length, exportModel.items.length)
+  assert.equal(payload.version, '1.0')
+  assert.equal(payload.jobType, 'montage')
+
   const snapshots = []
   const hints = []
 
@@ -142,6 +147,8 @@ test('applyImportedAkkordData rehydrates exported items payload', async t => {
 
   assert.equal(snapshots[0].materials.length, exportModel.items.length)
   assert.equal(sumLineTotals(snapshots[0].materials), sumLineTotals(exportModel.items))
+  assert.equal(snapshots[0].totals.materials, exportModel.totals.materials)
+  assert.equal(snapshots[0].totals.akkord, exportModel.totals.akkord)
   assert.equal(hints.at(-1).variant, 'success')
 })
 

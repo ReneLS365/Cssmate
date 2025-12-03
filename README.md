@@ -60,7 +60,8 @@ Se også `docs/stage8.md` for den afsluttende QA-checkliste (eksport/round-trip,
 
 - Brug knappen **Generer demontage** i eksportpanelet for at hente en demontage-JSON baseret på den aktuelle montage.
 - JSON-filen kan importeres som en ny demontageopgave.
-- Importen accepterer også montage-eksporter med `items`-feltet og konverterer automatisk linjerne til materialer.
+- JSON-eksporten inkluderer både `items` og `materials` (samme indhold) for bagudkompatibilitet, med versionsfelt sat til `1.0`/`1` og udfyldt `jobType`.
+- Importen accepterer også ældre montage-eksporter der kun har `items`-feltet og konverterer automatisk linjerne til materialer.
 
 ## Admin-mode
 
