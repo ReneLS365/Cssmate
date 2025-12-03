@@ -4,6 +4,14 @@ export function buildAkkordJsonPayload(data, baseName, options = {}) {
   const model = (data?.meta?.caseNumber && Array.isArray(data?.items))
     ? { ...data, meta: { ...data.meta, exportedAt: data.meta.exportedAt || options.exportedAt || new Date().toISOString() } }
     : buildExportModel(data, { exportedAt: options.exportedAt });
+  const normalizedVersion = model.meta?.version || model.version || '1.0';
+  const normalizedJobType = (model.jobType || model.meta?.jobType || data?.jobType || 'montage');
+  const payload = {
+    ...model,
+    version: normalizedVersion === 1 ? '1' : String(normalizedVersion),
+    jobType: normalizedJobType,
+    meta: { ...model.meta, version: model.meta?.version || (normalizedVersion === 1 ? '1.0' : String(normalizedVersion)) },
+  };
   const safeBaseName = sanitizeFilename(baseName || model?.meta?.caseNumber || options.customSagsnummer || 'akkordseddel');
   const windowData = data && data.info ? data : null;
   const canUseWindowBuilder = typeof window !== 'undefined'
@@ -33,7 +41,7 @@ export function buildAkkordJsonPayload(data, baseName, options = {}) {
 
   return {
     fileName: `${safeBaseName}.json`,
-    content: JSON.stringify(model, null, 2),
+    content: JSON.stringify(payload, null, 2),
     baseName: safeBaseName,
   };
 }

@@ -133,6 +133,13 @@ export function buildExportModel(raw = {}, options = {}) {
   const totals = raw.totals || {}
 
   const items = normalizeItems(raw)
+  const materials = items.map(item => ({
+    id: item.itemNumber || item.id,
+    name: item.name,
+    qty: item.quantity,
+    unitPrice: item.unitPrice,
+    system: item.system,
+  }))
   const extraWork = normalizeExtraWork(raw)
   const tralle = normalizeTralle(raw)
 
@@ -164,7 +171,7 @@ export function buildExportModel(raw = {}, options = {}) {
   const wage = normalizeWage(raw)
 
   const meta = {
-    version: raw.version || '2.0',
+    version: metaInfo.version || raw.version || '1.0',
     caseNumber: metaInfo.caseNumber || metaInfo.sagsnummer || metaInfo.caseNo || 'UKENDT',
     caseName: metaInfo.caseName || metaInfo.navn || metaInfo.beskrivelse || raw.info?.navn || '',
     customer: metaInfo.customer || metaInfo.kunde || raw.info?.kunde || '',
@@ -192,6 +199,7 @@ export function buildExportModel(raw = {}, options = {}) {
 
   const model = {
     meta,
+    materials,
     items,
     extras: {
       km: { quantity: kmQuantity, rate: kmRate, amount: kmAmount },

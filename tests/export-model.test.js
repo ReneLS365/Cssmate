@@ -64,6 +64,21 @@ test('buildExportModel normalizes totals and extras', () => {
   assert.equal(model.totals.extrasBreakdown.extraWork, 8)
 })
 
+test('buildExportModel duplicates items into materials for compatibility', () => {
+  const model = buildExportModel(createSampleCase())
+  assert.equal(model.materials.length, model.items.length)
+
+  model.materials.forEach((material, index) => {
+    const item = model.items[index]
+    assert.equal(material.id, item.itemNumber || item.id)
+    assert.equal(material.name, item.name)
+    assert.equal(material.qty, item.quantity)
+    assert.equal(material.unitPrice, item.unitPrice)
+    assert.equal(material.system, item.system)
+    assert.equal(material.qty * material.unitPrice, item.quantity * item.unitPrice)
+  })
+})
+
 test('buildAkkordCSV exports BOM, semicolons, and formatted numbers', () => {
   const csv = buildAkkordCSV(createSampleCase())
   assert.ok(csv.startsWith('\ufeff'), 'CSV starts with BOM')
