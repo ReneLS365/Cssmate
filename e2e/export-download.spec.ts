@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import JSZip from 'jszip'
 
 async function persistDownload(download, testInfo, fallbackName) {
   const suggested = download.suggestedFilename() || fallbackName
@@ -10,7 +9,7 @@ async function persistDownload(download, testInfo, fallbackName) {
   return targetPath
 }
 
-test('eksport af akkordseddel downloader PDF og ZIP med indhold', async ({ page }, testInfo) => {
+test('eksport af akkordseddel downloader PDF og JSON', async ({ page }, testInfo) => {
   const uniqueJob = `E2E-EXPORT-${Date.now()}`
 
   const setNumberInput = async (locator, value) => {
@@ -70,30 +69,28 @@ test('eksport af akkordseddel downloader PDF og ZIP med indhold', async ({ page 
   const pdfButton = page.locator('#btn-export-akkord-pdf')
   await expect(pdfButton).toBeEnabled()
   await pdfButton.scrollIntoViewIfNeeded()
-  const zipButton = page.locator('#btn-export-akkord-zip')
-  await expect(zipButton).toBeEnabled({ timeout: 20000 })
-  await zipButton.scrollIntoViewIfNeeded()
+  await expect(page.locator('#btn-export-akkord-zip')).toHaveCount(0)
+  await expect(page.locator('#btn-export-akkord-demontage')).toHaveCount(0)
+  await expect(page.locator('#btn-export-akkord-json')).toHaveCount(0)
 
-  const pdfDownload = await Promise.all([
-    page.waitForEvent('download', { timeout: 90000 }),
-    pdfButton.click(),
-  ]).then(([download]) => download)
-  const pdfPath = await persistDownload(pdfDownload, testInfo, 'akkordseddel.pdf')
+  const downloadPromise1 = page.waitForEvent('download', { timeout: 90000 })
+  const downloadPromise2 = page.waitForEvent('download', { timeout: 90000 })
+  await pdfButton.click()
+
+  const downloads = [await downloadPromise1, await downloadPromise2]
+  const pdfDownload = downloads.find(entry => entry.suggestedFilename().toLowerCase().endsWith('.pdf'))
+  const jsonDownload = downloads.find(entry => entry.suggestedFilename().toLowerCase().endsWith('.json'))
+
+  expect(pdfDownload).toBeTruthy()
+  expect(jsonDownload).toBeTruthy()
+
+  const pdfPath = await persistDownload(pdfDownload!, testInfo, 'akkordseddel.pdf')
   const pdfStats = await fs.stat(pdfPath)
-  expect(pdfDownload.suggestedFilename()).toMatch(/\.pdf$/i)
+  expect(pdfDownload!.suggestedFilename()).toMatch(/\.pdf$/i)
   expect(pdfStats.size).toBeGreaterThan(0)
 
-  const zipDownload = await Promise.all([
-    page.waitForEvent('download', { timeout: 90000 }),
-    zipButton.click(),
-  ]).then(([download]) => download)
-  const zipPath = await persistDownload(zipDownload, testInfo, 'akkordseddel.zip')
-  const zipStats = await fs.stat(zipPath)
-  expect(zipDownload.suggestedFilename()).toMatch(/\.zip$/i)
-  expect(zipStats.size).toBeGreaterThan(0)
-
-  const zipBuffer = await fs.readFile(zipPath)
-  const zip = await JSZip.loadAsync(zipBuffer)
-  const jsonEntries = Object.keys(zip.files).filter(name => name.toLowerCase().endsWith('.json'))
-  expect(jsonEntries.length).toBeGreaterThan(0)
+  const jsonPath = await persistDownload(jsonDownload!, testInfo, 'akkordseddel.json')
+  const jsonStats = await fs.stat(jsonPath)
+  expect(jsonDownload!.suggestedFilename()).toMatch(/\.json$/i)
+  expect(jsonStats.size).toBeGreaterThan(0)
 })

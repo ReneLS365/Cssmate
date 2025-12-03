@@ -186,8 +186,6 @@ function setupLazyExportPanelTriggers () {
   }
 
   bindLazyExportAction('btn-export-akkord-pdf', 'handleExportAkkordPDF')
-  bindLazyExportAction('btn-export-akkord-zip', 'handleExportAkkordZIP')
-  bindLazyExportAction('btn-export-akkord-json', 'handleExportAkkordJSON')
   bindLazyExportAction('btn-import-akkord', 'handleImportAkkordAction')
   bindLazyExportAction('btn-print-akkord', 'handlePrintAkkord')
 }
@@ -2483,7 +2481,7 @@ function validateSagsinfo() {
     el.classList.toggle('invalid', !fieldValid);
   });
 
-  ['btn-export-akkord-zip', 'btn-print-akkord'].forEach(id => {
+  ['btn-export-akkord-pdf', 'btn-print-akkord'].forEach(id => {
     const btn = getDomElement(id);
     if (btn) btn.disabled = !isValid;
   });
