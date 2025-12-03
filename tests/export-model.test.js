@@ -56,11 +56,15 @@ async function createPdfBuffer (text) {
 test('buildExportModel normalizes totals and extras', () => {
   const model = buildExportModel(createSampleCase())
   assert.equal(model.meta.caseNumber, 'TC-100')
+  assert.equal(model.meta.version, '2.0')
+  assert.equal(model.info.sagsnummer, 'TC-100')
   assert.equal(model.totals.materials, 130)
   assert.equal(model.totals.akkord, 201)
   assert.equal(model.extras.km.amount, 50)
   assert.equal(model.extras.slaeb.amount, 13)
   assert.equal(model.extras.extraWork[0].amount, 8)
+  assert.equal(model.extras.fields.kmBelob, 50)
+  assert.equal(model.extraInputs.slaebePctInput, 10)
   assert.equal(model.totals.extrasBreakdown.extraWork, 8)
 })
 

@@ -1,20 +1,21 @@
 import { buildExportModel } from './export-model.js';
 
 export function buildAkkordJsonPayload(data, baseName, options = {}) {
-  const model = (data?.meta?.caseNumber && Array.isArray(data?.items))
+  const baseModel = (data?.meta?.caseNumber && Array.isArray(data?.items))
     ? { ...data, meta: { ...data.meta, exportedAt: data.meta.exportedAt || options.exportedAt || new Date().toISOString() } }
     : buildExportModel(data, { exportedAt: options.exportedAt });
-  const normalizedVersion = model.meta?.version || model.version || '1.0';
-  const normalizedJobType = (model.jobType || model.meta?.jobType || data?.jobType || 'montage');
+  const normalizedJobType = (baseModel.jobType || baseModel.meta?.jobType || data?.jobType || 'montage');
   const payload = {
-    ...model,
-    version: normalizedVersion === 1 ? '1' : String(normalizedVersion),
+    ...baseModel,
+    version: '2.0',
+    source: 'cssmate',
     jobType: normalizedJobType,
-    meta: { ...model.meta, version: model.meta?.version || (normalizedVersion === 1 ? '1.0' : String(normalizedVersion)) },
+    meta: { ...baseModel.meta, version: '2.0', source: 'cssmate' },
   };
   const safeBaseName = sanitizeFilename(baseName || model?.meta?.caseNumber || options.customSagsnummer || 'akkordseddel');
   const windowData = data && data.info ? data : null;
-  const canUseWindowBuilder = typeof window !== 'undefined'
+  const canUseWindowBuilder = options.useWindowBuilder === true
+    && typeof window !== 'undefined'
     && typeof window.cssmateBuildAkkordJsonPayload === 'function'
     && windowData;
 
