@@ -185,10 +185,11 @@ function setupLazyExportPanelTriggers () {
     observer.observe(exportPanel)
   }
 
-  bindLazyExportAction('btn-export-akkord-pdf', 'handleExportAkkordPDF')
-  bindLazyExportAction('btn-import-akkord', 'handleImportAkkordAction')
-  bindLazyExportAction('btn-print-akkord', 'handlePrintAkkord')
-}
+    bindLazyExportAction('btn-export-akkord-pdf', 'handleExportAkkordPDF')
+    bindLazyExportAction('btn-export-demontage', 'handleExportDemontageJson')
+    bindLazyExportAction('btn-import-akkord', 'handleImportAkkordAction')
+    bindLazyExportAction('btn-print-akkord', 'handlePrintAkkord')
+  }
 
 async function ensureExportLibsLazy () {
   if (!exportLibsLoader) {
@@ -2481,10 +2482,10 @@ function validateSagsinfo() {
     el.classList.toggle('invalid', !fieldValid);
   });
 
-  ['btn-export-akkord-pdf', 'btn-print-akkord'].forEach(id => {
-    const btn = getDomElement(id);
-    if (btn) btn.disabled = !isValid;
-  });
+    ['btn-export-akkord-pdf', 'btn-export-demontage', 'btn-print-akkord'].forEach(id => {
+      const btn = getDomElement(id);
+      if (btn) btn.disabled = !isValid;
+    });
 
   if (isValid) {
     updateActionHint('');

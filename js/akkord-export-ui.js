@@ -3,17 +3,19 @@ import { exportPDFBlob } from './export-pdf.js';
 import { handleImportAkkord } from './import-akkord.js';
 import { buildAkkordJsonPayload } from './export-json.js';
 import { buildExportModel } from './export-model.js';
+import { convertMontageToDemontage } from './akkord-converter.js';
 
 let buildAkkordDataImpl = buildAkkordData;
 let exportPDFBlobImpl = exportPDFBlob;
 let buildAkkordJsonPayloadImpl = buildAkkordJsonPayload;
 let handleImportAkkordImpl = handleImportAkkord;
 
-export function initExportPanel() {
-  bind('#btn-print-akkord', handlePrintAkkord);
-  bind('#btn-export-akkord-pdf', handleExportAkkordPDF);
-  bind('#btn-import-akkord', (event) => handleImportAkkordAction(event));
-}
+  export function initExportPanel() {
+    bind('#btn-print-akkord', handlePrintAkkord);
+    bind('#btn-export-akkord-pdf', handleExportAkkordPDF);
+    bind('#btn-export-demontage', handleExportDemontageJson);
+    bind('#btn-import-akkord', (event) => handleImportAkkordAction(event));
+  }
 
 function bind(sel, fn) {
   const el = document.querySelector(sel);
@@ -38,9 +40,9 @@ function handlePrintAkkord(event) {
   done();
 }
 
-async function handleExportAkkordPDF(event) {
-  const button = event?.currentTarget;
-  const done = setBusy(button, true, { busyText: 'Eksporterer…', doneText: 'Filer klar' });
+  async function handleExportAkkordPDF(event) {
+    const button = event?.currentTarget;
+    const done = setBusy(button, true, { busyText: 'Eksporterer…', doneText: 'Filer klar' });
   try {
     notifyAction('Eksporterer akkordseddel (PDF + JSON)…', 'info');
     const context = buildExportContext();
@@ -76,12 +78,39 @@ async function handleExportAkkordPDF(event) {
     notifyAction(message, 'error');
   } finally {
     done();
+    }
   }
-}
 
-async function handleImportAkkordAction(event) {
-  const button = event?.currentTarget;
-  const done = setBusy(button, true, { busyText: 'Importerer…', doneText: 'Import klar' });
+  async function handleExportDemontageJson(event) {
+    const button = event?.currentTarget;
+    const done = setBusy(button, true, { busyText: 'Eksporterer…', doneText: 'Demontage klar' });
+    try {
+      notifyAction('Eksporterer demontage (JSON)…', 'info');
+      const context = buildExportContext();
+      const demontageModel = convertMontageToDemontage(context.model);
+      const exportedAt = demontageModel?.meta?.exportedAt || new Date().toISOString();
+      const baseName = `${context.baseName}-demontage`;
+      const payload = buildAkkordJsonPayloadImpl(demontageModel, baseName, { exportedAt });
+      if (!payload?.content) throw new Error('Kunne ikke bygge demontage JSON');
+
+      const blob = new Blob([payload.content], { type: 'application/json' });
+      const fileName = payload.fileName || `${baseName}.json`;
+      downloadBlob(blob, fileName);
+      notifyAction('Demontage (JSON) er gemt.', 'success');
+      notifyHistory('demontage-json', { baseName, fileName });
+    } catch (error) {
+      console.error('Demontage eksport fejlede', error);
+      const fallback = 'Der opstod en fejl under demontage-eksporten. Prøv igen – eller kontakt kontoret.';
+      const message = error?.message ? `${fallback} (${error.message})` : fallback;
+      notifyAction(message, 'error');
+    } finally {
+      done();
+    }
+  }
+
+  async function handleImportAkkordAction(event) {
+    const button = event?.currentTarget;
+    const done = setBusy(button, true, { busyText: 'Importerer…', doneText: 'Import klar' });
   try {
     await handleImportAkkordImpl();
     notifyAction('Import gennemført.', 'success');
@@ -221,8 +250,9 @@ export function setExportDependencies(overrides = {}) {
     : handleImportAkkord;
 }
 
-export {
-  handleExportAkkordPDF,
-  handleImportAkkordAction,
-  handlePrintAkkord,
-};
+  export {
+    handleExportAkkordPDF,
+    handleExportDemontageJson,
+    handleImportAkkordAction,
+    handlePrintAkkord,
+  };
