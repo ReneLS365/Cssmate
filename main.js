@@ -2259,6 +2259,28 @@ function mapWageToLaborFromPayload(payload = {}, jobType) {
   return labor;
 }
 
+function resolveHoleCounts(fieldSet = {}, extrasPayload = {}, extraInputs = {}) {
+  const boringHuller = [
+    fieldSet.antalBoringHuller,
+    fieldSet.huller,
+    extrasPayload.antalBoringHuller,
+    extrasPayload.huller,
+    extraInputs.boringHuller,
+  ].find(value => value != null);
+
+  const lukHuller = [
+    fieldSet.antalLukHuller,
+    extrasPayload.antalLukHuller,
+    extraInputs.lukHuller,
+    extrasPayload.lukAfHul,
+  ].find(value => value != null);
+
+  return {
+    antalBoringHuller: toNumber(boringHuller),
+    antalLukHuller: toNumber(lukHuller),
+  };
+}
+
 function mapExtrasForSnapshot(payload = {}, jobType) {
   const extrasPayload = payload.extras || payload.akkord || {};
   const extraInputs = payload.extraInputs || {};
@@ -2268,6 +2290,7 @@ function mapExtrasForSnapshot(payload = {}, jobType) {
   const tralleBlock = extrasPayload.tralle || {};
   const kmQuantity = toNumber(kmBlock.quantity ?? extrasPayload.kmAntal ?? extraInputs.km);
   const kmAmount = toNumber(kmBlock.amount ?? extrasPayload.kmBelob ?? extrasPayload.km);
+  const { antalBoringHuller, antalLukHuller } = resolveHoleCounts(fieldSet, extrasPayload, extraInputs);
 
   const extras = {
     jobType,
@@ -2275,8 +2298,8 @@ function mapExtrasForSnapshot(payload = {}, jobType) {
     demontagepris: fieldSet.demontagepris ?? extrasPayload.demontagepris,
     slaebePct: toNumber(slaebBlock.percent ?? fieldSet.slaebePct ?? extrasPayload.slaebePct ?? extraInputs.slaebePctInput),
     slaebeFormulaText: fieldSet.slaebeFormulaText ?? extrasPayload.slaebeFormulaText,
-    antalBoringHuller: toNumber(fieldSet.antalBoringHuller ?? extrasPayload.huller ?? extrasPayload.antalBoringHuller ?? extraInputs.boringHuller),
-    antalLukHuller: toNumber(fieldSet.antalLukHuller ?? extrasPayload.lukAfHul ?? extrasPayload.antalLukHuller ?? extraInputs.lukHuller),
+    antalBoringHuller,
+    antalLukHuller,
     antalBoringBeton: toNumber(fieldSet.antalBoringBeton ?? extrasPayload.boringBeton ?? extrasPayload.antalBoringBeton ?? extraInputs.boringBeton),
     opskydeligtRaekvaerk: toNumber(fieldSet.opskydeligtRaekvaerk ?? extrasPayload.opskydeligt ?? extrasPayload.opskydeligtRaekvaerk ?? extraInputs.opskydeligt),
     km: kmAmount,
@@ -2531,6 +2554,27 @@ function formatPercentForCSV(value) {
 
 function collectJobType() {
   return document.getElementById('jobType')?.value || 'montage';
+}
+
+function handleJobTypeChange(event) {
+  const selectedType = (event?.target?.value || collectJobType() || '').toLowerCase();
+  if (selectedType === 'demontage') {
+    const boringField = document.getElementById('antalBoringHuller');
+    const lukField = document.getElementById('antalLukHuller');
+    if (boringField && lukField) {
+      const lukRaw = (lukField.value ?? '').trim();
+      const lukNumeric = toNumber(lukRaw);
+      const hasLukValue = lukRaw !== '' && lukNumeric !== 0;
+      if (!hasLukValue) {
+        const boringRaw = (boringField.value ?? '').trim();
+        if (boringRaw) {
+          const normalized = toNumber(boringRaw);
+          lukField.value = Number.isFinite(normalized) ? String(normalized) : boringRaw;
+        }
+      }
+    }
+  }
+  updateTotals(true);
 }
 
 function formatDateForDisplay(value) {
@@ -4736,6 +4780,11 @@ async function initApp() {
       input.addEventListener('change', () => updateTotals(true));
     }
   });
+
+  const jobTypeSelect = document.getElementById('jobType');
+  if (jobTypeSelect) {
+    jobTypeSelect.addEventListener('change', handleJobTypeChange);
+  }
 
   sagsinfoFieldIds.forEach(id => {
     const el = document.getElementById(id);

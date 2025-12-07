@@ -239,7 +239,7 @@ export function buildExportModel(raw = {}, options = {}) {
     demontagepris: extras.demontagepris,
     slaebePct: slaebPercent,
     slaebeFormulaText: extras.slaebeFormulaText,
-    antalBoringHuller: extras.huller ?? extras.antalBoringHuller ?? extraInputs.boringHuller ?? 0,
+    antalBoringHuller: extras.antalBoringHuller ?? extraInputs.boringHuller ?? extras.huller ?? 0,
     antalLukHuller: extras.lukAfHul ?? extras.antalLukHuller ?? extraInputs.lukHuller ?? 0,
     antalBoringBeton: extras.boringBeton ?? extras.antalBoringBeton ?? extraInputs.boringBeton ?? 0,
     opskydeligtRaekvaerk: extras.opskydeligt ?? extras.opskydeligtRaekvaerk ?? extraInputs.opskydeligt ?? 0,
