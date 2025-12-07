@@ -48,6 +48,7 @@ function handlePrintAkkord(event) {
 
     try {
       await exportPdfFromContext(context);
+      await waitForDownloadTick();
     } catch (error) {
       exportErrors.push(error);
       console.error('PDF export failed', error);
@@ -57,7 +58,7 @@ function handlePrintAkkord(event) {
     }
 
     try {
-      exportJsonFromContext(context);
+      await exportJsonFromContext(context);
     } catch (error) {
       exportErrors.push(error);
       console.error('JSON export failed', error);
@@ -103,7 +104,10 @@ function downloadBlob(blob, filename) {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  const timer = typeof window !== 'undefined' && typeof window.setTimeout === 'function'
+    ? window.setTimeout
+    : setTimeout;
+  timer(() => URL.revokeObjectURL(url), 1000);
 }
 
 function sanitizeFilename(value) {
@@ -149,13 +153,13 @@ async function exportPdfFromContext(context) {
     rawData: context.data,
   });
   if (!payload?.blob) throw new Error('Mangler PDF payload');
-  const filename = payload.fileName || `${context.baseName}.pdf`;
+  const filename = ensurePdfExtension(payload.fileName || `${context.baseName}.pdf`);
   downloadBlob(payload.blob, filename);
   notifyAction('PDF er gemt til din enhed.', 'success');
   notifyHistory('pdf', { baseName: context.baseName, fileName: filename });
 }
 
-function exportJsonFromContext(context) {
+async function exportJsonFromContext(context) {
   const payload = buildAkkordJsonPayloadImpl(context.model, context.baseName);
   if (!payload?.content) throw new Error('Kunne ikke bygge JSON-eksporten');
   const blob = new Blob([payload.content], { type: 'application/json' });
@@ -226,3 +230,17 @@ export {
   handleImportAkkordAction,
   handlePrintAkkord,
 };
+
+function waitForDownloadTick(delay = 150) {
+  return new Promise(resolve => {
+    const timer = typeof window !== 'undefined' && typeof window.setTimeout === 'function'
+      ? window.setTimeout
+      : setTimeout;
+    timer(resolve, delay);
+  });
+}
+
+function ensurePdfExtension(filename) {
+  if (typeof filename !== 'string') return `${sanitizeFilename(filename || 'akkordseddel')}.pdf`;
+  return filename.toLowerCase().endsWith('.pdf') ? filename : `${filename}.pdf`;
+}

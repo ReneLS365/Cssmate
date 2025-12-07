@@ -3719,6 +3719,7 @@ function beregnLon() {
     if (workerLines.length > 0) {
       workerLines.forEach(workerLine => {
         const line = document.createElement('div');
+        line.className = 'worker-payline';
         line.textContent = `${workerLine.name}: Timer: ${workerLine.hours}, Timeløn: ${workerLine.rate.toFixed(2)} kr/t, Total: ${workerLine.total.toFixed(2)} kr`;
         resultatDiv.appendChild(line);
       });
@@ -4251,11 +4252,7 @@ async function exportPDFBlob(customSagsnummer, options = {}) {
       .export-preview { font-family: system-ui, -apple-system, Segoe UI, sans-serif; }
       .export-preview h2 { margin-top: 0; }
       .export-preview section { margin-bottom: 16px; }
-      .export-preview ul { list-style: none; padding: 0; margin: 0; }
-      .export-preview ul li { margin-bottom: 6px; }
-      .export-preview table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-      .export-preview th, .export-preview td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; font-size: 14px; }
-      .export-preview th { background: #f0f0f0; }
+      .export-preview h3 { margin: 0 0 8px; }
       .export-preview .review-grid { display: flex; flex-direction: column; gap: 6px; }
       .export-preview .review-row { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
       .export-preview .review-row--subtle { color: #4f4f4f; font-size: 13px; }
@@ -4269,56 +4266,6 @@ async function exportPDFBlob(customSagsnummer, options = {}) {
     </style>
     <h2>Akkordseddel</h2>
     <section>
-      <h3>Sagsinfo</h3>
-      <ul>
-        <li><strong>Sagsnummer:</strong> ${escapeHtml(info.sagsnummer)}</li>
-        <li><strong>Navn/opgave:</strong> ${escapeHtml(info.navn)}</li>
-        <li><strong>Adresse:</strong> ${escapeHtml(info.adresse)}</li>
-        <li><strong>Kunde:</strong> ${escapeHtml(info.kunde)}</li>
-        <li><strong>Dato:</strong> ${escapeHtml(info.dato)}</li>
-        <li><strong>Montørnavne:</strong> ${escapeHtml(info.montoer).replace(/\n/g, '<br>')}</li>
-      </ul>
-    </section>
-    <section>
-      <h3>Materialer</h3>
-      ${materials.length ? `
-        <table class="export-table">
-          <thead>
-            <tr><th>Id</th><th>Materiale</th><th>Antal</th><th>Pris</th><th>Linjesum</th></tr>
-          </thead>
-          <tbody>
-            ${materials.map(item => {
-              const qty = toNumber(item.quantity);
-              const price = toNumber(item.price);
-              const total = qty * price;
-              const manualIndex = manualMaterials.indexOf(item);
-              const label = item.manual ? (item.name?.trim() || `Manuelt materiale ${manualIndex + 1}`) : item.name;
-              return `<tr><td>${escapeHtml(item.id)}</td><td>${escapeHtml(label)}</td><td>${qty.toLocaleString('da-DK', { maximumFractionDigits: 2 })}</td><td>${formatCurrency(price)} kr</td><td>${formatCurrency(total)} kr</td></tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-      ` : '<p>Ingen materialer registreret.</p>'}
-    </section>
-    <section>
-      <h3>Løn</h3>
-      ${labor.length ? `
-        <table class="export-table">
-          <thead>
-            <tr><th>Arbejdstype</th><th>Timer</th><th>Sats</th><th>Linjesum</th></tr>
-          </thead>
-          <tbody>
-            ${labor.map((entry, index) => {
-              const hours = toNumber(entry.hours);
-              const rate = toNumber(entry.rate);
-              const total = hours * rate;
-              const type = entry.type || `Arbejdstype ${index + 1}`;
-              return `<tr><td>${escapeHtml(type)}</td><td>${hours.toLocaleString('da-DK', { maximumFractionDigits: 2 })}</td><td>${formatCurrency(rate)} kr</td><td>${formatCurrency(total)} kr</td></tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-      ` : '<p>Ingen lønlinjer registreret.</p>'}
-    </section>
-    <section>
       <h3>Oversigt</h3>
       <div class="review-grid">
         ${reviewRowsHtml}
@@ -4331,10 +4278,6 @@ async function exportPDFBlob(customSagsnummer, options = {}) {
         <div><strong>Lønsum</strong><div>${formatCurrency(laborSum)} kr</div></div>
         <div><strong>Projektsum</strong><div>${formatCurrency(projectSum)} kr</div></div>
       </div>
-    </section>
-    <section>
-      <h3>Detaljer</h3>
-      ${document.getElementById('lonResult')?.innerHTML || '<p>Ingen beregning udført.</p>'}
     </section>
   `;
 
