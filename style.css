@@ -316,7 +316,11 @@ button{cursor:pointer}
 .worker-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--gap)}
 .worker-grid label{display:flex;flex-direction:column;gap:6px}
 .worker-grid span{color:var(--muted);font-size:0.85rem}
-.worker-output{min-height:24px;font-size:0.95rem;color:var(--accent)}
+.worker-output{min-height:24px;font-size:0.95rem;color:#22c55e;font-weight:600}
+.lon-result #lonResult{color:var(--text)}
+.lon-result #lonResult h3{color:var(--text);margin:0.5rem 0 0.25rem}
+.lon-result #lonResult>div{color:var(--text)}
+.lon-result #lonResult .worker-payline{color:#22c55e;font-weight:600}
 .system-selector{display:flex;flex-direction:column;gap:10px}
 .system-selector-options{display:flex;flex-wrap:wrap;gap:10px}
 .system-option{display:inline-flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,0.04);min-height:44px;transition:border-color .2s ease,background .2s ease}

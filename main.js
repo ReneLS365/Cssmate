@@ -3719,6 +3719,7 @@ function beregnLon() {
     if (workerLines.length > 0) {
       workerLines.forEach(workerLine => {
         const line = document.createElement('div');
+        line.className = 'worker-payline';
         line.textContent = `${workerLine.name}: Timer: ${workerLine.hours}, Timeløn: ${workerLine.rate.toFixed(2)} kr/t, Total: ${workerLine.total.toFixed(2)} kr`;
         resultatDiv.appendChild(line);
       });
@@ -4331,10 +4332,6 @@ async function exportPDFBlob(customSagsnummer, options = {}) {
         <div><strong>Lønsum</strong><div>${formatCurrency(laborSum)} kr</div></div>
         <div><strong>Projektsum</strong><div>${formatCurrency(projectSum)} kr</div></div>
       </div>
-    </section>
-    <section>
-      <h3>Detaljer</h3>
-      ${document.getElementById('lonResult')?.innerHTML || '<p>Ingen beregning udført.</p>'}
     </section>
   `;
 
