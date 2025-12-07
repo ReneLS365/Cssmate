@@ -24,6 +24,11 @@ app.use((req, res, next) => {
 
 app.use(express.static(DIR, { extensions: ['html'] }));
 
+app.get('*', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.sendFile(path.join(DIR, 'index.html'));
+});
+
 app.listen(PORT, () => {
   console.log(`serve-with-headers: serving ${DIR} on http://127.0.0.1:${PORT}`);
 });
