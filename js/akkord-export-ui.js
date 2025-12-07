@@ -59,6 +59,7 @@ function handlePrintAkkord(event) {
 
     try {
       await exportJsonFromContext(context);
+      await waitForDownloadTick();
     } catch (error) {
       exportErrors.push(error);
       console.error('JSON export failed', error);

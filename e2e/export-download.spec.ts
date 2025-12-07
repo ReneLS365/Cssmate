@@ -74,10 +74,11 @@ test('eksport af akkordseddel downloader PDF og JSON', async ({ page }, testInfo
   await expect(page.locator('#btn-export-akkord-json')).toHaveCount(0)
 
   const downloadPromise1 = page.waitForEvent('download', { timeout: 90000 })
-  const downloadPromise2 = page.waitForEvent('download', { timeout: 90000 })
   await pdfButton.click()
 
-  const downloads = [await downloadPromise1, await downloadPromise2]
+  const firstDownload = await downloadPromise1
+  const secondDownload = await page.waitForEvent('download', { timeout: 90000 })
+  const downloads = [firstDownload, secondDownload]
   const pdfDownload = downloads.find(entry => entry.suggestedFilename().toLowerCase().endsWith('.pdf'))
   const jsonDownload = downloads.find(entry => entry.suggestedFilename().toLowerCase().endsWith('.json'))
 

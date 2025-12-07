@@ -138,6 +138,12 @@ function registerServiceWorker() {
     return;
   }
 
+  const searchParams = new URLSearchParams(window.location.search || '');
+  if (searchParams.has('no-sw')) {
+    console.info('Service worker registration skipped via no-sw flag');
+    return;
+  }
+
   window.addEventListener('load', () => {
     const baseUrl = new URL('.', window.location.href);
     const swUrl = new URL('service-worker.js', baseUrl);

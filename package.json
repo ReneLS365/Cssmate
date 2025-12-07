@@ -9,7 +9,7 @@
     "bump-sw-version": "node scripts/bump-sw-version.js",
     "update-prices": "node scripts/update-price-lists.js",
     "start:ci": "node scripts/serve-with-headers.js 4173 ./",
-    "build": "npm run bump:sw && npm run bump-sw-version",
+    "build": "npm run bump:sw && npm run bump-sw-version && npm run build:min-js",
     "build:min-js": "npx terser main.js -c -m -o main.min.js",
     "lh:mobile": "mkdir -p ./docs/lighthouse && CHROME_BIN=$(command -v google-chrome-stable || command -v google-chrome || command -v chromium-browser || command -v chromium || true) && CHROME_PATH=${CHROME_PATH:-$CHROME_BIN} lighthouse ${LHCI_URL:-https://sscaff.netlify.app} --form-factor=mobile --screenEmulation.mobile=true --only-categories=performance,accessibility,best-practices,seo --throttling-method=provided --throttling.rttMs=0 --throttling.requestLatencyMs=0 --throttling.downloadThroughputKbps=0 --throttling.uploadThroughputKbps=0 --throttling.cpuSlowdownMultiplier=1 --chrome-flags=\"--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --ignore-certificate-errors\" --output=json --output-path=./docs/lighthouse/latest-mobile.json",
     "test:html": "html-validate \"index.html\"",
@@ -26,8 +26,8 @@
     "verify:env": "node tools/verify/verify-env.js",
     "test:exports": "npm run test:export",
     "verify:build-and-tests": "npm run clean --if-present && npm ci && npm run build && npm run lint --if-present && npm run typecheck --if-present && npm run test --if-present && npm run test:unit --if-present && npm run test:exports --if-present && npm run test:e2e --if-present && npm run perf:bundle --if-present",
-  "test:lh": "bash scripts/run-lhci.sh",
-    "verify:perf": "npm run test:lh",
+    "test:lh": "bash scripts/run-lhci.sh",
+    "verify:perf": "npm run build && npm run test:lh",
     "verify:deploy": "npm run verify:build-and-tests && npm run verify:perf"
   },
   "dependencies": {
