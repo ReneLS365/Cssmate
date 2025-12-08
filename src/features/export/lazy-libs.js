@@ -10,15 +10,31 @@ const HTML2CANVAS_LOCAL = new URL('../../../js/vendor/html2canvas.esm.js', impor
 const JSZIP_LOCAL = new URL('../../../js/vendor/jszip-esm-wrapper.js', import.meta.url).href
 
 async function importWithFallback(primaryUrl, fallbackUrl) {
-  try {
-    return await import(primaryUrl)
-  } catch (error) {
-    console.warn(`Kunne ikke indlæse ${primaryUrl}, bruger lokal fallback`, error)
-    return import(fallbackUrl)
+  const candidates = [primaryUrl, fallbackUrl].filter(Boolean)
+  const sorted = typeof window === 'undefined'
+    ? candidates.slice().sort((a, b) => {
+        const aRemote = /^https?:/i.test(a)
+        const bRemote = /^https?:/i.test(b)
+        if (aRemote === bRemote) return 0
+        return aRemote ? 1 : -1
+      })
+    : candidates
+
+  let lastError = null
+  for (const url of sorted) {
+    try {
+      return await import(url)
+    } catch (error) {
+      lastError = error
+      console.warn(`Kunne ikke indlæse ${url}, prøver fallback`, error)
+    }
   }
+  throw lastError || new Error('Import mislykkedes uden fejlbesked')
 }
 
 async function loadJsPDF () {
+  if (typeof self === 'undefined') globalThis.self = globalThis
+  if (typeof navigator === 'undefined') globalThis.navigator = {}
   const mod = await importWithFallback(JSPDF_LOCAL, JSPDF_CDN)
   if (mod?.jsPDF) return mod.jsPDF
   if (mod?.default?.jsPDF) return mod.default.jsPDF
@@ -38,7 +54,11 @@ async function loadJSZip () {
 export async function ensureExportLibs () {
   if (!exportLibsPromise) {
     exportLibsPromise = (async () => {
-      const [jsPDF, html2canvas] = await Promise.all([loadJsPDF(), loadHtml2Canvas()])
+      const disableHtml2Canvas = typeof window === 'undefined' || window?.__CSSMATE_DISABLE_HTML2CANVAS
+      const html2canvasLoader = disableHtml2Canvas
+        ? async () => () => { throw new Error('html2canvas er ikke tilgængelig i dette miljø') }
+        : loadHtml2Canvas
+      const [jsPDF, html2canvas] = await Promise.all([loadJsPDF(), html2canvasLoader()])
       if (!jsPDF || !html2canvas) {
         throw new Error('Kunne ikke indlæse eksportbibliotekerne')
       }

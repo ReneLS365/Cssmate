@@ -60,7 +60,8 @@ function normalizeItems(data = {}) {
       })
   }
 
-  const materials = Array.isArray(data.materialer) ? data.materialer : []
+  const itemsInput = Array.isArray(data.items) ? data.items : []
+  const materials = itemsInput.length ? itemsInput : Array.isArray(data.materialer) ? data.materialer : []
   return materials
     .filter(entry => entry && asNumber(entry.quantity ?? entry.qty ?? entry.antal, 0) !== 0)
     .map((entry, index) => {
@@ -111,11 +112,13 @@ function normalizeTralle(data = {}) {
 }
 
 function normalizeWage(data = {}) {
-  const workers = Array.isArray(data.laborTotals)
-    ? data.laborTotals
-    : Array.isArray(data.labor)
-      ? data.labor
-      : []
+  const workers = Array.isArray(data.wage?.workers)
+    ? data.wage.workers
+    : Array.isArray(data.laborTotals)
+      ? data.laborTotals
+      : Array.isArray(data.labor)
+        ? data.labor
+        : []
 
   const mapped = workers
     .map((worker, index) => {
@@ -125,9 +128,11 @@ function normalizeWage(data = {}) {
         ? asNumber(worker.total, 0)
         : asNumber(worker.beloeb ?? worker.belob ?? (hours * rate), 0)
       const name = worker.name || worker.navn || worker.montor || worker.montoer || `Medarbejder ${index + 1}`
+      const type = worker.type || worker.arbejdstype || worker.jobType || ''
       return {
         id: worker.id || `worker-${index + 1}`,
         name,
+        type,
         hours,
         rate,
         total,
