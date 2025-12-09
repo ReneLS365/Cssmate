@@ -258,6 +258,7 @@ export async function exportPDFBlob(data, options = {}) {
     const overviewWidth = usableWidth * 0.55;
     const boxAreaX = PAGE_MARGIN + overviewWidth + BOX_PADDING;
     const savedY = y;
+    const overviewPage = doc.internal.getCurrentPageInfo().pageNumber;
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT_SIZE_HEADER);
@@ -274,7 +275,8 @@ export async function exportPDFBlob(data, options = {}) {
       y += LINE_HEIGHT;
     });
 
-    let boxY = savedY;
+    const currentPage = doc.internal.getCurrentPageInfo().pageNumber;
+    let boxY = currentPage === overviewPage ? savedY : PAGE_MARGIN;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT_SIZE_HEADER);
     doc.text('Løn & projektsum', boxAreaX, boxY);
@@ -290,8 +292,16 @@ export async function exportPDFBlob(data, options = {}) {
     ];
 
     boxEntries.forEach((entry, index) => {
-      ensureSpace(boxHeight + SECTION_GAP);
-      const currentY = boxY + index * (boxHeight + SECTION_GAP);
+      const pageLimit = pageHeight - PAGE_MARGIN;
+      let currentY = boxY + index * (boxHeight + SECTION_GAP);
+
+      if (currentY + boxHeight > pageLimit) {
+        doc.addPage();
+        y = PAGE_MARGIN;
+        boxY = PAGE_MARGIN;
+        currentY = boxY + index * (boxHeight + SECTION_GAP);
+      }
+
       doc.rect(boxAreaX, currentY, boxWidth, boxHeight);
       doc.setFont('helvetica', 'bold');
       doc.text(entry.label, boxAreaX + BOX_PADDING, currentY + LINE_HEIGHT);
