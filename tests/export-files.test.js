@@ -10,6 +10,64 @@ import { PDFDocument, StandardFonts } from 'pdf-lib'
 
 const exec = promisify(execCallback)
 
+function setupDownloadSpies () {
+  const downloads = []
+  const anchors = []
+
+  const originalURL = globalThis.URL
+  const originalDocument = globalThis.document
+  const originalWindow = globalThis.window
+  const originalCustomEvent = globalThis.CustomEvent
+
+  globalThis.URL = {
+    createObjectURL: (blob) => {
+      downloads.push(blob)
+      return 'blob:mock-url'
+    },
+    revokeObjectURL: () => {},
+  }
+
+  globalThis.document = {
+    querySelector: () => null,
+    getElementsByTagName: () => [],
+    createElement: () => {
+      const anchor = {
+        href: '',
+        download: '',
+        click() { anchors.push({ href: this.href, download: this.download }) },
+        remove() {},
+      }
+      return anchor
+    },
+    body: {
+      appendChild() {},
+      removeChild() {},
+    },
+    defaultView: {},
+  }
+
+  globalThis.window = {
+    cssmateUpdateActionHint() {},
+    dispatchEvent() {},
+  }
+
+  globalThis.CustomEvent = class {
+    constructor (type, options = {}) {
+      this.type = type
+      this.detail = options.detail
+    }
+  }
+
+  const restore = () => {
+    globalThis.URL = originalURL
+    globalThis.document = originalDocument
+    globalThis.window = originalWindow
+    globalThis.CustomEvent = originalCustomEvent
+  }
+
+  return { downloads, anchors, restore }
+}
+
 function createTestData () {
   return {
     info: {
@@ -101,58 +159,11 @@ test('generates and validates JSON, PDF, and ZIP exports', async t => {
     }),
   })
 
-  const downloads = []
-  const anchors = []
-  const originalURL = globalThis.URL
-  const originalDocument = globalThis.document
-  const originalWindow = globalThis.window
-  const originalCustomEvent = globalThis.CustomEvent
-
-  globalThis.URL = {
-    createObjectURL: (blob) => {
-      downloads.push(blob)
-      return 'blob:mock-url'
-    },
-    revokeObjectURL: () => {},
-  }
-
-  globalThis.document = {
-    querySelector: () => null,
-    getElementsByTagName: () => [],
-    createElement: () => {
-      const anchor = {
-        href: '',
-        download: '',
-        click() { anchors.push({ href: this.href, download: this.download }) },
-        remove() {},
-      }
-      return anchor
-    },
-    body: {
-      appendChild() {},
-      removeChild() {},
-    },
-    defaultView: {},
-  }
-
-  globalThis.window = {
-    cssmateUpdateActionHint() {},
-    dispatchEvent() {},
-  }
-
-  globalThis.CustomEvent = class {
-    constructor (type, options = {}) {
-      this.type = type
-      this.detail = options.detail
-    }
-  }
+  const { downloads, anchors, restore } = setupDownloadSpies()
 
   t.after(() => {
     setZipExportDependencies({})
-    globalThis.URL = originalURL
-    globalThis.document = originalDocument
-    globalThis.window = originalWindow
-    globalThis.CustomEvent = originalCustomEvent
+    restore()
   })
 
   const zipResult = await exportZipFromAkkord(data, { baseName: jsonPayload.baseName })
@@ -182,14 +193,46 @@ test('generates and validates JSON, PDF, and ZIP exports', async t => {
 
   const zipPdfFiles = zip.filter((path) => path.endsWith('.pdf'))
   assert.ok(zipPdfFiles.length === 1, 'ZIP contains PDF file')
-  globalThis.URL = originalURL
-  globalThis.document = originalDocument
-  globalThis.window = originalWindow
-  globalThis.CustomEvent = originalCustomEvent
   const zippedPdfBuffer = await zipPdfFiles[0].async('nodebuffer')
   const parsedPdfDoc = await PDFDocument.load(zippedPdfBuffer)
   const parsedTitle = parsedPdfDoc.getTitle() || ''
   assert.match(parsedTitle, /SA-EXPORT-1/, 'PDF includes sagsnummer')
   assert.match(parsedTitle, /Test Kunde/, 'PDF includes customer')
   assert.match(parsedTitle, /360/, 'PDF includes sum')
+})
+
+test('repeated ZIP exports do not trigger MaxListeners warnings', async () => {
+  const { exportZipFromAkkord, setZipExportDependencies } = await import('../js/export-zip.js')
+  const data = createTestData()
+  const warningMessages = []
+  const onWarning = (warning) => {
+    if (warning?.name === 'MaxListenersExceededWarning' || /MaxListenersExceededWarning/.test(String(warning?.message))) {
+      warningMessages.push(warning.message || warning.toString())
+    }
+  }
+
+  const { downloads, restore } = setupDownloadSpies()
+
+  setZipExportDependencies({
+    ensureZipLib: async () => ({ JSZip }),
+    exportPDFBlob: async () => ({
+      blob: Buffer.from('pdf'),
+      fileName: 'case.pdf',
+    }),
+  })
+
+  process.on('warning', onWarning)
+
+  try {
+    for (let i = 0; i < 20; i += 1) {
+      await exportZipFromAkkord(data, { baseName: `CASE-${i}` })
+    }
+  } finally {
+    process.removeListener('warning', onWarning)
+    setZipExportDependencies({})
+    restore()
+  }
+
+  assert.equal(downloads.length, 20, 'each export triggers a download')
+  assert.equal(warningMessages.length, 0, warningMessages.join('\n'))
 })
