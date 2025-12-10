@@ -202,7 +202,7 @@ export function buildExportModel(raw = {}, options = {}) {
   const wage = normalizeWage(raw)
 
   const jobType = (raw.jobType || metaInfo.jobType || raw.type || 'montage').toLowerCase()
-  const systems = Array.isArray(raw.systems)
+  const systemsInput = Array.isArray(raw.systems)
     ? raw.systems
     : metaInfo.systems && Array.isArray(metaInfo.systems)
       ? metaInfo.systems
@@ -211,6 +211,16 @@ export function buildExportModel(raw = {}, options = {}) {
         : raw.system
           ? [raw.system]
           : []
+
+  const systemsFromItems = Array.from(new Set(
+    items
+      .map(item => (item.system || '').toString().trim().toLowerCase())
+      .filter(Boolean),
+  ))
+  const systems = Array.from(new Set([
+    ...systemsInput.map(entry => (entry || '').toString().trim().toLowerCase()).filter(Boolean),
+    ...systemsFromItems,
+  ]))
 
   const meta = {
     version: '2.0',

@@ -154,6 +154,9 @@ export async function exportPDFBlob(data, options = {}) {
       : [];
     const workerNames = (info.montoer || workerNamesList.join(', ') || '').trim();
     addSectionTitle('Sagsinfo');
+    const systemList = Array.isArray(meta.systems)
+      ? meta.systems.filter(Boolean).join(', ')
+      : meta.system || '';
     addKeyValueRows([
       { label: 'Sagsnummer', value: meta.caseNumber || '-' },
       { label: 'Navn/opgave', value: meta.caseName || '-' },
@@ -161,6 +164,7 @@ export async function exportPDFBlob(data, options = {}) {
       { label: 'Kunde', value: meta.customer || '-' },
       { label: 'Dato', value: meta.date || '-' },
       { label: 'Montørnavne', value: workerNames || '-' },
+      { label: 'System(er)', value: systemList || '-' },
     ]);
 
     const materialLines = Array.isArray(model?.items) ? model.items : [];
@@ -173,6 +177,7 @@ export async function exportPDFBlob(data, options = {}) {
       const lineTotal = toNumber(item.lineTotal ?? item.linjeBelob ?? quantity * unitPrice);
       return {
         id: item.itemNumber || item.id || '',
+        system: item.system || meta.system || '',
         name: item.name || '',
         quantity: formatNumber(quantity),
         price: formatCurrency(unitPrice),
@@ -181,11 +186,12 @@ export async function exportPDFBlob(data, options = {}) {
     });
 
     addTable('Materialer', [
-      { key: 'id', label: 'Id', width: 18 },
-      { key: 'name', label: 'Materiale', width: 86 },
-      { key: 'quantity', label: 'Antal', width: 18, align: 'right' },
-      { key: 'price', label: 'Pris (stk/akkord)', width: 24, align: 'right' },
-      { key: 'total', label: 'Linjesum', width: 24, align: 'right' },
+      { key: 'id', label: 'Id', width: 16 },
+      { key: 'system', label: 'System', width: 22 },
+      { key: 'name', label: 'Materiale', width: 70 },
+      { key: 'quantity', label: 'Antal', width: 16, align: 'right' },
+      { key: 'price', label: 'Pris (stk/akkord)', width: 23, align: 'right' },
+      { key: 'total', label: 'Linjesum', width: 23, align: 'right' },
     ], materialRows);
 
     const workers = Array.isArray(model?.wage?.workers) ? model.wage.workers : [];
