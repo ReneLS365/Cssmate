@@ -3237,7 +3237,10 @@ async function applyImportedAkkordData(data, options = {}) {
 
   const snapshot = normalizeImportedJsonSnapshot(payload);
   const materials = Array.isArray(snapshot?.materials) ? snapshot.materials : [];
-  if (!materials.length) {
+  const normalizedMaterials = materials
+    .map(normalizeMaterialLine)
+    .filter(Boolean);
+  if (!normalizedMaterials.length) {
     const message = 'Kunne ikke læse nogen linjer fra filen.';
     const availableFields = Object.keys(materialFields).filter(key => materialFields[key]);
     console.warn('Ingen materialer fundet i import', { availableFields, materialFields });
@@ -3246,8 +3249,16 @@ async function applyImportedAkkordData(data, options = {}) {
   }
 
   const normalizedJobType = (snapshot.extras?.jobType || snapshot.extraInputs?.jobType || payload.jobType || payload.type || 'montage').toLowerCase();
-  const systems = Array.isArray(snapshot.systems) && snapshot.systems.length
-    ? snapshot.systems
+  const systemsFromPayload = Array.isArray(snapshot.systems) ? snapshot.systems : [];
+  const systemsFromMaterials = normalizedMaterials
+    .map(line => normalizeSystemId(line.system))
+    .filter(Boolean);
+  const normalizedSystems = Array.from(new Set([
+    ...systemsFromPayload.map(normalizeSystemId).filter(Boolean),
+    ...systemsFromMaterials,
+  ]));
+  const systems = normalizedSystems.length
+    ? normalizedSystems
     : Array.from(selectedSystemKeys);
 
   const extras = { ...(snapshot.extras || {}), jobType: normalizedJobType };
@@ -3256,7 +3267,7 @@ async function applyImportedAkkordData(data, options = {}) {
   const normalizedSnapshot = {
     ...snapshot,
     systems,
-    materials,
+    materials: normalizedMaterials,
     extras,
     extraInputs,
     totals: snapshot.totals || payload.totals || {},
@@ -3277,6 +3288,9 @@ async function handleAkkordImport(file) {
   if (!file) return;
   try {
     const text = await file.text();
+    if (!text || !text.trim()) {
+      throw new Error('Importfilen er tom eller uden indhold.');
+    }
     let parsed;
     try {
       parsed = JSON.parse(text);
@@ -3300,6 +3314,37 @@ if (typeof window !== 'undefined') {
 }
 
 export { applyImportedAkkordData };
+
+function normalizeSystemId(value) {
+  if (typeof value === 'string') return value.trim().toLowerCase();
+  if (value && typeof value.name === 'string') return value.name.trim().toLowerCase();
+  if (value && typeof value.id === 'string') return value.id.trim().toLowerCase();
+  return '';
+}
+
+function normalizeMaterialLine(line) {
+  if (!line || typeof line !== 'object') return null;
+  const quantity = toImportNumber(line.qty ?? line.quantity ?? line.antal, 0);
+  const system = normalizeSystemId(line.system);
+  const unitPrice = toImportNumber(line.unitPrice ?? line.price ?? line.pris, line.unitPrice ?? line.price ?? line.pris ?? 0);
+  const normalized = {
+    ...line,
+    id: line.id || line.itemNumber || line.item || line.key || '',
+    name: line.name || line.title || line.navn || '',
+    quantity,
+    qty: quantity,
+    unitPrice,
+    system,
+  };
+  return normalized;
+}
+
+function toImportNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  if (Number.isFinite(parsed)) return parsed;
+  const fallbackNumber = Number(fallback);
+  return Number.isFinite(fallbackNumber) ? fallbackNumber : 0;
+}
 
 function handleImportFile(file) {
   if (!file) return;
