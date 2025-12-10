@@ -26,22 +26,11 @@ function toNumber(value) {
 
 export async function exportPDFBlob(data, options = {}) {
   const model = options?.model || (data ? buildExportModel(data) : null);
-  const rawData = options?.rawData || data;
-  const skipValidation = options.skipValidation ?? false;
-  const skipBeregn = options.skipBeregn ?? false;
   const customSagsnummer = options.customSagsnummer;
   const providedLibs = options.exportLibs;
 
   if (!model || typeof model !== 'object') {
     throw new Error('Mangler exportmodel til PDF');
-  }
-
-  if (typeof window !== 'undefined' && typeof window.cssmateExportPDFBlob === 'function') {
-    return window.cssmateExportPDFBlob(customSagsnummer, {
-      skipValidation,
-      skipBeregn,
-      data: coerceRawExportData(rawData, model),
-    });
   }
 
   try {
@@ -195,8 +184,8 @@ export async function exportPDFBlob(data, options = {}) {
       { key: 'id', label: 'Id', width: 18 },
       { key: 'name', label: 'Materiale', width: 86 },
       { key: 'quantity', label: 'Antal', width: 18, align: 'right' },
-      { key: 'price', label: 'Pris', width: 24, align: 'right' },
-      { key: 'total', label: 'Linesum', width: 24, align: 'right' },
+      { key: 'price', label: 'Pris (stk/akkord)', width: 24, align: 'right' },
+      { key: 'total', label: 'Linjesum', width: 24, align: 'right' },
     ], materialRows);
 
     const workers = Array.isArray(model?.wage?.workers) ? model.wage.workers : [];
@@ -215,15 +204,16 @@ export async function exportPDFBlob(data, options = {}) {
     ], workerRows);
 
     const materialSum = toNumber(totals.materials);
-    const extraSum = toNumber(totals.extras ?? breakdown.extraWork ?? 0) || (toNumber(breakdown.km) + toNumber(breakdown.slaeb) + toNumber(breakdown.tralle));
-    const akkordSum = toNumber(totals.akkord || (materialSum + extraSum));
-    const projectSum = toNumber(totals.project || akkordSum);
     const kmQuantity = toNumber(extras?.km?.quantity ?? model?.extraInputs?.km);
     const kmAmount = toNumber(breakdown.km ?? extras?.km?.amount);
+    const kmRate = kmQuantity ? kmAmount / kmQuantity : toNumber(extras?.km?.rate);
     const tralleAmount = toNumber(breakdown.tralle ?? extras?.tralle?.amount);
     const slaebAmount = toNumber(breakdown.slaeb ?? extras?.slaeb?.amount);
     const extraWorkEntries = Array.isArray(extras?.extraWork) ? extras.extraWork : [];
     const extraWorkSum = extraWorkEntries.reduce((sum, entry) => sum + toNumber(entry.amount), 0) || toNumber(breakdown.extraWork ?? 0);
+    const extraSum = toNumber(totals.extras ?? (kmAmount + slaebAmount + tralleAmount + extraWorkSum));
+    const akkordSum = toNumber(totals.akkord || (materialSum + extraSum));
+    const projectSum = toNumber(totals.project || akkordSum);
     const hoursTotal = toNumber(wageTotals.hours);
     const wageSum = toNumber(wageTotals.sum);
     const timePrice = hoursTotal > 0 ? akkordSum / hoursTotal : 0;
@@ -238,21 +228,21 @@ export async function exportPDFBlob(data, options = {}) {
     const holesAmount = findExtraAmount('boring af huller') || findExtraAmount('huller');
     const sealAmount = findExtraAmount('luk');
     const concreteAmount = findExtraAmount('beton');
-    const otherExtra = Math.max(0, extraWorkSum - holesAmount - sealAmount - concreteAmount);
-    const allowanceAmount = otherExtra + slaebAmount;
+    const raekvaerkAmount = findExtraAmount('rækværk') || findExtraAmount('opskyd') || findExtraAmount('opslå');
 
     const overviewEntries = [
-      { label: 'Materialesum', value: formatCurrency(materialSum) },
-      { label: 'Løn', value: formatCurrency(wageSum) },
-      { label: 'Kilometer', value: `${formatCurrency(kmAmount)} (${formatNumber(kmQuantity)} km)` },
-      { label: 'Tillæg', value: formatCurrency(allowanceAmount) },
-      { label: 'Huller', value: formatCurrency(holesAmount) },
-      { label: 'Luk af huller', value: formatCurrency(sealAmount) },
-      { label: 'Boring i beton', value: formatCurrency(concreteAmount) },
-      { label: 'Trailerløft', value: formatCurrency(tralleAmount) },
-      { label: 'Samlet akkordsum', value: formatCurrency(akkordSum) },
-      { label: 'Timer i alt', value: `${formatNumber(hoursTotal)} timer` },
-      { label: 'Arbejdere i alt', value: workerCount },
+      { label: '1. Materialer', value: formatCurrency(materialSum) },
+      { label: '2. Ekstra arbejde', value: formatCurrency(extraSum) },
+      { label: '   Slæb', value: formatCurrency(slaebAmount) },
+      { label: `   Kilometer (${formatNumber(kmQuantity)} km)`, value: formatCurrency(kmAmount) },
+      { label: '   Boring af huller', value: formatCurrency(holesAmount) },
+      { label: '   Luk af hul', value: formatCurrency(sealAmount) },
+      { label: '   Boring i beton', value: formatCurrency(concreteAmount) },
+      { label: '   Opslåeligt rækværk', value: formatCurrency(raekvaerkAmount) },
+      { label: '   Tralleløft', value: formatCurrency(tralleAmount) },
+      { label: '3. Samlet akkordsum', value: formatCurrency(akkordSum) },
+      { label: '4. Timer', value: `${formatNumber(hoursTotal)} timer` },
+      { label: '5. Medarbejdere & timer', value: `${workerCount} medarbejdere · ${formatNumber(hoursTotal)} timer` },
     ];
 
     const overviewWidth = usableWidth * 0.55;
@@ -320,6 +310,7 @@ export async function exportPDFBlob(data, options = {}) {
     addKeyValueRows([
       { label: 'Sagsnummer', value: meta.caseNumber || '-' },
       { label: 'Navn/opgave', value: meta.caseName || '-' },
+      { label: 'Adresse', value: meta.address || '-' },
       { label: 'Dato', value: meta.date || '-' },
       { label: 'Kunde', value: meta.customer || '-' },
     ]);
@@ -345,9 +336,9 @@ export async function exportPDFBlob(data, options = {}) {
       doc.text('Ingen registrerede montører', PAGE_MARGIN, y);
       y += LINE_HEIGHT + SECTION_GAP;
     } else {
-      workers.forEach(worker => {
-        const uddLabel = worker.allowances?.udd ? ` (${worker.allowances.udd})` : '';
-        const label = `${worker.type || worker.name || 'Montør'}${uddLabel}: ${formatNumber(worker.hours || 0)} Timer. Sats: ${formatCurrency(worker.rate || 0)}. Total: ${formatCurrency(worker.total || 0)}`;
+      workers.forEach((worker, index) => {
+        const name = worker.name || worker.type || `Mand ${index + 1}`;
+        const label = `${name}: Timer: ${formatNumber(worker.hours || 0)}, Timeløn: ${formatCurrency(worker.rate || 0)} kr/t, Total: ${formatCurrency(worker.total || 0)}`;
         const lines = doc.splitTextToSize(label, usableWidth);
         lines.forEach(textLine => {
           ensureSpace(LINE_HEIGHT);
@@ -358,31 +349,20 @@ export async function exportPDFBlob(data, options = {}) {
       y += SECTION_GAP;
     }
 
-    addSubTitle('Materialeoversigt:');
+    addSubTitle('Oversigt:');
     addKeyValueRows([
-      { label: 'Materialesum', value: formatCurrency(materialSum) },
-      { label: 'Samlet akkordsum (lønsum + materialer)', value: formatCurrency(wageSum + materialSum) },
-      { label: 'Timer i alt', value: `${formatNumber(hoursTotal)} timer` },
-      { label: 'Medarbejdere', value: workerCount || 0 },
+      { label: 'Materialer', value: formatCurrency(materialSum) },
+      { label: 'Ekstraarbejde', value: formatCurrency(extraWorkSum || extraSum) },
+      { label: 'Slæb', value: formatCurrency(slaebAmount) },
+      { label: 'Samlet akkordsum', value: formatCurrency(akkordSum) },
+      { label: 'Timer', value: `${formatNumber(hoursTotal)} timer` },
+      { label: 'Timepris (uden tillæg)', value: formatCurrency(timePrice) },
+      { label: 'Lønsum', value: formatCurrency(wageSum) },
+      { label: 'Projektsum', value: formatCurrency(projectSum) },
+      { label: 'Materialesum (info)', value: formatCurrency(materialSum) },
+      { label: 'Kilometer (info)', value: `${formatCurrency(kmAmount)} (${formatNumber(kmQuantity)} km @ ${formatCurrency(kmRate || 0)} kr)` },
+      { label: 'Tralleløft (info)', value: formatCurrency(tralleAmount) },
     ]);
-
-    addSubTitle('Øvrige omkostninger:');
-    const otherCosts = [];
-    if (kmQuantity || kmAmount) otherCosts.push(`Kilometer: ${formatNumber(kmQuantity)} x ${formatCurrency(kmAmount && kmQuantity ? kmAmount / kmQuantity : 0)} = ${formatCurrency(kmAmount)}`);
-    if (allowanceAmount) otherCosts.push(`Tillæg: ${formatCurrency(allowanceAmount)}`);
-    if (holesAmount) otherCosts.push(`Boring af huller: ${formatCurrency(holesAmount)}`);
-    if (sealAmount) otherCosts.push(`Luk af huller: ${formatCurrency(sealAmount)}`);
-    if (concreteAmount) otherCosts.push(`Boring i beton: ${formatCurrency(concreteAmount)}`);
-    if (tralleAmount) otherCosts.push(`Trailerløft: ${formatCurrency(tralleAmount)}`);
-    if (otherCosts.length === 0) otherCosts.push('Ingen øvrige omkostninger');
-    otherCosts.forEach(entry => {
-      const lines = doc.splitTextToSize(entry, usableWidth);
-      lines.forEach(textLine => {
-        ensureSpace(LINE_HEIGHT);
-        doc.text(textLine, PAGE_MARGIN, y);
-        y += LINE_HEIGHT;
-      });
-    });
 
     doc.setProperties({
       title: `${meta.caseNumber || 'Akkordseddel'} - Akkordseddel`,
@@ -398,77 +378,8 @@ export async function exportPDFBlob(data, options = {}) {
   }
 }
 
-function coerceRawExportData(rawData, model) {
-  if (rawData && rawData.info) return rawData;
-  const safeModel = model || {};
-
-  const mapWorkers = (safeModel?.wage?.workers || []).map(worker => ({
-    hours: Number(worker.hours) || 0,
-    hourlyWithAllowances: Number(worker.rate) || 0,
-    udd: worker.allowances?.udd || '',
-    mentortillaeg: Number(worker.allowances?.mentortillaeg) || 0,
-  }));
-
-  const mapItems = (safeModel?.items || []).map(item => ({
-    id: item.itemNumber || '',
-    name: item.name || '',
-    quantity: Number(item.quantity) || 0,
-    price: Number(item.unitPrice) || 0,
-  }));
-
-  const extras = safeModel?.extras || {};
-  const totals = safeModel?.totals || {};
-
-  const kmQuantity = Number(extras?.km?.quantity) || 0;
-  const kmAmount = Number(extras?.km?.amount) || 0;
-
-  return {
-    info: {
-      sagsnummer: safeModel?.meta?.caseNumber || 'akkordseddel',
-      navn: safeModel?.meta?.caseName || '',
-      adresse: safeModel?.meta?.address || '',
-      kunde: safeModel?.meta?.customer || '',
-      dato: safeModel?.meta?.date || '',
-      montoer: mapWorkers.length ? 'Medarbejdere' : '',
-    },
-    meta: {
-      systems: safeModel?.meta?.system ? [safeModel.meta.system] : [],
-      excelSystems: safeModel?.meta?.system ? [safeModel.meta.system] : [],
-      createdAt: safeModel?.meta?.createdAt,
-    },
-    jobType: safeModel?.meta?.jobType || 'montage',
-    jobFactor: Number(safeModel?.meta?.jobFactor) || 1,
-    materials: mapItems,
-    labor: mapWorkers,
-    laborTotals: mapWorkers,
-    extraInputs: {
-      km: kmQuantity,
-      slaebePctInput: Number(extras?.slaeb?.percent) || 0,
-      boringHuller: Number((extras?.extraWork || []).find(entry => entry.type === 'Boring af huller')?.quantity) || 0,
-      boringBeton: Number((extras?.extraWork || []).find(entry => entry.type === 'Boring i beton')?.quantity) || 0,
-      lukHuller: Number((extras?.extraWork || []).find(entry => entry.type === 'Lukning af huller')?.quantity) || 0,
-      opskydeligt: Number((extras?.extraWork || []).find(entry => entry.type === 'Opskydeligt rækværk')?.quantity) || 0,
-    },
-    extras: {
-      km: kmAmount,
-      kmBelob: kmAmount,
-      kmAntal: kmQuantity,
-      slaebePct: Number(extras?.slaeb?.percent) || 0,
-      slaebeBelob: Number(extras?.slaeb?.amount) || 0,
-      tralleløft: Number(extras?.tralle?.amount) || 0,
-    },
-    totals: {
-      materialer: Number(totals.materials) || 0,
-      ekstraarbejde: Number(totals.extras) || 0,
-      samletAkkordsum: Number(totals.akkord) || 0,
-      projektsum: Number(totals.project) || Number(totals.akkord) || 0,
-    },
-    tralleState: {
-      n35: Number(extras?.tralle?.lifts35) || 0,
-      n50: Number(extras?.tralle?.lifts50) || 0,
-    },
-    tralleSum: Number(extras?.tralle?.amount) || 0,
-  };
+if (typeof window !== 'undefined') {
+  window.cssmateExportPDFBlob = exportPDFBlob;
 }
 
 function sanitizeFilename(value) {
