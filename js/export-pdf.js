@@ -352,7 +352,7 @@ export async function exportPDFBlob(data, options = {}) {
     addSubTitle('Oversigt:');
     addKeyValueRows([
       { label: 'Materialer', value: formatCurrency(materialSum) },
-      { label: 'Ekstraarbejde', value: formatCurrency(extraWorkSum || extraSum) },
+      { label: 'Ekstraarbejde', value: formatCurrency(extraSum) },
       { label: 'Slæb', value: formatCurrency(slaebAmount) },
       { label: 'Samlet akkordsum', value: formatCurrency(akkordSum) },
       { label: 'Timer', value: `${formatNumber(hoursTotal)} timer` },
