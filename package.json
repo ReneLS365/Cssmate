@@ -22,6 +22,7 @@
     "release:guard": "npm run test:super && node scripts/check-lighthouse-perfect.mjs",
     "test:export": "node tests/export-files.test.js",
     "test:e2e": "playwright test",
+    "compare:json": "node scripts/compare-json.js release-artifacts/v2025.12.10/basic/basic.json release-artifacts/v2025.12.10/basic/basic-roundtrip.json",
     "dev:mat-debug": "npx http-server . -p 4174 --silent",
     "perf:bundle": "size-limit",
     "export:fix": "node tools/export-fix/index.js",
