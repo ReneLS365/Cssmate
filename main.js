@@ -1501,6 +1501,7 @@ function performTotalsUpdate() {
     demontageField.value = (montageBase * 0.5).toFixed(2);
   }
 
+  updateExportButtonsState();
 }
 
 function updateTotals(options = {}) {
@@ -2504,12 +2505,16 @@ function updateExportButtonsEnabled(isEnabled) {
   const exportButtonIds = ['btn-export-akkord-pdf', 'btn-print-akkord', 'btn-export-akkord-json', 'btn-export-akkord-demontage'];
   exportButtonIds.forEach(id => {
     const btn = getDomElement(id);
-    if (btn) btn.disabled = !isEnabled;
+    if (btn) {
+      btn.disabled = false;
+      btn.removeAttribute('aria-disabled');
+    }
   });
 }
 
-function validateSagsinfo() {
+function computeSagsinfoValidity() {
   let isValid = true;
+  const invalidIds = [];
   sagsinfoFieldIds.forEach(id => {
     const el = getDomElement(id);
     if (!el) return;
@@ -2521,19 +2526,51 @@ function validateSagsinfo() {
     }
     if (!fieldValid) {
       isValid = false;
+      invalidIds.push(id);
     }
+  });
+  return { isValid, invalidIds };
+}
+
+function hasValidExportData() {
+  const allData = getAllData();
+  if (Array.isArray(allData) && allData.some(item => toNumber(item?.quantity) > 0)) {
+    return true;
+  }
+  return Number.isFinite(lastMaterialSum) && lastMaterialSum > 0;
+}
+
+function hasValidExportState(forceSagsinfoValid) {
+  const sagsinfoValid = typeof forceSagsinfoValid === 'boolean'
+    ? forceSagsinfoValid
+    : computeSagsinfoValidity().isValid;
+  const jobTypeValue = (document.getElementById('jobType')?.value || '').trim();
+  const jobTypeValid = jobTypeValue.length > 0;
+  return sagsinfoValid && jobTypeValid;
+}
+
+function updateExportButtonsState(forceSagsinfoValid) {
+  updateExportButtonsEnabled(hasValidExportState(forceSagsinfoValid));
+}
+
+function validateSagsinfo() {
+  const validity = computeSagsinfoValidity();
+  sagsinfoFieldIds.forEach(id => {
+    const el = getDomElement(id);
+    if (!el) return;
+    const fieldValid = !validity.invalidIds.includes(id);
     el.classList.toggle('invalid', !fieldValid);
   });
 
-  updateExportButtonsEnabled(isValid);
+  updateExportButtonsState(validity.isValid);
 
-  if (isValid) {
+  if (validity.isValid) {
     updateActionHint('');
   } else {
     updateActionHint(DEFAULT_ACTION_HINT, 'error');
   }
 
-  return isValid;
+  return validity.isValid;
 }
 
 function escapeCSV(value) {
@@ -2593,6 +2630,7 @@ function handleJobTypeChange(event) {
     }
   }
   updateTotals(true);
+  updateExportButtonsState();
 }
 
 function formatDateForDisplay(value) {
@@ -3299,6 +3337,7 @@ async function applyImportedAkkordData(data, options = {}) {
   }
 
   actionHint('Akkordseddel er importeret. Bekræft arbejdstype og tal.', 'success');
+  updateExportButtonsState();
   persistSnapshot({ type: 'import', source: payload?.meta?.source || 'json' });
 }
 
@@ -3543,6 +3582,7 @@ function showLonOutputSections() {
     section.hidden = false;
     section.removeAttribute('hidden');
   });
+  updateExportButtonsState();
 }
 
 function beregnLon() {
@@ -4801,6 +4841,7 @@ async function initApp() {
   });
 
   validateSagsinfo();
+  updateExportButtonsEnabled(true);
   runWhenIdle(() => {
     setupNumpad();
     setupMobileKeyboardDismissal();
