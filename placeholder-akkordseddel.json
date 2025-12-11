@@ -1,0 +1,63 @@
+{
+  "version": "2.0",
+  "source": "cssmate",
+  "meta": {
+    "caseNumber": "PLACEHOLDER-001",
+    "caseName": "Ingen data",
+    "customer": "Ukendt",
+    "address": "",
+    "date": "2025-12-11",
+    "system": "",
+    "systems": [],
+    "jobType": "montage",
+    "jobFactor": 1,
+    "createdAt": "2025-12-11T00:00:00Z",
+    "exportedAt": "2025-12-11T00:00:00Z"
+  },
+  "info": {
+    "sagsnummer": "PLACEHOLDER-001",
+    "navn": "Ingen data",
+    "adresse": "",
+    "kunde": "Ukendt",
+    "dato": "2025-12-11",
+    "montoer": "",
+    "jobType": "montage"
+  },
+  "materials": [],
+  "items": [],
+  "extras": {
+    "km": { "quantity": 0, "rate": 0, "amount": 0 },
+    "slaeb": { "percent": 0, "amount": 0 },
+    "tralle": { "lifts35": 0, "lifts50": 0, "amount": 0 },
+    "extraWork": [],
+    "fields": {
+      "jobType": "montage",
+      "montagepris": null,
+      "demontagepris": null,
+      "slaebePct": 0,
+      "slaebeFormulaText": "",
+      "antalBoringHuller": 0,
+      "antalLukHuller": 0,
+      "antalBoringBeton": 0,
+      "opskydeligtRaekvaerk": 0,
+      "kmBelob": 0,
+      "kmAntal": 0,
+      "kmIsAmount": true,
+      "traelle35": 0,
+      "traelle50": 0,
+      "tralleSum": 0
+    }
+  },
+  "wage": {
+    "workers": [],
+    "totals": { "hours": 0, "sum": 0 }
+  },
+  "extraInputs": {},
+  "totals": {
+    "materials": 0,
+    "extras": 0,
+    "extrasBreakdown": { "km": 0, "slaeb": 0, "tralle": 0, "extraWork": 0 },
+    "akkord": 0,
+    "project": 0
+  }
+}
