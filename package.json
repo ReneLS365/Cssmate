@@ -7,7 +7,7 @@
     "test": "node --test",
     "lint": "npm run test:html",
     "format": "npm run lint",
-    "prepare": "playwright install --with-deps",
+    "prepare": "node scripts/prepare-playwright.js",
     "bump:sw": "node scripts/bump-sw-version.js",
     "bump-sw-version": "node scripts/bump-sw-version.js",
     "update-prices": "node scripts/update-price-lists.js",
