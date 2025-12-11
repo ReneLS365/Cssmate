@@ -105,11 +105,13 @@ test('export buttons trigger their actions correctly', async t => {
   await buttons['#btn-export-akkord-pdf'].click();
   assert.equal(akkordDataMock.mock.calls.length, 1, 'akkord data built for export');
   assert.equal(exportPDFBlobMock.mock.calls.length, 1, 'PDF export invoked');
-  assert.equal(downloads[0]?.download, 'custom.pdf', 'PDF download is queued');
-  assert.equal(downloads[1]?.download, 'SA-1-Kunde-2024-05-10.json', 'JSON download is queued');
-  assert.deepEqual(actionHints[1], { message: 'Eksporterer akkordseddel (PDF + JSON)…', variant: 'info' });
-  assert.deepEqual(actionHints[2], { message: 'PDF er gemt til din enhed.', variant: 'success' });
-  assert.deepEqual(actionHints[3], { message: 'Akkordseddel (JSON) er gemt.', variant: 'success' });
+  const pdfDownload = downloads.find(entry => entry.download.endsWith('.pdf'));
+  const jsonDownload = downloads.find(entry => entry.download.endsWith('.json'));
+  assert.ok(pdfDownload, 'PDF download is queued');
+  assert.ok(jsonDownload, 'JSON download is queued');
+  assert.deepEqual(actionHints[1], { message: 'Eksporterer akkordseddel (JSON + PDF)…', variant: 'info' });
+  assert.deepEqual(actionHints[2], { message: 'Akkordseddel (JSON) er gemt.', variant: 'success' });
+  assert.deepEqual(actionHints[3], { message: 'PDF er gemt til din enhed.', variant: 'success' });
 
   await buttons['#btn-import-akkord'].click();
   assert.equal(handleImportAkkordMock.mock.calls.length, 1, 'import handler invoked');

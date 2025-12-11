@@ -30,6 +30,50 @@ function notifyHistory(type, detail = {}) {
   window.dispatchEvent(new CustomEvent('cssmate:exported', { detail: payload }));
 }
 
+export async function exportAkkordJsonAndPdf(options = {}) {
+  const button = options?.button || options?.currentTarget;
+  const done = setBusy(button, true, { busyText: 'Eksporterer…', doneText: 'Filer klar' });
+  const exportErrors = [];
+  try {
+    notifyAction('Eksporterer akkordseddel (JSON + PDF)…', 'info');
+    const context = buildExportContext();
+
+    const jsonResult = await exportJsonFromContext(context).catch(error => {
+      exportErrors.push(error);
+      console.error('JSON export failed', error);
+      const fallback = 'Der opstod en fejl under JSON-eksporten. Prøv igen – eller kontakt kontoret.';
+      const message = error?.message ? `${fallback} (${error.message})` : fallback;
+      notifyAction(message, 'error');
+      return null;
+    });
+    await waitForDownloadTick();
+
+    const pdfResult = await exportPdfFromContext(context).catch(error => {
+      exportErrors.push(error);
+      console.error('PDF export failed', error);
+      const fallback = 'Der opstod en fejl under PDF-eksporten. Prøv igen – eller kontakt kontoret.';
+      const message = error?.message ? `${fallback} (${error.message})` : fallback;
+      notifyAction(message, 'error');
+      return null;
+    });
+    await waitForDownloadTick();
+
+    if (exportErrors.length === 2 || !jsonResult || !pdfResult) {
+      throw exportErrors[0] || new Error('Eksport mislykkedes');
+    }
+
+    return { jsonFileName: jsonResult.fileName, pdfFileName: pdfResult.fileName };
+  } catch (error) {
+    console.error('Export failed', error);
+    const fallback = 'Der opstod en fejl under eksporten. Prøv igen – eller kontakt kontoret.';
+    const message = error?.message ? `${fallback} (${error.message})` : fallback;
+    notifyAction(message, 'error');
+    throw error;
+  } finally {
+    done();
+  }
+}
+
 function handlePrintAkkord(event) {
   const button = event?.currentTarget;
   const done = setBusy(button, true, { busyText: 'Åbner print…', doneText: 'Klar' });
@@ -39,46 +83,7 @@ function handlePrintAkkord(event) {
 }
 
   async function handleExportAkkordPDF(event) {
-    const button = event?.currentTarget;
-    const done = setBusy(button, true, { busyText: 'Eksporterer…', doneText: 'Filer klar' });
-  try {
-    notifyAction('Eksporterer akkordseddel (PDF + JSON)…', 'info');
-    const context = buildExportContext();
-    const exportErrors = [];
-
-    try {
-      await exportPdfFromContext(context);
-      await waitForDownloadTick();
-    } catch (error) {
-      exportErrors.push(error);
-      console.error('PDF export failed', error);
-      const fallback = 'Der opstod en fejl under PDF-eksporten. Prøv igen – eller kontakt kontoret.';
-      const message = error?.message ? `${fallback} (${error.message})` : fallback;
-      notifyAction(message, 'error');
-    }
-
-    try {
-      await exportJsonFromContext(context);
-      await waitForDownloadTick();
-    } catch (error) {
-      exportErrors.push(error);
-      console.error('JSON export failed', error);
-      const fallback = 'Der opstod en fejl under JSON-eksporten. Prøv igen – eller kontakt kontoret.';
-      const message = error?.message ? `${fallback} (${error.message})` : fallback;
-      notifyAction(message, 'error');
-    }
-
-    if (exportErrors.length === 2) {
-      throw exportErrors[0];
-    }
-  } catch (error) {
-    console.error('Export failed', error);
-    const fallback = 'Der opstod en fejl under eksporten. Prøv igen – eller kontakt kontoret.';
-    const message = error?.message ? `${fallback} (${error.message})` : fallback;
-    notifyAction(message, 'error');
-  } finally {
-    done();
-    }
+    return exportAkkordJsonAndPdf({ button: event?.currentTarget });
   }
 
   async function handleImportAkkordAction(event) {
@@ -158,6 +163,7 @@ async function exportPdfFromContext(context) {
   downloadBlob(payload.blob, filename);
   notifyAction('PDF er gemt til din enhed.', 'success');
   notifyHistory('pdf', { baseName: context.baseName, fileName: filename });
+  return { fileName: filename, blob: payload.blob };
 }
 
 async function exportJsonFromContext(context) {
@@ -168,6 +174,7 @@ async function exportJsonFromContext(context) {
   downloadBlob(blob, fileName);
   notifyAction('Akkordseddel (JSON) er gemt.', 'success');
   notifyHistory('json', { baseName: context.baseName, fileName });
+  return { fileName, blob };
 }
 
 function notifyAction(message, variant) {

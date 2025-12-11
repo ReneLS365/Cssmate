@@ -780,6 +780,7 @@ let workerCount = 0;
 let laborEntries = [];
 let lastLoensum = 0;
 let lastMaterialSum = 0;
+let lastExportModel = null;
 let lastEkompletData = null;
 let lastJobSummary = null;
 let recentCasesCache = [];
@@ -1445,6 +1446,7 @@ function computeTraelleTotals() {
 }
 
 function performTotalsUpdate() {
+  markExportModelDirty();
   const tralleState = computeTraelleTotals();
   const tralleSum = tralleState && Number.isFinite(tralleState.sum) ? tralleState.sum : 0;
   const jobType = document.getElementById('jobType')?.value || 'montage';
@@ -2501,17 +2503,6 @@ async function handleLoadCase() {
   }
 }
 
-function updateExportButtonsEnabled(isEnabled) {
-  const exportButtonIds = ['btn-export-akkord-pdf', 'btn-print-akkord', 'btn-export-akkord-json', 'btn-export-akkord-demontage'];
-  exportButtonIds.forEach(id => {
-    const btn = getDomElement(id);
-    if (btn) {
-      btn.disabled = !isEnabled;
-      btn.setAttribute('aria-disabled', String(!isEnabled));
-    }
-  });
-}
-
 function computeSagsinfoValidity() {
   let isValid = true;
   const invalidIds = [];
@@ -2533,6 +2524,9 @@ function computeSagsinfoValidity() {
 }
 
 function hasValidExportData() {
+  if (lastExportModel && Array.isArray(lastExportModel.items) && lastExportModel.items.length > 0) {
+    return true;
+  }
   const allData = getAllData();
   if (Array.isArray(allData) && allData.some(item => toNumber(item?.quantity) > 0)) {
     return true;
@@ -2550,11 +2544,29 @@ function hasValidExportState(forceSagsinfoValid) {
   return sagsinfoValid && jobTypeValid && dataReady;
 }
 
+function updateExportButtons(forceSagsinfoValid) {
+  const pdfBtn = document.getElementById('btn-export-akkord-pdf');
+  const printBtn = document.getElementById('btn-print-akkord');
+  const enabled = hasValidExportState(forceSagsinfoValid);
+
+  [pdfBtn, printBtn].forEach(btn => {
+    if (btn) {
+      btn.disabled = !enabled;
+      btn.setAttribute('aria-disabled', String(!enabled));
+    }
+  });
+}
+
 function updateExportButtonsState(forceSagsinfoValid) {
-  updateExportButtonsEnabled(hasValidExportState(forceSagsinfoValid));
+  updateExportButtons(forceSagsinfoValid);
+}
+
+function markExportModelDirty() {
+  lastExportModel = null;
 }
 
 function validateSagsinfo() {
+  markExportModelDirty();
   const validity = computeSagsinfoValidity();
   sagsinfoFieldIds.forEach(id => {
     const el = getDomElement(id);
@@ -2948,7 +2960,9 @@ if (typeof window !== 'undefined') {
 
 function buildAkkordData(options = {}) {
   const raw = buildRawAkkordData(options)
-  return buildSharedAkkordData(raw)
+  const model = buildSharedAkkordData(raw)
+  lastExportModel = model
+  return model
 }
 
 if (typeof window !== 'undefined') {
@@ -3337,6 +3351,7 @@ async function applyImportedAkkordData(data, options = {}) {
     resumeHistoryPersistence();
   }
 
+  markExportModelDirty();
   actionHint('Akkordseddel er importeret. Bekræft arbejdstype og tal.', 'success');
   updateExportButtonsState();
   persistSnapshot({ type: 'import', source: payload?.meta?.source || 'json' });
@@ -4419,53 +4434,6 @@ async function exportPDF(customSagsnummer, options = {}) {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
   updateActionHint('PDF er gemt til din enhed.', 'success');
-}
-
-async function exportZip() {
-  if (!validateSagsinfo()) {
-    updateActionHint('Udfyld Sagsinfo for at eksportere.', 'error');
-    return;
-  }
-  try {
-    const { JSZip } = await ensureZipLibLazy();
-    beregnLon();
-    const csvPayload = buildCSVPayload(null, { skipValidation: true, skipBeregn: true });
-    if (!csvPayload) return;
-    const sharedData = buildAkkordData({ customSagsnummer: csvPayload.originalName || csvPayload.baseName });
-    const pdfPayload = await exportPDFBlob(csvPayload.originalName || csvPayload.baseName, {
-      skipValidation: true,
-      skipBeregn: true,
-      data: sharedData,
-    });
-    if (!pdfPayload) return;
-    const jsonPayload = buildAkkordJsonPayload(csvPayload.originalName || csvPayload.baseName, {
-      skipValidation: true,
-      skipBeregn: true,
-      data: sharedData,
-    });
-
-    const zip = new JSZip();
-    zip.file(csvPayload.fileName, csvPayload.content);
-    zip.file(pdfPayload.fileName, pdfPayload.blob);
-    if (jsonPayload) {
-      zip.file(jsonPayload.fileName, jsonPayload.content);
-    }
-
-    const zipBlob = await zip.generateAsync({ type: 'blob' });
-    const url = URL.createObjectURL(zipBlob);
-    const link = document.createElement('a');
-    const baseName = jsonPayload?.baseName || csvPayload.baseName || pdfPayload.baseName || 'akkordseddel';
-    link.href = url;
-    link.download = `${baseName}.zip`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    updateActionHint('ZIP med PDF og CSV er gemt.', 'success');
-  } catch (error) {
-    console.error('ZIP eksport fejlede', error);
-    updateActionHint('ZIP eksport fejlede. Prøv igen.', 'error');
-  }
 }
 
 function exportAkkordJsonFile() {
