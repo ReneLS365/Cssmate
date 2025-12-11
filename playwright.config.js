@@ -16,6 +16,11 @@ export default defineConfig({
     trace: 'retain-on-failure',
     viewport: { width: 393, height: 851 },
   },
+  projects: [
+    {
+      name: 'chromium',
+    },
+  ],
   webServer: shouldStartServer
     ? {
         command: 'npm run start:ci',
