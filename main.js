@@ -1501,6 +1501,7 @@ function performTotalsUpdate() {
     demontageField.value = (montageBase * 0.5).toFixed(2);
   }
 
+  updateExportButtonsState();
 }
 
 function updateTotals(options = {}) {
@@ -1544,7 +1545,19 @@ function collectSagsinfo() {
 function setSagsinfoField(id, value) {
   const el = getDomElement(id);
   if (!el) return;
-  el.value = value;
+  if (el.hasAttribute('readonly')) {
+    el.removeAttribute('readonly');
+  }
+  const nextValue = value ?? '';
+  const currentValue = el.value;
+  if (currentValue !== nextValue) {
+    el.value = nextValue;
+    ['input', 'change'].forEach(eventName => {
+      el.dispatchEvent(new Event(eventName, { bubbles: true }));
+    });
+  } else {
+    el.value = nextValue;
+  }
 }
 
 function updateActionHint(message = '', variant = 'info') {
@@ -2488,34 +2501,77 @@ async function handleLoadCase() {
   }
 }
 
-function validateSagsinfo() {
+function updateExportButtonsEnabled(isEnabled) {
+  const exportButtonIds = ['btn-export-akkord-pdf', 'btn-print-akkord', 'btn-export-akkord-json', 'btn-export-akkord-demontage'];
+  exportButtonIds.forEach(id => {
+    const btn = getDomElement(id);
+    if (btn) {
+      btn.disabled = !isEnabled;
+      btn.setAttribute('aria-disabled', String(!isEnabled));
+    }
+  });
+}
+
+function computeSagsinfoValidity() {
   let isValid = true;
+  const invalidIds = [];
   sagsinfoFieldIds.forEach(id => {
     const el = getDomElement(id);
     if (!el) return;
     const rawValue = (el.value || '').trim();
     let fieldValid = rawValue.length > 0;
     if (id === 'sagsdato') {
-      fieldValid = rawValue.length > 0 && !Number.isNaN(new Date(rawValue).valueOf());
+      const parsed = Date.parse(rawValue);
+      fieldValid = rawValue.length > 0 && !Number.isNaN(parsed);
     }
     if (!fieldValid) {
       isValid = false;
+      invalidIds.push(id);
     }
+  });
+  return { isValid, invalidIds };
+}
+
+function hasValidExportData() {
+  const allData = getAllData();
+  if (Array.isArray(allData) && allData.some(item => toNumber(item?.quantity) > 0)) {
+    return true;
+  }
+  return Number.isFinite(lastMaterialSum) && lastMaterialSum > 0;
+}
+
+function hasValidExportState(forceSagsinfoValid) {
+  const sagsinfoValid = typeof forceSagsinfoValid === 'boolean'
+    ? forceSagsinfoValid
+    : computeSagsinfoValidity().isValid;
+  const jobTypeValue = (document.getElementById('jobType')?.value || '').trim();
+  const jobTypeValid = jobTypeValue.length > 0;
+  const dataReady = hasValidExportData();
+  return sagsinfoValid && jobTypeValid && dataReady;
+}
+
+function updateExportButtonsState(forceSagsinfoValid) {
+  updateExportButtonsEnabled(hasValidExportState(forceSagsinfoValid));
+}
+
+function validateSagsinfo() {
+  const validity = computeSagsinfoValidity();
+  sagsinfoFieldIds.forEach(id => {
+    const el = getDomElement(id);
+    if (!el) return;
+    const fieldValid = !validity.invalidIds.includes(id);
     el.classList.toggle('invalid', !fieldValid);
   });
 
-    ['btn-export-akkord-pdf', 'btn-print-akkord'].forEach(id => {
-      const btn = getDomElement(id);
-      if (btn) btn.disabled = !isValid;
-    });
+  updateExportButtonsState(validity.isValid);
 
-  if (isValid) {
+  if (validity.isValid) {
     updateActionHint('');
   } else {
     updateActionHint(DEFAULT_ACTION_HINT, 'error');
   }
 
-  return isValid;
+  return validity.isValid;
 }
 
 function escapeCSV(value) {
@@ -2575,6 +2631,7 @@ function handleJobTypeChange(event) {
     }
   }
   updateTotals(true);
+  updateExportButtonsState();
 }
 
 function formatDateForDisplay(value) {
@@ -3281,6 +3338,7 @@ async function applyImportedAkkordData(data, options = {}) {
   }
 
   actionHint('Akkordseddel er importeret. Bekræft arbejdstype og tal.', 'success');
+  updateExportButtonsState();
   persistSnapshot({ type: 'import', source: payload?.meta?.source || 'json' });
 }
 
@@ -3525,6 +3583,7 @@ function showLonOutputSections() {
     section.hidden = false;
     section.removeAttribute('hidden');
   });
+  updateExportButtonsState();
 }
 
 function beregnLon() {
