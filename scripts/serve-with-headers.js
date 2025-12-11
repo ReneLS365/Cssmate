@@ -7,7 +7,7 @@ import path from 'node:path';
 
 const PORT = process.env.PORT || process.argv[2] || 4173;
 // Juster DIR hvis der findes en build-mappe. Hvis appen kører direkte fra repo-roden, lad den være som nu.
-const DIR = process.argv[3] || path.join(process.cwd(), '');
+const DIR = path.resolve(process.argv[3] || process.cwd());
 
 const app = express();
 

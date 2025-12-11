@@ -1,10 +1,12 @@
 {
   "name": "sscaff-app",
-  "version": "1.0.0",
+  "version": "2025.12.10",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "node --test",
+    "lint": "npm run test:html",
+    "format": "npm run lint",
     "bump:sw": "node scripts/bump-sw-version.js",
     "bump-sw-version": "node scripts/bump-sw-version.js",
     "update-prices": "node scripts/update-price-lists.js",
@@ -20,6 +22,7 @@
     "release:guard": "npm run test:super && node scripts/check-lighthouse-perfect.mjs",
     "test:export": "node tests/export-files.test.js",
     "test:e2e": "playwright test",
+    "compare:json": "node scripts/compare-json.js release-artifacts/v2025.12.10/basic/basic.json release-artifacts/v2025.12.10/basic/basic-roundtrip.json",
     "dev:mat-debug": "npx http-server . -p 4174 --silent",
     "perf:bundle": "size-limit",
     "export:fix": "node tools/export-fix/index.js",
