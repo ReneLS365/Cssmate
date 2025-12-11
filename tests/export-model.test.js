@@ -1,11 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import JSZip from 'jszip'
-import { PDFDocument, StandardFonts } from 'pdf-lib'
 
 import { buildExportModel, formatCsvNumber } from '../js/export-model.js'
 import { buildAkkordCSV } from '../js/akkord-csv.js'
-import { exportZipFromAkkord, setZipExportDependencies } from '../js/export-zip.js'
 
 function createSampleCase () {
   return {
@@ -41,16 +38,6 @@ function createSampleCase () {
       ekstraarbejde: 71,
     },
   }
-}
-
-async function createPdfBuffer (text) {
-  const pdfDoc = await PDFDocument.create()
-  const page = pdfDoc.addPage()
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
-  const { height } = page.getSize()
-  page.drawText(String(text), { x: 48, y: height - 72, size: 12, font })
-  const bytes = await pdfDoc.save({ useObjectStreams: false, compress: false })
-  return Buffer.from(bytes)
 }
 
 test('buildExportModel normalizes totals and extras', () => {
@@ -91,51 +78,4 @@ test('buildAkkordCSV exports BOM, semicolons, and formatted numbers', () => {
   assert.ok(materialLine?.includes('MAT-01'))
   assert.ok(materialLine?.includes(formatCsvNumber(25)))
   assert.ok(lines.some(line => line.includes('totalAkkord') || line.startsWith('#META;totalAkkord'))) // meta totals present
-})
-
-test('exportZipFromAkkord packs JSON, PDF and CSV from same model', async t => {
-  const data = createSampleCase()
-  const pdfBuffer = await createPdfBuffer('Totalsag')
-
-  setZipExportDependencies({
-    ensureZipLib: async () => ({ JSZip }),
-    exportPDFBlob: async () => ({ blob: pdfBuffer, fileName: 'Totalsag.pdf' }),
-  })
-
-  const downloads = []
-  const anchors = []
-  const originalURL = globalThis.URL
-  const originalDocument = globalThis.document
-  const originalWindow = globalThis.window
-
-  globalThis.URL = {
-    createObjectURL: (blob) => { downloads.push(blob); return 'blob:mock-url' },
-    revokeObjectURL: () => {},
-  }
-  globalThis.document = {
-    createElement: () => {
-      const anchor = { download: '', href: '', click () { anchors.push(this) }, remove () {} }
-      return anchor
-    },
-    body: { appendChild () {}, removeChild () {} },
-  }
-  globalThis.window = { cssmateUpdateActionHint () {}, dispatchEvent () {} }
-
-  t.after(() => {
-    setZipExportDependencies({})
-    globalThis.URL = originalURL
-    globalThis.document = originalDocument
-    globalThis.window = originalWindow
-  })
-
-  const zipResult = await exportZipFromAkkord(data, { baseName: 'Totalsag' })
-  assert.ok(zipResult.files.length >= 3)
-  assert.ok(anchors.some(a => a.download.endsWith('.zip')))
-
-  const [zipBlob] = downloads
-  const zipBuffer = Buffer.from(await zipBlob.arrayBuffer())
-  const zip = await JSZip.loadAsync(zipBuffer)
-  assert.ok(zip.filter(path => path.endsWith('.json')).length === 1)
-  assert.ok(zip.filter(path => path.endsWith('.csv')).length === 1)
-  assert.ok(zip.filter(path => path.endsWith('.pdf')).length === 1)
 })

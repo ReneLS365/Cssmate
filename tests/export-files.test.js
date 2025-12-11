@@ -1,14 +1,7 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { promisify } from 'node:util'
-import { exec as execCallback } from 'node:child_process'
-import JSZip from 'jszip'
-import test, { before } from 'node:test'
+import test from 'node:test'
 import { PDFDocument, StandardFonts } from 'pdf-lib'
-
-const exec = promisify(execCallback)
+import { exportAkkordJsonAndPdf, setExportDependencies } from '../js/akkord-export-ui.js'
 
 function setupDownloadSpies () {
   const downloads = []
@@ -129,110 +122,55 @@ async function createMinimalPdf (text) {
   return Buffer.from(bytes)
 }
 
-before(async () => {
-  await exec('npm run build')
-})
-
-test('generates and validates JSON, PDF, and ZIP exports', async t => {
-  const { buildAkkordJsonPayload } = await import('../js/export-json.js')
+test('generates and validates JSON and PDF exports', async t => {
   const data = createTestData()
-  const tmpDir = await mkdtemp(join(tmpdir(), 'cssmate-export-'))
+  const pdfBuffer = await createMinimalPdf(`Sagsnummer: ${data.info.sagsnummer} - Kunde: ${data.info.kunde} - Sum: ${data.totals.projektsum}`)
 
-  const jsonPayload = buildAkkordJsonPayload(data, data.info.sagsnummer, { skipValidation: true, skipBeregn: true })
-  assert.ok(jsonPayload?.content, 'JSON payload exists')
-  await writeFile(join(tmpDir, jsonPayload.fileName), jsonPayload.content, 'utf8')
+  const { downloads, anchors, restore } = setupDownloadSpies()
 
-  const parsedJson = JSON.parse(jsonPayload.content)
+  setExportDependencies({
+    buildAkkordData: () => data,
+    exportPDFBlob: async () => ({
+      blob: pdfBuffer,
+      fileName: `${data.info.sagsnummer}.pdf`,
+    }),
+  })
+
+  t.after(() => {
+    setExportDependencies({})
+    restore()
+  })
+
+  const result = await exportAkkordJsonAndPdf()
+
+  assert.ok(result?.jsonFileName?.endsWith('.json'), 'JSON file name is returned')
+  assert.ok(result?.pdfFileName?.endsWith('.pdf'), 'PDF file name is returned')
+
+  const jsonIndex = anchors.findIndex(entry => entry.download.endsWith('.json'))
+  const pdfIndex = anchors.findIndex(entry => entry.download.endsWith('.pdf'))
+
+  assert.ok(jsonIndex >= 0, 'JSON download is triggered')
+  assert.ok(pdfIndex >= 0, 'PDF download is triggered')
+  assert.equal(anchors.some(entry => entry.download.endsWith('.zip')), false, 'ZIP download is not triggered')
+
+  const jsonBlob = downloads[jsonIndex]
+  const pdfBlob = downloads[pdfIndex]
+
+  const jsonBuffer = typeof jsonBlob.arrayBuffer === 'function'
+    ? await jsonBlob.arrayBuffer()
+    : jsonBlob
+  const jsonText = Buffer.from(jsonBuffer).toString('utf8')
+  const parsedJson = JSON.parse(jsonText)
   assert.equal(parsedJson.meta.caseNumber, data.info.sagsnummer)
   assert.equal(parsedJson.meta.customer, data.info.kunde)
   assert.ok(Array.isArray(parsedJson.items))
   assert.equal(parsedJson.totals.materials, data.totals.totalMaterialer)
 
-  const pdfBuffer = await createMinimalPdf(`Sagsnummer: ${data.info.sagsnummer} - Kunde: ${data.info.kunde} - Sum: ${data.totals.projektsum}`)
-
-  const { exportZipFromAkkord, setZipExportDependencies } = await import('../js/export-zip.js')
-  setZipExportDependencies({
-    ensureZipLib: async () => ({ JSZip }),
-    exportPDFBlob: async () => ({
-      blob: pdfBuffer,
-      fileName: `${jsonPayload.baseName}.pdf`,
-    }),
-  })
-
-  const { downloads, anchors, restore } = setupDownloadSpies()
-
-  t.after(() => {
-    setZipExportDependencies({})
-    restore()
-  })
-
-  const zipResult = await exportZipFromAkkord(data, { baseName: jsonPayload.baseName })
-  assert.ok(zipResult?.files?.length > 0, 'ZIP export reports files')
-  assert.ok(anchors.some(entry => entry.download.endsWith('.zip')), 'ZIP download is triggered')
-
-  const [zipBlob] = downloads.slice(-1)
-  const zipBuffer = Buffer.from(await zipBlob.arrayBuffer())
-  const zip = await JSZip.loadAsync(zipBuffer)
-
-  const zipJsonFiles = zip.filter((path) => path.endsWith('.json'))
-  assert.ok(zipJsonFiles.length === 1, 'ZIP contains JSON file')
-  const zippedJsonContent = await zipJsonFiles[0].async('string')
-  const zippedJson = JSON.parse(zippedJsonContent)
-  const standaloneJson = JSON.parse(jsonPayload.content)
-  assert.equal(zippedJson.meta.caseNumber, standaloneJson.meta.caseNumber)
-  assert.equal(zippedJson.totals.akkord, standaloneJson.totals.akkord)
-  assert.equal(zippedJson.totals.materials, standaloneJson.totals.materials)
-  assert.equal(zippedJson.extras.km.amount, standaloneJson.extras.km.amount)
-
-  const zipCsvFiles = zip.filter((path) => path.endsWith('.csv'))
-  assert.ok(zipCsvFiles.length === 1, 'ZIP contains CSV file')
-  const csvContent = await zipCsvFiles[0].async('string')
-  assert.ok(csvContent.startsWith('\ufeff'), 'CSV is UTF-8 with BOM')
-  assert.ok(csvContent.includes('MATERIAL;SA-EXPORT-1'), 'CSV contains case number on material lines')
-  assert.ok(/;250,00/.test(csvContent) || /;250.00/.test(csvContent), 'CSV contains material sum formatted')
-
-  const zipPdfFiles = zip.filter((path) => path.endsWith('.pdf'))
-  assert.ok(zipPdfFiles.length === 1, 'ZIP contains PDF file')
-  const zippedPdfBuffer = await zipPdfFiles[0].async('nodebuffer')
-  const parsedPdfDoc = await PDFDocument.load(zippedPdfBuffer)
+  const pdfBinary = typeof pdfBlob.arrayBuffer === 'function'
+    ? await pdfBlob.arrayBuffer()
+    : pdfBlob
+  const parsedPdfDoc = await PDFDocument.load(Buffer.from(pdfBinary))
   const parsedTitle = parsedPdfDoc.getTitle() || ''
   assert.match(parsedTitle, /SA-EXPORT-1/, 'PDF includes sagsnummer')
   assert.match(parsedTitle, /Test Kunde/, 'PDF includes customer')
-  assert.match(parsedTitle, /360/, 'PDF includes sum')
-})
-
-test('repeated ZIP exports do not trigger MaxListeners warnings', async () => {
-  const { exportZipFromAkkord, setZipExportDependencies } = await import('../js/export-zip.js')
-  const data = createTestData()
-  const warningMessages = []
-  const onWarning = (warning) => {
-    if (warning?.name === 'MaxListenersExceededWarning' || /MaxListenersExceededWarning/.test(String(warning?.message))) {
-      warningMessages.push(warning.message || warning.toString())
-    }
-  }
-
-  const { downloads, restore } = setupDownloadSpies()
-
-  setZipExportDependencies({
-    ensureZipLib: async () => ({ JSZip }),
-    exportPDFBlob: async () => ({
-      blob: Buffer.from('pdf'),
-      fileName: 'case.pdf',
-    }),
-  })
-
-  process.on('warning', onWarning)
-
-  try {
-    for (let i = 0; i < 20; i += 1) {
-      await exportZipFromAkkord(data, { baseName: `CASE-${i}` })
-    }
-  } finally {
-    process.removeListener('warning', onWarning)
-    setZipExportDependencies({})
-    restore()
-  }
-
-  assert.equal(downloads.length, 20, 'each export triggers a download')
-  assert.equal(warningMessages.length, 0, warningMessages.join('\n'))
 })

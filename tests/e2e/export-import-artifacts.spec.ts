@@ -127,29 +127,18 @@ async function exportPdfAndJson(page, scenarioKey, baseName) {
   const jsonDownload = downloads.find(entry => entry.suggestedFilename().toLowerCase().endsWith('.json'))
 
   expect(pdfDownload, 'PDF download mangler').toBeTruthy()
+  expect(jsonDownload, 'JSON download mangler').toBeTruthy()
+
+  const filenames = downloads.map(entry => entry.suggestedFilename())
+  expect(filenames.some(name => name.toLowerCase().endsWith('.json'))).toBeTruthy()
+  expect(filenames.some(name => name.toLowerCase().endsWith('.pdf'))).toBeTruthy()
 
   const pdfPath = path.join(targetDir, `${baseName}.pdf`)
   const jsonPath = path.join(targetDir, `${baseName}.json`)
 
   await pdfDownload.saveAs(pdfPath)
 
-  if (jsonDownload) {
-    await jsonDownload.saveAs(jsonPath)
-  } else {
-    const payload = await page.evaluate(({ baseName: name }) => {
-      try {
-        if (typeof window.cssmateBuildAkkordJsonPayload !== 'function') {
-          return { error: 'json builder mangler' }
-        }
-        return window.cssmateBuildAkkordJsonPayload({ baseName: name, skipValidation: true, skipBeregn: true })
-      } catch (error) {
-        return { error: error?.message || String(error) }
-      }
-    }, { baseName })
-    expect(!payload?.error, payload?.error || 'JSON payload mangler').toBeTruthy()
-    expect(payload?.content, 'JSON payload mangler').toBeTruthy()
-    await fs.writeFile(jsonPath, payload?.content || '', 'utf8')
-  }
+  await jsonDownload.saveAs(jsonPath)
 
   return { pdfPath, jsonPath }
 }
