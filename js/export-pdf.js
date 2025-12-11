@@ -25,11 +25,30 @@ function toNumber(value) {
 }
 
 export async function exportPDFBlob(data, options = {}) {
-  const model = options?.model || (data ? buildExportModel(data) : null);
+  const { allowPlaceholder = true } = options || {};
   const customSagsnummer = options.customSagsnummer;
   const providedLibs = options.exportLibs;
 
+  const model = options?.model || (data ? buildExportModel(data) : null);
+
   if (!model || typeof model !== 'object') {
+    if (allowPlaceholder) {
+      console.warn('[cssmateExportPDFBlob] Ingen exportmodel – bruger placeholder-akkordseddel.pdf');
+
+      const res = await fetch('/placeholders/placeholder-akkordseddel.pdf');
+      if (!res.ok) {
+        throw new Error(`Kunne ikke hente placeholder-akkordseddel.pdf (status ${res.status})`);
+      }
+
+      const blob = await res.blob();
+      const pdfBlob = blob.type === 'application/pdf'
+        ? blob
+        : new Blob([await blob.arrayBuffer()], { type: 'application/pdf' });
+
+      const baseName = sanitizeFilename(customSagsnummer || 'placeholder-akkordseddel');
+      return { blob: pdfBlob, baseName, fileName: `${baseName}.pdf` };
+    }
+
     throw new Error('Mangler exportmodel til PDF');
   }
 

@@ -9,7 +9,7 @@ if (versionScriptUrl) {
   importScripts('/js/version.js')
 }
 
-const CACHE_VERSION = 'sscaff-v-20251210193815788' // updated automatically by bump script
+const CACHE_VERSION = 'sscaff-v-20251211054041118' // updated automatically by bump script
 const CACHE_NAME = 'sscaff-' + CACHE_VERSION
 const PRECACHE_URLS = [
   '/',
@@ -43,7 +43,9 @@ const PRECACHE_URLS = [
   '/icons/icon-192-maskable.png',
   '/icons/icon-512.png',
   '/icons/icon-512-maskable.png',
-  '/icons/favicon.svg'
+  '/icons/favicon.svg',
+  '/placeholders/placeholder-akkordseddel.json',
+  '/placeholders/placeholder-akkordseddel.pdf'
 ]
 
 async function cacheFirst(request) {
