@@ -101,20 +101,20 @@ async function exportPdfAndJson(page, scenarioKey, baseName) {
   await fs.mkdir(targetDir, { recursive: true })
 
   const pdfButton = page.locator('#btn-export-akkord-pdf')
-  await page.evaluate(() => {
-    const btn = document.getElementById('btn-export-akkord-pdf')
-    if (btn) btn.disabled = false
+  await page.waitForFunction(() => {
+    const el = document.getElementById('btn-export-akkord-pdf') as HTMLButtonElement | null
+    return !!el && !el.disabled
   })
   await expect(pdfButton).toBeEnabled()
 
-  await pdfButton.click()
-  const pdfDownload = await page.waitForEvent('download', { timeout: 120_000 })
-  let jsonDownload = null
-  try {
-    jsonDownload = await page.waitForEvent('download', { timeout: 10_000 })
-  } catch (error) {
-    console.warn('JSON download blev ikke registreret automatisk', error)
-  }
+  const [firstDownload, secondDownload] = await Promise.all([
+    page.waitForEvent('download', { timeout: 120_000 }),
+    page.waitForEvent('download', { timeout: 120_000 }),
+    pdfButton.click(),
+  ])
+  const downloads = [firstDownload, secondDownload]
+  const pdfDownload = downloads.find(entry => entry.suggestedFilename().toLowerCase().endsWith('.pdf'))
+  const jsonDownload = downloads.find(entry => entry.suggestedFilename().toLowerCase().endsWith('.json'))
 
   expect(pdfDownload, 'PDF download mangler').toBeTruthy()
 
@@ -144,7 +144,7 @@ async function exportPdfAndJson(page, scenarioKey, baseName) {
   return { pdfPath, jsonPath }
 }
 
-async function importJson(page, filePath) {
+async function importJson(page, filePath, expected = {}) {
   await page.getByRole('tab', { name: 'Sag' }).click()
   await page.getByRole('button', { name: /Importér akkordseddel/i }).click()
   const absolutePath = path.resolve(filePath)
@@ -176,7 +176,16 @@ async function importJson(page, filePath) {
   }, { content, name: path.basename(absolutePath) })
 
   expect(result?.error, result?.error || '').toBeFalsy()
-  await expect(page.getByLabel('Navn/opgave')).toHaveValue(result.jobName || '')
+  await page.waitForFunction(({ navn, kunde }) => {
+    const jobName = document.getElementById('sagsnavn') as HTMLInputElement | null
+    const customer = document.getElementById('sagskunde') as HTMLInputElement | null
+    const jobValue = (jobName?.value || '').trim()
+    const customerValue = (customer?.value || '').trim()
+    if (navn) {
+      return jobValue === navn && (!kunde || customerValue === kunde)
+    }
+    return jobValue.length > 0
+  }, { arg: { navn: expected.navn, kunde: expected.kunde } })
 }
 
 function scrubVolatileFields(value) {
@@ -231,7 +240,7 @@ test('basic job: export/import generates artifacts', async ({ page }) => {
   const { jsonPath } = await exportPdfAndJson(page, 'basic', 'basic')
 
   await page.goto('/')
-  await importJson(page, jsonPath)
+  await importJson(page, jsonPath, { navn: 'Basisjob', kunde: 'Basis kunde' })
 
   await expect(page.getByLabel('Navn/opgave')).toHaveValue('Basisjob')
   await expect(page.getByLabel('Kunde')).toHaveValue('Basis kunde')
@@ -252,7 +261,7 @@ test('multi-system job exports and imports with artifacts', async ({ page }) => 
   const { jsonPath } = await exportPdfAndJson(page, 'multi', 'multi')
 
   await page.goto('/')
-  await importJson(page, jsonPath)
+  await importJson(page, jsonPath, { navn: 'Multisystem', kunde: 'Flere systemer' })
 
   await expect(page.getByLabel('Navn/opgave')).toHaveValue('Multisystem')
   await expect(page.getByLabel('Kunde')).toHaveValue('Flere systemer')
@@ -268,7 +277,7 @@ test('combined lists job exports and imports with artifacts', async ({ page }) =
   const { jsonPath } = await exportPdfAndJson(page, 'combined', 'combined')
 
   await page.goto('/')
-  await importJson(page, jsonPath)
+  await importJson(page, jsonPath, { navn: 'Kombineret liste', kunde: 'Kombineret kunde' })
 
   await expect(page.getByLabel('Navn/opgave')).toHaveValue('Kombineret liste')
   await expect(page.locator('#jobType')).toHaveValue('demontage')
