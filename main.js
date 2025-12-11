@@ -1544,7 +1544,19 @@ function collectSagsinfo() {
 function setSagsinfoField(id, value) {
   const el = getDomElement(id);
   if (!el) return;
-  el.value = value;
+  if (el.hasAttribute('readonly')) {
+    el.removeAttribute('readonly');
+  }
+  const nextValue = value ?? '';
+  const currentValue = el.value;
+  if (currentValue !== nextValue) {
+    el.value = nextValue;
+    ['input', 'change'].forEach(eventName => {
+      el.dispatchEvent(new Event(eventName, { bubbles: true }));
+    });
+  } else {
+    el.value = nextValue;
+  }
 }
 
 function updateActionHint(message = '', variant = 'info') {
@@ -2488,6 +2500,14 @@ async function handleLoadCase() {
   }
 }
 
+function updateExportButtonsEnabled(isEnabled) {
+  const exportButtonIds = ['btn-export-akkord-pdf', 'btn-print-akkord', 'btn-export-akkord-json', 'btn-export-akkord-demontage'];
+  exportButtonIds.forEach(id => {
+    const btn = getDomElement(id);
+    if (btn) btn.disabled = !isEnabled;
+  });
+}
+
 function validateSagsinfo() {
   let isValid = true;
   sagsinfoFieldIds.forEach(id => {
@@ -2496,7 +2516,8 @@ function validateSagsinfo() {
     const rawValue = (el.value || '').trim();
     let fieldValid = rawValue.length > 0;
     if (id === 'sagsdato') {
-      fieldValid = rawValue.length > 0 && !Number.isNaN(new Date(rawValue).valueOf());
+      const parsed = Date.parse(rawValue);
+      fieldValid = rawValue.length > 0 && !Number.isNaN(parsed);
     }
     if (!fieldValid) {
       isValid = false;
@@ -2504,10 +2525,7 @@ function validateSagsinfo() {
     el.classList.toggle('invalid', !fieldValid);
   });
 
-    ['btn-export-akkord-pdf', 'btn-print-akkord'].forEach(id => {
-      const btn = getDomElement(id);
-      if (btn) btn.disabled = !isValid;
-    });
+  updateExportButtonsEnabled(isValid);
 
   if (isValid) {
     updateActionHint('');

@@ -27,9 +27,17 @@ async function setNumberInput(locator, value) {
   }, value)
 }
 
+const SYSTEM_LABELS = {
+  Bosta: 'BOSTA 2025',
+  HAKI: 'HAKI 2025',
+  MODEX: 'MODEX 2025',
+  Alfix: 'ALFIX 2025',
+}
+
 async function selectSystems(page, labels) {
   for (const label of labels) {
-    const checkbox = page.getByLabel(label, { exact: true })
+    const resolvedLabel = SYSTEM_LABELS[label] || label
+    const checkbox = page.getByLabel(resolvedLabel, { exact: true })
     await checkbox.check({ force: true })
   }
 }
