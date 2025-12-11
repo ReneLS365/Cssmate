@@ -67,12 +67,6 @@ test('eksport af akkordseddel downloader PDF og JSON', async ({ page }, testInfo
   await page.waitForTimeout(1000)
 
   const pdfButton = page.locator('#btn-export-akkord-pdf')
-  await page.evaluate(() => {
-    const el = document.getElementById('btn-export-akkord-pdf') as HTMLButtonElement | null
-    if (el) {
-      el.disabled = false
-    }
-  })
   await page.waitForFunction(() => {
     const el = document.getElementById('btn-export-akkord-pdf') as HTMLButtonElement | null
     return !!el && !el.disabled

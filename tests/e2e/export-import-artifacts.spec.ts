@@ -28,10 +28,10 @@ async function setNumberInput(locator, value) {
 }
 
 const SYSTEM_LABELS = {
-  Bosta: 'Bosta',
-  HAKI: 'HAKI',
-  MODEX: 'MODEX',
-  Alfix: 'Alfix',
+  Bosta: 'BOSTA 2025',
+  HAKI: 'HAKI 2025',
+  MODEX: 'MODEX 2025',
+  Alfix: 'ALFIX 2025',
 }
 
 async function selectSystems(page, labels) {
@@ -39,8 +39,8 @@ async function selectSystems(page, labels) {
   await page.waitForSelector('#listSelectors input[type="checkbox"]', { state: 'visible' })
   for (const label of labels) {
     const resolvedLabel = SYSTEM_LABELS[label] || label
-    const checkbox = page.locator('#listSelectors').getByLabel(resolvedLabel, { exact: false })
-    await checkbox.first().check({ force: true })
+    const checkbox = page.locator('#listSelectors').getByLabel(resolvedLabel, { exact: true })
+    await checkbox.check({ force: true })
   }
 }
 
@@ -111,12 +111,6 @@ async function exportPdfAndJson(page, scenarioKey, baseName) {
   await fs.mkdir(targetDir, { recursive: true })
 
   const pdfButton = page.locator('#btn-export-akkord-pdf')
-  await page.evaluate(() => {
-    const el = document.getElementById('btn-export-akkord-pdf') as HTMLButtonElement | null
-    if (el) {
-      el.disabled = false
-    }
-  })
   await page.waitForFunction(() => {
     const el = document.getElementById('btn-export-akkord-pdf') as HTMLButtonElement | null
     return !!el && !el.disabled

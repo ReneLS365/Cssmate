@@ -2506,8 +2506,8 @@ function updateExportButtonsEnabled(isEnabled) {
   exportButtonIds.forEach(id => {
     const btn = getDomElement(id);
     if (btn) {
-      btn.disabled = false;
-      btn.removeAttribute('aria-disabled');
+      btn.disabled = !isEnabled;
+      btn.setAttribute('aria-disabled', String(!isEnabled));
     }
   });
 }
@@ -2546,7 +2546,8 @@ function hasValidExportState(forceSagsinfoValid) {
     : computeSagsinfoValidity().isValid;
   const jobTypeValue = (document.getElementById('jobType')?.value || '').trim();
   const jobTypeValid = jobTypeValue.length > 0;
-  return sagsinfoValid && jobTypeValid;
+  const dataReady = hasValidExportData();
+  return sagsinfoValid && jobTypeValid && dataReady;
 }
 
 function updateExportButtonsState(forceSagsinfoValid) {
@@ -4841,7 +4842,6 @@ async function initApp() {
   });
 
   validateSagsinfo();
-  updateExportButtonsEnabled(true);
   runWhenIdle(() => {
     setupNumpad();
     setupMobileKeyboardDismissal();
