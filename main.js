@@ -659,6 +659,12 @@ function setActiveTab(tabId, { focus = false } = {}) {
 // Initier faner og tastaturnavigation
 function initTabs() {
   if (tabsInitialized) return
+
+  if (typeof document !== 'undefined' && document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => initTabs(), { once: true })
+    return
+  }
+
   refreshTabCollections()
 
   const bindTabs = () => {
@@ -1244,9 +1250,9 @@ function setupListSelectors() {
       const checked = selectedSystemKeys.has(option.key) ? 'checked' : '';
       const accessibleLabel = SYSTEM_ACCESSIBLE_LABELS[option.key] || option.label;
       return `
-        <label class="system-option" aria-label="${accessibleLabel}">
+        <label class="system-option">
           <input type="checkbox" value="${option.key}" ${checked} aria-label="${accessibleLabel}">
-          <span>${option.label}</span>
+          <span aria-hidden="true">${option.label}</span>
         </label>
       `;
     })

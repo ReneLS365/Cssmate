@@ -6,10 +6,22 @@ export function downloadBlob(blob, filename) {
   link.href = url;
   link.download = safeName;
   document.body.appendChild(link);
-  link.click();
-  link.remove();
+
+  const click = () => {
+    if (typeof MouseEvent === 'function') {
+      link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      return;
+    }
+    if (typeof link.click === 'function') {
+      link.click();
+    }
+  };
+  click();
+
   const timer = typeof window !== 'undefined' && typeof window.setTimeout === 'function'
     ? window.setTimeout
     : setTimeout;
-  timer(() => URL.revokeObjectURL(url), 500);
+
+  timer(() => link.remove(), 750);
+  timer(() => URL.revokeObjectURL(url), 1500);
 }
