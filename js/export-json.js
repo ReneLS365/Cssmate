@@ -8,8 +8,9 @@ export function buildAkkordJsonPayload(data, baseName, options = {}) {
   const baseModel = (data?.meta?.caseNumber && Array.isArray(data?.items))
     ? { ...data, meta: { ...data.meta, exportedAt: data.meta.exportedAt || exportedAt } }
     : buildExportModel(data, { exportedAt });
+  const rawData = options.rawData ?? options.raw ?? data;
   const payload = buildJobSnapshot({
-    rawData: data,
+    rawData,
     model: baseModel,
     exportedAt,
     baseName: fallbackBaseName,
