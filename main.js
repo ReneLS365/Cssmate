@@ -36,6 +36,7 @@ function getCurrentAppVersion () {
 
 function showUpdateBanner (currentVersion, previousVersion) {
   if (typeof document === 'undefined') return
+  if (typeof navigator !== 'undefined' && navigator.webdriver) return
   if (document.getElementById('cssmate-update-banner')) return
 
   const banner = document.createElement('div')
@@ -4102,6 +4103,16 @@ function beregnLon() {
   }
 
   showLonOutputSections();
+  try {
+    if (typeof buildAkkordData === 'function') {
+      buildAkkordData();
+    }
+  } catch (err) {
+    console.warn('Kunne ikke opdatere eksportdata', err);
+  }
+  if (typeof updateExportButtonsState === 'function') {
+    updateExportButtonsState();
+  }
   persistProjectSnapshot();
   return sagsnummer;
 }
@@ -4673,6 +4684,7 @@ function setupMobileKeyboardDismissal() {
 
 function setupServiceWorkerMessaging() {
   if (!('serviceWorker' in navigator)) return;
+  if (navigator.webdriver) return;
   let hasReloaded = false;
 
   navigator.serviceWorker.addEventListener('message', event => {
