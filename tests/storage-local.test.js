@@ -34,7 +34,20 @@ function withMockWindow (fn) {
 
 test('saveDraft and loadDraft roundtrip data with metadata', () => {
   withMockWindow((storage) => {
-    const draft = { jobId: 'demo', jobName: 'Demo job', type: 'montage' }
+    const draft = {
+      sagsinfo: {
+        sagsnummer: '42',
+        navn: 'Testvej 1',
+        adresse: '1234 Byen',
+        kunde: 'Kunde A'
+      },
+      materials: [
+        { id: 'mat-1', name: 'Rør', quantity: 10, price: 2.5 },
+        { id: 'mat-2', name: 'Fodplade', quantity: 5, price: 12 }
+      ],
+      labor: [{ id: 'worker-1', hours: 3.5, rate: 250 }],
+      extras: { jobType: 'montage', kmAntal: 12 }
+    }
 
     saveDraft(draft)
 
@@ -44,7 +57,9 @@ test('saveDraft and loadDraft roundtrip data with metadata', () => {
     const raw = storage.getItem('csmate:draftJob:v1')
     const parsed = JSON.parse(raw)
     assert.equal(parsed.schemaVersion, 1)
-    assert.equal(parsed.data.jobId, 'demo')
+    assert.equal(parsed.data.sagsinfo.sagsnummer, '42')
+    assert.equal(parsed.data.materials.length, 2)
+    assert.equal(parsed.data.labor.length, 1)
     assert.ok(typeof parsed.updatedAt === 'number')
   })
 })
@@ -68,6 +83,7 @@ test('clearDraft removes stored draft', () => {
     clearDraft()
 
     assert.equal(storage.getItem('csmate:draftJob:v1'), null)
+    assert.equal(loadDraft(), null)
   })
 })
 

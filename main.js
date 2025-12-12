@@ -238,6 +238,7 @@ let tabPanels = []
 const domCache = new Map()
 let deferredInstallPromptEvent = null
 let historyPersistencePaused = false
+let draftPersistencePaused = false
 let materialsDataPromise = null
 let materialsUiReadyPromise = null
 let materialsWarmupScheduled = false
@@ -321,6 +322,18 @@ function pauseHistoryPersistence () {
 
 function resumeHistoryPersistence () {
   historyPersistencePaused = false
+}
+
+function pauseDraftPersistence () {
+  draftPersistencePaused = true
+  if (draftSaveTimer) {
+    clearTimeout(draftSaveTimer)
+    draftSaveTimer = null
+  }
+}
+
+function resumeDraftPersistence () {
+  draftPersistencePaused = false
 }
 
 function isKnownTabId(tabId) {
@@ -1586,6 +1599,7 @@ function updateTotal() {
 }
 
 function persistDraftSnapshot() {
+  if (draftPersistencePaused) return;
   try {
     const snapshot = collectProjectSnapshot();
     if (!snapshot) return;
@@ -1599,6 +1613,7 @@ function persistDraftSnapshot() {
 }
 
 function scheduleDraftSave() {
+  if (draftPersistencePaused) return;
   if (draftSaveTimer) {
     clearTimeout(draftSaveTimer);
   }
@@ -3400,6 +3415,7 @@ function setupCSVImport() {
 
 async function resetCurrentJob() {
   pauseHistoryPersistence();
+  pauseDraftPersistence();
   try {
     await ensureMaterialsDataLoad();
     clearDraft();
@@ -3423,6 +3439,7 @@ async function resetCurrentJob() {
     validateSagsinfo();
     updateActionHint('Ny sag klar.', 'success');
   } finally {
+    resumeDraftPersistence();
     resumeHistoryPersistence();
   }
 }
