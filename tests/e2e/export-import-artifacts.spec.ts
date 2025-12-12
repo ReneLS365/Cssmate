@@ -117,12 +117,12 @@ async function exportPdfAndJson(page, scenarioKey, baseName) {
   })
   await expect(pdfButton).toBeEnabled()
 
-  const [firstDownload, secondDownload] = await Promise.all([
-    page.waitForEvent('download', { timeout: 120_000 }),
-    page.waitForEvent('download', { timeout: 120_000 }),
-    pdfButton.click(),
-  ])
-  const downloads = [firstDownload, secondDownload]
+  const downloads = []
+  const onDownload = download => downloads.push(download)
+  page.context().on('download', onDownload)
+  await pdfButton.click()
+
+  await expect.poll(() => downloads.length, { timeout: 15000 }).toBeGreaterThanOrEqual(2)
   const pdfDownload = downloads.find(entry => entry.suggestedFilename().toLowerCase().endsWith('.pdf'))
   const jsonDownload = downloads.find(entry => entry.suggestedFilename().toLowerCase().endsWith('.json'))
 
@@ -139,6 +139,8 @@ async function exportPdfAndJson(page, scenarioKey, baseName) {
   await pdfDownload.saveAs(pdfPath)
 
   await jsonDownload.saveAs(jsonPath)
+
+  page.context().off('download', onDownload)
 
   return { pdfPath, jsonPath }
 }

@@ -77,14 +77,17 @@ test('eksport af akkordseddel downloader PDF og JSON', async ({ page }, testInfo
   await expect(page.locator('#btn-export-akkord-demontage')).toHaveCount(0)
   await expect(page.locator('#btn-export-akkord-json')).toHaveCount(0)
 
-  const [firstDownload, secondDownload] = await Promise.all([
-    page.waitForEvent('download', { timeout: 90000 }),
-    page.waitForEvent('download', { timeout: 90000 }),
-    pdfButton.click(),
-  ])
-  const downloads = [firstDownload, secondDownload]
+  const downloads = []
+  const onDownload = download => downloads.push(download)
+  page.context().on('download', onDownload)
+  await pdfButton.click()
+
+  await expect.poll(() => downloads.length, { timeout: 15000 }).toBeGreaterThanOrEqual(2)
+
   const pdfDownload = downloads.find(entry => entry.suggestedFilename().toLowerCase().endsWith('.pdf'))
   const jsonDownload = downloads.find(entry => entry.suggestedFilename().toLowerCase().endsWith('.json'))
+
+  page.context().off('download', onDownload)
 
   expect(pdfDownload).toBeTruthy()
   expect(jsonDownload).toBeTruthy()

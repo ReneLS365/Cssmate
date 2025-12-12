@@ -16,6 +16,7 @@ import { setAdminOk, restoreAdminState, isAdminUnlocked } from './src/state/admi
 import { setActiveJob } from './src/state/jobs.js'
 import { saveDraft, loadDraft, clearDraft } from './js/storageDraft.js'
 import { appendHistoryEntry, loadHistory as loadHistoryEntries, deleteHistoryEntry } from './js/storageHistory.js'
+import { downloadBlob } from './js/utils/downloadBlob.js'
 import './boot-inline.js'
 
 if (typeof document !== 'undefined') {
@@ -236,6 +237,7 @@ let zipLibLoader = null
 let excelExporterLoader = null
 let tabButtons = []
 let tabPanels = []
+let tabsInitialized = false
 const domCache = new Map()
 let deferredInstallPromptEvent = null
 let historyPersistencePaused = false
@@ -656,39 +658,67 @@ function setActiveTab(tabId, { focus = false } = {}) {
 
 // Initier faner og tastaturnavigation
 function initTabs() {
+  if (tabsInitialized) return
   refreshTabCollections()
 
-  if (!tabButtons.length || !tabPanels.length) {
-    console.warn('Faner kunne ikke initialiseres – mangler markup');
-    return;
-  }
-
-  tabButtons.forEach((button, index) => {
-    const tabId = button.dataset.tabId;
-    const isSelected = button.getAttribute('aria-selected') === 'true';
-    button.tabIndex = isSelected ? 0 : -1;
-    button.addEventListener('click', () => setActiveTab(tabId));
-    button.addEventListener('keydown', event => handleTabKeydown(event, index));
-  });
-
-  const optaellingButton = tabButtons.find(button => button.dataset.tabId === 'optaelling')
-  if (optaellingButton) {
-    const scheduleWarmup = () => warmupMaterialsDataLoad()
-    ;['pointerenter', 'touchstart', 'focusin'].forEach(eventName => {
-      optaellingButton.addEventListener(eventName, scheduleWarmup, { once: true, passive: true })
+  const bindTabs = () => {
+    if (tabsInitialized) return
+    tabButtons.forEach((button, index) => {
+      const tabId = button.dataset.tabId
+      const isSelected = button.getAttribute('aria-selected') === 'true'
+      button.tabIndex = isSelected ? 0 : -1
+      button.addEventListener('click', () => setActiveTab(tabId))
+      button.addEventListener('keydown', event => handleTabKeydown(event, index))
     })
+
+    const optaellingButton = tabButtons.find(button => button.dataset.tabId === 'optaelling')
+    if (optaellingButton) {
+      const scheduleWarmup = () => warmupMaterialsDataLoad()
+      ;['pointerenter', 'touchstart', 'focusin'].forEach(eventName => {
+        optaellingButton.addEventListener(eventName, scheduleWarmup, { once: true, passive: true })
+      })
+    }
+
+    const storedTabId = getStoredTabId();
+    const initialTabId = tabButtons.some(button => button.dataset.tabId === storedTabId)
+      ? storedTabId
+      : (tabButtons.find(button => button.getAttribute('aria-selected') === 'true')?.dataset.tabId || findFirstAvailableTabId());
+
+    tabsInitialized = true
+    setActiveTab(initialTabId, { focus: false })
+
+    if (typeof window !== 'undefined') {
+      window.__cssmateSetActiveTab = (tabId, options) => setActiveTab(tabId, options)
+    }
   }
 
-  const storedTabId = getStoredTabId();
-  const initialTabId = tabButtons.some(button => button.dataset.tabId === storedTabId)
-    ? storedTabId
-    : (tabButtons.find(button => button.getAttribute('aria-selected') === 'true')?.dataset.tabId || findFirstAvailableTabId());
+  if (!tabButtons.length || !tabPanels.length) {
+    if (typeof document === 'undefined') {
+      return
+    }
+    const hasTabMarkup = document.querySelector('[role="tab"][data-tab-id]') || document.querySelector('[role="tabpanel"][data-tab-panel]')
+    if (!hasTabMarkup) {
+      return
+    }
+    const retryInitTabs = () => {
+      if (tabsInitialized) return
+      refreshTabCollections()
+      if (!tabButtons.length || !tabPanels.length) {
+        console.warn('Faner kunne ikke initialiseres – mangler markup')
+        return
+      }
+      bindTabs()
+    }
 
-  setActiveTab(initialTabId, { focus: false });
-
-  if (typeof window !== 'undefined') {
-    window.__cssmateSetActiveTab = (tabId, options) => setActiveTab(tabId, options);
+    if (typeof document !== 'undefined' && document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', retryInitTabs, { once: true })
+    } else {
+      runWhenIdle(retryInitTabs)
+    }
+    return
   }
+
+  bindTabs()
 }
 
 function setupA9Integration() {
@@ -893,6 +923,12 @@ let dataHaki = [];
 let dataModex = [];
 let dataAlfix = [];
 let systemOptions = [];
+const SYSTEM_ACCESSIBLE_LABELS = {
+  bosta: 'BOSTA 2025',
+  haki: 'HAKI 2025',
+  modex: 'MODEX 2025',
+  alfix: 'ALFIX 2025',
+};
 let systemLabelMap = new Map();
 const selectedSystemKeys = new Set();
 let excelSystemSelectionCache = new Set(['bosta']);
@@ -1206,9 +1242,10 @@ function setupListSelectors() {
   const optionsHtml = systemOptions
     .map(option => {
       const checked = selectedSystemKeys.has(option.key) ? 'checked' : '';
+      const accessibleLabel = SYSTEM_ACCESSIBLE_LABELS[option.key] || option.label;
       return `
-        <label class="system-option">
-          <input type="checkbox" value="${option.key}" ${checked}>
+        <label class="system-option" aria-label="${accessibleLabel}">
+          <input type="checkbox" value="${option.key}" ${checked} aria-label="${accessibleLabel}">
           <span>${option.label}</span>
         </label>
       `;
@@ -2843,15 +2880,8 @@ function requireExcelSystemSelection() {
 }
 
 function triggerBlobDownload(blob, fileName) {
-  if (typeof document === 'undefined') return;
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  if (!blob || !fileName) return;
+  downloadBlob(blob, fileName);
 }
 
 async function downloadExcelPayloads(payloads, job) {
