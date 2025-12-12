@@ -4,6 +4,7 @@ import { buildAkkordCSV } from './akkord-csv.js';
 import { exportExcelFromAkkordData } from '../src/export/akkord-excel.js';
 import { buildAkkordJsonPayload } from './export-json.js';
 import { buildExportModel } from './export-model.js';
+import { downloadBlob } from './utils/downloadBlob.js';
 
 let ensureZipLibImpl = ensureZipLib;
 let exportPDFBlobImpl = exportPDFBlob;
@@ -58,17 +59,6 @@ function normalizeExcelSystems(values) {
     }
   });
   return unique;
-}
-
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 }
 
 function notifyZipExport(detail) {

@@ -5,6 +5,7 @@ import { buildAkkordJsonPayload } from './export-json.js';
 import { buildExportModel } from './export-model.js';
 import { buildExportFileBaseName, buildJobSnapshot } from './job-snapshot.js';
 import { appendHistoryEntry } from './storageHistory.js';
+import { downloadBlob } from './utils/downloadBlob.js';
 
 let buildAkkordDataImpl = buildAkkordData;
 let exportPDFBlobImpl = exportPDFBlob;
@@ -141,20 +142,6 @@ function handlePrintAkkord(event) {
   } finally {
     done();
   }
-}
-
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  const timer = typeof window !== 'undefined' && typeof window.setTimeout === 'function'
-    ? window.setTimeout
-    : setTimeout;
-  timer(() => URL.revokeObjectURL(url), 1000);
 }
 
 function sanitizeFilename(value) {
