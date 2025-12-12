@@ -1,49 +1,28 @@
 import { buildExportModel } from './export-model.js';
+import { buildExportFileBaseName, buildJobSnapshot } from './job-snapshot.js';
+import { SCHEMA_VERSION } from './job-snapshot.js';
 
 export function buildAkkordJsonPayload(data, baseName, options = {}) {
+  const exportedAt = options.exportedAt || new Date().toISOString();
+  const fallbackBaseName = sanitizeFilename(baseName || options.customSagsnummer || buildExportFileBaseName(new Date(exportedAt)));
   const baseModel = (data?.meta?.caseNumber && Array.isArray(data?.items))
-    ? { ...data, meta: { ...data.meta, exportedAt: data.meta.exportedAt || options.exportedAt || new Date().toISOString() } }
-    : buildExportModel(data, { exportedAt: options.exportedAt });
-  const normalizedJobType = (baseModel.jobType || baseModel.meta?.jobType || data?.jobType || 'montage');
-  const payload = {
-    ...baseModel,
-    version: '2.0',
-    source: 'cssmate',
-    jobType: normalizedJobType,
-    meta: { ...baseModel.meta, version: '2.0', source: 'cssmate' },
-  };
-  const safeBaseName = sanitizeFilename(baseName || baseModel?.meta?.caseNumber || options.customSagsnummer || 'akkordseddel');
-  const windowData = data && data.info ? data : null;
-  const canUseWindowBuilder = options.useWindowBuilder === true
-    && typeof window !== 'undefined'
-    && typeof window.cssmateBuildAkkordJsonPayload === 'function'
-    && windowData;
+    ? { ...data, meta: { ...data.meta, exportedAt: data.meta.exportedAt || exportedAt } }
+    : buildExportModel(data, { exportedAt });
+  const payload = buildJobSnapshot({
+    rawData: data,
+    model: baseModel,
+    exportedAt,
+    baseName: fallbackBaseName,
+  });
 
-  if (canUseWindowBuilder) {
-    try {
-      const payload = window.cssmateBuildAkkordJsonPayload({
-        data: windowData,
-        customSagsnummer: safeBaseName,
-        skipValidation: true,
-        skipBeregn: true,
-        ...options,
-      });
-      if (payload?.content) {
-        return {
-          fileName: payload.fileName || `${safeBaseName}.json`,
-          content: payload.content,
-          baseName: payload.baseName || safeBaseName,
-        };
-      }
-    } catch (error) {
-      console.error('JSON eksport fejlede', error);
-    }
+  if (payload?.schemaVersion !== SCHEMA_VERSION) {
+    throw new Error('Ugyldigt akkordseddel-format');
   }
 
   return {
-    fileName: `${safeBaseName}.json`,
+    fileName: `${fallbackBaseName}.json`,
     content: JSON.stringify(payload, null, 2),
-    baseName: safeBaseName,
+    baseName: fallbackBaseName,
   };
 }
 

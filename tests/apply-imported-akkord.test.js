@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import { buildAkkordJsonPayload } from '../js/export-json.js'
 import { buildExportModel } from '../js/export-model.js'
+import { buildJobSnapshot } from '../js/job-snapshot.js'
 
 function createStubElement () {
   return {
@@ -208,10 +209,10 @@ test('applyImportedAkkordData rehydrates exported items payload', async t => {
   const payloadContent = buildAkkordJsonPayload(exportModel, exportModel.meta.caseNumber, { skipValidation: true, skipBeregn: true })
   const payload = JSON.parse(payloadContent.content)
 
-  assert.ok(Array.isArray(payload.materials))
-  assert.equal(payload.materials.length, exportModel.items.length)
-  assert.equal(payload.version, '2.0')
-  assert.equal(payload.jobType, 'montage')
+  assert.equal(payload.schemaVersion, 'cssmate.job.v1')
+  assert.ok(Array.isArray(payload.job.items))
+  assert.equal(payload.job.items.length, exportModel.items.length)
+  assert.equal(payload.job.jobType || payload.job.meta?.jobType, 'montage')
 
   const snapshots = []
   const hints = []
@@ -224,8 +225,8 @@ test('applyImportedAkkordData rehydrates exported items payload', async t => {
 
   assert.equal(snapshots[0].materials.length, exportModel.items.length)
   assert.equal(sumLineTotals(snapshots[0].materials), sumLineTotals(exportModel.items))
-  assert.equal(snapshots[0].totals.materials, exportModel.totals.materials)
-  assert.equal(snapshots[0].totals.akkord, exportModel.totals.akkord)
+  assert.equal(snapshots[0].totals.materials, payload.job.totals.materials)
+  assert.equal(snapshots[0].totals.akkord, payload.job.totals.akkord)
   assert.equal(hints.at(-1).variant, 'success')
 })
 
@@ -305,10 +306,39 @@ test('AkkordExportV2 roundtrip preserves snapshot data', async t => {
   const roundtripModel = buildExportModel(imported, { exportedAt: '2024-09-02T13:00:00Z' })
   const roundtripPayload = JSON.parse(buildAkkordJsonPayload(roundtripModel, roundtripModel.meta.caseNumber, { skipValidation: true, skipBeregn: true }).content)
 
-  assert.deepEqual(roundtripPayload.info, payload.info)
-  assert.equal(roundtripPayload.meta.caseNumber, payload.meta.caseNumber)
-  assert.equal(roundtripPayload.extras.fields.kmBelob, payload.extras.fields.kmBelob)
-  assert.equal(roundtripPayload.wage.workers.length, payload.wage.workers.length)
+  assert.deepEqual(roundtripPayload.job.info, payload.job.info)
+  assert.equal(roundtripPayload.job.meta.caseNumber, payload.job.meta.caseNumber)
+  assert.equal(roundtripPayload.job.extras.fields.kmBelob, payload.job.extras.fields.kmBelob)
+  assert.equal(roundtripPayload.job.wage.workers.length, payload.job.wage.workers.length)
+})
+
+test('cssmate job snapshot round-trips via import handler', async t => {
+  setupGlobalMocks()
+  const { applyImportedAkkordData } = await import('../main.js')
+
+  const rawSnapshot = createRoundtripSnapshot()
+  const exportedAt = '2025-02-10T10:00:00.000Z'
+  const payload = buildJobSnapshot({ rawData: rawSnapshot, exportedAt })
+
+  assert.equal(payload.schemaVersion, 'cssmate.job.v1')
+  assert.ok(Array.isArray(payload.job.items))
+
+  const snapshots = []
+  const hints = []
+
+  await applyImportedAkkordData(payload, {
+    applySnapshot: async snapshot => snapshots.push(snapshot),
+    persistSnapshot: () => {},
+    updateActionHint: (message, variant) => hints.push({ message, variant }),
+  })
+
+  const applied = snapshots[0]
+  assert.ok(applied, 'snapshot applied')
+  assert.equal(applied.materials.length, rawSnapshot.linjer.length)
+  assert.equal(applied.extras.jobType, rawSnapshot.extras.jobType)
+  assert.equal(applied.extraInputs.km, rawSnapshot.extraInputs.km)
+  assert.equal(applied.totals.totalAkkord ?? applied.totals.project ?? applied.totals.akkord, rawSnapshot.totals.totalAkkord)
+  assert.equal(hints.at(-1).variant, 'success')
 })
 
 test('applyImportedAkkordData imports legacy v1 payloads', async t => {
