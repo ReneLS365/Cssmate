@@ -14,6 +14,8 @@ import { createVirtualMaterialsList } from './src/modules/materialsvirtuallist.j
 import { initClickGuard } from './src/ui/guards/clickguard.js'
 import { setAdminOk, restoreAdminState, isAdminUnlocked } from './src/state/admin.js'
 import { setActiveJob } from './src/state/jobs.js'
+import { saveDraft, loadDraft, clearDraft } from './js/storageDraft.js'
+import { appendHistoryEntry, loadHistory as loadHistoryEntries, deleteHistoryEntry } from './js/storageHistory.js'
 import './boot-inline.js'
 
 if (typeof document !== 'undefined') {
@@ -795,6 +797,54 @@ function buildHistoryKey (data) {
   return null;
 }
 
+function deriveSagsinfoFromEntry(entry = {}) {
+  const meta = entry.meta || {};
+  const info = entry.data?.sagsinfo || {};
+  const payloadInfo = entry.payload?.job?.info || entry.payload?.info || {};
+  return {
+    sagsnummer: meta.sagsnummer || info.sagsnummer || payloadInfo.sagsnummer || payloadInfo.caseNumber || '',
+    navn: meta.navn || info.navn || payloadInfo.navn || payloadInfo.opgave || payloadInfo.title || '',
+    adresse: meta.adresse || info.adresse || payloadInfo.adresse || payloadInfo.address || payloadInfo.site || '',
+    kunde: meta.kunde || info.kunde || payloadInfo.kunde || payloadInfo.customer || '',
+    dato: meta.dato || info.dato || payloadInfo.dato || payloadInfo.date || '',
+    montoer: meta.montoer || info.montoer || payloadInfo.montoer || payloadInfo.worker || payloadInfo.montor || '',
+  };
+}
+
+function normalizeHistoryEntry(entry) {
+  if (!entry) return null;
+  let data = entry.data || null;
+  if (!data && entry.payload) {
+    try {
+      data = normalizeImportedJsonSnapshot(entry.payload);
+    } catch (error) {
+      console.warn('Kunne ikke normalisere historik-post', error);
+    }
+  }
+  const ts = entry.createdAt || entry.updatedAt || entry.ts || Date.now();
+  const normalized = {
+    ...entry,
+    data,
+    payload: entry.payload || null,
+    meta: { ...deriveSagsinfoFromEntry({ ...entry, data }) },
+    ts,
+    createdAt: ts,
+  };
+  return normalized;
+}
+
+function matchesHistorySearch(entry, term) {
+  if (!term) return true;
+  const haystack = [
+    entry?.meta?.sagsnummer,
+    entry?.meta?.navn,
+    entry?.meta?.kunde,
+    entry?.meta?.adresse,
+  ].map(value => (value || '').toString().toLowerCase());
+  const needle = term.toLowerCase();
+  return haystack.some(value => value.includes(needle));
+}
+
 function syncRecentProjectsGlobal(entries = recentCasesCache) {
   if (typeof window === 'undefined') return;
   const payload = Array.isArray(entries) ? entries.slice() : [];
@@ -837,6 +887,10 @@ let materialsReady = false;
 let showOnlySelectedMaterials = false;
 let lastRenderShowSelected = null;
 let lonOutputsRevealed = false;
+let historySearchTerm = '';
+let draftSaveTimer = null;
+let lastDraftSerialized = '';
+const DRAFT_SAVE_DEBOUNCE = 350;
 
 function loadMaterialDatasetModule () {
   if (!datasetModulePromise) {
@@ -1504,6 +1558,7 @@ function performTotalsUpdate() {
   }
 
   updateExportButtonsState();
+  scheduleDraftSave();
 }
 
 function updateTotals(options = {}) {
@@ -1528,6 +1583,29 @@ function updateTotals(options = {}) {
 
 function updateTotal() {
   updateTotals();
+}
+
+function persistDraftSnapshot() {
+  try {
+    const snapshot = collectProjectSnapshot();
+    if (!snapshot) return;
+    const serialized = JSON.stringify(snapshot);
+    if (serialized === lastDraftSerialized) return;
+    lastDraftSerialized = serialized;
+    saveDraft(snapshot);
+  } catch (error) {
+    console.warn('Kunne ikke gemme kladde', error);
+  }
+}
+
+function scheduleDraftSave() {
+  if (draftSaveTimer) {
+    clearTimeout(draftSaveTimer);
+  }
+  draftSaveTimer = setTimeout(() => {
+    draftSaveTimer = null;
+    persistDraftSnapshot();
+  }, DRAFT_SAVE_DEBOUNCE);
 }
 
 const sagsinfoFieldIds = ['sagsnummer', 'sagsnavn', 'sagsadresse', 'sagskunde', 'sagsdato', 'sagsmontoer'];
@@ -1618,79 +1696,23 @@ function openDB() {
   return cachedDBPromise;
 }
 
-async function saveProject(data) {
+async function saveProject(data, exportInfo = {}) {
   if (!data) return;
   try {
-    const db = await openDB();
-    if (!db) return;
-    const tx = db.transaction(DB_STORE, 'readwrite');
-    const completion = new Promise((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onabort = () => reject(tx.error || new Error('Transaktionen blev afbrudt'));
-      tx.onerror = () => reject(tx.error || new Error('Transaktionen fejlede'));
-    });
-    const store = tx.objectStore(DB_STORE);
-    const now = Date.now();
-    const historyKey = buildHistoryKey(data);
-    const existing = await promisifyRequest(store.getAll());
-    const match = historyKey && Array.isArray(existing)
-      ? existing.find(entry => buildHistoryKey(entry?.data) === historyKey)
-      : null;
-    const record = match && match.id != null
-      ? { ...match, data, ts: now, id: match.id }
-      : { data, ts: now };
-
-    if (record.id != null) {
-      await promisifyRequest(store.put(record));
-    } else {
-      await promisifyRequest(store.add(record));
-    }
-
-    const afterSave = await promisifyRequest(store.getAll());
-    const sorted = Array.isArray(afterSave)
-      ? afterSave.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0))
-      : [];
-    const seenKeys = new Set();
-    const survivors = [];
-    for (const entry of sorted) {
-      const key = buildHistoryKey(entry?.data) || `id:${entry?.id}`;
-      if (seenKeys.has(key)) {
-        if (entry && entry.id != null) {
-          await promisifyRequest(store.delete(entry.id));
-        }
-        continue;
-      }
-      seenKeys.add(key);
-      survivors.push(entry);
-    }
-    if (survivors.length > 20) {
-      const excess = survivors.slice(20);
-      for (const item of excess) {
-        if (item && item.id != null) {
-          await promisifyRequest(store.delete(item.id));
-        }
-      }
-    }
-    await completion;
+    const entry = buildHistoryEntryFromSnapshot(data, exportInfo);
+    if (!entry) return;
+    appendHistoryEntry(entry);
   } catch (error) {
     console.warn('Kunne ikke gemme sag lokalt', error);
   }
 }
 
 async function deleteProjectById(id) {
-  if (!Number.isFinite(id) || id <= 0) return false;
+  if (!id) return false;
   try {
-    const db = await openDB();
-    if (!db) return false;
-    const tx = db.transaction(DB_STORE, 'readwrite');
-    const completion = new Promise((resolve, reject) => {
-      tx.oncomplete = () => resolve(true);
-      tx.onabort = () => reject(tx.error || new Error('Transaktionen blev afbrudt'));
-      tx.onerror = () => reject(tx.error || new Error('Transaktionen fejlede'));
-    });
-    const store = tx.objectStore(DB_STORE);
-    store.delete(Number(id));
-    await completion;
+    const remaining = deleteHistoryEntry(id);
+    recentCasesCache = remaining.map(normalizeHistoryEntry).filter(Boolean);
+    syncRecentProjectsGlobal(recentCasesCache);
     return true;
   } catch (error) {
     console.warn('Kunne ikke slette sag', error);
@@ -1700,21 +1722,12 @@ async function deleteProjectById(id) {
 
 async function getRecentProjects() {
   try {
-    const db = await openDB();
-    if (!db) return [];
-    const tx = db.transaction(DB_STORE, 'readonly');
-    const completion = new Promise((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onabort = () => reject(tx.error || new Error('Transaktionen blev afbrudt'));
-      tx.onerror = () => reject(tx.error || new Error('Transaktionen fejlede'));
-    });
-    const store = tx.objectStore(DB_STORE);
-    const items = await promisifyRequest(store.getAll());
-    await completion;
-    if (!Array.isArray(items)) return [];
-    return items
-      .filter(entry => entry && entry.data)
-      .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    const entries = loadHistoryEntries();
+    if (!Array.isArray(entries)) return [];
+    return entries
+      .map(normalizeHistoryEntry)
+      .filter(Boolean)
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   } catch (error) {
     console.warn('Kunne ikke hente lokale sager', error);
     return [];
@@ -1726,6 +1739,25 @@ function setHistoryListBusy(isBusy) {
   if (!list) return;
   list.setAttribute('aria-busy', isBusy ? 'true' : 'false');
   list.classList.toggle('is-loading', Boolean(isBusy));
+}
+
+function setupHistorySearch() {
+  const controls = document.querySelector('.job-history__controls');
+  if (!controls || controls.querySelector('[data-history-search]')) return;
+  const wrapper = document.createElement('label');
+  wrapper.dataset.historySearch = 'true';
+  const label = document.createElement('span');
+  label.textContent = 'Søg';
+  const input = document.createElement('input');
+  input.type = 'search';
+  input.placeholder = 'Søg i historikken…';
+  input.addEventListener('input', () => {
+    historySearchTerm = input.value || '';
+    renderHistoryList(recentCasesCache);
+  });
+  wrapper.appendChild(label);
+  wrapper.appendChild(input);
+  controls.appendChild(wrapper);
 }
 
 function formatHistoryTimestamp(value) {
@@ -1747,20 +1779,23 @@ function renderHistoryList(entries = recentCasesCache) {
   if (!list) return;
   list.innerHTML = '';
   const cases = Array.isArray(entries)
-    ? entries.filter(entry => entry && entry.data)
+    ? entries.filter(entry => entry && (entry.data || entry.payload || entry.meta))
     : [];
-  if (!cases.length) {
+  const filtered = historySearchTerm
+    ? cases.filter(entry => matchesHistorySearch(entry, historySearchTerm))
+    : cases;
+  if (!filtered.length) {
     const empty = document.createElement('li');
     empty.className = 'history-list__empty';
-    empty.textContent = 'Ingen historik endnu.';
+    empty.textContent = historySearchTerm ? 'Ingen resultater for søgningen.' : 'Ingen historik endnu.';
     list.appendChild(empty);
     setHistoryListBusy(false);
     return;
   }
-  cases.slice(0, 10).forEach(entry => {
+  filtered.slice(0, 20).forEach(entry => {
     const li = document.createElement('li');
     li.className = 'history-list__item';
-    const info = entry.data?.sagsinfo || {};
+    const info = deriveSagsinfoFromEntry(entry);
     const titleText = info.navn?.trim()
       || info.sagsnummer?.trim()
       || 'Sag uden navn';
@@ -1771,19 +1806,13 @@ function renderHistoryList(entries = recentCasesCache) {
     meta.className = 'history-list__meta';
     const parts = [];
     if (info.sagsnummer) parts.push(info.sagsnummer);
-    const systems = Array.isArray(entry.data?.systems)
-      ? entry.data.systems
-        .map(key => systemLabelMap.get(key) || key)
-        .filter(Boolean)
-      : [];
-    if (systems.length) {
-      parts.push(systems.join(', '));
-    }
-    const timestamp = formatHistoryTimestamp(entry.ts || entry.data?.timestamp);
+    if (info.kunde) parts.push(info.kunde);
+    if (info.adresse) parts.push(info.adresse);
+    const timestamp = formatHistoryTimestamp(entry.createdAt || entry.ts || entry.data?.timestamp);
     if (timestamp) {
       parts.push(timestamp);
     }
-    const totals = entry.data?.totals;
+    const totals = entry.totals || entry.data?.totals;
     if (totals) {
       const material = toNumber(totals.materialSum);
       const labor = toNumber(totals.laborSum);
@@ -1799,6 +1828,12 @@ function renderHistoryList(entries = recentCasesCache) {
     }
     const actions = document.createElement('div');
     actions.className = 'history-list__actions';
+    const loadBtn = document.createElement('button');
+    loadBtn.type = 'button';
+    loadBtn.dataset.id = entry.id;
+    loadBtn.dataset.action = 'load-history';
+    loadBtn.textContent = 'Indlæs sag';
+    actions.appendChild(loadBtn);
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
     deleteBtn.className = 'history-list__delete';
@@ -1818,11 +1853,15 @@ function setupHistoryListActions() {
   list.dataset.boundDelete = 'true';
   list.addEventListener('click', async event => {
     const button = event.target instanceof HTMLElement
-      ? event.target.closest('[data-action="delete-history"]')
+      ? event.target.closest('[data-action="delete-history"], [data-action="load-history"]')
       : null;
     if (!button) return;
-    const id = Number(button.dataset.id);
-    if (!(id > 0)) return;
+    const id = button.dataset.id || '';
+    if (!id) return;
+    if (button.dataset.action === 'load-history') {
+      await handleLoadCase(id);
+      return;
+    }
     const ok = window.confirm('Er du sikker på, at du vil slette denne sag?');
     if (!ok) return;
     button.disabled = true;
@@ -1831,7 +1870,7 @@ function setupHistoryListActions() {
       button.disabled = false;
       return;
     }
-    recentCasesCache = recentCasesCache.filter(entry => Number(entry?.id) !== id);
+    recentCasesCache = recentCasesCache.filter(entry => String(entry?.id) !== String(id));
     syncRecentProjectsGlobal(recentCasesCache);
     renderHistoryList(recentCasesCache);
     populateRecentCases();
@@ -1839,17 +1878,15 @@ function setupHistoryListActions() {
 }
 
 function findHistoryEntryById(id) {
-  if (!Number.isFinite(id) || id <= 0) {
-    return null;
-  }
-  return recentCasesCache.find(entry => Number(entry?.id) === id) || null;
+  if (!id) return null;
+  return recentCasesCache.find(entry => String(entry?.id) === String(id)) || null;
 }
 
 function buildHistorySummary(entry) {
-  if (!entry || !entry.data) {
+  if (!entry || !(entry.data || entry.totals)) {
     return null;
   }
-  const totals = entry.data.totals || {};
+  const totals = entry.totals || entry.data?.totals || {};
   const timer = toNumber(totals.timer ?? totals.totalHours);
   const baseRate = toNumber(totals.hourlyBase ?? totals.akkordTimeLon ?? totals.timeprisUdenTillaeg);
   const mentorRate = toNumber(totals.mentorRate);
@@ -1869,7 +1906,7 @@ function buildHistorySummary(entry) {
   }
 
   return {
-    date: formatHistoryTimestamp(entry.ts || entry.data.timestamp),
+    date: formatHistoryTimestamp(entry.createdAt || entry.ts || entry.data?.timestamp),
     timer: timer > 0 ? timer : 0,
     hourlyBase: hasBase ? baseRate : 0,
     hourlyUdd1: hourlyUdd1 > 0 ? hourlyUdd1 : 0,
@@ -1912,9 +1949,9 @@ function renderJobHistorySummary(entry) {
 
 function updateHistorySummaryFromSelect() {
   const select = getDomElement('jobHistorySelect');
-  const selectedId = Number(select?.value);
+  const selectedId = select?.value;
   let entry = null;
-  if (Number.isFinite(selectedId) && selectedId > 0) {
+  if (selectedId) {
     entry = findHistoryEntryById(selectedId);
   }
   if (!entry && recentCasesCache.length) {
@@ -1936,6 +1973,7 @@ async function populateRecentCases() {
   const hasHistoryUi = Boolean(select || getDomElement('historyList'));
   if (!hasHistoryUi) return;
   setupHistoryListActions();
+  setupHistorySearch();
   setHistoryListBusy(true);
   const cases = await getRecentProjects();
   recentCasesCache = cases;
@@ -2004,6 +2042,7 @@ function setupZipExportHistoryHook() {
   });
   window.addEventListener('cssmate:exported', event => {
     const detail = event?.detail || {};
+    if (detail.historySaved) return;
     const exportInfo = {
       type: detail.type || 'export',
       baseName: detail.baseName || '',
@@ -2073,6 +2112,9 @@ function collectProjectSnapshot(exportInfo) {
     extras: collectExtrasState(),
     totals,
   };
+  if (exportInfo?.jobPayload) {
+    snapshot.payload = exportInfo.jobPayload;
+  }
   if (exportInfo && exportInfo.type === 'zip') {
     snapshot.exportInfo = {
       type: 'zip',
@@ -2088,11 +2130,35 @@ function collectProjectSnapshot(exportInfo) {
   return snapshot;
 }
 
+function buildHistoryEntryFromSnapshot(snapshot, exportInfo = {}) {
+  if (!snapshot || typeof snapshot !== 'object') return null;
+  const info = deriveSagsinfoFromEntry({ data: snapshot, payload: exportInfo.jobPayload });
+  const totals = exportInfo.totals || snapshot.totals || {};
+  const createdAt = exportInfo.timestamp || snapshot.timestamp || Date.now();
+  return {
+    id: exportInfo.id,
+    createdAt,
+    meta: { ...info },
+    totals,
+    payload: exportInfo.jobPayload || snapshot.payload || null,
+    source: exportInfo.type || 'export',
+    data: snapshot,
+  };
+}
+
 async function persistProjectSnapshot(exportInfo) {
   if (historyPersistencePaused) return;
   try {
     const snapshot = collectProjectSnapshot(exportInfo);
-    await saveProject(snapshot);
+    const entry = buildHistoryEntryFromSnapshot(snapshot, exportInfo);
+    if (!entry) return;
+    const saved = appendHistoryEntry(entry);
+    const normalized = normalizeHistoryEntry(saved);
+    if (normalized) {
+      recentCasesCache = [normalized, ...recentCasesCache.filter(item => String(item?.id) !== String(normalized.id))];
+      syncRecentProjectsGlobal(recentCasesCache);
+      renderHistoryList(recentCasesCache);
+    }
     await populateRecentCases();
   } catch (error) {
     console.warn('Kunne ikke gemme projekt snapshot', error);
@@ -2514,24 +2580,30 @@ async function applyProjectSnapshot(snapshot, options = {}) {
   }
 }
 
-async function handleLoadCase() {
+async function handleLoadCase(idFromClick) {
   const select = getDomElement('jobHistorySelect');
-  if (!select) return;
-  const value = Number(select.value);
-  if (!Number.isFinite(value) || value <= 0) return;
-  let record = recentCasesCache.find(entry => Number(entry.id) === value);
+  const value = idFromClick || select?.value;
+  if (!value) return;
+  let record = recentCasesCache.find(entry => String(entry.id) === String(value));
   if (!record) {
     const cases = await getRecentProjects();
     recentCasesCache = cases;
     syncRecentProjectsGlobal(recentCasesCache);
-    record = cases.find(entry => Number(entry.id) === value);
+    record = cases.find(entry => String(entry.id) === String(value));
     renderHistoryList(recentCasesCache);
   }
   pauseHistoryPersistence();
   try {
-    if (record && record.data) {
-      await applyProjectSnapshot(record.data, { skipHint: false });
+    const payload = record?.payload || record?.data || null;
+    const snapshot = payload ? normalizeImportedJsonSnapshot(payload) : record?.data;
+    if (snapshot) {
+      await applyProjectSnapshot(snapshot, { skipHint: false });
       renderJobHistorySummary(record);
+      saveDraft(snapshot);
+      lastDraftSerialized = JSON.stringify(snapshot);
+      if (select) {
+        select.value = String(record.id);
+      }
     } else {
       updateActionHint('Kunne ikke indlæse den valgte sag.', 'error');
     }
@@ -3324,6 +3396,35 @@ function setupCSVImport() {
       fileInput.value = '';
     }
   });
+}
+
+async function resetCurrentJob() {
+  pauseHistoryPersistence();
+  try {
+    await ensureMaterialsDataLoad();
+    clearDraft();
+    lastDraftSerialized = '';
+    selectedSystemKeys.clear();
+    resetMaterials();
+    renderOptaelling();
+    laborEntries = [];
+    resetWorkers();
+    addWorker();
+    sagsinfoFieldIds.forEach(id => setSagsinfoField(id, ''));
+    applyExtrasSnapshot({ jobType: 'montage' });
+    const jobTypeSelect = document.getElementById('jobType');
+    if (jobTypeSelect) {
+      jobTypeSelect.value = 'montage';
+    }
+    lastMaterialSum = 0;
+    lastLoensum = 0;
+    lastJobSummary = null;
+    updateTotals(true);
+    validateSagsinfo();
+    updateActionHint('Ny sag klar.', 'success');
+  } finally {
+    resumeHistoryPersistence();
+  }
 }
 
 async function applyImportedAkkordData(data, options = {}) {
@@ -4838,11 +4939,17 @@ async function initApp() {
     jobTypeSelect.addEventListener('change', handleJobTypeChange);
   }
 
+  if (typeof window !== 'undefined') {
+    window.addEventListener('cssmate:history:updated', () => {
+      populateRecentCases();
+    });
+  }
+
   sagsinfoFieldIds.forEach(id => {
     const el = document.getElementById(id);
     if (el) {
-      el.addEventListener('input', () => validateSagsinfo());
-      el.addEventListener('change', () => validateSagsinfo());
+      el.addEventListener('input', () => { validateSagsinfo(); scheduleDraftSave(); });
+      el.addEventListener('change', () => { validateSagsinfo(); scheduleDraftSave(); });
     }
   });
 
@@ -4862,6 +4969,12 @@ async function initApp() {
     hardResetApp();
   });
 
+  document.getElementById('btnNewCase')?.addEventListener('click', async () => {
+    const ok = window.confirm('Nulstil sag? Dette sletter den aktuelle kladde på enheden.');
+    if (!ok) return;
+    await resetCurrentJob();
+  });
+
   const calendarIcon = document.getElementById('calendarIcon');
   if (calendarIcon) {
     calendarIcon.addEventListener('click', () => {
@@ -4879,9 +4992,23 @@ async function initApp() {
   }
 }
 
+async function restoreDraftOnLoad() {
+  try {
+    const draft = loadDraft();
+    if (!draft) return;
+    await applyProjectSnapshot(draft, { skipHint: true });
+    lastDraftSerialized = JSON.stringify(draft);
+    updateActionHint('Kladde gendannet.', 'success');
+  } catch (error) {
+    console.warn('Kunne ikke gendanne kladde', error);
+    clearDraft();
+  }
+}
+
 async function startApp () {
   try {
     await initApp()
+    await restoreDraftOnLoad()
   } catch (error) {
     console.error('CSMate init fejlede', error)
     updateActionHint('Kunne ikke initialisere appen. Opdater siden for at prøve igen.', 'error')
