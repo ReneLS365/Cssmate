@@ -2434,7 +2434,44 @@ function normalizeLegacyJsonSnapshot(snapshot = {}) {
   };
 }
 
+function isCssmateJobSnapshot(payload = {}) {
+  return typeof payload?.schemaVersion === 'string' && payload.schemaVersion.startsWith('cssmate.job.');
+}
+
+function assertValidCssmateJobSnapshot(payload = {}) {
+  if (!isCssmateJobSnapshot(payload)) {
+    throw new Error('Ukendt akkordseddel-schema.');
+  }
+  if (payload.schemaVersion !== 'cssmate.job.v1') {
+    throw new Error('Denne version af akkordseddel-formatet understøttes ikke.');
+  }
+  if (!payload.job || typeof payload.job !== 'object') {
+    throw new Error('Manglende job-data i eksporten.');
+  }
+  const job = payload.job;
+  const hasLines = Array.isArray(job.items) || Array.isArray(job.materials) || Array.isArray(job.linjer) || Array.isArray(job.lines);
+  if (!hasLines) {
+    throw new Error('Eksporten indeholder ingen materialelinjer.');
+  }
+}
+
+function mapCssmateJobSnapshotToSnapshot(payload = {}) {
+  assertValidCssmateJobSnapshot(payload);
+  const exportedAt = payload.exportedAt || payload.job?.exportedAt;
+  const jobPayload = {
+    ...payload.job,
+    version: payload.job?.version || '2.0',
+    meta: { ...(payload.job?.meta || {}), exportedAt: payload.job?.meta?.exportedAt || exportedAt },
+    jobType: payload.job?.jobType || payload.job?.meta?.jobType || payload.job?.type,
+    type: payload.job?.jobType || payload.job?.type,
+  };
+  return mapAkkordJsonV2ToSnapshot(jobPayload);
+}
+
 function normalizeImportedJsonSnapshot(snapshot = {}) {
+  if (isCssmateJobSnapshot(snapshot)) {
+    return mapCssmateJobSnapshotToSnapshot(snapshot);
+  }
   const version = extractVersionNumber(snapshot);
   if (Number.isFinite(version) && version >= 2) {
     return mapAkkordJsonV2ToSnapshot(snapshot);

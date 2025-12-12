@@ -3,11 +3,13 @@ import { exportPDFBlob } from './export-pdf.js';
 import { handleImportAkkord } from './import-akkord.js';
 import { buildAkkordJsonPayload } from './export-json.js';
 import { buildExportModel } from './export-model.js';
+import { buildExportFileBaseName, buildJobSnapshot } from './job-snapshot.js';
 
 let buildAkkordDataImpl = buildAkkordData;
 let exportPDFBlobImpl = exportPDFBlob;
 let buildAkkordJsonPayloadImpl = buildAkkordJsonPayload;
 let handleImportAkkordImpl = handleImportAkkord;
+let buildJobSnapshotImpl = buildJobSnapshot;
 
   export function initExportPanel() {
     bind('#btn-print-akkord', handlePrintAkkord);
@@ -37,15 +39,18 @@ export async function exportAkkordJsonAndPdf(options = {}) {
   try {
     notifyAction('Eksporterer akkordseddel (JSON + PDF)…', 'info');
     const context = buildExportContext();
-
-    const jsonResult = await exportJsonFromContext(context).catch(error => {
-      exportErrors.push(error);
-      console.error('JSON export failed', error);
-      const fallback = 'Der opstod en fejl under JSON-eksporten. Prøv igen – eller kontakt kontoret.';
-      const message = error?.message ? `${fallback} (${error.message})` : fallback;
-      notifyAction(message, 'error');
-      return null;
-    });
+    const jsonResult = (() => {
+      try {
+        return exportJsonFromContext(context);
+      } catch (error) {
+        exportErrors.push(error);
+        console.error('JSON export failed', error);
+        const fallback = 'Der opstod en fejl under JSON-eksporten. Prøv igen – eller kontakt kontoret.';
+        const message = error?.message ? `${fallback} (${error.message})` : fallback;
+        notifyAction(message, 'error');
+        return null;
+      }
+    })();
     await waitForDownloadTick();
 
     const pdfResult = await exportPdfFromContext(context).catch(error => {
@@ -135,19 +140,16 @@ function getExportMeta(data) {
   };
 }
 
-function buildBaseName(meta) {
-  const parts = [meta.sagsnummer, meta.kunde, meta.dato].filter(Boolean);
-  return sanitizeFilename(parts.join('-') || 'akkordseddel');
-}
-
 function buildExportContext() {
+  const exportedAt = new Date();
   const data = buildAkkordDataImpl();
   if (!data || typeof data !== 'object') throw new Error('Mangler data til eksport');
-  const model = buildExportModel(data);
+  const model = buildExportModel(data, { exportedAt: exportedAt.toISOString() });
   if (!model || typeof model !== 'object') throw new Error('Kunne ikke bygge eksportmodel');
+  const snapshot = buildJobSnapshotImpl({ rawData: data, model, exportedAt: exportedAt.toISOString() });
+  const baseName = sanitizeFilename(snapshot?.baseName || buildExportFileBaseName(exportedAt));
   const meta = getExportMeta(model);
-  const baseName = buildBaseName(meta);
-  return { data, model, meta, baseName };
+  return { data, model, meta, baseName, snapshot, exportedAt };
 }
 
 async function exportPdfFromContext(context) {
@@ -159,17 +161,20 @@ async function exportPdfFromContext(context) {
     rawData: context.data,
   });
   if (!payload?.blob) throw new Error('Mangler PDF payload');
-  const filename = ensurePdfExtension(payload.fileName || `${context.baseName}.pdf`);
+  const filename = ensurePdfExtension(`${context.baseName}.pdf`);
   downloadBlob(payload.blob, filename);
   notifyAction('PDF er gemt til din enhed.', 'success');
   notifyHistory('pdf', { baseName: context.baseName, fileName: filename });
   return { fileName: filename, blob: payload.blob };
 }
 
-async function exportJsonFromContext(context) {
-  const payload = buildAkkordJsonPayloadImpl(context.model, context.baseName);
+function exportJsonFromContext(context) {
+  const payload = buildAkkordJsonPayloadImpl(context.model, context.baseName, {
+    exportedAt: context.exportedAt?.toISOString?.() || context.exportedAt,
+    rawData: context.data,
+  });
   if (!payload?.content) throw new Error('Kunne ikke bygge JSON-eksporten');
-  const blob = new Blob([payload.content], { type: 'application/json' });
+  const blob = new Blob([payload.content], { type: 'application/json;charset=utf-8' });
   const fileName = payload.fileName || `${context.baseName}.json`;
   downloadBlob(blob, fileName);
   notifyAction('Akkordseddel (JSON) er gemt.', 'success');
@@ -228,6 +233,9 @@ export function setExportDependencies(overrides = {}) {
   buildAkkordJsonPayloadImpl = typeof overrides.buildAkkordJsonPayload === 'function'
     ? overrides.buildAkkordJsonPayload
     : buildAkkordJsonPayload;
+  buildJobSnapshotImpl = typeof overrides.buildJobSnapshot === 'function'
+    ? overrides.buildJobSnapshot
+    : buildJobSnapshot;
   handleImportAkkordImpl = typeof overrides.handleImportAkkord === 'function'
     ? overrides.handleImportAkkord
     : handleImportAkkord;

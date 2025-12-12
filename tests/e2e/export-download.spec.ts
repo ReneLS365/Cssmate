@@ -89,6 +89,12 @@ test('eksport af akkordseddel downloader PDF og JSON', async ({ page }, testInfo
   expect(pdfDownload).toBeTruthy()
   expect(jsonDownload).toBeTruthy()
 
+  const pdfName = pdfDownload!.suggestedFilename()
+  const jsonName = jsonDownload!.suggestedFilename()
+  expect(pdfName.startsWith('Akkordseddel_')).toBeTruthy()
+  expect(jsonName.startsWith('Akkordseddel_')).toBeTruthy()
+  expect(jsonName.replace(/\.json$/i, '')).toBe(pdfName.replace(/\.pdf$/i, ''))
+
   const pdfPath = await persistDownload(pdfDownload!, testInfo, 'akkordseddel.pdf')
   const pdfStats = await fs.stat(pdfPath)
   expect(pdfDownload!.suggestedFilename()).toMatch(/\.pdf$/i)
@@ -98,4 +104,30 @@ test('eksport af akkordseddel downloader PDF og JSON', async ({ page }, testInfo
   const jsonStats = await fs.stat(jsonPath)
   expect(jsonDownload!.suggestedFilename()).toMatch(/\.json$/i)
   expect(jsonStats.size).toBeGreaterThan(0)
+
+  await page.getByRole('tab', { name: 'Sag' }).click()
+  await page.getByLabel('Sagsnummer').fill('TØMT')
+
+  await page.getByRole('tab', { name: 'Optælling' }).click()
+  const qtyVerify = page.locator('#optaellingContainer .material-row input.csm-qty').first()
+  await setNumberInput(qtyVerify, '0')
+
+  await page.getByRole('tab', { name: 'Løn' }).click()
+  await setNumberInput(kmInput, '0')
+  await setNumberInput(hoursInput, '0')
+
+  await page.getByRole('tab', { name: 'Sag' }).click()
+  await page.setInputFiles('#akkordImportInput', jsonPath)
+
+  await page.waitForFunction((expected) => {
+    const numberField = document.getElementById('sagsnummer') as HTMLInputElement | null
+    return !!numberField && numberField.value === expected
+  }, uniqueJob)
+
+  await page.getByRole('tab', { name: 'Optælling' }).click()
+  await expect(qtyVerify).toHaveValue('2')
+
+  await page.getByRole('tab', { name: 'Løn' }).click()
+  await expect(kmInput).toHaveValue('5')
+  await expect(hoursInput).toHaveValue('1.5')
 })
