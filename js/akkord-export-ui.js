@@ -4,6 +4,7 @@ import { handleImportAkkord } from './import-akkord.js';
 import { buildAkkordJsonPayload } from './export-json.js';
 import { buildExportModel } from './export-model.js';
 import { buildExportFileBaseName, buildJobSnapshot } from './job-snapshot.js';
+import { appendHistoryEntry } from './storageHistory.js';
 
 let buildAkkordDataImpl = buildAkkordData;
 let exportPDFBlobImpl = exportPDFBlob;
@@ -32,6 +33,40 @@ function notifyHistory(type, detail = {}) {
   window.dispatchEvent(new CustomEvent('cssmate:exported', { detail: payload }));
 }
 
+function buildHistoryMetaFromContext(context) {
+  const info = context?.model?.info || {};
+  const meta = context?.model?.meta || {};
+  return {
+    sagsnummer: info.sagsnummer || meta.caseNumber || '',
+    navn: info.navn || meta.caseName || '',
+    adresse: info.adresse || meta.address || '',
+    kunde: info.kunde || meta.customer || '',
+    dato: (info.dato || meta.date || context.exportedAt || '').toString().slice(0, 10),
+    montoer: info.montoer || info.worker || meta.montoer || '',
+  };
+}
+
+function saveExportHistory(context) {
+  if (!context?.snapshot) return null;
+  try {
+    const entry = {
+      createdAt: Date.now(),
+      meta: buildHistoryMetaFromContext(context),
+      totals: context.model?.totals || {},
+      payload: context.snapshot,
+      source: 'export',
+    };
+    const saved = appendHistoryEntry(entry);
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('cssmate:history:updated'));
+    }
+    return saved;
+  } catch (error) {
+    console.warn('Kunne ikke gemme eksport-historik', error);
+    return null;
+  }
+}
+
 export async function exportAkkordJsonAndPdf(options = {}) {
   const button = options?.button || options?.currentTarget;
   const done = setBusy(button, true, { busyText: 'Eksporterer…', doneText: 'Filer klar' });
@@ -39,6 +74,7 @@ export async function exportAkkordJsonAndPdf(options = {}) {
   try {
     notifyAction('Eksporterer akkordseddel (JSON + PDF)…', 'info');
     const context = buildExportContext();
+    context.historySaved = Boolean(saveExportHistory(context));
     const jsonResult = (() => {
       try {
         return exportJsonFromContext(context);
@@ -164,7 +200,7 @@ async function exportPdfFromContext(context) {
   const filename = ensurePdfExtension(`${context.baseName}.pdf`);
   downloadBlob(payload.blob, filename);
   notifyAction('PDF er gemt til din enhed.', 'success');
-  notifyHistory('pdf', { baseName: context.baseName, fileName: filename });
+  notifyHistory('pdf', { baseName: context.baseName, fileName: filename, historySaved: context?.historySaved });
   return { fileName: filename, blob: payload.blob };
 }
 
@@ -174,11 +210,23 @@ function exportJsonFromContext(context) {
     rawData: context.data,
   });
   if (!payload?.content) throw new Error('Kunne ikke bygge JSON-eksporten');
-  const blob = new Blob([payload.content], { type: 'application/json;charset=utf-8' });
+  let content = payload.content;
+  try {
+    const parsed = JSON.parse(payload.content);
+    if (parsed && parsed.job && typeof parsed.job === 'object') {
+      if (!parsed.meta && parsed.job.meta) parsed.meta = parsed.job.meta;
+      if (!parsed.items && parsed.job.items) parsed.items = parsed.job.items;
+      if (!parsed.materials && parsed.job.materials) parsed.materials = parsed.job.materials;
+      if (!parsed.info && parsed.job.info) parsed.info = parsed.job.info;
+      if (!parsed.totals && parsed.job.totals) parsed.totals = parsed.job.totals;
+      content = JSON.stringify(parsed, null, 2);
+    }
+  } catch {}
+  const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
   const fileName = payload.fileName || `${context.baseName}.json`;
   downloadBlob(blob, fileName);
   notifyAction('Akkordseddel (JSON) er gemt.', 'success');
-  notifyHistory('json', { baseName: context.baseName, fileName });
+  notifyHistory('json', { baseName: context.baseName, fileName, historySaved: context?.historySaved });
   return { fileName, blob };
 }
 
