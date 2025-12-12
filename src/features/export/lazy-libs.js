@@ -42,7 +42,7 @@ async function loadJsPDF () {
 }
 
 async function loadHtml2Canvas () {
-  const mod = await importWithFallback(HTML2CANVAS_URL, HTML2CANVAS_LOCAL)
+  const mod = await importWithFallback(HTML2CANVAS_LOCAL, HTML2CANVAS_URL)
   return mod?.default || mod?.html2canvas || mod
 }
 
