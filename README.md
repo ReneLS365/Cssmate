@@ -2,6 +2,23 @@
 
 CSMate er en letvægtsudgave af den oprindelige Cssmate-applikation, målrettet statisk hosting og mobile enheder. Repoet indeholder hele den genererede app (HTML, CSS, JS, datafiler og service worker), hjælpeværktøjer til datasynkronisering samt dokumentation og byggeartefakter til Netlify.
 
+## Projektstatus og scope (vigtigt)
+
+Projektet er **låst i struktur og funktionalitet**. Eksisterende faner og flows må ikke ændres, refaktoreres eller udvides uden eksplicit godkendelse. Ingen UI-ændringer, nye faner, ændringer i beregninger, priser, satser eller datastrukturer er tilladt.
+
+Den eneste undtagelse er **Historik-fanen**, som fortsat kan videreudvikles med fokus på lagring (localStorage/IndexedDB), performance, overblik over tidligere sager, kobling til eksport-events og stabilitet/fejlhåndtering. Ingen nye dependencies må tilføjes uden eksplicit ordre.
+
+| Fane | Status |
+| ---- | ------ |
+| Optælling | 🔒 Låst |
+| Sagsinfo | 🔒 Låst |
+| Løn | 🔒 Låst |
+| Import | 🔒 Låst |
+| Export | 🔒 Låst |
+| **Historik** | ✅ Aktiv udvikling |
+
+Målet er en stabil, forudsigelig app uden scope creep. Alt andet kræver eksplicit godkendelse.
+
 ## Arkitektur og mappeoversigt
 
 | Mappe/fil | Beskrivelse |
