@@ -2329,9 +2329,11 @@ function setupZipExportHistoryHook() {
     populateRecentCases();
   };
   window.addEventListener('cssmate:zip-exported', event => {
-    if (event?.detail?.historySaved) {
-      refreshHistory();
-    }
+    const detail = event?.detail || {};
+    persistProjectSnapshot({
+      type: 'zip',
+      ...detail,
+    }).finally(refreshHistory);
   });
   window.addEventListener('cssmate:exported', event => {
     if (event?.detail?.historySaved) {
