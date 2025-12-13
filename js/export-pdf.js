@@ -236,11 +236,15 @@ export async function exportPDFBlob(data, options = {}) {
     const slaebAmount = toNumber(breakdown.slaeb ?? extras?.slaeb?.amount);
     const extraWorkEntries = Array.isArray(extras?.extraWork) ? extras.extraWork : [];
     const extraWorkSum = extraWorkEntries.reduce((sum, entry) => sum + toNumber(entry.amount), 0) || toNumber(breakdown.extraWork ?? 0);
-    const extraSum = toNumber(totals.extras ?? (kmAmount + slaebAmount + tralleAmount + extraWorkSum));
-    const akkordSum = toNumber(totals.akkord || (materialSum + extraSum));
-    const projectSum = toNumber(totals.project || akkordSum);
-    const hoursTotal = toNumber(wageTotals.hours);
+    // UI-logik: akkordsum = materialer + ekstraarbejde + slæb
+    // km og tralleløft er info og må ikke indgå i akkordsum
+    const extraSum = extraWorkSum; // kun ekstraarbejde-sum
+    const akkordSum = materialSum + extraWorkSum + slaebAmount;
+
+    // Projektsum = akkordsum + lønsum
     const wageSum = toNumber(wageTotals.sum);
+    const projectSum = akkordSum + wageSum;
+    const hoursTotal = toNumber(wageTotals.hours);
     const timePrice = hoursTotal > 0 ? akkordSum / hoursTotal : 0;
 
     const workerCount = workers.length;
