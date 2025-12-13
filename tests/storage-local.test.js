@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { clearDraft, loadDraft, saveDraft } from '../js/storageDraft.js'
-import { appendHistoryEntry, deleteHistoryEntry, loadHistory } from '../js/storageHistory.js'
+import { appendHistoryEntry, deleteHistoryEntry, loadHistory, migrateHistory } from '../js/storageHistory.js'
 
 function createMockStorage () {
   const store = new Map()
@@ -119,13 +119,44 @@ test('deleteHistoryEntry removes the matching entry', () => {
 
 test('history is trimmed to the maximum number of entries', () => {
   withMockWindow(() => {
-    for (let index = 1; index <= 55; index++) {
+    for (let index = 1; index <= 205; index++) {
       appendHistoryEntry({ id: `id-${index}`, jobId: `job-${index}`, createdAt: index })
     }
 
     const history = loadHistory()
-    assert.equal(history.length, 50)
-    assert.equal(history[0].jobId, 'job-55')
+    assert.equal(history.length, 200)
+    assert.equal(history[0].jobId, 'job-205')
     assert.equal(history.at(-1).jobId, 'job-6')
+  })
+})
+
+test('appendHistoryEntry upserts entries with matching sagsnummer', () => {
+  withMockWindow(() => {
+    appendHistoryEntry({ meta: { sagsnummer: '123', navn: 'Første' }, createdAt: 1 })
+    const updated = appendHistoryEntry({ meta: { sagsnummer: '123', navn: 'Opdateret' }, createdAt: 5 })
+
+    const history = loadHistory()
+    assert.equal(history.length, 1)
+    assert.equal(history[0].meta.navn, 'Opdateret')
+    assert.equal(history[0].createdAt, updated.createdAt)
+  })
+})
+
+test('migrateHistory dedupes entries without sagsnummer using fallback key', () => {
+  withMockWindow((storage) => {
+    const raw = {
+      schemaVersion: 1,
+      data: [
+        { id: 'a', meta: { navn: 'Test', adresse: 'Vej 1' }, createdAt: 1 },
+        { id: 'b', meta: { navn: 'Test', adresse: 'Vej 1' }, createdAt: 5 },
+      ]
+    }
+    storage.setItem('csmate:history:v1', JSON.stringify(raw))
+
+    const migrated = migrateHistory()
+    assert.equal(migrated.length, 1)
+    assert.equal(migrated[0].id, 'a')
+    assert.equal(migrated[0].createdAt, 5)
+    assert.equal(loadHistory().length, 1)
   })
 })
