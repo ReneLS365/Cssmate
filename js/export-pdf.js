@@ -1,13 +1,8 @@
 import { ensureExportLibs } from '../src/features/export/lazy-libs.js'
 import { buildExportModel, formatDkk } from './export-model.js'
+import { H, MARGIN, PAGE, createLayoutCursor } from './pdf/layout-cursor.js'
 
-const PAGE = { w: 595.28, h: 841.89 }
-const MARGIN = 36
 const CONTENT_WIDTH = PAGE.w - MARGIN * 2
-const HEADER_HEIGHT = 18
-const FOOTER_HEIGHT = 16
-const CONTENT_TOP = MARGIN + HEADER_HEIGHT
-const CONTENT_BOTTOM = PAGE.h - MARGIN - FOOTER_HEIGHT
 
 const COLS_MATERIAL = { idx: 24, sys: 56, name: 243, qty: 56, price: 64, sum: 80.28 }
 const COLS_WAGE = { who: 205, hrs: 58, rate: 120, sum: 140.28 }
@@ -16,15 +11,6 @@ const COLS_SUMMARY = { label: 343.28, value: 180 }
 const TITLE_FONT = 16
 const SECTION_FONT = 12
 const BODY_FONT = 10.5
-
-const LINE_HEIGHT_TABLE = 14
-const ROW_HEIGHT_SINGLE = 18
-const ROW_HEIGHT_DOUBLE = 30
-const TABLE_HEADER_HEIGHT = 18
-const SECTION_HEADER_HEIGHT = 16
-const OVERVIEW_LINE_HEIGHT = 16
-const OVERVIEW_RULE_HEIGHT = 10
-const OVERVIEW_AUX_HEIGHT = 12
 
 const PREF_SYSTEM_ORDER = ['bosta', 'haki', 'modex']
 
@@ -238,7 +224,7 @@ export async function exportPDFBlob(data, options = {}) {
 
     const baseName = sanitizeFilename(customSagsnummer || pdfModel.meta.caseNo || 'akkordseddel')
     const headerFooter = createHeaderFooter(doc, pdfModel)
-    const renderer = createRenderer(doc, pdfModel, headerFooter)
+    const renderer = createRenderer(doc, pdfModel, headerFooter, { layoutLog: options.layoutLog })
     renderer.renderDocument()
 
     doc.setProperties({
@@ -264,13 +250,15 @@ function createHeaderFooter(doc, model) {
   const caseText = `Sagsnr ${model.meta.caseNo || ''}`.trim()
   const footerLeft = `Genereret ${formatDateTime(model.meta.generatedAt)}`
 
+  const headerBaseline = MARGIN + 12
+
   const drawHeader = (pageNumber) => {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(SECTION_FONT)
-    doc.text(headerText, MARGIN, MARGIN + HEADER_HEIGHT - 6)
+    doc.text(headerText, MARGIN, headerBaseline)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(BODY_FONT)
-    doc.text(caseText, MARGIN + CONTENT_WIDTH, MARGIN + HEADER_HEIGHT - 6, { align: 'right' })
+    doc.text(caseText, MARGIN + CONTENT_WIDTH, headerBaseline, { align: 'right' })
   }
 
   const drawFooter = (pageNumber, totalPages) => {
@@ -285,41 +273,39 @@ function createHeaderFooter(doc, model) {
   return { drawHeader, drawFooter }
 }
 
-function createRenderer(doc, model, headerFooter) {
-  let y = CONTENT_TOP
-  let pageNumber = 1
+function createRenderer(doc, model, headerFooter, options = {}) {
+  const layoutLog = Array.isArray(options.layoutLog) ? options.layoutLog : null
+  const cursor = createLayoutCursor(doc, { renderHeader: headerFooter.drawHeader })
+  const LINE_HEIGHT_TABLE = 14
+
+  const logOp = (op) => {
+    if (layoutLog) layoutLog.push(op)
+  }
 
   const setPage = (pageNo) => {
     doc.setPage(pageNo)
     headerFooter.drawHeader(pageNo)
   }
 
-  headerFooter.drawHeader(pageNumber)
-
-  const ensureSpace = (heightNeeded, onBreak) => {
-    if (y + heightNeeded <= CONTENT_BOTTOM) return
-    doc.addPage()
-    pageNumber += 1
-    headerFooter.drawHeader(pageNumber)
-    y = CONTENT_TOP
-    if (typeof onBreak === 'function') onBreak()
-  }
+  headerFooter.drawHeader(cursor.page)
 
   const drawSectionHeader = (label) => {
-    ensureSpace(SECTION_HEADER_HEIGHT + 6)
+    cursor.ensureSpace(H.section)
+    const headerY = cursor.toPageY()
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(SECTION_FONT)
-    doc.text(label, MARGIN, y)
+    doc.text(label, cursor.x, headerY)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(BODY_FONT)
-    y += SECTION_HEADER_HEIGHT + 6
+    cursor.moveDown(H.section)
+    return headerY
   }
 
   const drawTitle = () => {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(TITLE_FONT)
-    doc.text('Akkordseddel', MARGIN, y)
-    y += 20
+    doc.text('Akkordseddel', cursor.x, cursor.toPageY())
+    cursor.moveDown(28)
   }
 
   const drawCaseInfo = () => {
@@ -335,21 +321,21 @@ function createRenderer(doc, model, headerFooter) {
     ]
 
     lines.forEach(entry => {
-      ensureSpace(LINE_HEIGHT_TABLE)
+      cursor.ensureSpace(H.row)
       doc.setFont('helvetica', 'bold')
-      doc.text(`${entry.label}:`, MARGIN, y)
+      doc.text(`${entry.label}:`, cursor.x, cursor.toPageY())
       doc.setFont('helvetica', 'normal')
-      doc.text(String(entry.value || '-'), MARGIN + 140, y)
-      y += LINE_HEIGHT_TABLE
+      doc.text(String(entry.value || '-'), cursor.x + 140, cursor.toPageY())
+      cursor.moveDown(H.row)
     })
-    y += 6
+    cursor.moveDown(H.gapSm)
   }
 
   const drawTableHeader = (columns) => {
-    ensureSpace(TABLE_HEADER_HEIGHT)
+    cursor.ensureSpace(H.tableHeader)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(BODY_FONT)
-    let x = MARGIN
+    let x = cursor.x
     columns.forEach(col => {
       const align = col.align === 'right' ? 'right' : col.align === 'center' ? 'center' : 'left'
       const textX = align === 'right'
@@ -357,11 +343,11 @@ function createRenderer(doc, model, headerFooter) {
         : align === 'center'
           ? x + col.width / 2
           : x
-      doc.text(col.label, textX, y, { align })
+      doc.text(col.label, textX, cursor.toPageY(), { align })
       x += col.width
     })
     doc.setFont('helvetica', 'normal')
-    y += TABLE_HEADER_HEIGHT
+    cursor.moveDown(H.tableHeader)
   }
 
   const measureWrap = (text, width) => {
@@ -372,12 +358,19 @@ function createRenderer(doc, model, headerFooter) {
     return limited
   }
 
+  const renderMaterialsContinuation = () => {
+    drawSectionHeader('Materialer (fortsat)')
+    drawTableHeader(materialColumns)
+  }
+
   const drawMaterialRow = (row) => {
     const nameLines = measureWrap(row.name, COLS_MATERIAL.name)
-    const rowHeight = nameLines.length > 1 ? ROW_HEIGHT_DOUBLE : ROW_HEIGHT_SINGLE
-    ensureSpace(rowHeight, renderMaterialsContinuation)
+    const rowHeight = nameLines.length > 1 ? H.rowWrap2 : H.row
+    cursor.ensureSpace(rowHeight, { withTableHeader: renderMaterialsContinuation })
 
-    let x = MARGIN
+    logOp({ kind: 'row', pageIndex: cursor.page, y: cursor.y })
+
+    let x = cursor.x
     const cells = [
       { width: COLS_MATERIAL.idx, value: row.idx, align: 'center' },
       { width: COLS_MATERIAL.sys, value: row.system || '-', align: 'left' },
@@ -391,30 +384,28 @@ function createRenderer(doc, model, headerFooter) {
       const align = cell.align || 'left'
       if (cell.multiline) {
         cell.value.forEach((line, idx) => {
-          const textY = y + 12 + idx * LINE_HEIGHT_TABLE
+          const textY = cursor.toPageY(12 + idx * LINE_HEIGHT_TABLE)
           doc.text(line, x + 2, textY, { align })
         })
       } else {
         const textX = align === 'right' ? x + cell.width : align === 'center' ? x + cell.width / 2 : x + 2
-        doc.text(String(cell.value ?? ''), textX, y + 12, { align })
+        doc.text(String(cell.value ?? ''), textX, cursor.toPageY(12), { align })
       }
       x += cell.width
     })
 
-    y += rowHeight
-  }
-
-  const renderMaterialsContinuation = () => {
-    drawSectionHeader('Materialer (fortsat)')
-    drawTableHeader(materialColumns)
+    cursor.moveDown(rowHeight)
+    return rowHeight
   }
 
   const drawSystemSeparator = (system, count) => {
-    ensureSpace(ROW_HEIGHT_SINGLE, renderMaterialsContinuation)
+    cursor.ensureSpace(H.groupRow + H.row, { withTableHeader: renderMaterialsContinuation })
+    logOp({ kind: 'group', pageIndex: cursor.page, y: cursor.y })
     doc.setFont('helvetica', 'bold')
-    doc.text(`${system || 'Andet'} (${count} linjer)`, MARGIN, y)
+    doc.text(`${system || 'Andet'} (${count} linjer)`, cursor.x, cursor.toPageY(12))
     doc.setFont('helvetica', 'normal')
-    y += ROW_HEIGHT_SINGLE
+    cursor.moveDown(H.groupRow)
+    return H.groupRow
   }
 
   const drawMaterialTable = () => {
@@ -424,19 +415,17 @@ function createRenderer(doc, model, headerFooter) {
     model.materialsGrouped.forEach(group => {
       const hasRows = Array.isArray(group.rows) && group.rows.length > 0
       if (!hasRows) return
-      ensureSpace(ROW_HEIGHT_SINGLE + ROW_HEIGHT_SINGLE, renderMaterialsContinuation)
       drawSystemSeparator(group.system, group.count)
       group.rows.forEach(drawMaterialRow)
     })
 
-    const totalRowHeight = ROW_HEIGHT_SINGLE
-    ensureSpace(totalRowHeight, renderMaterialsContinuation)
-    let x = MARGIN + COLS_MATERIAL.idx + COLS_MATERIAL.sys + COLS_MATERIAL.name + COLS_MATERIAL.qty + COLS_MATERIAL.price
+    cursor.ensureSpace(H.row, { withTableHeader: renderMaterialsContinuation })
+    let x = cursor.x + COLS_MATERIAL.idx + COLS_MATERIAL.sys + COLS_MATERIAL.name + COLS_MATERIAL.qty + COLS_MATERIAL.price
     doc.setFont('helvetica', 'bold')
-    doc.text('Materialesum', MARGIN + COLS_MATERIAL.idx + COLS_MATERIAL.sys + COLS_MATERIAL.name + COLS_MATERIAL.qty + COLS_MATERIAL.price - 2, y + 12, { align: 'right' })
-    doc.text(formatKr(model.totals.materialTotal), x + COLS_MATERIAL.sum, y + 12, { align: 'right' })
+    doc.text('Materialesum', cursor.x + COLS_MATERIAL.idx + COLS_MATERIAL.sys + COLS_MATERIAL.name + COLS_MATERIAL.qty + COLS_MATERIAL.price - 2, cursor.toPageY(12), { align: 'right' })
+    doc.text(formatKr(model.totals.materialTotal), x + COLS_MATERIAL.sum, cursor.toPageY(12), { align: 'right' })
     doc.setFont('helvetica', 'normal')
-    y += totalRowHeight
+    cursor.moveDown(H.row)
   }
 
   const renderWageContinuation = () => {
@@ -445,20 +434,21 @@ function createRenderer(doc, model, headerFooter) {
   }
 
   const drawWageTable = () => {
-    ensureSpace(SECTION_HEADER_HEIGHT + TABLE_HEADER_HEIGHT)
+    cursor.ensureSpace(H.section + H.tableHeader)
     drawSectionHeader('Løn')
     drawTableHeader(wageColumns)
 
     if (!model.wages.length) {
-      ensureSpace(ROW_HEIGHT_SINGLE)
-      doc.text('Ingen registrerede montører', MARGIN, y)
-      y += ROW_HEIGHT_SINGLE
+      cursor.ensureSpace(H.row)
+      doc.text('Ingen registrerede montører', cursor.x, cursor.toPageY(12))
+      cursor.moveDown(H.row)
       return
     }
 
     model.wages.forEach(worker => {
-      ensureSpace(ROW_HEIGHT_SINGLE, renderWageContinuation)
-      let x = MARGIN
+      cursor.ensureSpace(H.row, { withTableHeader: renderWageContinuation })
+      logOp({ kind: 'wageRow', pageIndex: cursor.page, y: cursor.y })
+      let x = cursor.x
       const cells = [
         { width: COLS_WAGE.who, value: worker.workerName || '-', align: 'left' },
         { width: COLS_WAGE.hrs, value: formatHours(worker.hours), align: 'right' },
@@ -469,45 +459,52 @@ function createRenderer(doc, model, headerFooter) {
       cells.forEach(cell => {
         const align = cell.align || 'left'
         const textX = align === 'right' ? x + cell.width : align === 'center' ? x + cell.width / 2 : x + 2
-        doc.text(String(cell.value ?? ''), textX, y + 12, { align })
+        doc.text(String(cell.value ?? ''), textX, cursor.toPageY(12), { align })
         x += cell.width
       })
 
-      y += ROW_HEIGHT_SINGLE
+      cursor.moveDown(H.row)
     })
   }
 
   const drawSummary = () => {
-    ensureSpace(236)
+    const summaryReservedHeight = H.section + model.summaryLines.reduce((sum, entry) => {
+      if (entry.type === 'rule') return sum + H.summaryRule
+      return sum + H.summaryLine + (entry.auxText ? H.summaryAux : 0)
+    }, 0)
 
-    drawSectionHeader('Oversigt:')
+    cursor.ensureSpace(summaryReservedHeight)
+    logOp({ kind: 'summaryHeader', pageIndex: cursor.page, y: cursor.y })
+
+    const headerBaseline = drawSectionHeader('Oversigt:')
     doc.setFont('helvetica', 'bold')
-    doc.text('Løn & projektsum', MARGIN + COLS_SUMMARY.label + COLS_SUMMARY.value, y - SECTION_HEADER_HEIGHT - 2, { align: 'right' })
+    doc.text('Løn & projektsum', cursor.x + COLS_SUMMARY.label + COLS_SUMMARY.value, headerBaseline, { align: 'right' })
     doc.setFont('helvetica', 'normal')
 
     model.summaryLines.forEach(entry => {
       if (entry.type === 'rule') {
-        ensureSpace(OVERVIEW_RULE_HEIGHT)
-        doc.line(MARGIN, y + 4, MARGIN + CONTENT_WIDTH, y + 4)
-        y += OVERVIEW_RULE_HEIGHT
+        cursor.ensureSpace(H.summaryRule)
+        doc.line(cursor.x, cursor.toPageY(4), cursor.x + CONTENT_WIDTH, cursor.toPageY(4))
+        cursor.moveDown(H.summaryRule)
         return
       }
 
-      ensureSpace(OVERVIEW_LINE_HEIGHT + (entry.auxText ? OVERVIEW_AUX_HEIGHT : 0))
-      const labelX = MARGIN
-      const valueX = MARGIN + COLS_SUMMARY.label + COLS_SUMMARY.value
+      const lineHeight = H.summaryLine + (entry.auxText ? H.summaryAux : 0)
+      cursor.ensureSpace(lineHeight)
+      const labelX = cursor.x
+      const valueX = cursor.x + COLS_SUMMARY.label + COLS_SUMMARY.value
       const valueText = typeof entry.value === 'number' ? formatKr(entry.value) : String(entry.value || '')
       doc.setFont('helvetica', entry.type === 'total' ? 'bold' : 'normal')
-      doc.text(entry.label, labelX, y + 12)
-      doc.text(valueText, valueX, y + 12, { align: 'right' })
+      doc.text(entry.label, labelX, cursor.toPageY(12))
+      doc.text(valueText, valueX, cursor.toPageY(12), { align: 'right' })
       if (entry.auxText) {
         doc.setFont('helvetica', 'normal')
         doc.setFontSize(9)
-        doc.text(entry.auxText, labelX, y + 12 + 10)
+        doc.text(entry.auxText, labelX, cursor.toPageY(22))
         doc.setFontSize(BODY_FONT)
-        y += OVERVIEW_AUX_HEIGHT
+        cursor.moveDown(H.summaryAux)
       }
-      y += OVERVIEW_LINE_HEIGHT
+      cursor.moveDown(H.summaryLine)
     })
   }
 
@@ -539,11 +536,9 @@ function createRenderer(doc, model, headerFooter) {
     drawTitle()
     drawCaseInfo()
     drawMaterialTable()
-    doc.addPage()
-    pageNumber += 1
-    headerFooter.drawHeader(pageNumber)
-    y = CONTENT_TOP
     drawWageTable()
+    cursor.ensureSpace(H.gapMd)
+    cursor.moveDown(H.gapMd)
     drawSummary()
     addFooters()
   }
