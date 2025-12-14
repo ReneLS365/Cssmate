@@ -117,21 +117,23 @@ async function exportPdfAndJson(page, scenarioKey, baseName) {
   })
   await expect(pdfButton).toBeEnabled()
 
-  const downloadPromises = [
-    page.waitForEvent('download', { timeout: 15000 }),
-    page.waitForEvent('download', { timeout: 15000 }),
-  ]
+  const pdfDownloadPromise = page.waitForEvent('download', {
+    timeout: 15000,
+    predicate: entry => entry.suggestedFilename().toLowerCase().endsWith('.pdf'),
+  })
+  const jsonDownloadPromise = page.waitForEvent('download', {
+    timeout: 15000,
+    predicate: entry => entry.suggestedFilename().toLowerCase().endsWith('.json'),
+  })
 
   await pdfButton.click()
 
-  const downloads = await Promise.all(downloadPromises)
-  const pdfDownload = downloads.find(entry => entry.suggestedFilename().toLowerCase().endsWith('.pdf'))
-  const jsonDownload = downloads.find(entry => entry.suggestedFilename().toLowerCase().endsWith('.json'))
+  const [pdfDownload, jsonDownload] = await Promise.all([pdfDownloadPromise, jsonDownloadPromise])
 
   expect(pdfDownload, 'PDF download mangler').toBeTruthy()
   expect(jsonDownload, 'JSON download mangler').toBeTruthy()
 
-  const filenames = downloads.map(entry => entry.suggestedFilename())
+  const filenames = [pdfDownload.suggestedFilename(), jsonDownload.suggestedFilename()]
   expect(filenames.some(name => name.toLowerCase().endsWith('.json'))).toBeTruthy()
   expect(filenames.some(name => name.toLowerCase().endsWith('.pdf'))).toBeTruthy()
 
