@@ -348,7 +348,15 @@
       <div class="job-history__list">
         <h3>Seneste eksport/import</h3>
         <p class="job-history__hint">Historikken gemmes kun når du eksporterer akkordsedlen. Åbn review-loggen i debug-mappen for fuld oversigt over ændringer.</p>
-        <ul id="historyList" class="history-list" aria-live="polite" aria-busy="true"></ul>
+        <div class="history-table">
+          <div class="history-table__head" aria-hidden="true">
+            <span class="history-table__cell history-table__cell--date">Dato &amp; tid</span>
+            <span class="history-table__cell history-table__cell--meta">Sag</span>
+            <span class="history-table__cell history-table__cell--amount">Total</span>
+            <span class="history-table__cell history-table__cell--actions">Handling</span>
+          </div>
+          <ul id="historyList" class="history-list history-table__body" aria-live="polite" aria-busy="true"></ul>
+        </div>
       </div>
     </section>
   </section>

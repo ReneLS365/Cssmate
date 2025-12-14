@@ -43,12 +43,23 @@ function formatHours (value) {
   return new Intl.NumberFormat('da-DK', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(value || 0)
 }
 
-function formatDateLabel (timestamp) {
+function formatDateLabel (timestamp, { timeZone } = {}) {
   if (!timestamp) return ''
   const date = new Date(timestamp)
   if (Number.isNaN(date.valueOf())) return ''
   try {
-    return new Intl.DateTimeFormat('da-DK', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+    const formatter = new Intl.DateTimeFormat('da-DK', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      ...(timeZone ? { timeZone } : {}),
+    })
+    const parts = formatter.formatToParts(date)
+    const lookup = Object.fromEntries(parts.map(part => [part.type, part.value]))
+    return `${lookup.day || ''}-${lookup.month || ''}-${lookup.year || ''} ${lookup.hour || '00'}:${lookup.minute || '00'}`.trim()
   } catch {
     return date.toLocaleString('da-DK')
   }
@@ -153,7 +164,22 @@ function expandAllowanceRange (baseRange, allowance) {
 }
 
 function resolveTimestamp (entry = {}) {
-  return toNumber(entry.updatedAt || entry.createdAt || entry.ts || entry.timestamp || entry.data?.timestamp || entry.payload?.timestamp || 0)
+  const candidates = [
+    entry.createdAtMs,
+    entry.updatedAtMs,
+    entry.createdAt,
+    entry.updatedAt,
+    entry.ts,
+    entry.timestamp,
+    entry.data?.timestamp,
+    entry.payload?.timestamp,
+  ]
+  for (const candidate of candidates) {
+    const value = toNumber(candidate)
+    if (value) return value
+  }
+  if (entry.updatedAt || entry.createdAt) return Date.parse(entry.updatedAt || entry.createdAt)
+  return 0
 }
 
 const cache = new Map()
@@ -161,6 +187,8 @@ const cache = new Map()
 function normalizeHistoryEntry (entry, options = {}) {
   if (!entry) return null
   const timestamp = resolveTimestamp(entry)
+  const timeZone = entry.timeZone || (typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : undefined)
+  const tzOffsetMin = Number.isFinite(entry.tzOffsetMin) ? entry.tzOffsetMin : new Date(timestamp || Date.now()).getTimezoneOffset()
   const cacheKey = `${entry.id || entry.caseKey || entry.meta?.sagsnummer || 'history'}:${timestamp}`
   if (cache.has(cacheKey)) return cache.get(cacheKey)
 
@@ -200,7 +228,7 @@ function normalizeHistoryEntry (entry, options = {}) {
   const udd2MentorRange = buildWageRange(pickNumber([totals.hourlyUdd2Mentor, totals.udd2Mentor]))
     || (baseRange ? { min: baseRange.min + tillaegUdd2 + mentorRate, max: baseRange.max + tillaegUdd2 + mentorRate } : null)
 
-  const dateDisplay = formatDateLabel(timestamp)
+  const dateDisplay = formatDateLabel(timestamp, { timeZone })
   const addressText = meta.adresse?.trim() || ''
   const displayDateWithAddress = addressText ? `${dateDisplay} · ${addressText}` : dateDisplay
 
@@ -218,6 +246,8 @@ function normalizeHistoryEntry (entry, options = {}) {
       udd2Mentor: udd2MentorRange,
     },
     perWorker: workerRates,
+    timeZone,
+    tzOffsetMin,
     displayDate: dateDisplay,
     displayDateWithAddress,
     displayHours: hours ? formatHours(hours) : '',
@@ -233,6 +263,11 @@ function normalizeHistoryEntry (entry, options = {}) {
   const searchValues = [meta.sagsnummer, meta.navn, meta.kunde, meta.adresse, meta.montoer]
     .filter(Boolean)
     .map(value => normalizeSearchValue(value))
+  searchValues.push(normalizeSearchValue(dateDisplay), normalizeSearchValue(displayDateWithAddress))
+  const searchTotal = pickNumber([totals.projektsum, totals.projectTotal, totals.total, totals.sum])
+  if (searchTotal) {
+    searchValues.push(normalizeSearchValue(formatCurrency(searchTotal)))
+  }
   workerRates.forEach(worker => {
     if (worker?.name) {
       searchValues.push(normalizeSearchValue(worker.name))

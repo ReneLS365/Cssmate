@@ -142,6 +142,18 @@ test('appendHistoryEntry upserts entries with matching sagsnummer', () => {
   })
 })
 
+test('appendHistoryEntry dedupes identical payloads via historyKey', () => {
+  withMockWindow(() => {
+    const payload = { info: { sagsnummer: '900', navn: 'Testvej' }, totals: { projektsum: 500 } }
+    appendHistoryEntry({ payload, createdAt: 1 })
+    appendHistoryEntry({ payload: { ...payload }, createdAt: 5 })
+
+    const history = loadHistory()
+    assert.equal(history.length, 1)
+    assert.equal(history[0].createdAt, 5)
+  })
+})
+
 test('migrateHistory dedupes entries without sagsnummer using fallback key', () => {
   withMockWindow((storage) => {
     const raw = {
