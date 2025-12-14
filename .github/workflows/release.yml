@@ -30,6 +30,8 @@ jobs:
     name: Release gate (MANUAL APPROVAL)
     needs: verify
     runs-on: ubuntu-latest
+    # Avoid blocking PR runs (environment approvals are unavailable for forks)
+    if: github.event_name != 'pull_request'
     environment:
       name: release
     steps:
