@@ -34,6 +34,16 @@ const SYSTEM_LABELS = {
   Alfix: 'ALFIX 2025',
 }
 
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status === testInfo.expectedStatus) return
+  try {
+    const debug = await page.evaluate(() => window.__exportDebug || [])
+    console.log('export debug:', JSON.stringify(debug, null, 2))
+  } catch (error) {
+    console.log('export debug unavailable', error)
+  }
+})
+
 async function selectSystems(page, labels) {
   await page.getByRole('tab', { name: 'Optælling' }).click()
   await page.waitForSelector('#listSelectors input[type="checkbox"]', { state: 'visible' })
@@ -117,14 +127,12 @@ async function exportPdfAndJson(page, scenarioKey, baseName) {
   })
   await expect(pdfButton).toBeEnabled()
 
-  const downloadPromises = [
+  const [firstDownload, secondDownload] = await Promise.all([
     page.waitForEvent('download', { timeout: 15000 }),
     page.waitForEvent('download', { timeout: 15000 }),
-  ]
-
-  await pdfButton.click()
-
-  const downloads = await Promise.all(downloadPromises)
+    pdfButton.click(),
+  ])
+  const downloads = [firstDownload, secondDownload]
   const pdfDownload = downloads.find(entry => entry.suggestedFilename().toLowerCase().endsWith('.pdf'))
   const jsonDownload = downloads.find(entry => entry.suggestedFilename().toLowerCase().endsWith('.json'))
 
