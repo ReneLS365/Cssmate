@@ -62,6 +62,8 @@ body{font-size:16px;line-height:1.45;font-weight:400;background-color:var(--bg,#
 header{position:sticky;top:0;background:var(--elev);border-bottom:1px solid var(--border);z-index:5}
 header .bar{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px 10px;min-height:var(--header-height)}
 header .ttl{font-weight:700}
+.topbar-nav{display:flex;align-items:center;gap:8px;flex:1 1 auto;min-width:0}
+.topbar-actions{display:flex;align-items:center;flex:0 0 auto}
 .ui-scale-control{position:relative;display:flex;align-items:center;gap:6px}
 .ui-scale-toggle{min-width:36px;min-height:36px;padding:6px 8px;border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:10px;font-size:1rem}
 .ui-scale-popover{position:absolute;right:0;top:calc(100% + 6px);background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px;min-width:180px;box-shadow:0 10px 28px rgba(0,0,0,0.35);z-index:20}
@@ -380,6 +382,7 @@ button{cursor:pointer}
 .modal-close{position:absolute;top:16px;right:16px;width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:#3a3c43;color:var(--text);font-size:1.5rem;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer}
 @media (max-width:600px){
   header .bar{flex-direction:column;align-items:flex-start}
+  .topbar-nav{width:100%}
   .grid-3{grid-template-columns:1fr}
   .grid-2{grid-template-columns:1fr}
   .worker-grid{grid-template-columns:1fr}
