@@ -1,27 +1,66 @@
 :root{
-  --bg:#1e1f22;
-  --elev:#26272b;
-  --panel:#2d2f34;
-  --panel-soft:#2b2d32;
-  --panel-muted:#26272c;
-  --text:#f4f4f6;
-  --muted:#c8c9ce;
-  --border:#3b3d45;
-  --accent:#8ea0b5;
+  /* Core palette */
+  --bg:#15171b;
+  --surface:#1e1f24;
+  --surface-2:#24262c;
+  --text:#f5f6f8;
+  --muted:#c6c8cf;
+  --border:#363842;
+  --accent:#9cb4cf;
   --accent-strong:#f2b661;
-  --radius-md:10px;
+  --danger:#ff6b6b;
+  --success:#7bd99a;
+
+  /* Legacy aliases (in use across the app) */
+  --bg-legacy:var(--bg);
+  --elev:var(--surface);
+  --panel:var(--surface-2);
+  --panel-soft:color-mix(in srgb, var(--surface-2) 92%, #000 8%);
+  --panel-muted:color-mix(in srgb, var(--surface) 82%, #000 18%);
+
+  /* Radii */
+  --r-sm:10px;
+  --r-md:12px;
+  --r-lg:14px;
+  --radius-md:var(--r-sm);
   --radius-lg:16px;
-  --shadow-strong:0 18px 40px rgba(0,0,0,0.45);
-  --gap:12px;
-  --pad:12px;
+
+  /* Spacing + typography */
+  --sp-1:6px;
+  --sp-2:8px;
+  --sp-3:12px;
+  --sp-4:16px;
+  --sp-5:20px;
+  --fs-1:12px;
+  --fs-2:14px;
+  --fs-3:16px;
+  --fs-4:18px;
+  --gap:var(--sp-3);
+  --pad:var(--sp-3);
+
+  --shadow-1:0 14px 38px rgba(0,0,0,0.38);
+  --shadow-strong:var(--shadow-1);
   --uiScale:1;
   --materials-grid-desktop:2fr minmax(64px,0.9fr) minmax(72px,1fr) minmax(72px,1fr);
   --materials-grid-mobile:1.4fr minmax(56px,0.8fr) minmax(64px,0.9fr) minmax(64px,0.9fr);
   --header-height:56px;
   --tab-bar-height:52px;
 }
+
+[data-theme="light"]{
+  --bg:#f3f5f8;
+  --surface:#ffffff;
+  --surface-2:#f6f7fb;
+  --text:#0f1625;
+  --muted:#5c6677;
+  --border:#d8dce4;
+  --accent:#3f7ac8;
+  --accent-strong:#f2b661;
+  --panel-soft:color-mix(in srgb, var(--surface-2) 80%, #000 20%);
+  --panel-muted:color-mix(in srgb, var(--surface) 84%, #000 16%);
+}
 :focus-visible{outline:2px solid currentColor;outline-offset:2px}
-.skip-to-content{position:absolute;left:-9999px;top:0;background:var(--panel);color:var(--text);padding:8px 14px;border-radius:10px;z-index:1000;box-shadow:0 12px 30px rgba(0,0,0,0.4)}
+.skip-to-content{position:absolute;left:-9999px;top:0;background:var(--panel);color:var(--text);padding:8px 14px;border-radius:var(--r-md);z-index:1000;box-shadow:var(--shadow-1)}
 .skip-to-content:focus{left:1rem;top:1rem}
 .ios-install-prompt{position:fixed;bottom:1.25rem;left:50%;transform:translateX(-50%);background:var(--panel);color:var(--text);padding:14px 16px;border-radius:14px;border:1px solid var(--border);box-shadow:0 18px 40px rgba(0,0,0,0.45);display:flex;gap:12px;align-items:center;max-width:min(420px,90vw);line-height:1.4;z-index:900}
 .ios-install-prompt p{margin:0}
@@ -45,6 +84,11 @@ body{font-size:16px;line-height:1.45;font-weight:400;background-color:var(--bg,#
 .app-shell,.app-content,.materials-scroll{max-width:100vw}
 @media (max-width:420px){
   .app-shell,.app-content,main,header,footer{width:100%;max-width:100vw}
+}
+
+@media (max-width:360px){
+  .app-root{padding:0 var(--sp-2) calc(1.25rem + env(safe-area-inset-bottom,0))}
+  .tab{padding:0.45rem 0.7rem;font-size:0.9rem}
 }
 .app-shell{display:flex;flex-direction:column}
 .app-content{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
@@ -80,9 +124,9 @@ header .ttl{font-weight:700}
 .table-wrapper,
 .scroll-area{overscroll-behavior:auto}
 .tabs::-webkit-scrollbar{height:4px}
-.tab{flex:0 0 auto;scroll-snap-align:start;min-width:4.5rem;padding:0.55rem 0.9rem;font-size:0.95rem;border-radius:0.45rem;border:1px solid rgba(255,255,255,0.08);background:var(--panel);color:var(--muted);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background-color .2s ease,color .2s ease,border-color .2s ease}
+.tab{flex:0 0 auto;scroll-snap-align:start;min-width:4.5rem;padding:0.5rem 0.85rem;font-size:0.95rem;border-radius:0.6rem;border:1px solid rgba(255,255,255,0.08);background:var(--panel);color:var(--muted);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background-color .15s ease,color .15s ease,border-color .15s ease,transform .12s ease}
 .tab:not(.tab--active):hover{color:var(--text);border-color:rgba(255,255,255,0.18)}
-.tab--active{background:var(--accent);color:#0b1623;font-weight:600;border-color:var(--accent)}
+.tab--active{background:var(--accent);color:#0b1623;border-color:var(--accent);box-shadow:0 0 0 1px rgba(0,0,0,0.08) inset}
 .tab-panel{display:none;width:100%;min-height:0}
 .tab-panel.tab-panel--active{display:flex;flex-direction:column;gap:var(--gap);min-height:0}
 #panel-lon{flex-direction:column;flex:1 1 auto;min-height:0;overflow-y:auto;padding-bottom:calc(env(safe-area-inset-bottom,0) + 4rem);scroll-padding-bottom:calc(env(safe-area-inset-bottom,0) + 4rem)}
@@ -146,13 +190,13 @@ button,
 .numpad-key,
 .numpad-commit{-webkit-tap-highlight-color:transparent}
 main{display:block;width:100%}
-.app-root{max-width:540px;margin:0 auto;padding:0 0.75rem 1.5rem;display:flex;flex-direction:column;flex:1 1 auto;min-height:0;width:100%;position:relative}
+.app-root{max-width:540px;margin:0 auto;padding:0 var(--sp-3) calc(1.5rem + env(safe-area-inset-bottom,0));display:flex;flex-direction:column;flex:1 1 auto;min-height:0;width:100%;position:relative}
 html.app-booting .app-root::after{content:"Loader app…";position:fixed;top:10px;right:12px;padding:6px 10px;background:var(--panel);border:1px solid var(--border);border-radius:10px;color:var(--muted);font-size:0.9rem;box-shadow:0 6px 18px rgba(0,0,0,0.08);z-index:1200;opacity:0.95}
 html.app-ready .app-root::after{display:none}
 .tab-panels{flex:1 1 auto;min-height:0;overflow-y:auto;padding:clamp(0.5rem,2vw,1rem) 0 clamp(1rem,4vw,1.75rem);width:100%;margin:0 auto}
 .tab-panel{min-width:0}
-fieldset{border:1px solid var(--border);background:var(--panel);border-radius:12px;margin:0;padding:var(--pad)}
-.card{border:1px solid var(--border);background:var(--panel);border-radius:12px;padding:0.75rem 0.9rem;display:flex;flex-direction:column;gap:var(--gap);content-visibility:auto;contain-intrinsic-size:320px}
+fieldset{border:1px solid var(--border);background:var(--panel);border-radius:var(--r-md);margin:0;padding:var(--pad)}
+.card{border:1px solid var(--border);background:var(--panel);border-radius:var(--r-md);padding:0.85rem 0.95rem;display:flex;flex-direction:column;gap:var(--gap);content-visibility:auto;contain-intrinsic-size:320px;box-shadow:0 1px 0 rgba(255,255,255,0.02)}
 .card-header{display:flex;flex-direction:column;gap:0.35rem}
 .card-header h2{margin:0;font-size:1.15rem}
 .card-header p{margin:0;color:var(--muted);font-size:0.9rem}
@@ -166,7 +210,7 @@ label span{color:var(--muted);font-size:0.85rem}
 .date-field .date-input-wrapper input[type=date]{flex:1}
 .date-picker-trigger{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;padding:0 12px;font-size:1.25rem;line-height:1;border:1px solid var(--border);background:var(--elev)}
 .date-picker-trigger:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-input,select,textarea,button{background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:10px;min-height:44px;padding:10px;font-size:16px;max-width:100%;box-sizing:border-box}
+input,select,textarea,button{background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:var(--r-sm);min-height:44px;padding:10px;font-size:16px;max-width:100%;box-sizing:border-box;transition:border-color .12s ease,box-shadow .12s ease,background-color .12s ease}
 input.numpad-readonly{caret-color:transparent}
 textarea{resize:vertical}
 button{cursor:pointer}

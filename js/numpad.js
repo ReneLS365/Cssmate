@@ -37,19 +37,7 @@ function initNumpad () {
   commitBtn = document.getElementById('numpad-btn-commit')
   closeBtn = document.getElementById('numpad-btn-close')
 
-  overlay.addEventListener('click', (e) => {
-    const keyEl = e.target.closest('.numpad-key')
-    if (keyEl && keyEl.dataset.key) {
-      handleKey(keyEl.dataset.key)
-      e.stopPropagation()
-      return
-    }
-
-    // Klik på mørk baggrund lukker uden commit
-    if (e.target === overlay) {
-      hideNumpad({ commit: false })
-    }
-  })
+  overlay.addEventListener('pointerdown', handleOverlayPointerDown, { passive: false })
 
   if (commitBtn) {
     commitBtn.addEventListener('click', handleCommitClick)
@@ -89,6 +77,36 @@ function handleNumpadPointerDown (event) {
   if (document.activeElement !== input) return
   event.preventDefault()
   showNumpadForInput(input)
+}
+
+function handleOverlayPointerDown (event) {
+  const keyEl = event.target.closest('.numpad-key')
+  const isCommit = commitBtn && (event.target === commitBtn || commitBtn.contains(event.target))
+  const isClose = closeBtn && (event.target === closeBtn || closeBtn.contains(event.target))
+
+  if (keyEl && keyEl.dataset.key) {
+    event.preventDefault()
+    handleKey(keyEl.dataset.key)
+    return
+  }
+
+  if (isCommit) {
+    event.preventDefault()
+    handleCommitClick()
+    return
+  }
+
+  if (isClose) {
+    event.preventDefault()
+    hideNumpad({ commit: false })
+    return
+  }
+
+  // Klik på mørk baggrund lukker uden commit
+  if (event.target === overlay) {
+    event.preventDefault()
+    hideNumpad({ commit: false })
+  }
 }
 
 function blockNativeInput (event) {
