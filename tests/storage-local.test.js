@@ -70,9 +70,29 @@ test('loadDraft tolerates invalid payloads', () => {
 
     storage.setItem('csmate:draftJob:v1', '{invalid-json')
     assert.equal(loadDraft(), null)
+    assert.equal(storage.getItem('csmate:draftJob:v1'), null)
 
     storage.setItem('csmate:draftJob:v1', JSON.stringify({ schemaVersion: 0, data: { foo: 'bar' } }))
     assert.equal(loadDraft(), null)
+    assert.equal(storage.getItem('csmate:draftJob:v1'), null)
+  })
+})
+
+test('loadHistory clears invalid stored state', () => {
+  withMockWindow((storage) => {
+    storage.setItem('csmate:history:v1', '{bad-json')
+    assert.deepEqual(loadHistory(), [])
+    assert.equal(storage.getItem('csmate:history:v1'), null)
+
+    storage.setItem('csmate:history:v1', JSON.stringify({ schemaVersion: 0, data: [] }))
+    assert.deepEqual(loadHistory(), [])
+    assert.equal(storage.getItem('csmate:history:v1'), null)
+
+    storage.setItem('csmate:history:last', '{bad-json')
+    appendHistoryEntry({ id: 'h-1', jobId: 'job-1', createdAt: 1 })
+    const lastRaw = storage.getItem('csmate:history:last')
+    const parsed = JSON.parse(lastRaw)
+    assert.ok(parsed.key.startsWith('time:'), 'last attempt should be refreshed with valid data')
   })
 })
 
