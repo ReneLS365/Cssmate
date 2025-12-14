@@ -1,12 +1,18 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { normalizeHistoryEntry, normalizeHistoryList } from '../js/history-normalizer.js'
+import { normalizeHistoryEntry, normalizeHistoryList, formatDateLabel } from '../js/history-normalizer.js'
 
 test('normalizeHistoryEntry respects timestamp for createdAt', () => {
   const entry = { id: 'case-a', timestamp: 1734094140000 }
   const normalized = normalizeHistoryEntry(entry)
   assert.equal(normalized.createdAt, 1734094140000)
   assert.equal(normalized.id, 'case-a')
+})
+
+test('formatDateLabel returns local date without shift', () => {
+  const timestamp = Date.UTC(2025, 11, 14, 8, 9)
+  const label = formatDateLabel(timestamp, { timeZone: 'Europe/Copenhagen' })
+  assert.ok(label.startsWith('14-12-2025'))
 })
 
 test('normalizeHistoryEntry parses worker rate text into base range', () => {

@@ -928,6 +928,8 @@ const HISTORY_PAGE_SIZE = 50;
 let historyVisibleCount = HISTORY_PAGE_SIZE;
 let historyFilters = { recentDays: 0, requireCaseNumber: false, requireWorkerRates: false };
 let openHistoryId = null;
+let normalizedHistoryCache = [];
+let filteredHistoryCache = [];
 let draftSaveTimer = null;
 let lastDraftSerialized = '';
 const DRAFT_SAVE_DEBOUNCE = 350;
@@ -1807,7 +1809,7 @@ function setupHistorySearch() {
     historySearchTerm = input.value || '';
     historyVisibleCount = HISTORY_PAGE_SIZE;
     renderHistoryList(recentCasesCache);
-  }, 200);
+  }, 120);
   input.addEventListener('input', handleInput);
   searchLabel.appendChild(label);
   searchLabel.appendChild(input);
@@ -1860,7 +1862,9 @@ function setupHistorySearch() {
   controls.appendChild(searchWrapper);
 }
 
-const formatHistoryTimestamp = value => formatDateLabel(value);
+const formatHistoryTimestamp = value => formatDateLabel(value, {
+  timeZone: typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : undefined,
+});
 
 function matchesHistorySearch(entry, term) {
   const needle = normalizeSearchValue(term);
@@ -1964,37 +1968,76 @@ function buildWageDetails(entry) {
   return container;
 }
 
+const formatHistoryCurrency = value => new Intl.NumberFormat('da-DK', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+}).format(value || 0);
+
+function resolveHistoryTotal (entry = {}) {
+  const totals = entry?.totals || entry?.data?.totals || entry?.payload?.totals || {};
+  const candidates = [
+    totals.projektsum,
+    totals.projectTotal,
+    totals.total,
+    totals.sum,
+    totals.projektsumInklMoms,
+    totals.projektsumExMoms,
+    totals.loensum,
+    totals.loensumTotal,
+  ];
+  for (const candidate of candidates) {
+    const num = toNumber(candidate);
+    if (num > 0) return num;
+  }
+  return 0;
+}
+
 function buildHistoryListItem(entry) {
   const normalized = entry?.displayBaseWage ? entry : normalizeHistoryEntry(entry);
   if (!normalized) return null;
   const info = deriveSagsinfoFromEntry(normalized);
   const li = document.createElement('li');
-  li.className = 'history-item';
+  li.className = 'history-item history-row';
   li.dataset.id = normalized.id;
 
-  const header = document.createElement('button');
-  header.type = 'button';
-  header.className = 'history-item__header';
+  const header = document.createElement('div');
+  header.className = 'history-item__header history-row__summary';
   header.dataset.action = 'toggle-history-row';
   header.dataset.id = normalized.id;
-  const dateLine = document.createElement('div');
-  dateLine.className = 'history-item__line history-item__date';
-  dateLine.textContent = normalized.displayDateWithAddress || normalized.displayDate || '–';
-  const secondLine = document.createElement('div');
-  secondLine.className = 'history-item__line history-item__meta-line';
-  const hoursText = normalized.displayHours || '–';
-  const baseText = normalized.displayBaseWage || '–';
-  secondLine.textContent = `${hoursText} · ${baseText}`;
-  const headerText = document.createElement('div');
-  headerText.className = 'history-item__meta';
-  headerText.append(dateLine, secondLine);
-  const chevron = document.createElement('span');
-  chevron.className = 'history-item__chevron';
-  chevron.setAttribute('aria-hidden', 'true');
-  header.append(headerText, chevron);
+  header.setAttribute('role', 'button');
+  header.tabIndex = 0;
+
+  const dateCell = document.createElement('div');
+  dateCell.className = 'history-row__cell history-row__cell--date';
+  dateCell.textContent = normalized.displayDate || formatHistoryTimestamp(normalized.createdAt);
+
+  const metaCell = document.createElement('div');
+  metaCell.className = 'history-row__cell history-row__cell--meta';
+  const metaParts = [];
+  if (info.sagsnummer) metaParts.push(info.sagsnummer);
+  const secondary = [info.navn, info.kunde || info.adresse].filter(Boolean).join(' · ');
+  if (secondary) metaParts.push(secondary);
+  metaCell.textContent = metaParts.filter(Boolean).join(' — ') || info.adresse || '–';
+
+  const totalCell = document.createElement('div');
+  totalCell.className = 'history-row__cell history-row__cell--amount';
+  const totalValue = resolveHistoryTotal(normalized);
+  totalCell.textContent = totalValue > 0 ? `${formatHistoryCurrency(totalValue)} kr` : '–';
+
+  const actionsCell = document.createElement('div');
+  actionsCell.className = 'history-row__cell history-row__cell--actions';
+  const loadBtn = document.createElement('button');
+  loadBtn.type = 'button';
+  loadBtn.dataset.id = normalized.id;
+  loadBtn.dataset.action = 'load-history';
+  loadBtn.textContent = 'Indlæs';
+  actionsCell.append(loadBtn);
+
+  header.append(dateCell, metaCell, totalCell, actionsCell);
 
   const body = document.createElement('div');
   body.className = 'history-item__body';
+  body.hidden = true;
 
   const infoBlock = document.createElement('div');
   infoBlock.className = 'history-item__info';
@@ -2010,18 +2053,13 @@ function buildHistoryListItem(entry) {
 
   const actions = document.createElement('div');
   actions.className = 'history-item__actions';
-  const loadBtn = document.createElement('button');
-  loadBtn.type = 'button';
-  loadBtn.dataset.id = normalized.id;
-  loadBtn.dataset.action = 'load-history';
-  loadBtn.textContent = 'Indlæs sag';
   const deleteBtn = document.createElement('button');
   deleteBtn.type = 'button';
   deleteBtn.className = 'history-list__delete';
   deleteBtn.dataset.id = normalized.id;
   deleteBtn.dataset.action = 'delete-history';
   deleteBtn.textContent = 'Slet';
-  actions.append(loadBtn, deleteBtn);
+  actions.append(deleteBtn);
   body.appendChild(actions);
 
   const isOpen = openHistoryId && String(openHistoryId) === String(normalized.id);
@@ -2047,10 +2085,9 @@ function renderHistoryList(entries = recentCasesCache) {
   const list = getDomElement('historyList');
   if (!list) return;
   list.innerHTML = '';
-  const cases = Array.isArray(entries)
-    ? entries.map(normalizeHistoryEntry).filter(Boolean)
-    : [];
+  const cases = Array.isArray(entries) ? entries : [];
   const filtered = filterHistoryEntries(cases);
+  filteredHistoryCache = filtered;
   if (openHistoryId && !filtered.some(entry => String(entry.id) === String(openHistoryId))) {
     openHistoryId = null;
   }
@@ -2068,9 +2105,10 @@ function renderHistoryList(entries = recentCasesCache) {
   }
 
   const visible = filtered.slice(0, historyVisibleCount);
+  const fragment = document.createDocumentFragment();
   visible.forEach(entry => {
     const item = buildHistoryListItem(entry);
-    if (item) list.appendChild(item);
+    if (item) fragment.appendChild(item);
   });
 
   if (filtered.length > visible.length) {
@@ -2084,9 +2122,10 @@ function renderHistoryList(entries = recentCasesCache) {
       renderHistoryList(entries);
     });
     more.appendChild(button);
-    list.appendChild(more);
+    fragment.appendChild(more);
   }
 
+  list.appendChild(fragment);
   setHistoryListBusy(false);
 }
 
@@ -2131,6 +2170,17 @@ function setupHistoryListActions() {
       syncRecentProjectsGlobal(recentCasesCache);
       renderHistoryList(recentCasesCache);
       populateRecentCases();
+    }
+  });
+
+  list.addEventListener('keydown', event => {
+    if (!(event.target instanceof HTMLElement)) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      const toggle = event.target.closest('[data-action="toggle-history-row"]');
+      if (toggle) {
+        event.preventDefault();
+        toggle.click();
+      }
     }
   });
 }
@@ -2227,6 +2277,8 @@ async function populateRecentCases() {
   setHistoryListBusy(true);
   const cases = await getRecentProjects();
   recentCasesCache = cases;
+  normalizedHistoryCache = cases;
+  filteredHistoryCache = cases;
   historyVisibleCount = HISTORY_PAGE_SIZE;
   syncRecentProjectsGlobal(recentCasesCache);
   const previousValue = select?.value || '';
@@ -2379,9 +2431,16 @@ function buildHistoryEntryFromSnapshot(snapshot, exportInfo = {}) {
   const info = deriveSagsinfoFromEntry({ data: snapshot, payload: exportInfo.jobPayload });
   const totals = exportInfo.totals || snapshot.totals || {};
   const createdAt = exportInfo.timestamp || snapshot.timestamp || Date.now();
+  const timeZone = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : undefined;
+  const tzOffsetMin = new Date(createdAt).getTimezoneOffset();
   return {
     id: exportInfo.id,
     createdAt,
+    createdAtMs: createdAt,
+    updatedAt: createdAt,
+    updatedAtMs: createdAt,
+    tzOffsetMin,
+    timeZone,
     meta: { ...info },
     totals,
     payload: exportInfo.jobPayload || snapshot.payload || null,
@@ -2400,6 +2459,8 @@ async function persistProjectSnapshot(exportInfo) {
     const normalized = normalizeHistoryEntry(saved);
     if (normalized) {
       recentCasesCache = [normalized, ...recentCasesCache.filter(item => String(item?.id) !== String(normalized.id))];
+      normalizedHistoryCache = recentCasesCache;
+      filteredHistoryCache = filterHistoryEntries(normalizedHistoryCache);
       syncRecentProjectsGlobal(recentCasesCache);
       renderHistoryList(recentCasesCache);
     }

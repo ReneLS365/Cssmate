@@ -37,12 +37,22 @@ function notifyHistory(type, detail = {}) {
 function buildHistoryMetaFromContext(context) {
   const info = context?.model?.info || {};
   const meta = context?.model?.meta || {};
+  const formatDate = (value) => {
+    if (!value) return '';
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.valueOf())) return '';
+    try {
+      return new Intl.DateTimeFormat('sv-SE').format(date);
+    } catch {
+      return date.toISOString().slice(0, 10);
+    }
+  };
   return {
     sagsnummer: info.sagsnummer || meta.caseNumber || '',
     navn: info.navn || meta.caseName || '',
     adresse: info.adresse || meta.address || '',
     kunde: info.kunde || meta.customer || '',
-    dato: (info.dato || meta.date || context.exportedAt || '').toString().slice(0, 10),
+    dato: formatDate(info.dato || meta.date || context.exportedAt),
     montoer: info.montoer || info.worker || meta.montoer || '',
   };
 }
@@ -50,8 +60,16 @@ function buildHistoryMetaFromContext(context) {
 function saveExportHistory(context) {
   if (!context?.snapshot) return null;
   try {
+    const createdAt = Date.now();
+    const timeZone = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : undefined;
+    const tzOffsetMin = new Date(createdAt).getTimezoneOffset();
     const entry = {
-      createdAt: Date.now(),
+      createdAt,
+      createdAtMs: createdAt,
+      updatedAt: createdAt,
+      updatedAtMs: createdAt,
+      tzOffsetMin,
+      timeZone,
       meta: buildHistoryMetaFromContext(context),
       totals: context.model?.totals || {},
       payload: context.snapshot,
