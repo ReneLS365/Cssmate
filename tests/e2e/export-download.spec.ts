@@ -9,6 +9,16 @@ async function persistDownload(download, testInfo, fallbackName) {
   return targetPath
 }
 
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status === testInfo.expectedStatus) return
+  try {
+    const debug = await page.evaluate(() => window.__exportDebug || [])
+    console.log('export debug:', JSON.stringify(debug, null, 2))
+  } catch (error) {
+    console.log('export debug unavailable', error)
+  }
+})
+
 test('eksport af akkordseddel downloader PDF og JSON', async ({ page }, testInfo) => {
   const uniqueJob = `E2E-EXPORT-${Date.now()}`
 
@@ -77,14 +87,12 @@ test('eksport af akkordseddel downloader PDF og JSON', async ({ page }, testInfo
   await expect(page.locator('#btn-export-akkord-demontage')).toHaveCount(0)
   await expect(page.locator('#btn-export-akkord-json')).toHaveCount(0)
 
-  const downloadPromises = [
+  const [firstDownload, secondDownload] = await Promise.all([
     page.waitForEvent('download', { timeout: 15000 }),
     page.waitForEvent('download', { timeout: 15000 }),
-  ]
-
-  await pdfButton.click()
-
-  const downloads = await Promise.all(downloadPromises)
+    pdfButton.click(),
+  ])
+  const downloads = [firstDownload, secondDownload]
 
   const pdfDownload = downloads.find(entry => entry.suggestedFilename().toLowerCase().endsWith('.pdf'))
   const jsonDownload = downloads.find(entry => entry.suggestedFilename().toLowerCase().endsWith('.json'))

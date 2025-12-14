@@ -9,7 +9,7 @@ if (versionScriptUrl) {
   importScripts('/js/version.js')
 }
 
-const CACHE_VERSION = 'sscaff-v-20251220120000000' // bumped to refresh caches after sticky search + zoom UI changes
+const CACHE_VERSION = 'sscaff-v-20251214154034273' // bumped to refresh caches after sticky search + zoom UI changes
 const CACHE_NAME = 'sscaff-' + CACHE_VERSION
 const PRECACHE_URLS = [
   '/',

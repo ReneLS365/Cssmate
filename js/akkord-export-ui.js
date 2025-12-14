@@ -5,7 +5,56 @@ import { buildAkkordJsonPayload } from './export-json.js';
 import { buildExportModel } from './export-model.js';
 import { buildExportFileBaseName, buildJobSnapshot } from './job-snapshot.js';
 import { appendHistoryEntry } from './storageHistory.js';
-import { downloadBlob } from './utils/downloadBlob.js';
+
+function isDebugExportEnabled() {
+  if (typeof window === 'undefined') return false;
+  try {
+    const params = new URLSearchParams(window.location?.search || '');
+    const flagFromQuery = params.get('debugExport');
+    const flagFromStorage = window.localStorage?.getItem?.('debugExport');
+    return flagFromQuery === '1' || flagFromStorage === '1';
+  } catch {
+    return false;
+  }
+}
+
+function getDebugBuffer() {
+  if (typeof window === 'undefined') return null;
+  if (!isDebugExportEnabled()) return null;
+  if (!window.__exportDebug) window.__exportDebug = [];
+  return window.__exportDebug;
+}
+
+function exportDebugLog(event, detail = {}) {
+  const buffer = getDebugBuffer();
+  if (!buffer) return;
+  buffer.push({ event, detail, ts: Date.now() });
+}
+
+function downloadBlob(blob, fileName) {
+  if (!blob || typeof document === 'undefined' || typeof URL === 'undefined') return;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  if (!a) return;
+  a.href = url;
+  a.download = typeof fileName === 'string' && fileName.trim() ? fileName : 'download';
+  a.rel = 'noopener';
+  if (document.body?.appendChild) {
+    document.body.appendChild(a);
+  }
+  exportDebugLog('download_trigger', { fileName: a.download });
+  if (typeof a.click === 'function') {
+    a.click();
+  }
+  if (typeof a.remove === 'function') a.remove();
+  const revoke = () => {
+    try { URL.revokeObjectURL(url); } catch {}
+  };
+  const timer = typeof window !== 'undefined' && typeof window.setTimeout === 'function'
+    ? window.setTimeout
+    : setTimeout;
+  timer(revoke, 1500);
+}
 
 let buildAkkordDataImpl = buildAkkordData;
 let exportPDFBlobImpl = exportPDFBlob;
@@ -13,11 +62,11 @@ let buildAkkordJsonPayloadImpl = buildAkkordJsonPayload;
 let handleImportAkkordImpl = handleImportAkkord;
 let buildJobSnapshotImpl = buildJobSnapshot;
 
-  export function initExportPanel() {
-    bind('#btn-print-akkord', handlePrintAkkord);
-    bind('#btn-export-akkord-pdf', handleExportAkkordPDF);
-    bind('#btn-import-akkord', (event) => handleImportAkkordAction(event));
-  }
+export function initExportPanel() {
+  bind('#btn-print-akkord', handlePrintAkkord);
+  bind('#btn-export-akkord-pdf', handleExportAkkordPDF);
+  bind('#btn-import-akkord', (event) => handleImportAkkordAction(event));
+}
 
 function bind(sel, fn) {
   const el = document.querySelector(sel);
@@ -94,16 +143,6 @@ export async function exportAkkordJsonAndPdf(options = {}) {
     notifyAction('Eksporterer akkordseddel (JSON + PDF)…', 'info');
     const context = buildExportContext();
     context.historySaved = Boolean(saveExportHistory(context));
-    const pdfResult = await exportPdfFromContext(context).catch(error => {
-      exportErrors.push(error);
-      console.error('PDF export failed', error);
-      const fallback = 'Der opstod en fejl under PDF-eksporten. Prøv igen – eller kontakt kontoret.';
-      const message = error?.message ? `${fallback} (${error.message})` : fallback;
-      notifyAction(message, 'error');
-      return null;
-    });
-    await waitForDownloadTick(250);
-
     const jsonResult = (() => {
       try {
         return exportJsonFromContext(context);
@@ -116,6 +155,16 @@ export async function exportAkkordJsonAndPdf(options = {}) {
         return null;
       }
     })();
+    await waitForDownloadTick(250);
+
+    const pdfResult = await exportPdfFromContext(context).catch(error => {
+      exportErrors.push(error);
+      console.error('PDF export failed', error);
+      const fallback = 'Der opstod en fejl under PDF-eksporten. Prøv igen – eller kontakt kontoret.';
+      const message = error?.message ? `${fallback} (${error.message})` : fallback;
+      notifyAction(message, 'error');
+      return null;
+    });
     await waitForDownloadTick(250);
 
     if (exportErrors.length === 2 || !jsonResult || !pdfResult) {
@@ -142,13 +191,13 @@ function handlePrintAkkord(event) {
   done();
 }
 
-  async function handleExportAkkordPDF(event) {
-    return exportAkkordJsonAndPdf({ button: event?.currentTarget });
-  }
+async function handleExportAkkordPDF(event) {
+  return exportAkkordJsonAndPdf({ button: event?.currentTarget });
+}
 
-  async function handleImportAkkordAction(event) {
-    const button = event?.currentTarget;
-    const done = setBusy(button, true, { busyText: 'Importerer…', doneText: 'Import klar' });
+async function handleImportAkkordAction(event) {
+  const button = event?.currentTarget;
+  const done = setBusy(button, true, { busyText: 'Importerer…', doneText: 'Import klar' });
   try {
     await handleImportAkkordImpl();
     notifyAction('Import gennemført.', 'success');
@@ -203,6 +252,7 @@ async function exportPdfFromContext(context) {
   });
   if (!payload?.blob) throw new Error('Mangler PDF payload');
   const filename = ensurePdfExtension(`${context.baseName}.pdf`);
+  exportDebugLog('pdf_blob', { size: payload.blob?.size });
   downloadBlob(payload.blob, filename);
   notifyAction('PDF er gemt til din enhed.', 'success');
   notifyHistory('pdf', { baseName: context.baseName, fileName: filename, historySaved: context?.historySaved });
@@ -229,6 +279,7 @@ function exportJsonFromContext(context) {
   } catch {}
   const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
   const fileName = payload.fileName || `${context.baseName}.json`;
+  exportDebugLog('json_blob', { size: blob.size });
   downloadBlob(blob, fileName);
   notifyAction('Akkordseddel (JSON) er gemt.', 'success');
   notifyHistory('json', { baseName: context.baseName, fileName, historySaved: context?.historySaved });
