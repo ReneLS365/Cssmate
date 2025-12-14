@@ -94,6 +94,16 @@ export async function exportAkkordJsonAndPdf(options = {}) {
     notifyAction('Eksporterer akkordseddel (JSON + PDF)…', 'info');
     const context = buildExportContext();
     context.historySaved = Boolean(saveExportHistory(context));
+    const pdfResult = await exportPdfFromContext(context).catch(error => {
+      exportErrors.push(error);
+      console.error('PDF export failed', error);
+      const fallback = 'Der opstod en fejl under PDF-eksporten. Prøv igen – eller kontakt kontoret.';
+      const message = error?.message ? `${fallback} (${error.message})` : fallback;
+      notifyAction(message, 'error');
+      return null;
+    });
+    await waitForDownloadTick(250);
+
     const jsonResult = (() => {
       try {
         return exportJsonFromContext(context);
@@ -106,17 +116,7 @@ export async function exportAkkordJsonAndPdf(options = {}) {
         return null;
       }
     })();
-    await waitForDownloadTick();
-
-    const pdfResult = await exportPdfFromContext(context).catch(error => {
-      exportErrors.push(error);
-      console.error('PDF export failed', error);
-      const fallback = 'Der opstod en fejl under PDF-eksporten. Prøv igen – eller kontakt kontoret.';
-      const message = error?.message ? `${fallback} (${error.message})` : fallback;
-      notifyAction(message, 'error');
-      return null;
-    });
-    await waitForDownloadTick();
+    await waitForDownloadTick(250);
 
     if (exportErrors.length === 2 || !jsonResult || !pdfResult) {
       throw exportErrors[0] || new Error('Eksport mislykkedes');

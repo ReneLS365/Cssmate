@@ -3,9 +3,14 @@ export function downloadBlob(blob, filename) {
   const safeName = typeof filename === 'string' && filename.trim() ? filename : 'download';
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
+  if (!link || typeof link.style === 'undefined') return;
   link.href = url;
   link.download = safeName;
-  (document.body || document.documentElement).appendChild(link);
+  link.rel = 'noopener';
+  link.style.display = 'none';
+
+  const root = document.body || document.documentElement;
+  root.appendChild(link);
 
   try {
     if (typeof link.click === 'function') link.click();
@@ -22,6 +27,6 @@ export function downloadBlob(blob, filename) {
     ? window.setTimeout
     : setTimeout;
 
-  timer(() => link.remove(), 750);
+  timer(() => link.remove(), 1000);
   timer(() => URL.revokeObjectURL(url), 1500);
 }
