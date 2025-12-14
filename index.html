@@ -42,29 +42,33 @@
     <header data-allow-click>
       <div class="bar">
         <h1 class="ttl">akkordseddel</h1>
-        <nav class="tabs" role="tablist" aria-label="SSCaff sektioner">
-          <button id="tab-sagsinfo" class="tab tab--active" type="button" role="tab" data-tab-id="sagsinfo" aria-controls="panel-sagsinfo" aria-selected="true">Sagsinfo</button>
-          <button id="tab-optaelling" class="tab" type="button" role="tab" data-tab-id="optaelling" aria-controls="panel-optaelling" aria-selected="false">Optælling</button>
-          <button id="tab-lon" class="tab" type="button" role="tab" data-tab-id="lon" aria-controls="panel-lon" aria-selected="false">Løn</button>
-          <button id="tab-historik" class="tab" type="button" role="tab" data-tab-id="historik" aria-controls="panel-historik" aria-selected="false">Historik</button>
-          <button id="tab-hjaelp" class="tab" type="button" role="tab" data-tab-id="hjaelp" aria-controls="panel-hjaelp" aria-selected="false">Hjælp</button>
-        </nav>
-        <div class="ui-scale-control no-print" data-allow-click>
-          <button id="uiScaleToggle" class="icon-button ui-scale-toggle" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="uiScalePopover" aria-label="Juster zoom">🔍</button>
-          <div id="uiScalePopover" class="ui-scale-popover" hidden>
-            <div class="ui-scale-row">
-              <button type="button" class="ui-scale-chip" data-scale-step="-0.05" aria-label="Zoom ud">−</button>
-              <span class="ui-scale-value" id="uiScaleValue">100%</span>
-              <button type="button" class="ui-scale-chip" data-scale-step="0.05" aria-label="Zoom ind">+</button>
-            </div>
-            <div class="ui-scale-row ui-scale-presets" role="group" aria-label="Zoom-forvalg">
-              <button type="button" class="ui-scale-chip" data-scale="0.75">75%</button>
-              <button type="button" class="ui-scale-chip" data-scale="0.9">90%</button>
-              <button type="button" class="ui-scale-chip" data-scale="1">100%</button>
-              <button type="button" class="ui-scale-chip" data-scale="1.1">110%</button>
-            </div>
-            <div class="ui-scale-row">
-              <button type="button" class="ui-scale-reset" data-scale-reset="1">Nulstil</button>
+        <div class="topbar-nav">
+          <nav class="tabs" role="tablist" aria-label="SSCaff sektioner">
+            <button id="tab-sagsinfo" class="tab tab--active" type="button" role="tab" data-tab-id="sagsinfo" aria-controls="panel-sagsinfo" aria-selected="true">Sagsinfo</button>
+            <button id="tab-optaelling" class="tab" type="button" role="tab" data-tab-id="optaelling" aria-controls="panel-optaelling" aria-selected="false">Optælling</button>
+            <button id="tab-lon" class="tab" type="button" role="tab" data-tab-id="lon" aria-controls="panel-lon" aria-selected="false">Løn</button>
+            <button id="tab-historik" class="tab" type="button" role="tab" data-tab-id="historik" aria-controls="panel-historik" aria-selected="false">Historik</button>
+            <button id="tab-hjaelp" class="tab" type="button" role="tab" data-tab-id="hjaelp" aria-controls="panel-hjaelp" aria-selected="false">Hjælp</button>
+          </nav>
+          <div class="topbar-actions">
+            <div class="ui-scale-control no-print" data-allow-click>
+              <button id="uiScaleToggle" class="icon-button ui-scale-toggle" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="uiScalePopover" aria-label="Juster zoom">🔍</button>
+              <div id="uiScalePopover" class="ui-scale-popover" hidden>
+                <div class="ui-scale-row">
+                  <button type="button" class="ui-scale-chip" data-scale-step="-0.05" aria-label="Zoom ud">−</button>
+                  <span class="ui-scale-value" id="uiScaleValue">100%</span>
+                  <button type="button" class="ui-scale-chip" data-scale-step="0.05" aria-label="Zoom ind">+</button>
+                </div>
+                <div class="ui-scale-row ui-scale-presets" role="group" aria-label="Zoom-forvalg">
+                  <button type="button" class="ui-scale-chip" data-scale="0.75">75%</button>
+                  <button type="button" class="ui-scale-chip" data-scale="0.9">90%</button>
+                  <button type="button" class="ui-scale-chip" data-scale="1">100%</button>
+                  <button type="button" class="ui-scale-chip" data-scale="1.1">110%</button>
+                </div>
+                <div class="ui-scale-row">
+                  <button type="button" class="ui-scale-reset" data-scale-reset="1">Nulstil</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
