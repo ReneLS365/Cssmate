@@ -274,6 +274,7 @@ function ensureMaterialsUiReady () {
     materialsUiReadyPromise = ensureMaterialsDataLoad()
       .then(() => {
         setupListSelectors()
+        setupMaterialSearchUi()
         renderOptaelling()
         setupCSVImport()
         populateRecentCases()
@@ -903,6 +904,13 @@ const AKKORD_EXCEL_SYSTEMS = [
   { id: 'alfix', label: 'ALFIX 2025' },
 ];
 const AKKORD_EXCEL_STORAGE_KEY = 'csmate.akkordExcelSystem';
+const MATERIAL_SEARCH_DEBOUNCE_MS = 130;
+const MATERIAL_SEARCH_SUGGESTION_LIMIT = 6;
+const UI_SCALE_STORAGE_KEY = 'sscaff.uiScale';
+const UI_SCALE_DEFAULT = 1;
+const UI_SCALE_MIN = 0.75;
+const UI_SCALE_MAX = 1.1;
+const UI_SCALE_STEP = 0.05;
 let systemDatasets = {};
 let dataBosta = [];
 let dataHaki = [];
@@ -922,6 +930,19 @@ let datasetModulePromise = null;
 let materialsReady = false;
 let showOnlySelectedMaterials = false;
 let lastRenderShowSelected = null;
+let materialsSearchQuery = '';
+let materialsSearchQueryNormalized = '';
+let materialsSearchInput = null;
+let materialsSearchClearBtn = null;
+let materialsSearchStats = null;
+let materialsSearchSuggestions = null;
+let materialsSearchDebounce = null;
+let lastMaterialBaseList = [];
+let lastRenderedMaterials = [];
+let detachMaterialScrollHandler = null;
+let uiScale = UI_SCALE_DEFAULT;
+let uiScalePopover = null;
+let uiScaleToggle = null;
 let lonOutputsRevealed = false;
 let historySearchTerm = '';
 const HISTORY_PAGE_SIZE = 50;
@@ -934,11 +955,144 @@ let draftSaveTimer = null;
 let lastDraftSerialized = '';
 const DRAFT_SAVE_DEBOUNCE = 350;
 
+function clampUiScale(value) {
+  const numeric = Number.parseFloat(value);
+  if (!Number.isFinite(numeric)) return UI_SCALE_DEFAULT;
+  return Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, numeric));
+}
+
+function applyUiScale(value) {
+  uiScale = clampUiScale(value);
+  if (typeof document !== 'undefined' && document.documentElement?.style) {
+    document.documentElement.style.setProperty('--uiScale', uiScale);
+    const label = document.getElementById('uiScaleValue');
+    if (label) {
+      label.textContent = `${Math.round(uiScale * 100)}%`;
+    }
+  }
+  try {
+    window.localStorage?.setItem(UI_SCALE_STORAGE_KEY, String(uiScale));
+  } catch {}
+}
+
+function bootstrapUiScale() {
+  if (typeof window === 'undefined') {
+    applyUiScale(UI_SCALE_DEFAULT);
+    return;
+  }
+  let next = UI_SCALE_DEFAULT;
+  try {
+    const stored = window.localStorage?.getItem(UI_SCALE_STORAGE_KEY);
+    const parsed = Number.parseFloat(stored);
+    if (Number.isFinite(parsed)) {
+      next = parsed;
+    }
+  } catch {}
+  applyUiScale(next);
+}
+
+function changeUiScale(delta) {
+  const step = Number.isFinite(delta) ? delta : UI_SCALE_STEP;
+  const next = uiScale + step;
+  applyUiScale(next);
+}
+
+function setupUiScaleControls() {
+  uiScaleToggle = document.getElementById('uiScaleToggle');
+  uiScalePopover = document.getElementById('uiScalePopover');
+  const valueLabel = document.getElementById('uiScaleValue');
+  if (valueLabel) {
+    valueLabel.textContent = `${Math.round(uiScale * 100)}%`;
+  }
+  if (!uiScaleToggle || !uiScalePopover) return;
+
+  const togglePopover = open => {
+    if (!uiScalePopover) return;
+    if (open) {
+      uiScalePopover.removeAttribute('hidden');
+      uiScaleToggle?.setAttribute('aria-expanded', 'true');
+    } else {
+      uiScalePopover.setAttribute('hidden', '');
+      uiScaleToggle?.setAttribute('aria-expanded', 'false');
+    }
+  };
+
+  uiScaleToggle.addEventListener('click', event => {
+    event.stopPropagation();
+    const shouldOpen = uiScalePopover?.hasAttribute('hidden');
+    togglePopover(shouldOpen);
+  });
+
+  uiScalePopover.addEventListener('click', event => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.dataset.scale) {
+      applyUiScale(Number.parseFloat(target.dataset.scale));
+      togglePopover(false);
+    } else if (target.dataset.scaleStep) {
+      changeUiScale(Number.parseFloat(target.dataset.scaleStep));
+    } else if (target.dataset.scaleReset) {
+      applyUiScale(UI_SCALE_DEFAULT);
+      togglePopover(false);
+    }
+  });
+
+  document.addEventListener('click', event => {
+    if (!uiScalePopover || uiScalePopover.hasAttribute('hidden')) return;
+    if (uiScalePopover.contains(event.target) || uiScaleToggle?.contains(event.target)) return;
+    togglePopover(false);
+  });
+
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && uiScalePopover && !uiScalePopover.hasAttribute('hidden')) {
+      togglePopover(false);
+    }
+  });
+}
+
+bootstrapUiScale();
+
 function loadMaterialDatasetModule () {
   if (!datasetModulePromise) {
     datasetModulePromise = import('./dataset.js');
   }
   return datasetModulePromise;
+}
+
+function normalizeQuery(value) {
+  if (value == null) return '';
+  return String(value)
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildSearchKey(item) {
+  if (!item) return '';
+  const parts = [];
+  const name = item.name || item.label || '';
+  const systemKey = item.systemKey || item.system || '';
+  const systemLabel = item.systemLabel || SYSTEM_ACCESSIBLE_LABELS[systemKey];
+  if (name) parts.push(name);
+  if (systemKey) parts.push(systemKey);
+  if (systemLabel) parts.push(systemLabel);
+  if (item.id) parts.push(item.id);
+  return normalizeQuery(parts.join(' '));
+}
+
+function getMaterialSearchKey(item) {
+  if (!item) return '';
+  if (item.searchKey) return item.searchKey;
+  const key = buildSearchKey(item);
+  item.searchKey = key;
+  return key;
+}
+
+function updateMaterialSearchKey(item) {
+  if (!item) return '';
+  const key = buildSearchKey(item);
+  item.searchKey = key;
+  return key;
 }
 
 // --- Scaffold Part Lists ---
@@ -967,6 +1121,8 @@ function createSystemMaterialState(system) {
         unit: item?.unit || item?.enhed || '',
         quantity: 0,
         systemKey: system.id,
+        systemLabel: system.label,
+        searchKey: buildSearchKey({ name, id: idValue, systemKey: system.id, systemLabel: system.label }),
         category: typeof item?.category === 'string'
           ? item.category.toLowerCase()
           : 'material',
@@ -1191,6 +1347,7 @@ const manualMaterials = Array.from({ length: 3 }, (_, index) => ({
   price: 0,
   quantity: 0,
   manual: true,
+  searchKey: '',
 }));
 
 function getAllData(includeManual = true) {
@@ -1209,11 +1366,169 @@ function getRenderMaterials() {
     ? activeItems.concat(manualMaterials)
     : manualMaterials.slice();
 
-  if (!showOnlySelectedMaterials) {
-    return combined;
+  const baseList = showOnlySelectedMaterials
+    ? combined.filter(item => toNumber(item?.quantity) > 0)
+    : combined;
+  lastMaterialBaseList = baseList;
+
+  if (!materialsSearchQueryNormalized) {
+    updateMaterialSearchStats(baseList.length, baseList.length);
+    updateMaterialSuggestions();
+    return baseList;
   }
 
-  return combined.filter(item => toNumber(item?.quantity) > 0);
+  const filtered = baseList.filter(item => {
+    const key = getMaterialSearchKey(item);
+    return key ? key.includes(materialsSearchQueryNormalized) : false;
+  });
+  updateMaterialSearchStats(filtered.length, baseList.length);
+  updateMaterialSuggestions();
+  return filtered;
+}
+
+function updateMaterialSearchStats(visible = 0, total = 0) {
+  if (!materialsSearchStats) return;
+  if (!total) {
+    materialsSearchStats.textContent = '';
+    return;
+  }
+  materialsSearchStats.textContent = `Viser ${visible} / ${total}`;
+}
+
+function clearMaterialSuggestions() {
+  if (!materialsSearchSuggestions) return;
+  materialsSearchSuggestions.innerHTML = '';
+  materialsSearchSuggestions.setAttribute('hidden', '');
+}
+
+function scrollFirstMaterialMatch(normalizedQuery) {
+  if (!normalizedQuery || !materialsVirtualListController || !materialsVirtualListController.container) return;
+  const index = lastRenderedMaterials.findIndex(item => {
+    const key = getMaterialSearchKey(item);
+    return key && key.includes(normalizedQuery);
+  });
+  if (index < 0) return;
+  const rowHeight = materialsVirtualListController.rowHeight || 64;
+  const targetScroll = Math.max(index - 1, 0) * rowHeight;
+  try {
+    materialsVirtualListController.container.scrollTo({ top: targetScroll, behavior: 'smooth' });
+  } catch {
+    materialsVirtualListController.container.scrollTop = targetScroll;
+  }
+}
+
+function updateMaterialSuggestions() {
+  if (!materialsSearchSuggestions) return;
+  if (!materialsSearchQueryNormalized || materialsSearchQueryNormalized.length < 2 || lastMaterialBaseList.length === 0) {
+    clearMaterialSuggestions();
+    return;
+  }
+
+  const suggestions = [];
+  const seen = new Set();
+  for (const item of lastMaterialBaseList) {
+    const key = getMaterialSearchKey(item);
+    if (!key || !key.includes(materialsSearchQueryNormalized)) continue;
+    const label = item.name || item.id || 'Materiale';
+    const normalizedLabel = normalizeQuery(label);
+    if (seen.has(normalizedLabel)) continue;
+    suggestions.push(label);
+    seen.add(normalizedLabel);
+    if (suggestions.length >= MATERIAL_SEARCH_SUGGESTION_LIMIT) break;
+  }
+
+  if (!suggestions.length) {
+    clearMaterialSuggestions();
+    return;
+  }
+
+  materialsSearchSuggestions.innerHTML = '';
+  const fragment = document.createDocumentFragment();
+  suggestions.forEach(text => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'material-search__suggestion';
+    btn.textContent = text;
+    btn.addEventListener('click', () => {
+      setMaterialSearchQuery(text, { immediate: true });
+      scrollFirstMaterialMatch(materialsSearchQueryNormalized);
+      clearMaterialSuggestions();
+      materialsSearchInput?.blur();
+    });
+    fragment.appendChild(btn);
+  });
+  materialsSearchSuggestions.appendChild(fragment);
+  materialsSearchSuggestions.removeAttribute('hidden');
+}
+
+function toggleMaterialSearchClear() {
+  if (!materialsSearchClearBtn) return;
+  const hasValue = Boolean(materialsSearchQuery);
+  materialsSearchClearBtn.hidden = !hasValue;
+}
+
+function setMaterialSearchQuery(value, { immediate = true, syncInput = true } = {}) {
+  materialsSearchQuery = value || '';
+  materialsSearchQueryNormalized = normalizeQuery(materialsSearchQuery);
+  if (syncInput && materialsSearchInput && materialsSearchInput.value !== materialsSearchQuery) {
+    materialsSearchInput.value = materialsSearchQuery;
+  }
+  toggleMaterialSearchClear();
+  if (immediate) {
+    renderOptaelling();
+  }
+}
+
+function scheduleMaterialSearchUpdate(value) {
+  if (materialsSearchDebounce) {
+    clearTimeout(materialsSearchDebounce);
+  }
+  materialsSearchDebounce = setTimeout(() => {
+    setMaterialSearchQuery(value);
+  }, MATERIAL_SEARCH_DEBOUNCE_MS);
+}
+
+function resetMaterialSearch(shouldRender = true) {
+  if (materialsSearchDebounce) {
+    clearTimeout(materialsSearchDebounce);
+    materialsSearchDebounce = null;
+  }
+  materialsSearchQuery = '';
+  materialsSearchQueryNormalized = '';
+  if (materialsSearchInput) {
+    materialsSearchInput.value = '';
+  }
+  toggleMaterialSearchClear();
+  clearMaterialSuggestions();
+  updateMaterialSearchStats(0, 0);
+  if (shouldRender) {
+    renderOptaelling();
+  }
+}
+
+function attachMaterialSearchScrollHandler(scrollElement) {
+  if (detachMaterialScrollHandler) {
+    detachMaterialScrollHandler();
+  }
+  if (!scrollElement) return;
+  let lastScrollTop = scrollElement.scrollTop;
+  let rafId = null;
+  const onScroll = () => {
+    const current = scrollElement.scrollTop;
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => {
+      if (Math.abs(current - lastScrollTop) > 10 && document.activeElement === materialsSearchInput) {
+        materialsSearchInput.blur();
+      }
+      lastScrollTop = current;
+    });
+  };
+  scrollElement.addEventListener('scroll', onScroll, { passive: true });
+  detachMaterialScrollHandler = () => {
+    scrollElement.removeEventListener('scroll', onScroll);
+    if (rafId) cancelAnimationFrame(rafId);
+    detachMaterialScrollHandler = null;
+  };
 }
 
 function findMaterialById(id) {
@@ -1284,6 +1599,71 @@ function setupListSelectors() {
   });
 }
 
+function setupMaterialSearchUi() {
+  const container = getDomElement('materialSearchBar');
+  if (!container || container.dataset.ready === 'true') return;
+  container.dataset.ready = 'true';
+  container.classList.add('material-search');
+
+  const row = document.createElement('div');
+  row.className = 'material-search__row';
+
+  const icon = document.createElement('span');
+  icon.className = 'material-search__icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = '🔍';
+
+  const input = document.createElement('input');
+  input.type = 'search';
+  input.placeholder = 'Søg materiale…';
+  input.autocomplete = 'off';
+  input.enterKeyHint = 'search';
+  input.inputMode = 'search';
+  input.setAttribute('aria-label', 'Søg efter materiale');
+
+  const clearBtn = document.createElement('button');
+  clearBtn.type = 'button';
+  clearBtn.className = 'material-search__clear';
+  clearBtn.textContent = '×';
+  clearBtn.hidden = true;
+
+  row.append(icon, input, clearBtn);
+
+  const meta = document.createElement('div');
+  meta.className = 'material-search__meta';
+  meta.setAttribute('aria-live', 'polite');
+
+  const suggestions = document.createElement('div');
+  suggestions.className = 'material-search__suggestions';
+  suggestions.setAttribute('hidden', '');
+
+  container.append(row, meta, suggestions);
+
+  materialsSearchInput = input;
+  materialsSearchClearBtn = clearBtn;
+  materialsSearchStats = meta;
+  materialsSearchSuggestions = suggestions;
+
+  input.addEventListener('input', event => {
+    const value = event?.target?.value ?? '';
+    scheduleMaterialSearchUpdate(value);
+    clearMaterialSuggestions();
+  });
+  input.addEventListener('focus', () => updateMaterialSuggestions());
+  input.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      resetMaterialSearch();
+    }
+  });
+
+  clearBtn.addEventListener('click', () => {
+    resetMaterialSearch();
+    materialsSearchInput?.focus();
+  });
+
+  toggleMaterialSearchClear();
+}
+
 function syncSystemSelectorState() {
   const container = getDomElement('listSelectors');
   if (!container) return;
@@ -1317,6 +1697,13 @@ function renderOptaelling() {
       materialsVirtualListController.controller.destroy?.();
       materialsVirtualListController = null;
     }
+    if (detachMaterialScrollHandler) {
+      detachMaterialScrollHandler();
+    }
+    lastMaterialBaseList = [];
+    lastRenderedMaterials = [];
+    updateMaterialSearchStats(0, 0);
+    clearMaterialSuggestions();
   };
 
   if (!materialsReady) {
@@ -1330,6 +1717,7 @@ function renderOptaelling() {
     ? activeItems.concat(manualMaterials)
     : manualMaterials.slice();
   const items = getRenderMaterials();
+  lastRenderedMaterials = items;
 
   if (!combinedItems.length) {
     showEmptyState('Ingen systemer valgt. Vælg et eller flere systemer for at starte optællingen.');
@@ -1380,10 +1768,12 @@ function renderOptaelling() {
       rowHeight: 64,
       overscan: 8
     })
-    materialsVirtualListController = { container: list, controller }
+    materialsVirtualListController = { container: list, controller, rowHeight: 64 }
   } else {
     materialsVirtualListController.controller.update(items)
   }
+
+  attachMaterialSearchScrollHandler(list)
 
   initMaterialsScrollLock(container)
   updateTotals(true)
@@ -1417,6 +1807,10 @@ function handleManualNameChange(event) {
   const item = findMaterialById(id);
   if (item && item.manual) {
     item.name = event.target.value;
+    updateMaterialSearchKey(item);
+    if (materialsSearchQueryNormalized) {
+      renderOptaelling();
+    }
   }
 }
 
@@ -2497,6 +2891,7 @@ function applyExtrasSnapshot(extras = {}) {
 
 function applyMaterialsSnapshot(materials = [], systems = []) {
   resetMaterials();
+  resetMaterialSearch(false);
   if (Array.isArray(systems) && systems.length) {
     selectedSystemKeys.clear();
     systems.forEach(key => selectedSystemKeys.add(key));
@@ -2526,6 +2921,7 @@ function applyMaterialsSnapshot(materials = [], systems = []) {
           slot.name = item.name || slot.name;
           slot.price = Number.isFinite(price) ? price : slot.price;
           slot.quantity = quantity;
+          updateMaterialSearchKey(slot);
         }
         return;
       }
@@ -2534,6 +2930,7 @@ function applyMaterialsSnapshot(materials = [], systems = []) {
         fallback.name = item?.name || '';
         fallback.price = Number.isFinite(price) ? price : 0;
         fallback.quantity = quantity;
+        updateMaterialSearchKey(fallback);
       }
     });
   }
@@ -2602,6 +2999,8 @@ function collectMaterialsFromPayload(payload = {}, { defaultSystem = '', priceDi
       quantity,
       price: unitPrice,
       system,
+      systemKey: system,
+      searchKey: buildSearchKey({ name: item.name || item.label || item.title || '', id: item.id || item.varenr || item.itemNumber, systemKey: system }),
     };
   }).filter(entry => entry && (entry.quantity || entry.name || entry.id));
 }
@@ -3458,6 +3857,7 @@ function resetMaterials() {
     item.name = '';
     item.price = 0;
     item.quantity = 0;
+    item.searchKey = '';
   });
 }
 
@@ -3705,6 +4105,7 @@ async function resetCurrentJob() {
     lastDraftSerialized = '';
     selectedSystemKeys.clear();
     resetMaterials();
+    resetMaterialSearch(false);
     renderOptaelling();
     laborEntries = [];
     resetWorkers();
@@ -5198,6 +5599,7 @@ async function initApp() {
   appInitialized = true;
 
   initTabs();
+  setupUiScaleControls();
 
   const optaellingContainer = getDomElement('optaellingContainer');
   if (optaellingContainer) {
