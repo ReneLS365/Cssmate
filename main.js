@@ -16,6 +16,7 @@ import { setAdminOk, restoreAdminState, isAdminUnlocked } from './src/state/admi
 import { setActiveJob } from './src/state/jobs.js'
 import { saveDraft, loadDraft, clearDraft } from './js/storageDraft.js'
 import { appendHistoryEntry, loadHistory as loadHistoryEntries, deleteHistoryEntry, migrateHistory, buildHistoryKey as computeHistoryKey } from './js/storageHistory.js'
+import { normalizeHistoryEntry as baseNormalizeHistoryEntry, normalizeHistoryList, formatDateLabel, normalizeSearchValue } from './js/history-normalizer.js'
 import { downloadBlob } from './js/utils/downloadBlob.js'
 import './boot-inline.js'
 
@@ -851,86 +852,6 @@ function deriveSagsinfoFromEntry(entry = {}) {
   };
 }
 
-function normalizeHistoryEntry(entry) {
-  if (!entry) return null;
-  let data = entry.data || null;
-  if (!data && entry.payload) {
-    try {
-      data = normalizeImportedJsonSnapshot(entry.payload);
-    } catch (error) {
-      console.warn('Kunne ikke normalisere historik-post', error);
-    }
-  }
-  const ts = entry.createdAt || entry.updatedAt || entry.ts || Date.now();
-  const normalizedId = entry.id || entry.caseKey || `history-${ts}`;
-  const normalized = {
-    ...entry,
-    id: normalizedId,
-    data,
-    payload: entry.payload || null,
-    meta: { ...deriveSagsinfoFromEntry({ ...entry, data }) },
-    ts,
-    createdAt: ts,
-  };
-  normalized.caseKey = entry.caseKey || computeHistoryKey(normalized) || normalizedId;
-  return normalized;
-}
-
-function extractWorkerRates(entry = {}) {
-  const workerSources = [
-    entry?.data?.job?.wage?.workers,
-    entry?.payload?.job?.wage?.workers,
-    entry?.data?.wage?.workers,
-    entry?.payload?.wage?.workers,
-    entry?.data?.labor,
-    entry?.payload?.labor,
-    entry?.data?.laborTotals,
-  ];
-  const workers = workerSources.find(Array.isArray) || [];
-  return workers
-    .map((worker, index) => {
-      const name = worker?.name || worker?.navn || worker?.montor || worker?.montoer || `Montør ${index + 1}`;
-      const rate = toNumber(worker?.hourlyWithAllowances ?? worker?.rate ?? worker?.sats ?? worker?.hourlyRate ?? worker?.timeprisMedTillaeg ?? worker?.hourly ?? worker?.belobPerTime);
-      return { name, rate };
-    })
-    .filter(worker => worker.name || worker.rate > 0);
-}
-
-function normalizeSearchValue(value) {
-  return (value || '')
-    .toString()
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
-}
-
-function extractWorkerNames(entry) {
-  const metaNames = (entry?.meta?.montoer || '')
-    .split(/[,;/]+/)
-    .map(normalizeSearchValue)
-    .filter(Boolean);
-  const workerNames = extractWorkerRates(entry)
-    .map(worker => normalizeSearchValue(worker.name))
-    .filter(Boolean);
-  return Array.from(new Set([...metaNames, ...workerNames]));
-}
-
-function matchesHistorySearch(entry, term) {
-  const needle = normalizeSearchValue(term);
-  if (!needle) return true;
-  const meta = entry?.meta || {};
-  const haystack = [
-    meta.sagsnummer,
-    meta.navn,
-    meta.kunde,
-    meta.adresse,
-    entry?.payload?.meta?.customer,
-    entry?.payload?.meta?.address,
-  ].map(normalizeSearchValue);
-  const workerNames = extractWorkerNames(entry);
-  return [...haystack, ...workerNames].some(value => value && value.includes(needle));
-}
-
 function syncRecentProjectsGlobal(entries = recentCasesCache) {
   if (typeof window === 'undefined') return;
   const payload = Array.isArray(entries) ? entries.slice() : [];
@@ -952,6 +873,29 @@ const KM_RATE = 2.12;
 const TILLAEG_UDD1 = 42.98;
 const TILLAEG_UDD2 = 49.38;
 const DEFAULT_MENTOR_RATE = 22.26;
+
+const historyNormalizeOptions = {
+  tillaegUdd1: TILLAEG_UDD1,
+  tillaegUdd2: TILLAEG_UDD2,
+  mentorRate: DEFAULT_MENTOR_RATE,
+};
+
+const normalizeHistoryEntry = entry => {
+  if (!entry) return null;
+  let data = entry.data;
+  if (!data && entry.payload) {
+    try {
+      data = normalizeImportedJsonSnapshot(entry.payload);
+    } catch (error) {
+      console.warn('Kunne ikke normalisere historik-post', error);
+    }
+  }
+  const normalized = baseNormalizeHistoryEntry({ ...entry, data }, historyNormalizeOptions);
+  if (normalized && !normalized.caseKey) {
+    normalized.caseKey = entry?.caseKey || computeHistoryKey(normalized) || normalized.id;
+  }
+  return normalized;
+};
 const AKKORD_EXCEL_SYSTEMS = [
   { id: 'bosta', label: 'BOSTA 2025' },
   { id: 'haki', label: 'HAKI 2025' },
@@ -983,6 +927,7 @@ let historySearchTerm = '';
 const HISTORY_PAGE_SIZE = 50;
 let historyVisibleCount = HISTORY_PAGE_SIZE;
 let historyFilters = { recentDays: 0, requireCaseNumber: false, requireWorkerRates: false };
+let openHistoryId = null;
 let draftSaveTimer = null;
 let lastDraftSerialized = '';
 const DRAFT_SAVE_DEBOUNCE = 350;
@@ -1822,10 +1767,12 @@ async function getRecentProjects() {
   try {
     const entries = migrateHistory();
     if (!Array.isArray(entries)) return [];
-    return entries
-      .map(normalizeHistoryEntry)
-      .filter(Boolean)
-      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    const normalized = normalizeHistoryList(entries, historyNormalizeOptions)
+      .map(entry => ({
+        ...entry,
+        caseKey: entry.caseKey || computeHistoryKey(entry) || entry.id,
+      }));
+    return normalized;
   } catch (error) {
     console.warn('Kunne ikke hente lokale sager', error);
     return [];
@@ -1913,179 +1860,187 @@ function setupHistorySearch() {
   controls.appendChild(searchWrapper);
 }
 
-function formatHistoryTimestamp(value) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.valueOf())) return '';
-  try {
-    return new Intl.DateTimeFormat('da-DK', {
-      dateStyle: 'medium',
-      timeStyle: 'short'
-    }).format(date);
-  } catch {
-    return date.toLocaleString('da-DK');
-  }
+const formatHistoryTimestamp = value => formatDateLabel(value);
+
+function matchesHistorySearch(entry, term) {
+  const needle = normalizeSearchValue(term);
+  if (!needle) return true;
+  const haystack = Array.isArray(entry?.searchValues) ? entry.searchValues : [];
+  return haystack.some(value => value && value.includes(needle));
 }
 
 function filterHistoryEntries(entries = []) {
   const now = Date.now();
   const hasSearch = Boolean(normalizeSearchValue(historySearchTerm));
   return entries.filter(entry => {
-    if (!entry) return false;
-    if (historyFilters.requireCaseNumber && !normalizeSearchValue(entry?.meta?.sagsnummer)) {
+    const normalizedEntry = entry?.displayBaseWage ? entry : normalizeHistoryEntry(entry);
+    if (!normalizedEntry) return false;
+    if (historyFilters.requireCaseNumber && !normalizeSearchValue(normalizedEntry?.meta?.sagsnummer)) {
       return false;
     }
-    if (historyFilters.requireWorkerRates && extractWorkerRates(entry).length === 0) {
+    const workerCount = Array.isArray(normalizedEntry.perWorker)
+      ? normalizedEntry.perWorker.filter(worker => (worker?.rate > 0) || (worker?.base > 0)).length
+      : 0;
+    const hasBase = Boolean(normalizedEntry?.wage?.base);
+    if (historyFilters.requireWorkerRates && !(workerCount || hasBase)) {
       return false;
     }
     if (historyFilters.recentDays > 0) {
       const cutoff = now - (historyFilters.recentDays * 24 * 60 * 60 * 1000);
-      const createdAt = entry.createdAt || entry.ts || entry.data?.timestamp || 0;
+      const createdAt = normalizedEntry.createdAt || 0;
       if (!createdAt || createdAt < cutoff) return false;
     }
-    if (hasSearch && !matchesHistorySearch(entry, historySearchTerm)) {
+    if (hasSearch && !matchesHistorySearch(normalizedEntry, historySearchTerm)) {
       return false;
     }
     return true;
   });
 }
 
-function createHistoryPill(text, options = {}) {
-  const pill = document.createElement('span');
-  pill.className = 'history-card__pill';
-  if (options.muted) pill.classList.add('is-muted');
-  pill.textContent = text;
-  return pill;
+function createHistoryDetailRow(label, value) {
+  const row = document.createElement('div');
+  row.className = 'history-item__detail';
+  const labelEl = document.createElement('span');
+  labelEl.className = 'history-item__detail-label';
+  labelEl.textContent = label;
+  const valueEl = document.createElement('span');
+  valueEl.className = 'history-item__detail-value';
+  valueEl.textContent = value || '–';
+  row.append(labelEl, valueEl);
+  return row;
 }
 
-function renderWorkerRateDetails(workerRates) {
+function buildWorkerRateRows(entry) {
   const container = document.createElement('div');
-  container.className = 'history-card__worker-details';
-  if (!workerRates.length) {
+  container.className = 'history-item__workers';
+  const title = document.createElement('div');
+  title.className = 'history-item__section-title';
+  title.textContent = 'Timeløn pr. montør';
+  container.appendChild(title);
+
+  const workers = Array.isArray(entry?.perWorker)
+    ? entry.perWorker.filter(worker => (worker?.rate > 0) || (worker?.base > 0))
+    : [];
+
+  if (workers.length) {
+    workers.forEach(worker => {
+      const row = document.createElement('div');
+      row.className = 'history-item__worker-row';
+      const name = document.createElement('span');
+      name.textContent = worker.name || 'Montør';
+      const rate = document.createElement('span');
+      rate.className = 'history-item__worker-rate';
+      const wageValue = worker.base > 0 ? worker.base : worker.rate;
+      rate.textContent = wageValue > 0 ? `${formatCurrency(wageValue)} kr/t` : '–';
+      row.append(name, rate);
+      container.appendChild(row);
+    });
+  } else {
     const note = document.createElement('p');
-    note.className = 'history-card__note';
-    note.textContent = 'Timeløn pr. montør findes ikke i eksport-snapshot.';
+    note.className = 'history-item__note';
+    note.textContent = entry.displayBaseWage || '–';
     container.appendChild(note);
-    return container;
   }
-  workerRates.forEach(worker => {
-    const row = document.createElement('div');
-    row.className = 'history-card__worker-row';
-    const name = document.createElement('span');
-    name.textContent = worker.name || 'Montør';
-    const rate = document.createElement('span');
-    rate.className = 'history-card__worker-rate';
-    rate.textContent = worker.rate > 0 ? `${formatCurrency(worker.rate)} kr/t` : '—';
-    row.appendChild(name);
-    row.appendChild(rate);
-    container.appendChild(row);
-  });
+
+  return container;
+}
+
+function buildWageDetails(entry) {
+  const container = document.createElement('div');
+  container.className = 'history-item__wages';
+  container.appendChild(createHistoryDetailRow('Uden tillæg', entry.display?.base || entry.displayBaseWage || '–'));
+  const hasAllowances = [entry.display?.udd1, entry.display?.udd2, entry.display?.udd2Mentor]
+    .some(value => value && value !== '–');
+  if (hasAllowances) {
+    container.appendChild(createHistoryDetailRow('Udd1', entry.display?.udd1 || '–'));
+    container.appendChild(createHistoryDetailRow('Udd2', entry.display?.udd2 || '–'));
+    container.appendChild(createHistoryDetailRow('Udd2 + mentor', entry.display?.udd2Mentor || '–'));
+  } else {
+    const note = document.createElement('p');
+    note.className = 'history-item__note';
+    note.textContent = 'Tillægs-data mangler';
+    container.appendChild(note);
+  }
   return container;
 }
 
 function buildHistoryListItem(entry) {
-  const info = deriveSagsinfoFromEntry(entry);
-  const workerRates = extractWorkerRates(entry);
-  const workerNames = extractWorkerNames(entry);
+  const normalized = entry?.displayBaseWage ? entry : normalizeHistoryEntry(entry);
+  if (!normalized) return null;
+  const info = deriveSagsinfoFromEntry(normalized);
   const li = document.createElement('li');
-  li.className = 'history-card';
-  li.dataset.id = entry.id;
+  li.className = 'history-item';
+  li.dataset.id = normalized.id;
 
-  const header = document.createElement('div');
-  header.className = 'history-card__header';
-  const title = document.createElement('div');
-  title.className = 'history-card__title';
-  title.textContent = info.navn?.trim() || info.sagsnummer?.trim() || 'Sag uden navn';
-  const date = document.createElement('span');
-  date.className = 'history-card__date';
-  date.textContent = formatHistoryTimestamp(entry.createdAt || entry.ts || entry.data?.timestamp);
-  header.appendChild(title);
-  header.appendChild(date);
+  const header = document.createElement('button');
+  header.type = 'button';
+  header.className = 'history-item__header';
+  header.dataset.action = 'toggle-history-row';
+  header.dataset.id = normalized.id;
+  const dateLine = document.createElement('div');
+  dateLine.className = 'history-item__line history-item__date';
+  dateLine.textContent = normalized.displayDateWithAddress || normalized.displayDate || '–';
+  const secondLine = document.createElement('div');
+  secondLine.className = 'history-item__line history-item__meta-line';
+  const hoursText = normalized.displayHours || '–';
+  const baseText = normalized.displayBaseWage || '–';
+  secondLine.textContent = `${hoursText} · ${baseText}`;
+  const headerText = document.createElement('div');
+  headerText.className = 'history-item__meta';
+  headerText.append(dateLine, secondLine);
+  const chevron = document.createElement('span');
+  chevron.className = 'history-item__chevron';
+  chevron.setAttribute('aria-hidden', 'true');
+  header.append(headerText, chevron);
 
-  const meta = document.createElement('div');
-  meta.className = 'history-card__meta';
-  if (info.sagsnummer) meta.appendChild(createHistoryPill(info.sagsnummer));
-  if (info.kunde) meta.appendChild(createHistoryPill(info.kunde));
-  if (info.adresse) meta.appendChild(createHistoryPill(info.adresse));
-  if (!info.sagsnummer && !info.kunde && !info.adresse) {
-    meta.appendChild(createHistoryPill('Ingen metadata', { muted: true }));
+  const body = document.createElement('div');
+  body.className = 'history-item__body';
+
+  const infoBlock = document.createElement('div');
+  infoBlock.className = 'history-item__info';
+  if (info.sagsnummer) infoBlock.appendChild(createHistoryDetailRow('Sagsnr.', info.sagsnummer));
+  if (info.navn) infoBlock.appendChild(createHistoryDetailRow('Navn', info.navn));
+  if (info.kunde) infoBlock.appendChild(createHistoryDetailRow('Kunde', info.kunde));
+  if (infoBlock.children.length) {
+    body.appendChild(infoBlock);
   }
 
-  const workers = document.createElement('div');
-  workers.className = 'history-card__workers';
-  const workerLabel = document.createElement('span');
-  workerLabel.className = 'history-card__section-title';
-  workerLabel.textContent = 'Timeløn pr. montør';
-  const workerPreview = document.createElement('div');
-  workerPreview.className = 'history-card__pills';
-  const previewItems = workerRates.slice(0, 3);
-  if (previewItems.length) {
-    previewItems.forEach(worker => {
-      const text = worker.rate > 0
-        ? `${worker.name}: ${formatCurrency(worker.rate)} kr/t`
-        : `${worker.name}: —`;
-      workerPreview.appendChild(createHistoryPill(text));
-    });
-    if (workerRates.length > previewItems.length) {
-      workerPreview.appendChild(createHistoryPill(`+${workerRates.length - previewItems.length}`, { muted: true }));
-    }
-  } else {
-    workerPreview.appendChild(createHistoryPill('—', { muted: true }));
-  }
-  workers.appendChild(workerLabel);
-  workers.appendChild(workerPreview);
+  body.appendChild(buildWageDetails(normalized));
+  body.appendChild(buildWorkerRateRows(normalized));
 
   const actions = document.createElement('div');
-  actions.className = 'history-card__actions';
+  actions.className = 'history-item__actions';
   const loadBtn = document.createElement('button');
   loadBtn.type = 'button';
-  loadBtn.dataset.id = entry.id;
+  loadBtn.dataset.id = normalized.id;
   loadBtn.dataset.action = 'load-history';
   loadBtn.textContent = 'Indlæs sag';
-  const toggleBtn = document.createElement('button');
-  toggleBtn.type = 'button';
-  toggleBtn.dataset.action = 'toggle-history-row';
-  toggleBtn.textContent = 'Vis detaljer';
-  toggleBtn.setAttribute('aria-expanded', 'false');
   const deleteBtn = document.createElement('button');
   deleteBtn.type = 'button';
   deleteBtn.className = 'history-list__delete';
-  deleteBtn.dataset.id = entry.id;
+  deleteBtn.dataset.id = normalized.id;
   deleteBtn.dataset.action = 'delete-history';
   deleteBtn.textContent = 'Slet';
-  actions.append(loadBtn, toggleBtn, deleteBtn);
+  actions.append(loadBtn, deleteBtn);
+  body.appendChild(actions);
 
-  const details = document.createElement('div');
-  details.className = 'history-card__details';
-  details.hidden = true;
+  const isOpen = openHistoryId && String(openHistoryId) === String(normalized.id);
+  header.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  body.hidden = !isOpen;
+  if (isOpen) {
+    li.classList.add('is-open');
+  }
 
-  const infoList = document.createElement('div');
-  infoList.className = 'history-card__details-list';
-  const addressRow = document.createElement('div');
-  addressRow.className = 'history-card__detail-row';
-  addressRow.innerHTML = `<span>Adresse</span><span>${info.adresse || '—'}</span>`;
-  const customerRow = document.createElement('div');
-  customerRow.className = 'history-card__detail-row';
-  customerRow.innerHTML = `<span>Kunde</span><span>${info.kunde || '—'}</span>`;
-  const workerNamesRow = document.createElement('div');
-  workerNamesRow.className = 'history-card__detail-row';
-  const workerNameValue = workerNames.length
-    ? workerNames.join(', ')
-    : '—';
-  workerNamesRow.innerHTML = `<span>Montør-navne</span><span>${workerNameValue}</span>`;
-  infoList.append(addressRow, customerRow, workerNamesRow);
-
-  const workerDetails = renderWorkerRateDetails(workerRates);
-
-  details.appendChild(infoList);
-  details.appendChild(workerDetails);
-
-  li.appendChild(header);
-  li.appendChild(meta);
-  li.appendChild(workers);
-  li.appendChild(actions);
-  li.appendChild(details);
+  li.append(header, body);
   return li;
+}
+
+function setHistoryRowExpanded(card, expanded) {
+  const body = card?.querySelector('.history-item__body');
+  const header = card?.querySelector('.history-item__header');
+  card?.classList.toggle('is-open', Boolean(expanded));
+  if (body) body.hidden = !expanded;
+  if (header) header.setAttribute('aria-expanded', expanded ? 'true' : 'false');
 }
 
 function renderHistoryList(entries = recentCasesCache) {
@@ -2093,9 +2048,12 @@ function renderHistoryList(entries = recentCasesCache) {
   if (!list) return;
   list.innerHTML = '';
   const cases = Array.isArray(entries)
-    ? entries.filter(entry => entry && (entry.data || entry.payload || entry.meta))
+    ? entries.map(normalizeHistoryEntry).filter(Boolean)
     : [];
   const filtered = filterHistoryEntries(cases);
+  if (openHistoryId && !filtered.some(entry => String(entry.id) === String(openHistoryId))) {
+    openHistoryId = null;
+  }
   if (!filtered.length) {
     const empty = document.createElement('li');
     empty.className = 'history-list__empty';
@@ -2112,7 +2070,7 @@ function renderHistoryList(entries = recentCasesCache) {
   const visible = filtered.slice(0, historyVisibleCount);
   visible.forEach(entry => {
     const item = buildHistoryListItem(entry);
-    list.appendChild(item);
+    if (item) list.appendChild(item);
   });
 
   if (filtered.length > visible.length) {
@@ -2141,33 +2099,39 @@ function setupHistoryListActions() {
       ? event.target.closest('[data-action="delete-history"], [data-action="load-history"], [data-action="toggle-history-row"]')
       : null;
     if (!button) return;
-    if (button.dataset.action === 'toggle-history-row') {
-      const card = button.closest('.history-card');
-      const details = card?.querySelector('.history-card__details');
-      const expanded = card?.classList.toggle('is-expanded');
-      if (details) details.hidden = !expanded;
-      button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-      button.textContent = expanded ? 'Skjul detaljer' : 'Vis detaljer';
+    const action = button.dataset.action;
+    const card = button.closest('.history-item');
+    const id = button.dataset.id || card?.dataset.id || '';
+    if (action === 'toggle-history-row') {
+      if (!card || !id) return;
+      if (openHistoryId && openHistoryId !== id) {
+        const previous = list.querySelector(`.history-item[data-id="${CSS.escape(String(openHistoryId))}"]`);
+        if (previous) setHistoryRowExpanded(previous, false);
+      }
+      const shouldOpen = openHistoryId !== id;
+      setHistoryRowExpanded(card, shouldOpen);
+      openHistoryId = shouldOpen ? id : null;
       return;
     }
-    const id = button.dataset.id || '';
     if (!id) return;
-    if (button.dataset.action === 'load-history') {
+    if (action === 'load-history') {
       await handleLoadCase(id);
       return;
     }
-    const ok = window.confirm('Er du sikker på, at du vil slette denne sag?');
-    if (!ok) return;
-    button.disabled = true;
-    const deleted = await deleteProjectById(id);
-    if (!deleted) {
-      button.disabled = false;
-      return;
+    if (action === 'delete-history') {
+      const ok = window.confirm('Er du sikker på, at du vil slette denne sag?');
+      if (!ok) return;
+      button.disabled = true;
+      const deleted = await deleteProjectById(id);
+      if (!deleted) {
+        button.disabled = false;
+        return;
+      }
+      recentCasesCache = recentCasesCache.filter(entry => String(entry?.id) !== String(id));
+      syncRecentProjectsGlobal(recentCasesCache);
+      renderHistoryList(recentCasesCache);
+      populateRecentCases();
     }
-    recentCasesCache = recentCasesCache.filter(entry => String(entry?.id) !== String(id));
-    syncRecentProjectsGlobal(recentCasesCache);
-    renderHistoryList(recentCasesCache);
-    populateRecentCases();
   });
 }
 
@@ -2177,35 +2141,27 @@ function findHistoryEntryById(id) {
 }
 
 function buildHistorySummary(entry) {
-  if (!entry || !(entry.data || entry.totals)) {
+  const normalized = entry?.displayBaseWage ? entry : normalizeHistoryEntry(entry);
+  if (!normalized) {
     return null;
   }
-  const totals = entry.totals || entry.data?.totals || {};
-  const timer = toNumber(totals.timer ?? totals.totalHours);
-  const baseRate = toNumber(totals.hourlyBase ?? totals.akkordTimeLon ?? totals.timeprisUdenTillaeg);
-  const mentorRate = toNumber(totals.mentorRate);
-  const appliedMentorRate = mentorRate > 0 ? mentorRate : DEFAULT_MENTOR_RATE;
-  let hourlyUdd1 = toNumber(totals.hourlyUdd1);
-  let hourlyUdd2 = toNumber(totals.hourlyUdd2);
-  let hourlyUdd2Mentor = toNumber(totals.hourlyUdd2Mentor);
-  const hasBase = baseRate > 0;
-  if (!(hourlyUdd1 > 0) && hasBase) {
-    hourlyUdd1 = baseRate + TILLAEG_UDD1;
-  }
-  if (!(hourlyUdd2 > 0) && hasBase) {
-    hourlyUdd2 = baseRate + TILLAEG_UDD2;
-  }
-  if (!(hourlyUdd2Mentor > 0) && hasBase) {
-    hourlyUdd2Mentor = baseRate + TILLAEG_UDD2 + appliedMentorRate;
-  }
-
+  const wage = normalized.wage || {};
+  const toRateValue = value => {
+    if (!value) return 0;
+    if (typeof value === 'object' && value != null) {
+      return toNumber(value.max || value.min);
+    }
+    return toNumber(value);
+  };
   return {
-    date: formatHistoryTimestamp(entry.createdAt || entry.ts || entry.data?.timestamp),
-    timer: timer > 0 ? timer : 0,
-    hourlyBase: hasBase ? baseRate : 0,
-    hourlyUdd1: hourlyUdd1 > 0 ? hourlyUdd1 : 0,
-    hourlyUdd2: hourlyUdd2 > 0 ? hourlyUdd2 : 0,
-    hourlyUdd2Mentor: hourlyUdd2Mentor > 0 ? hourlyUdd2Mentor : 0,
+    date: normalized.displayDateWithAddress || normalized.displayDate || formatHistoryTimestamp(normalized.createdAt),
+    timer: toNumber(normalized.hours),
+    hourlyBase: toRateValue(wage.base),
+    hourlyUdd1: toRateValue(wage.udd1),
+    hourlyUdd2: toRateValue(wage.udd2),
+    hourlyUdd2Mentor: toRateValue(wage.udd2Mentor),
+    display: normalized.display,
+    displayHours: normalized.displayHours,
   };
 }
 
@@ -2226,11 +2182,11 @@ function renderJobHistorySummary(entry) {
   const formatRate = value => (value > 0 ? `${formatCurrency(value)} kr` : '–');
   const values = [
     summary.date || '–',
-    summary.timer > 0 ? formatNumber(summary.timer) : '–',
-    formatRate(summary.hourlyBase),
-    formatRate(summary.hourlyUdd1),
-    formatRate(summary.hourlyUdd2),
-    formatRate(summary.hourlyUdd2Mentor),
+    summary.displayHours || (summary.timer > 0 ? formatNumber(summary.timer) : '–'),
+    summary.display?.base || formatRate(summary.hourlyBase),
+    summary.display?.udd1 || formatRate(summary.hourlyUdd1),
+    summary.display?.udd2 || formatRate(summary.hourlyUdd2),
+    summary.display?.udd2Mentor || formatRate(summary.hourlyUdd2Mentor),
   ];
   const row = document.createElement('tr');
   values.forEach(text => {

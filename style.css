@@ -193,25 +193,28 @@ button{cursor:pointer}
 .history-search__filters{display:flex;flex-wrap:wrap;gap:0.35rem;position:sticky;top:0.25rem;z-index:1;background:var(--card)}
 .history-search__filter{min-height:36px;padding:0.35rem 0.5rem;border-radius:999px;border:1px solid var(--border);background:var(--panel-soft);color:var(--text);font-size:0.9rem}
 .history-search__filter.is-active{background:var(--accent-soft);border-color:var(--accent);color:var(--text-strong)}
-.history-card{border:1px solid var(--border);border-radius:12px;padding:0.75rem;background:var(--panel-soft);display:flex;flex-direction:column;gap:0.35rem;box-shadow:0 2px 8px rgba(0,0,0,0.04)}
-.history-card__header{display:flex;justify-content:space-between;gap:0.5rem;align-items:flex-start}
-.history-card__title{font-weight:600;color:var(--text);font-size:1rem;flex:1}
-.history-card__date{font-size:0.85rem;color:var(--muted);white-space:nowrap}
-.history-card__meta{display:flex;flex-wrap:wrap;gap:0.35rem}
-.history-card__pill{display:inline-flex;align-items:center;gap:0.35rem;padding:0.25rem 0.5rem;border-radius:999px;background:var(--elev);color:var(--text);border:1px solid var(--border);font-size:0.85rem}
-.history-card__pill.is-muted{color:var(--muted);background:var(--panel)}
-.history-card__workers{display:flex;flex-direction:column;gap:0.25rem}
-.history-card__section-title{font-weight:600;font-size:0.9rem;color:var(--text)}
-.history-card__pills{display:flex;flex-wrap:wrap;gap:0.35rem}
-.history-card__actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:0.35rem}
-.history-card__details{border-top:1px dashed var(--border);padding-top:0.5rem;display:flex;flex-direction:column;gap:0.35rem}
-.history-card__details-list{display:flex;flex-direction:column;gap:0.25rem}
-.history-card__detail-row{display:flex;justify-content:space-between;gap:0.5rem;font-size:0.9rem}
-.history-card__worker-details{display:flex;flex-direction:column;gap:0.25rem}
-.history-card__worker-row{display:flex;justify-content:space-between;gap:0.5rem;font-size:0.95rem}
-.history-card__worker-rate{font-weight:600}
-.history-card__note{margin:0;font-size:0.9rem;color:var(--muted)}
-.history-card.is-expanded .history-card__details{display:flex}
+.history-item{border:1px solid var(--border);border-radius:12px;background:var(--panel-soft);contain:content;overflow:hidden;color:var(--text)}
+.history-item__header{display:flex;align-items:center;justify-content:space-between;gap:0.75rem;padding:0.65rem 0.75rem;width:100%;border:0;background:none;text-align:left;cursor:pointer;min-height:44px}
+.history-item__meta{display:flex;flex-direction:column;gap:0.2rem;flex:1;min-width:0}
+.history-item__line{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.history-item__date{font-weight:600;color:var(--text)}
+.history-item__meta-line{color:var(--muted);font-variant-numeric:tabular-nums}
+.history-item__chevron{width:1rem;height:1rem;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg);transition:transform 0.2s ease}
+.history-item.is-open .history-item__chevron{transform:rotate(45deg)}
+.history-item__body{padding:0.5rem 0.75rem 0.75rem;display:flex;flex-direction:column;gap:0.5rem;border-top:1px solid var(--border)}
+.history-item__info,.history-item__wages,.history-item__workers{display:flex;flex-direction:column;gap:0.3rem}
+.history-item__detail{display:flex;justify-content:space-between;gap:0.5rem;font-size:0.95rem}
+.history-item__detail-label{color:var(--muted)}
+.history-item__section-title{font-weight:600;font-size:0.95rem;color:var(--text)}
+.history-item__worker-row{display:flex;justify-content:space-between;gap:0.5rem;font-size:0.95rem}
+.history-item__worker-rate{font-weight:600}
+.history-item__note{margin:0;font-size:0.9rem;color:var(--muted)}
+.history-item__actions{display:flex;gap:0.5rem;flex-wrap:wrap}
+.history-item__actions button{flex:1 1 auto;min-width:120px}
+@media (min-width:641px){
+  .history-item__header{padding:0.75rem 1rem}
+  .history-item__body{padding:0.75rem 1rem 1rem}
+}
 .table-wrapper{width:100%;overflow-x:auto}
 .table-wrapper table{width:100%;border-collapse:collapse;font-size:0.85rem}
 .table-wrapper th,.table-wrapper td{padding:0.25rem 0.35rem;text-align:left;white-space:nowrap}
