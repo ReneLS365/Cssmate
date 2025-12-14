@@ -13,10 +13,13 @@ export function loadDraft () {
     const raw = storage.getItem(DRAFT_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw)
-    if (!parsed || parsed.schemaVersion !== SCHEMA_VERSION || !parsed.data) return null
+    if (!parsed || parsed.schemaVersion !== SCHEMA_VERSION || !parsed.data) {
+      storage.removeItem(DRAFT_KEY)
+      return null
+    }
     return parsed.data
   } catch (error) {
-    console.warn('Kunne ikke indlæse kladde', error)
+    storage.removeItem(DRAFT_KEY)
     return null
   }
 }

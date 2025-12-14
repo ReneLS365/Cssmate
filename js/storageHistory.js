@@ -13,11 +13,11 @@ function isFiniteNumber (value) {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
-function safeParse (raw) {
+function safeParse (raw, { onError } = {}) {
   try {
     return JSON.parse(raw)
   } catch (error) {
-    console.warn('Kunne ikke parse historik', error)
+    if (typeof onError === 'function') onError(error)
     return null
   }
 }
@@ -36,8 +36,11 @@ function loadState () {
   if (!storage) return null
   const raw = storage.getItem(HISTORY_KEY)
   if (!raw) return null
-  const parsed = safeParse(raw)
-  if (!parsed || parsed.schemaVersion !== SCHEMA_VERSION || !Array.isArray(parsed.data)) return null
+  const parsed = safeParse(raw, { onError: () => storage.removeItem(HISTORY_KEY) })
+  if (!parsed || parsed.schemaVersion !== SCHEMA_VERSION || !Array.isArray(parsed.data)) {
+    storage.removeItem(HISTORY_KEY)
+    return null
+  }
   return parsed
 }
 
@@ -222,8 +225,11 @@ function loadLastAttempt () {
   if (!storage) return null
   const raw = storage.getItem(LAST_HISTORY_KEY)
   if (!raw) return null
-  const parsed = safeParse(raw)
-  if (!parsed || typeof parsed !== 'object') return null
+  const parsed = safeParse(raw, { onError: () => storage.removeItem(LAST_HISTORY_KEY) })
+  if (!parsed || typeof parsed !== 'object') {
+    storage.removeItem(LAST_HISTORY_KEY)
+    return null
+  }
   return parsed
 }
 
