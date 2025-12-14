@@ -3,6 +3,7 @@ export function downloadBlob(blob, filename) {
   const safeName = typeof filename === 'string' && filename.trim() ? filename : 'download';
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
+  if (!link || typeof link.style === 'undefined') return;
   link.href = url;
   link.download = safeName;
   link.rel = 'noopener';
