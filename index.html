@@ -49,6 +49,25 @@
           <button id="tab-historik" class="tab" type="button" role="tab" data-tab-id="historik" aria-controls="panel-historik" aria-selected="false">Historik</button>
           <button id="tab-hjaelp" class="tab" type="button" role="tab" data-tab-id="hjaelp" aria-controls="panel-hjaelp" aria-selected="false">Hjælp</button>
         </nav>
+        <div class="ui-scale-control no-print" data-allow-click>
+          <button id="uiScaleToggle" class="icon-button ui-scale-toggle" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="uiScalePopover" aria-label="Juster zoom">🔍</button>
+          <div id="uiScalePopover" class="ui-scale-popover" hidden>
+            <div class="ui-scale-row">
+              <button type="button" class="ui-scale-chip" data-scale-step="-0.05" aria-label="Zoom ud">−</button>
+              <span class="ui-scale-value" id="uiScaleValue">100%</span>
+              <button type="button" class="ui-scale-chip" data-scale-step="0.05" aria-label="Zoom ind">+</button>
+            </div>
+            <div class="ui-scale-row ui-scale-presets" role="group" aria-label="Zoom-forvalg">
+              <button type="button" class="ui-scale-chip" data-scale="0.75">75%</button>
+              <button type="button" class="ui-scale-chip" data-scale="0.9">90%</button>
+              <button type="button" class="ui-scale-chip" data-scale="1">100%</button>
+              <button type="button" class="ui-scale-chip" data-scale="1.1">110%</button>
+            </div>
+            <div class="ui-scale-row">
+              <button type="button" class="ui-scale-reset" data-scale-reset="1">Nulstil</button>
+            </div>
+          </div>
+        </div>
         <button id="btnNewCase" type="button" data-role="secondary">Ny sag</button>
       </div>
     </header>
@@ -137,6 +156,8 @@
           <span>Vis kun valgte materialer</span>
         </label>
       </div>
+
+      <div id="materialSearchBar" class="no-print"></div>
 
       <div id="optaellingContainer" class="materials"></div>
     </fieldset>
@@ -394,6 +415,28 @@
         <li>Indtast adminkoden fra administratoren for at låse prisfelter og avancerede muligheder op.</li>
         <li>Bruges kun af ansvarlige/admin – almindelige brugere skal forblive i normal tilstand.</li>
         <li>Påvirker eksport og opsætning, men ændrer ikke de underliggende beregningsregler.</li>
+      </ul>
+    </fieldset>
+    <fieldset>
+      <legend>Zoom ind/ud (hvis du ikke kan se hele materialenavnet)</legend>
+      <h3>iPhone / iPad (Safari eller Chrome)</h3>
+      <ul>
+        <li>Knib med to fingre for at zoome ud. Spred fingrene for at zoome ind. ([Apple Support][1])</li>
+        <li>Hvis hele skærmen pludselig er forstørret: tryk to gange med <strong>tre fingre</strong> for at zoome ud (iOS Zoom-funktion). ([Apple Support][2])</li>
+      </ul>
+      <h3>Android (Chrome)</h3>
+      <ul>
+        <li>Knib med to fingre for at zoome ud, spred fingrene for at zoome ind.</li>
+        <li>Hvis zoom ikke virker på en side: Chrome → <strong>⋮</strong> → <strong>Indstillinger</strong> → <strong>Tilgængelighed</strong> → slå “Force enable zoom” til. ([fcscontrol.zendesk.com][3])</li>
+        <li>Nogle Chrome-versioner har også zoom i <strong>⋮ menuen</strong> via en zoom-slider. ([The Verge][4])</li>
+      </ul>
+      <h3>Android (Samsung Internet)</h3>
+      <ul>
+        <li>Dobbelt-tap eller knib for at zoome ud/ind. ([B&H Photo Video][5])</li>
+      </ul>
+      <h3>Installeret app (PWA)</h3>
+      <ul>
+        <li>Brug 🔎-ikonet i appen til at zoome 75%–110% (Nulstil = 100%).</li>
       </ul>
     </fieldset>
   </section>

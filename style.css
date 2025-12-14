@@ -14,6 +14,7 @@
   --shadow-strong:0 18px 40px rgba(0,0,0,0.45);
   --gap:12px;
   --pad:12px;
+  --uiScale:1;
   --materials-grid-desktop:2fr minmax(64px,0.9fr) minmax(72px,1fr) minmax(72px,1fr);
   --materials-grid-mobile:1.4fr minmax(56px,0.8fr) minmax(64px,0.9fr) minmax(64px,0.9fr);
   --header-height:56px;
@@ -47,6 +48,7 @@ body{font-size:16px;line-height:1.45;font-weight:400;background-color:var(--bg,#
 }
 .app-shell{display:flex;flex-direction:column}
 .app-content{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+.app-shell{transform:scale(var(--uiScale));transform-origin:top left;width:calc(100%/var(--uiScale))}
 .materials-scroll{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overscroll-behavior:contain;padding-bottom:0!important}
 .materials-scroll>:last-child{margin-bottom:0!important}
 :root.np-open,
@@ -60,6 +62,17 @@ body{font-size:16px;line-height:1.45;font-weight:400;background-color:var(--bg,#
 header{position:sticky;top:0;background:var(--elev);border-bottom:1px solid var(--border);z-index:5}
 header .bar{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px 10px;min-height:var(--header-height)}
 header .ttl{font-weight:700}
+.ui-scale-control{position:relative;display:flex;align-items:center;gap:6px}
+.ui-scale-toggle{min-width:36px;min-height:36px;padding:6px 8px;border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:10px;font-size:1rem}
+.ui-scale-popover{position:absolute;right:0;top:calc(100% + 6px);background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px;min-width:180px;box-shadow:0 10px 28px rgba(0,0,0,0.35);z-index:20}
+.ui-scale-row{display:flex;align-items:center;gap:8px;justify-content:space-between;margin-bottom:6px}
+.ui-scale-row:last-child{margin-bottom:0}
+.ui-scale-presets{flex-wrap:wrap}
+.ui-scale-chip{flex:1 1 auto;min-width:64px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--panel-soft);color:var(--text);font-weight:600;text-align:center}
+.ui-scale-chip:focus-visible,.ui-scale-reset:focus-visible{outline:2px solid var(--accent)}
+.ui-scale-value{font-weight:700;flex:1 1 auto;text-align:center}
+.ui-scale-reset{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--panel-soft);color:var(--text);font-weight:600}
+.ui-scale-popover[hidden]{display:none}
 .tabs{display:flex;gap:0.35rem;overflow-x:auto;padding:0.25rem 0;border-radius:0.75rem;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:var(--accent) transparent;touch-action:pan-x;scrollbar-gutter:stable both-edges;overscroll-behavior-x:contain;flex:1 1 auto;min-width:0;max-width:100%}
 .materials-list,
 .table-wrapper,
@@ -598,6 +611,18 @@ button{cursor:pointer}
 }
 
 .materials-list input:focus{outline:2px solid #3b82f6;outline-offset:0}
+.material-search{position:sticky;top:0;z-index:5;background:var(--panel);padding:6px 0;margin-bottom:4px}
+.material-search__row{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:12px;background:var(--panel-soft)}
+.material-search__icon{color:var(--muted);font-size:0.95rem}
+.material-search input{flex:1 1 auto;border:0;background:transparent;color:var(--text);height:32px;padding:0;font-size:0.95rem}
+.material-search input:focus{outline:none}
+.material-search__clear{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:10px;padding:4px 8px;min-height:32px;min-width:32px}
+.material-search__clear[hidden]{display:none}
+.material-search__meta{margin-top:4px;font-size:0.78rem;color:var(--muted);padding:0 2px}
+.material-search__suggestions{margin-top:6px;border:1px solid var(--border);border-radius:12px;background:var(--panel);box-shadow:0 8px 20px rgba(0,0,0,0.28);overflow:hidden}
+.material-search__suggestions[hidden]{display:none}
+.material-search__suggestion{padding:8px 10px;font-size:0.95rem;color:var(--text);cursor:pointer;display:block}
+.material-search__suggestion:hover,.material-search__suggestion:focus{background:var(--panel-soft)}
 
 @media (max-width:400px){
   .material-row .mat-name,
