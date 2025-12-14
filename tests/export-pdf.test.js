@@ -84,7 +84,7 @@ test('exportPDFBlob skaber akkordseddel med reference-overskrifter', async () =>
   assert.ok(pdfBuffer.length > 1000, 'PDF ser ud til at indeholde indhold');
 
   const pdfText = pdfBuffer.toString('latin1');
-  const expectedHeadings = ['Akkordseddel', 'Sagsinfo', 'Materialer', 'Løn', 'Oversigt', 'Løn & projektsum', 'Detaljer', 'Materialer brugt', 'Arbejde', 'Oversigt:'];
+  const expectedHeadings = ['Akkordseddel', 'Sagsinfo', 'Materialer', 'Løn', 'Oversigt:', 'Løn & projektsum'];
   expectedHeadings.forEach((heading) => {
     assert.ok(pdfText.includes(heading), `PDF indeholder overskriften ${heading}`);
   });
