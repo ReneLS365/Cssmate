@@ -1,12 +1,13 @@
-import { listSharedGroups, downloadCaseJson, importCasePayload, updateCaseStatus, deleteSharedCase, getCurrentUserId } from './shared-ledger.js';
+import { listSharedGroups, downloadCaseJson, importCasePayload, updateCaseStatus, deleteSharedCase, getCurrentUserId, formatTeamId } from './shared-ledger.js';
 import { exportPDFBlob } from './export-pdf.js';
 import { buildExportModel } from './export-model.js';
 import { downloadBlob } from './utils/downloadBlob.js';
 
-const TEAM_ID = typeof window !== 'undefined' && window.TEAM_ID
-  ? window.TEAM_ID
-  : (typeof window !== 'undefined' && window.localStorage?.getItem('sscaff-team-id'))
-    || 'default';
+const TEAM_ID = formatTeamId(
+  (typeof window !== 'undefined' && window.TEAM_ID)
+    || (typeof window !== 'undefined' && window.localStorage?.getItem('sscaff-team-id'))
+    || 'default',
+);
 
 function getFilters() {
   const job = document.getElementById('sharedFilterJob');

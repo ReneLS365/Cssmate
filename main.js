@@ -215,7 +215,7 @@ async function ensureZipLibLazy () {
 const IOS_INSTALL_PROMPT_DISMISSED_KEY = 'csmate.iosInstallPromptDismissed'
 const TAB_STORAGE_KEY = 'csmate:lastTab'
 const LEGACY_TAB_STORAGE_KEYS = ['sscaff:lastTab', 'cssmate:lastActiveTab']
-const KNOWN_TAB_ID_ORDER = ['sagsinfo', 'optaelling', 'lon', 'historik', 'hjaelp']
+const KNOWN_TAB_ID_ORDER = ['sagsinfo', 'optaelling', 'lon', 'historik', 'delte-sager', 'hjaelp']
 const KNOWN_TAB_IDS = new Set(KNOWN_TAB_ID_ORDER)
 const DEFAULT_TAB_ID = KNOWN_TAB_ID_ORDER[0]
 const INSTALL_BUTTON_DISABLED_TOOLTIP = 'Tilføj via browsermenu på denne platform'

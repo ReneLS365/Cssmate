@@ -1,5 +1,11 @@
+const LEDGER_TEAM_PREFIX = 'sscaff-team-';
 const LEDGER_VERSION = 1;
 const STORAGE_PREFIX = 'sscaff:shared-ledger:';
+
+export function formatTeamId(rawTeamId) {
+  const cleaned = (rawTeamId || '').toString().trim() || 'default';
+  return cleaned.startsWith(LEDGER_TEAM_PREFIX) ? cleaned : `${LEDGER_TEAM_PREFIX}${cleaned}`;
+}
 
 function getStorage() {
   if (typeof localStorage === 'undefined') return null;
