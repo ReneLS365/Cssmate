@@ -124,7 +124,7 @@
 
 .numpad-key-eq {
   background: var(--accent-strong);
-  color: #1f1203;
+  color: var(--text-on-accent-strong);
   font-weight: 600;
 }
 
@@ -160,7 +160,7 @@
   font-size: 1.15rem;
   font-weight: 700;
   background: var(--accent);
-  color: #05131f;
+  color: var(--text-on-accent);
   cursor: pointer;
   touch-action: manipulation;
   display: inline-flex;
