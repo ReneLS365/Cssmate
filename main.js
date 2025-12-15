@@ -211,14 +211,6 @@ async function ensureZipLibLazy () {
   return zipLibLoader
 }
 
-async function loadExcelExporter () {
-  if (!excelExporterLoader) {
-    excelExporterLoader = import('./src/export/akkord-excel.js')
-      .then(mod => mod.exportAkkordExcelForActiveJob)
-  }
-  return excelExporterLoader
-}
-
 const IOS_INSTALL_PROMPT_DISMISSED_KEY = 'csmate.iosInstallPromptDismissed'
 const TAB_STORAGE_KEY = 'csmate:lastTab'
 const LEGACY_TAB_STORAGE_KEYS = ['sscaff:lastTab', 'cssmate:lastActiveTab']
@@ -235,7 +227,6 @@ let exportPanelReady = false
 let exportPanelPromise = null
 let exportLibsLoader = null
 let zipLibLoader = null
-let excelExporterLoader = null
 let tabButtons = []
 let tabPanels = []
 let tabsInitialized = false
@@ -278,7 +269,6 @@ function ensureMaterialsUiReady () {
         renderOptaelling()
         setupCSVImport()
         populateRecentCases()
-        initExcelSystemSelector()
         updateTotals(true)
       })
       .catch(error => {
@@ -897,13 +887,6 @@ const normalizeHistoryEntry = entry => {
   }
   return normalized;
 };
-const AKKORD_EXCEL_SYSTEMS = [
-  { id: 'bosta', label: 'BOSTA 2025' },
-  { id: 'haki', label: 'HAKI 2025' },
-  { id: 'modex', label: 'MODEX 2025' },
-  { id: 'alfix', label: 'ALFIX 2025' },
-];
-const AKKORD_EXCEL_STORAGE_KEY = 'csmate.akkordExcelSystem';
 const MATERIAL_SEARCH_DEBOUNCE_MS = 130;
 const MATERIAL_SEARCH_SUGGESTION_LIMIT = 6;
 const UI_SCALE_STORAGE_KEY = 'sscaff.uiScale';
@@ -925,7 +908,6 @@ const SYSTEM_ACCESSIBLE_LABELS = {
 };
 let systemLabelMap = new Map();
 const selectedSystemKeys = new Set();
-let excelSystemSelectionCache = new Set(['bosta']);
 let datasetModulePromise = null;
 let materialsReady = false;
 let showOnlySelectedMaterials = false;
@@ -1173,77 +1155,6 @@ function ensureSystemSelection() {
 function getSelectedSystemKeys() {
   ensureSystemSelection();
   return Array.from(selectedSystemKeys);
-}
-
-function isSupportedExcelSystem(value) {
-  if (!value) return false;
-  return AKKORD_EXCEL_SYSTEMS.some(option => option.id === value);
-}
-
-function normalizeExcelSystemId(value) {
-  return typeof value === 'string' ? value.trim().toLowerCase() : '';
-}
-
-function sanitizeExcelSystemSelection(values) {
-  const list = Array.isArray(values)
-    ? values
-    : (typeof values === 'string'
-      ? [values]
-      : (values && typeof values[Symbol.iterator] === 'function'
-        ? Array.from(values)
-        : []));
-  const unique = [];
-  list.forEach(value => {
-    const normalized = normalizeExcelSystemId(value);
-    if (isSupportedExcelSystem(normalized) && !unique.includes(normalized)) {
-      unique.push(normalized);
-    }
-  });
-  return unique;
-}
-
-function getStoredExcelSystems() {
-  if (typeof localStorage === 'undefined') {
-    return Array.from(excelSystemSelectionCache);
-  }
-  try {
-    const raw = localStorage.getItem(AKKORD_EXCEL_STORAGE_KEY);
-    if (raw === null) {
-      return Array.from(excelSystemSelectionCache);
-    }
-    let parsed = [];
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      parsed = raw ? [raw] : [];
-    }
-    const sanitized = sanitizeExcelSystemSelection(parsed);
-    excelSystemSelectionCache = new Set(sanitized);
-    return sanitized;
-  } catch (error) {
-    console.warn('Kunne ikke læse Excel-systemer fra storage', error);
-    return Array.from(excelSystemSelectionCache);
-  }
-}
-
-function setStoredExcelSystems(values) {
-  const sanitized = sanitizeExcelSystemSelection(values);
-  excelSystemSelectionCache = new Set(sanitized);
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.setItem(AKKORD_EXCEL_STORAGE_KEY, JSON.stringify(sanitized));
-  } catch (error) {
-    console.warn('Kunne ikke gemme Excel-systemer', error);
-  }
-}
-
-function getPreferredExcelSystem() {
-  const stored = getStoredExcelSystems();
-  if (stored.length > 0 && isSupportedExcelSystem(stored[0])) return stored[0];
-  const selected = getSelectedSystemKeys();
-  const match = selected.find(key => isSupportedExcelSystem(key));
-  if (match) return match;
-  return AKKORD_EXCEL_SYSTEMS[0]?.id || 'bosta';
 }
 
 function getDatasetForSelectedSystems(selected) {
@@ -2061,6 +1972,10 @@ function collectSagsinfo() {
   };
 }
 
+function collectAkkordComment() {
+  return getDomElement('akkordComment')?.value || '';
+}
+
 function setSagsinfoField(id, value) {
   const el = getDomElement(id);
   if (!el) return;
@@ -2793,14 +2708,16 @@ function collectProjectSnapshot(exportInfo) {
   }
 
   const now = Date.now();
+  const comment = collectAkkordComment();
   const snapshot = {
     timestamp: now,
-    sagsinfo: collectSagsinfo(),
+    sagsinfo: { ...collectSagsinfo(), comment },
     systems: Array.from(selectedSystemKeys),
     materials,
     labor,
     extras: collectExtrasState(),
     totals,
+    comment,
   };
   if (exportInfo?.jobPayload) {
     snapshot.payload = exportInfo.jobPayload;
@@ -2967,6 +2884,7 @@ function mapSagsinfoFromPayload(payload = {}) {
     kunde: payload.customer || payload.kunde || info.kunde || info.customer || meta.customer || meta.kunde || '',
     dato: normalizeDateValue(info.dato || info.date || meta.date || payload.createdAt || payload.date),
     montoer: payload.montageWorkers || payload.demontageWorkers || payload.worker || payload.montor || info.montoer || info.montor || meta.montoer || '',
+    comment: payload.comment || info.comment || meta.comment || '',
   };
 }
 
@@ -3262,6 +3180,10 @@ async function applyProjectSnapshot(snapshot, options = {}) {
   setSagsinfoField('sagskunde', info.kunde || '');
   setSagsinfoField('sagsdato', info.dato || '');
   setSagsinfoField('sagsmontoer', info.montoer || '');
+  const commentField = getDomElement('akkordComment');
+  if (commentField) {
+    commentField.value = info.comment || snapshot.comment || '';
+  }
 
   applyMaterialsSnapshot(snapshot.materials, snapshot.systems);
   const extras = mergeExtrasKm(snapshot.extras || {}, snapshot.extraInputs || {}, KM_RATE);
@@ -3468,117 +3390,9 @@ function formatDateForDisplay(value) {
   return String(value);
 }
 
-function getExcelSystemInputs() {
-  if (typeof document === 'undefined') return [];
-  return Array.from(document.querySelectorAll('input[name="akkordExcelSystem"][type="checkbox"]'));
-}
-
-function getExcelSystemSelectionFromInputs() {
-  const inputs = getExcelSystemInputs();
-  if (inputs.length === 0) {
-    return Array.from(excelSystemSelectionCache);
-  }
-  const selected = inputs.filter(input => input.checked).map(input => input.value);
-  return sanitizeExcelSystemSelection(selected);
-}
-
-function syncExcelSystemSelector() {
-  const inputs = getExcelSystemInputs();
-  if (inputs.length === 0) return;
-  const selectedKeys = getSelectedSystemKeys();
-  const storedSelection = new Set(getStoredExcelSystems());
-  inputs.forEach(input => {
-    const systemId = normalizeExcelSystemId(input.value);
-    input.checked = storedSelection.has(systemId);
-    const label = input.closest('.export-system-option');
-    const labelText = label?.querySelector('.export-system-option__label');
-    const hint = label?.querySelector('.export-system-option__hint');
-    const config = AKKORD_EXCEL_SYSTEMS.find(option => option.id === systemId);
-    if (labelText && config) {
-      labelText.textContent = config.label;
-    }
-    const isActive = selectedKeys.includes(systemId);
-    if (hint) {
-      hint.textContent = isActive ? 'Aktiv i sag' : 'Ikke aktiv i sag';
-    }
-    if (label) {
-      label.classList.toggle('export-system-option--inactive', !isActive);
-    }
-  });
-}
-
-function initExcelSystemSelector() {
-  syncExcelSystemSelector();
-  const container = document.getElementById('akkordExcelSystemOptions');
-  if (!container) return;
-  container.addEventListener('change', event => {
-    const target = event.target;
-    if (!target || typeof target.getAttribute !== 'function') return;
-    if (target.getAttribute('name') !== 'akkordExcelSystem') return;
-    const selected = getExcelSystemSelectionFromInputs();
-    setStoredExcelSystems(selected);
-  });
-}
-
-function requireExcelSystemSelection() {
-  const selection = getExcelSystemSelectionFromInputs();
-  if (selection.length === 0) {
-    const message = 'Vælg mindst ét Excel 25-ark under "Eksport & deling".';
-    updateActionHint(message, 'error');
-    return null;
-  }
-  return selection;
-}
-
 function triggerBlobDownload(blob, fileName) {
   if (!blob || !fileName) return;
   downloadBlob(blob, fileName);
-}
-
-async function downloadExcelPayloads(payloads, job) {
-  if (!Array.isArray(payloads) || payloads.length === 0) {
-    return { count: 0, zipped: false };
-  }
-  const files = payloads.filter(entry => entry?.blob && entry?.fileName);
-  if (files.length === 0) {
-    return { count: 0, zipped: false };
-  }
-  if (files.length === 1) {
-    triggerBlobDownload(files[0].blob, files[0].fileName);
-    return { count: 1, zipped: false };
-  }
-  const { JSZip } = await ensureZipLibLazy();
-  const zip = new JSZip();
-  files.forEach(entry => {
-    zip.file(entry.fileName, entry.blob);
-  });
-  const zipBlob = await zip.generateAsync({ type: 'blob' });
-  const baseName = sanitizeFilename(job?.sagsinfo?.sagsnummer || job?.caseNo || 'akkordsedler') || 'akkordsedler';
-  triggerBlobDownload(zipBlob, `${baseName}_excel.zip`);
-  return { count: files.length, zipped: true };
-}
-
-function buildExcelExportMessage(result) {
-  if (!result || result.count === 0) {
-    return '';
-  }
-  if (result.count === 1) {
-    return '1 Excel-ark blev genereret og downloadet direkte. ZIP bruges kun ved flere valg.';
-  }
-  return `${result.count} Excel-ark blev samlet i én ZIP-fil. ZIP bruges kun ved flere valg.`;
-}
-
-async function exportExcelSelection(job, systems) {
-  if (!job) return { count: 0, zipped: false };
-  const requested = sanitizeExcelSystemSelection(systems);
-  if (requested.length === 0) {
-    return { count: 0, zipped: false };
-  }
-  const exportExcel = await loadExcelExporter();
-  const payloads = typeof exportExcel === 'function'
-    ? await exportExcel(job, requested)
-    : [];
-  return downloadExcelPayloads(payloads, job);
 }
 
 function inferSystemFromLine(line) {
@@ -3602,6 +3416,7 @@ function buildAkkordJobSnapshot(data = lastEkompletData) {
   const montageNames = jobType === 'demontage' ? '' : workerNames;
   const demontageNames = jobType === 'demontage' ? workerNames : '';
   const formattedDate = info.dato ? formatDateForDisplay(info.dato) : '';
+  const systems = Array.isArray(source.systems) ? source.systems : (source.system ? [source.system] : []);
   const job = {
     id: info.sagsnummer || info.navn || info.adresse || 'akkord',
     caseNo: info.sagsnummer || '',
@@ -3615,7 +3430,7 @@ function buildAkkordJobSnapshot(data = lastEkompletData) {
     demontageWorkers: demontageNames,
     montor: workerNames,
     worker: workerNames,
-    system: getPreferredExcelSystem(),
+    system: systems[0] || getSelectedSystemKeys()[0] || '',
   };
 
   const materialLines = Array.isArray(source.materialer) ? source.materialer : [];
@@ -3641,13 +3456,13 @@ function buildRawAkkordData(options = {}) {
   if (options.customSagsnummer) {
     info.sagsnummer = options.customSagsnummer;
   }
+  const comment = collectAkkordComment();
 
   const materials = getAllData().filter(item => toNumber(item.quantity) > 0);
   const labor = Array.isArray(laborEntries) ? laborEntries : [];
   const cache = typeof window !== 'undefined' ? window.__beregnLonCache : null;
   const jobType = collectJobType();
   const jobFactor = jobType === 'demontage' ? 0.5 : 1;
-  const excelSystems = getStoredExcelSystems();
 
   const extraInputs = {
     boringHuller: toNumber(document.getElementById('antalBoringHuller')?.value),
@@ -3730,8 +3545,8 @@ function buildRawAkkordData(options = {}) {
     adresse: info.adresse,
     navn: info.navn,
     systems: Array.from(selectedSystemKeys),
-    excelSystems,
     createdAt: new Date().toISOString(),
+    comment,
   };
 
   return {
@@ -3743,7 +3558,7 @@ function buildRawAkkordData(options = {}) {
     jobType,
     jobFactor,
     systems: Array.from(selectedSystemKeys),
-    excelSystems,
+    comment,
     tralleState,
     tralleSum,
     materialLinesForTotals,
@@ -4772,7 +4587,6 @@ function beregnLon() {
 
   syncActiveJobState();
   updateTotals(true);
-  syncExcelSystemSelector();
 
   if (typeof window !== 'undefined') {
     window.__cssmateLastEkompletData = lastEkompletData;
@@ -4997,21 +4811,16 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
     tralleSum,
     createdAt,
     systems: dataSystems,
-    excelSystems: dataExcelSystems,
     meta: dataMeta,
+    comment: dataComment,
   } = data;
 
-  const excelSystems = Array.isArray(dataExcelSystems)
-    ? dataExcelSystems
-    : Array.isArray(dataMeta?.excelSystems)
-      ? dataMeta.excelSystems
-      : getStoredExcelSystems();
   const systems = Array.isArray(dataSystems) && dataSystems.length
     ? dataSystems
     : Array.isArray(dataMeta?.systems)
       ? dataMeta.systems
       : Array.from(selectedSystemKeys);
-  const mergedSystems = Array.from(new Set([...(systems || []), ...(excelSystems || [])]));
+  const comment = dataComment || dataMeta?.comment || info?.comment || '';
 
   const laborList = Array.isArray(labor) ? labor : [];
   const laborTotals = Array.isArray(laborTotalsRaw)
@@ -5033,6 +4842,7 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
     kunde: info.kunde || '',
     dato: info.dato || '',
     montoer: info.montoer || '',
+    comment,
   };
 
   const exportModel = buildSharedExportModel({
@@ -5045,7 +4855,8 @@ function buildAkkordJsonPayload(customSagsnummer, options = {}) {
     tralleState: tralleState || {},
     tralleSum: tralleSum || 0,
     createdAt: createdAt || data.createdAt || new Date().toISOString(),
-    systems: mergedSystems,
+    systems,
+    comment,
   }, { exportedAt: new Date().toISOString() });
 
   const infoFields = exportModel.info || infoPayload;
@@ -5664,6 +5475,13 @@ async function initApp() {
       el.addEventListener('change', () => { validateSagsinfo(); scheduleDraftSave(); });
     }
   });
+
+  const commentField = document.getElementById('akkordComment');
+  if (commentField) {
+    const persistComment = () => scheduleDraftSave();
+    commentField.addEventListener('input', persistComment);
+    commentField.addEventListener('change', persistComment);
+  }
 
   validateSagsinfo();
   runWhenIdle(() => {

@@ -290,41 +290,19 @@
       </div>
     </section>
 
-    <section class="lon-section lon-export no-print export-panel" data-lon-output hidden>
-      <fieldset>
-          <legend>Eksport &amp; deling</legend>
-          <div class="export-actions" role="group" aria-label="Eksport muligheder">
-            <button id="btn-print-akkord" type="button" disabled data-role="primary">Print</button>
-            <button id="btn-export-akkord-pdf" type="button">Eksporter akkordseddel</button>
-          </div>
+      <section class="lon-section lon-export no-print export-panel" data-lon-output hidden>
+        <fieldset>
+            <legend>Eksport &amp; deling</legend>
+            <div class="export-actions" role="group" aria-label="Eksport muligheder">
+              <button id="btn-print-akkord" type="button" disabled data-role="primary">Print</button>
+              <button id="btn-export-akkord-pdf" type="button">Eksporter akkordseddel</button>
+            </div>
+          </fieldset>
+        <fieldset class="export-comment">
+          <legend>Kommentar</legend>
+          <textarea id="akkordComment" name="comment" rows="4" placeholder="Tilføj noter til akkorden…"></textarea>
         </fieldset>
-      <fieldset class="export-system-selector">
-        <legend>Excel 25-ark</legend>
-        <p class="hint">Vælg de systemer der skal have et 25-ark. Kun BOSTA er valgt som standard.</p>
-        <div id="akkordExcelSystemOptions" class="export-system-options" role="group" aria-label="Excel systemvalg">
-          <label class="export-system-option" data-system="bosta">
-            <input type="checkbox" name="akkordExcelSystem" value="bosta" checked>
-            <span class="export-system-option__label">BOSTA 2025</span>
-            <small class="export-system-option__hint" aria-live="polite"></small>
-          </label>
-          <label class="export-system-option" data-system="haki">
-            <input type="checkbox" name="akkordExcelSystem" value="haki">
-            <span class="export-system-option__label">HAKI 2025</span>
-            <small class="export-system-option__hint" aria-live="polite"></small>
-          </label>
-          <label class="export-system-option" data-system="modex">
-            <input type="checkbox" name="akkordExcelSystem" value="modex">
-            <span class="export-system-option__label">MODEX 2025</span>
-            <small class="export-system-option__hint" aria-live="polite"></small>
-          </label>
-          <label class="export-system-option" data-system="alfix">
-            <input type="checkbox" name="akkordExcelSystem" value="alfix">
-            <span class="export-system-option__label">ALFIX 2025</span>
-            <small class="export-system-option__hint" aria-live="polite"></small>
-          </label>
-        </div>
-      </fieldset>
-    </section>
+      </section>
 
   </section>
 

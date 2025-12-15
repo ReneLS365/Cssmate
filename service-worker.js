@@ -9,7 +9,7 @@ if (versionScriptUrl) {
   importScripts('/js/version.js')
 }
 
-const CACHE_VERSION = 'sscaff-v-20251215053403425' // bumped to refresh caches after theme token + numpad updates
+const CACHE_VERSION = 'sscaff-v-20251217000000001' // bumped to refresh caches efter Excel-fjernelse og kommentar-felt
 const CACHE_NAME = 'sscaff-' + CACHE_VERSION
 const PRECACHE_URLS = [
   '/',
@@ -40,7 +40,6 @@ const PRECACHE_URLS = [
   '/js/vendor/jspdf.umd.min.js',
   '/js/vendor/jszip-esm-wrapper.js',
   '/js/vendor/jszip.min.js',
-  '/src/export/akkord-excel.js',
   '/dataset.js',
   '/manifest.webmanifest',
   '/icons/icon-192.png',

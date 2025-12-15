@@ -1,7 +1,6 @@
 import { ensureZipLib } from '../src/features/export/lazy-libs.js';
 import { exportPDFBlob } from './export-pdf.js';
 import { buildAkkordCSV } from './akkord-csv.js';
-import { exportExcelFromAkkordData } from '../src/export/akkord-excel.js';
 import { buildAkkordJsonPayload } from './export-json.js';
 import { buildExportModel } from './export-model.js';
 import { downloadBlob } from './utils/downloadBlob.js';
@@ -41,26 +40,6 @@ function buildZipBaseName(data) {
   return sanitized.length ? sanitized.join('-') : 'akkordseddel';
 }
 
-function normalizeExcelSystems(values) {
-  if (!values) return [];
-  const list = Array.isArray(values)
-    ? values
-    : (typeof values === 'string'
-      ? [values]
-      : (values && typeof values[Symbol.iterator] === 'function'
-        ? Array.from(values)
-        : []));
-  const unique = [];
-  list.forEach(entry => {
-    const normalized = (entry || '').toString().trim().toLowerCase();
-    if (!normalized) return;
-    if (!unique.includes(normalized)) {
-      unique.push(normalized);
-    }
-  });
-  return unique;
-}
-
 function notifyZipExport(detail) {
   if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
   const payload = {
@@ -82,11 +61,9 @@ export async function exportZipFromAkkord(data, options = {}) {
   const zipBaseName = `${baseName || 'akkordseddel'}-export`;
 
   const files = [];
-  const excelSelection = normalizeExcelSystems(options.excelSystems || safeData.excelSystems || safeData.meta?.excelSystems);
   const folders = {
     pdf: zip.folder('pdf'),
     json: zip.folder('json'),
-    excel: zip.folder('excel'),
     csv: zip.folder('csv'),
   };
 
@@ -120,26 +97,12 @@ export async function exportZipFromAkkord(data, options = {}) {
       console.error('CSV eksport fejlede', error);
     }
 
-    if (excelSelection.length > 0) {
-      const excelPayloads = await exportExcelFromAkkordData(model, excelSelection);
-      if (!excelPayloads.length) {
-        console.warn('Excel eksport springes over: ingen understøttede templates for valgt system');
-      } else {
-        excelPayloads.forEach(entry => {
-          if (!entry?.blob || !entry?.fileName) return;
-          const path = folders.excel ? `excel/${entry.fileName}` : entry.fileName;
-          (folders.excel || zip).file(entry.fileName, entry.blob);
-          files.push(path);
-        });
-      }
-    }
-
     const blob = await zip.generateAsync({ type: 'blob' });
     const zipName = `${zipBaseName}.zip`;
     downloadBlob(blob, zipName);
     notifyZipExport({ baseName, zipName, files });
     if (typeof window !== 'undefined' && typeof window.cssmateUpdateActionHint === 'function') {
-      window.cssmateUpdateActionHint('ZIP med PDF, JSON og Excel er gemt.', 'success');
+      window.cssmateUpdateActionHint('ZIP med PDF, JSON og CSV er gemt.', 'success');
     }
     return { zipName, files };
   } catch (error) {

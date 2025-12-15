@@ -12,7 +12,7 @@ CSMate er en letvægtsudgave af den oprindelige Cssmate-applikation, målrettet 
 | `src/` | Moduliseret forretningslogik og UI-helpers som importeres fra `main.js`. |
 | `data/`, `dataset.js`, `complete_lists.json` | Materialedata og genererede prislister. |
 | `icons/`, `manifest.webmanifest` | PWA-manifest og ikonfiler. |
-| `akkord/` | Excel-skabeloner til eksport. |
+| `akkord/` | (Udgået) Tidligere Excel-skabeloner. |
 | `legacy/` | Arkiveret kode der ikke længere indlæses (tidligere pctcalc/numpad-stubs m.m.). |
 | `docs/lighthouse/` | Gemmer Lighthouse-målinger; `latest-mobile.json` overskrives ved nye audits. |
 | `scripts/` | Node-scripts til f.eks. at bump'e SW-version (`bump-sw-version.js`) og opdatere prislister (`update-price-lists.js`). |

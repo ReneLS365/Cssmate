@@ -73,6 +73,7 @@ function buildPdfModel(raw = {}) {
   const extras = baseModel.extras || {}
   const totals = baseModel.totals || {}
   const breakdown = totals.extrasBreakdown || {}
+  const comment = (meta.comment || info.comment || '').toString()
 
   const materialItems = Array.isArray(baseModel.items) ? baseModel.items : []
   const mappedMaterials = materialItems
@@ -182,6 +183,7 @@ function buildPdfModel(raw = {}) {
       workers: wageRows.map(w => w.workerName).filter(Boolean),
       systemsSummaryText: systemSummary,
     },
+    comment,
     materials: sortedMaterials,
     materialsGrouped: grouped,
     totals: { materialTotal, wageTotal, akkordTotal, projectTotal },
@@ -325,7 +327,27 @@ function createRenderer(doc, model, headerFooter, options = {}) {
       doc.setFont('helvetica', 'bold')
       doc.text(`${entry.label}:`, cursor.x, cursor.toPageY())
       doc.setFont('helvetica', 'normal')
-      doc.text(String(entry.value || '-'), cursor.x + 140, cursor.toPageY())
+      const valueLines = doc.splitTextToSize(String(entry.value || '-'), CONTENT_WIDTH - 160)
+      valueLines.forEach((line, index) => {
+        cursor.ensureSpace(H.row)
+        doc.text(line, cursor.x + 140, cursor.toPageY())
+        if (index < valueLines.length - 1) {
+          cursor.moveDown(10)
+        }
+      })
+      cursor.moveDown(H.row)
+    })
+    cursor.moveDown(H.gapSm)
+  }
+
+  const drawComment = () => {
+    const text = (model.comment || '').toString().trim()
+    if (!text) return
+    drawSectionHeader('Kommentar')
+    const lines = doc.splitTextToSize(text, CONTENT_WIDTH)
+    lines.forEach(line => {
+      cursor.ensureSpace(H.row)
+      doc.text(line, cursor.x, cursor.toPageY())
       cursor.moveDown(H.row)
     })
     cursor.moveDown(H.gapSm)
@@ -535,6 +557,7 @@ function createRenderer(doc, model, headerFooter, options = {}) {
   const renderDocument = () => {
     drawTitle()
     drawCaseInfo()
+    drawComment()
     drawMaterialTable()
     drawWageTable()
     cursor.ensureSpace(H.gapMd)

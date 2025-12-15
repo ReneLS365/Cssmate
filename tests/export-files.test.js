@@ -71,9 +71,7 @@ function createTestData () {
       dato: '2024-05-10',
       montoer: 'Montør M',
     },
-    meta: {
-      excelSystems: [],
-    },
+    meta: {},
     linjer: [
       {
         linjeNr: 1,
@@ -107,6 +105,7 @@ function createTestData () {
     },
     jobType: 'montage',
     jobFactor: 1,
+    comment: 'Denne kommentar skal følge med i eksporten',
   }
 }
 
@@ -163,6 +162,8 @@ test('generates and validates JSON and PDF exports', async t => {
   const parsedJson = JSON.parse(jsonText)
   assert.equal(parsedJson.meta.caseNumber, data.info.sagsnummer)
   assert.equal(parsedJson.meta.customer, data.info.kunde)
+  assert.equal(parsedJson.meta.comment, data.comment)
+  assert.equal(parsedJson.info.comment, data.comment)
   assert.ok(Array.isArray(parsedJson.items))
   assert.equal(parsedJson.totals.materials, data.totals.totalMaterialer)
 
