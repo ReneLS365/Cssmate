@@ -124,8 +124,7 @@
 
 .numpad-key-eq {
   background: var(--accent-strong);
-  /* Ændr mørk "=" tekst til hvid for bedre kontrast */
-  color: #ffffff;
+  color: var(--text-on-accent-strong);
   font-weight: 600;
 }
 
@@ -161,8 +160,7 @@
   font-size: 1.15rem;
   font-weight: 700;
   background: var(--accent);
-  /* Ændr commit-knappens tekst til hvid */
-  color: #ffffff;
+  color: var(--text-on-accent);
   cursor: pointer;
   touch-action: manipulation;
   display: inline-flex;

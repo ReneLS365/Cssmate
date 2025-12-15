@@ -8,6 +8,8 @@
   --border:#363842;
   --accent:#9cb4cf;
   --accent-strong:#f2b661;
+  --text-on-accent:#0f1625;
+  --text-on-accent-strong:#0f1625;
   --danger:#ff6b6b;
   --success:#7bd99a;
 
@@ -56,6 +58,8 @@
   --border:#d8dce4;
   --accent:#3f7ac8;
   --accent-strong:#f2b661;
+  --text-on-accent:#f5f6f8;
+  --text-on-accent-strong:#0f1625;
   --panel-soft:color-mix(in srgb, var(--surface-2) 80%, #000 20%);
   --panel-muted:color-mix(in srgb, var(--surface) 84%, #000 16%);
 }
@@ -126,7 +130,7 @@ header .ttl{font-weight:700}
 .tabs::-webkit-scrollbar{height:4px}
 .tab{flex:0 0 auto;scroll-snap-align:start;min-width:4.5rem;padding:0.5rem 0.85rem;font-size:0.95rem;border-radius:0.6rem;border:1px solid rgba(255,255,255,0.08);background:var(--panel);color:var(--muted);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background-color .15s ease,color .15s ease,border-color .15s ease,transform .12s ease}
 .tab:not(.tab--active):hover{color:var(--text);border-color:rgba(255,255,255,0.18)}
-.tab--active{background:var(--accent);color:var(--text);border-color:var(--accent);box-shadow:0 0 0 1px rgba(0,0,0,0.08) inset}
+.tab--active{background:var(--accent);color:var(--text-on-accent);border-color:var(--accent);box-shadow:0 0 0 1px rgba(0,0,0,0.08) inset}
 .tab-panel{display:none;width:100%;min-height:0}
 .tab-panel.tab-panel--active{display:flex;flex-direction:column;gap:var(--gap);min-height:0}
 #panel-lon{flex-direction:column;flex:1 1 auto;min-height:0;overflow-y:auto;padding-bottom:calc(env(safe-area-inset-bottom,0) + 4rem);scroll-padding-bottom:calc(env(safe-area-inset-bottom,0) + 4rem)}

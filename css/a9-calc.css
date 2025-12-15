@@ -119,8 +119,7 @@
 
 .a9-key.a9-eq {
   background: #f97316;
-  /* Ændr "="-knappens tekst til hvid */
-  color: #ffffff;
+  color: var(--text-on-accent-strong);
   font-weight: 700;
 }
 
@@ -139,8 +138,7 @@
   border: none;
   border-radius: 999px;
   background: #22c55e;
-  /* Ændr commit-knappens tekst til hvid */
-  color: #ffffff;
+  color: var(--text-on-accent);
   font-size: 16px;
   font-weight: 600;
   touch-action: manipulation;
