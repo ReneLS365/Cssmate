@@ -75,12 +75,13 @@ test('export buttons trigger their actions correctly', async t => {
 
   const pdfBlob = new Blob(['pdf']);
   const exportPDFBlobMock = mock.fn(() => Promise.resolve({ blob: pdfBlob, fileName: 'custom.pdf' }));
+  const publishSharedCaseMock = mock.fn(() => Promise.resolve());
   const handleImportAkkordMock = mock.fn();
 
   setExportDependencies({
     buildAkkordData: akkordDataMock,
-    exportPDFBlob: exportPDFBlobMock,
     handleImportAkkord: handleImportAkkordMock,
+    publishSharedCase: publishSharedCaseMock,
   });
 
   t.after(() => {
@@ -104,14 +105,14 @@ test('export buttons trigger their actions correctly', async t => {
 
   await buttons['#btn-export-akkord-pdf'].click();
   assert.equal(akkordDataMock.mock.calls.length, 1, 'akkord data built for export');
-  assert.equal(exportPDFBlobMock.mock.calls.length, 1, 'PDF export invoked');
+  assert.equal(exportPDFBlobMock.mock.calls.length, 0, 'PDF eksport springes over');
+  assert.equal(publishSharedCaseMock.mock.calls.length, 1, 'sag publiceres til delt ledger');
   const pdfDownload = downloads.find(entry => entry.download.endsWith('.pdf'));
   const jsonDownload = downloads.find(entry => entry.download.endsWith('.json'));
-  assert.ok(pdfDownload, 'PDF download is queued');
-  assert.ok(jsonDownload, 'JSON download is queued');
-  assert.deepEqual(actionHints[1], { message: 'Eksporterer akkordseddel (JSON + PDF)…', variant: 'info' });
-  assert.deepEqual(actionHints[2], { message: 'Akkordseddel (JSON) er gemt.', variant: 'success' });
-  assert.deepEqual(actionHints[3], { message: 'PDF er gemt til din enhed.', variant: 'success' });
+  assert.ok(!pdfDownload, 'Ingen PDF download');
+  assert.ok(!jsonDownload, 'Ingen JSON download');
+  assert.deepEqual(actionHints[1], { message: 'Publicerer sag til fælles ledger…', variant: 'info' });
+  assert.deepEqual(actionHints[2], { message: 'Sag publiceret til fælles sager.', variant: 'success' });
 
   await buttons['#btn-import-akkord'].click();
   assert.equal(handleImportAkkordMock.mock.calls.length, 1, 'import handler invoked');

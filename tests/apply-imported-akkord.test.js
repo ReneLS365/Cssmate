@@ -76,9 +76,10 @@ function setupGlobalMocks () {
   globalThis.localStorage = localStorage
   globalThis.sessionStorage = globalThis.window.sessionStorage
   globalThis.fetch = async () => ({ ok: true, json: async () => ({}) })
-  globalThis.URL = {
-    createObjectURL: () => 'blob:mock',
-    revokeObjectURL () {},
+  globalThis.URL = original.URL
+  if (globalThis.URL) {
+    globalThis.URL.createObjectURL = () => 'blob:mock'
+    globalThis.URL.revokeObjectURL = () => {}
   }
 
   return () => {

@@ -12,12 +12,13 @@ function setupDownloadSpies () {
   const originalWindow = globalThis.window
   const originalCustomEvent = globalThis.CustomEvent
 
-  globalThis.URL = {
-    createObjectURL: (blob) => {
+  globalThis.URL = originalURL
+  if (globalThis.URL) {
+    globalThis.URL.createObjectURL = (blob) => {
       downloads.push(blob)
       return 'blob:mock-url'
-    },
-    revokeObjectURL: () => {},
+    }
+    globalThis.URL.revokeObjectURL = () => {}
   }
 
   globalThis.document = {
@@ -123,16 +124,13 @@ async function createMinimalPdf (text) {
 
 test('generates and validates JSON and PDF exports', async t => {
   const data = createTestData()
-  const pdfBuffer = await createMinimalPdf(`Sagsnummer: ${data.info.sagsnummer} - Kunde: ${data.info.kunde} - Sum: ${data.totals.projektsum}`)
 
   const { downloads, anchors, restore } = setupDownloadSpies()
+  const publishSharedCaseMock = () => Promise.resolve()
 
   setExportDependencies({
     buildAkkordData: () => data,
-    exportPDFBlob: async () => ({
-      blob: pdfBuffer,
-      fileName: `${data.info.sagsnummer}.pdf`,
-    }),
+    publishSharedCase: publishSharedCaseMock,
   })
 
   t.after(() => {
@@ -143,35 +141,6 @@ test('generates and validates JSON and PDF exports', async t => {
   const result = await exportAkkordJsonAndPdf()
 
   assert.ok(result?.jsonFileName?.endsWith('.json'), 'JSON file name is returned')
-  assert.ok(result?.pdfFileName?.endsWith('.pdf'), 'PDF file name is returned')
-
-  const jsonIndex = anchors.findIndex(entry => entry.download.endsWith('.json'))
-  const pdfIndex = anchors.findIndex(entry => entry.download.endsWith('.pdf'))
-
-  assert.ok(jsonIndex >= 0, 'JSON download is triggered')
-  assert.ok(pdfIndex >= 0, 'PDF download is triggered')
-  assert.equal(anchors.some(entry => entry.download.endsWith('.zip')), false, 'ZIP download is not triggered')
-
-  const jsonBlob = downloads[jsonIndex]
-  const pdfBlob = downloads[pdfIndex]
-
-  const jsonBuffer = typeof jsonBlob.arrayBuffer === 'function'
-    ? await jsonBlob.arrayBuffer()
-    : jsonBlob
-  const jsonText = Buffer.from(jsonBuffer).toString('utf8')
-  const parsedJson = JSON.parse(jsonText)
-  assert.equal(parsedJson.meta.caseNumber, data.info.sagsnummer)
-  assert.equal(parsedJson.meta.customer, data.info.kunde)
-  assert.equal(parsedJson.meta.comment, data.comment)
-  assert.equal(parsedJson.info.comment, data.comment)
-  assert.ok(Array.isArray(parsedJson.items))
-  assert.equal(parsedJson.totals.materials, data.totals.totalMaterialer)
-
-  const pdfBinary = typeof pdfBlob.arrayBuffer === 'function'
-    ? await pdfBlob.arrayBuffer()
-    : pdfBlob
-  const parsedPdfDoc = await PDFDocument.load(Buffer.from(pdfBinary))
-  const parsedTitle = parsedPdfDoc.getTitle() || ''
-  assert.match(parsedTitle, /SA-EXPORT-1/, 'PDF includes sagsnummer')
-  assert.match(parsedTitle, /Test Kunde/, 'PDF includes customer')
+  assert.equal(anchors.length, 0, 'Ingen filer downloades under publicering')
+  assert.equal(downloads.length, 0, 'Ingen blobs downloades under publicering')
 })

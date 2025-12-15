@@ -1,10 +1,10 @@
 import { buildAkkordData } from './akkord-data.js';
-import { exportPDFBlob } from './export-pdf.js';
 import { handleImportAkkord } from './import-akkord.js';
 import { buildAkkordJsonPayload } from './export-json.js';
 import { buildExportModel } from './export-model.js';
 import { buildExportFileBaseName, buildJobSnapshot } from './job-snapshot.js';
 import { appendHistoryEntry } from './storageHistory.js';
+import { publishSharedCase } from './shared-ledger.js';
 
 function isDebugExportEnabled() {
   if (typeof window === 'undefined') return false;
@@ -57,14 +57,14 @@ function downloadBlob(blob, fileName) {
 }
 
 let buildAkkordDataImpl = buildAkkordData;
-let exportPDFBlobImpl = exportPDFBlob;
 let buildAkkordJsonPayloadImpl = buildAkkordJsonPayload;
 let handleImportAkkordImpl = handleImportAkkord;
 let buildJobSnapshotImpl = buildJobSnapshot;
+let publishSharedCaseImpl = publishSharedCase;
 
 export function initExportPanel() {
   bind('#btn-print-akkord', handlePrintAkkord);
-  bind('#btn-export-akkord-pdf', handleExportAkkordPDF);
+    bind('#btn-export-akkord-pdf', handleExportAkkordPDF);
   bind('#btn-import-akkord', (event) => handleImportAkkordAction(event));
 }
 
@@ -73,15 +73,15 @@ function bind(sel, fn) {
   if (el) el.addEventListener('click', fn);
 }
 
-function notifyHistory(type, detail = {}) {
-  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
-  const payload = {
-    type,
-    timestamp: Date.now(),
-    ...detail,
-  };
-  window.dispatchEvent(new CustomEvent('cssmate:exported', { detail: payload }));
-}
+  function notifyHistory(type, detail = {}) {
+    if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+    const payload = {
+      type,
+      timestamp: Date.now(),
+      ...detail,
+    };
+    window.dispatchEvent(new CustomEvent('cssmate:exported', { detail: payload }));
+  }
 
 function buildHistoryMetaFromContext(context) {
   const info = context?.model?.info || {};
@@ -137,15 +137,15 @@ function saveExportHistory(context) {
 
 export async function exportAkkordJsonAndPdf(options = {}) {
   const button = options?.button || options?.currentTarget;
-  const done = setBusy(button, true, { busyText: 'Eksporterer…', doneText: 'Filer klar' });
+  const done = setBusy(button, true, { busyText: 'Publicerer…', doneText: 'Publiceret' });
   const exportErrors = [];
   try {
-    notifyAction('Eksporterer akkordseddel (JSON + PDF)…', 'info');
+    notifyAction('Publicerer sag til fælles ledger…', 'info');
     const context = buildExportContext();
     context.historySaved = Boolean(saveExportHistory(context));
     const jsonResult = (() => {
       try {
-        return exportJsonFromContext(context);
+        return exportJsonFromContext(context, { skipDownload: true });
       } catch (error) {
         exportErrors.push(error);
         console.error('JSON export failed', error);
@@ -155,23 +155,28 @@ export async function exportAkkordJsonAndPdf(options = {}) {
         return null;
       }
     })();
-    await waitForDownloadTick(250);
 
-    const pdfResult = await exportPdfFromContext(context).catch(error => {
-      exportErrors.push(error);
-      console.error('PDF export failed', error);
-      const fallback = 'Der opstod en fejl under PDF-eksporten. Prøv igen – eller kontakt kontoret.';
-      const message = error?.message ? `${fallback} (${error.message})` : fallback;
-      notifyAction(message, 'error');
-      return null;
-    });
-    await waitForDownloadTick(250);
-
-    if (exportErrors.length === 2 || !jsonResult || !pdfResult) {
+    if (!jsonResult) {
       throw exportErrors[0] || new Error('Eksport mislykkedes');
     }
 
-    return { jsonFileName: jsonResult.fileName, pdfFileName: pdfResult.fileName };
+    await publishSharedCaseImpl({
+      teamId: `sscaff-team-${window?.TEAM_ID || 'default'}`,
+      jobNumber: context.meta?.sagsnummer || context.model?.meta?.caseNumber,
+      caseKind: (context.model?.meta?.jobType || 'montage').toLowerCase(),
+      system: context.model?.meta?.system || (context.model?.meta?.systems || [])[0] || '',
+      status: 'kladde',
+      totals: {
+        materials: context.model?.totals?.materials || 0,
+        montage: context.model?.meta?.jobType === 'montage' ? context.model?.totals?.project : 0,
+        demontage: context.model?.meta?.jobType === 'demontage' ? context.model?.totals?.project : 0,
+        total: context.model?.totals?.project || context.model?.totals?.akkord || 0,
+      },
+      jsonContent: jsonResult.content,
+    });
+
+    notifyAction('Sag publiceret til fælles sager.', 'success');
+    return { jsonFileName: jsonResult.fileName };
   } catch (error) {
     console.error('Export failed', error);
     const fallback = 'Der opstod en fejl under eksporten. Prøv igen – eller kontakt kontoret.';
@@ -242,49 +247,34 @@ function buildExportContext() {
   return { data, model, meta, baseName, snapshot, exportedAt };
 }
 
-async function exportPdfFromContext(context) {
-  const payload = await exportPDFBlobImpl(context.data, {
-    skipValidation: false,
-    skipBeregn: false,
-    customSagsnummer: context.meta.sagsnummer,
-    model: context.model,
-    rawData: context.data,
-  });
-  if (!payload?.blob) throw new Error('Mangler PDF payload');
-  const filename = ensurePdfExtension(`${context.baseName}.pdf`);
-  exportDebugLog('pdf_blob', { size: payload.blob?.size });
-  downloadBlob(payload.blob, filename);
-  notifyAction('PDF er gemt til din enhed.', 'success');
-  notifyHistory('pdf', { baseName: context.baseName, fileName: filename, historySaved: context?.historySaved });
-  return { fileName: filename, blob: payload.blob };
-}
-
-function exportJsonFromContext(context) {
-  const payload = buildAkkordJsonPayloadImpl(context.model, context.baseName, {
-    exportedAt: context.exportedAt?.toISOString?.() || context.exportedAt,
-    rawData: context.data,
-  });
-  if (!payload?.content) throw new Error('Kunne ikke bygge JSON-eksporten');
-  let content = payload.content;
-  try {
-    const parsed = JSON.parse(payload.content);
-    if (parsed && parsed.job && typeof parsed.job === 'object') {
-      if (!parsed.meta && parsed.job.meta) parsed.meta = parsed.job.meta;
-      if (!parsed.items && parsed.job.items) parsed.items = parsed.job.items;
-      if (!parsed.materials && parsed.job.materials) parsed.materials = parsed.job.materials;
-      if (!parsed.info && parsed.job.info) parsed.info = parsed.job.info;
-      if (!parsed.totals && parsed.job.totals) parsed.totals = parsed.job.totals;
-      content = JSON.stringify(parsed, null, 2);
+  function exportJsonFromContext(context, { skipDownload = false } = {}) {
+    const payload = buildAkkordJsonPayloadImpl(context.model, context.baseName, {
+      exportedAt: context.exportedAt?.toISOString?.() || context.exportedAt,
+      rawData: context.data,
+    });
+    if (!payload?.content) throw new Error('Kunne ikke bygge JSON-eksporten');
+    let content = payload.content;
+    try {
+      const parsed = JSON.parse(payload.content);
+      if (parsed && parsed.job && typeof parsed.job === 'object') {
+        if (!parsed.meta && parsed.job.meta) parsed.meta = parsed.job.meta;
+        if (!parsed.items && parsed.job.items) parsed.items = parsed.job.items;
+        if (!parsed.materials && parsed.job.materials) parsed.materials = parsed.job.materials;
+        if (!parsed.info && parsed.job.info) parsed.info = parsed.job.info;
+        if (!parsed.totals && parsed.job.totals) parsed.totals = parsed.job.totals;
+        content = JSON.stringify(parsed, null, 2);
+      }
+    } catch {}
+    const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+    const fileName = payload.fileName || `${context.baseName}.json`;
+    exportDebugLog('json_blob', { size: blob.size });
+    if (!skipDownload) {
+      downloadBlob(blob, fileName);
+      notifyAction('Akkordseddel (JSON) er gemt.', 'success');
+      notifyHistory('json', { baseName: context.baseName, fileName, historySaved: context?.historySaved });
     }
-  } catch {}
-  const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
-  const fileName = payload.fileName || `${context.baseName}.json`;
-  exportDebugLog('json_blob', { size: blob.size });
-  downloadBlob(blob, fileName);
-  notifyAction('Akkordseddel (JSON) er gemt.', 'success');
-  notifyHistory('json', { baseName: context.baseName, fileName, historySaved: context?.historySaved });
-  return { fileName, blob };
-}
+    return { fileName, blob, content };
+  }
 
 function notifyAction(message, variant) {
   if (typeof window !== 'undefined' && typeof window.cssmateUpdateActionHint === 'function') {
@@ -331,9 +321,6 @@ export function setExportDependencies(overrides = {}) {
   buildAkkordDataImpl = typeof overrides.buildAkkordData === 'function'
     ? overrides.buildAkkordData
     : buildAkkordData;
-  exportPDFBlobImpl = typeof overrides.exportPDFBlob === 'function'
-    ? overrides.exportPDFBlob
-    : exportPDFBlob;
   buildAkkordJsonPayloadImpl = typeof overrides.buildAkkordJsonPayload === 'function'
     ? overrides.buildAkkordJsonPayload
     : buildAkkordJsonPayload;
@@ -343,6 +330,9 @@ export function setExportDependencies(overrides = {}) {
   handleImportAkkordImpl = typeof overrides.handleImportAkkord === 'function'
     ? overrides.handleImportAkkord
     : handleImportAkkord;
+  publishSharedCaseImpl = typeof overrides.publishSharedCase === 'function'
+    ? overrides.publishSharedCase
+    : publishSharedCase;
 }
 
 export {
