@@ -48,7 +48,7 @@ export function buildJobSnapshot(options = {}) {
     totals: model.totals,
     wage: model.wage,
     jobFactor: rawData?.jobFactor ?? 1,
-    excelSystems: rawData?.excelSystems || rawData?.meta?.excelSystems || model?.meta?.systems || [],
+    comment: rawData?.comment || rawData?.meta?.comment || rawData?.info?.comment || model?.meta?.comment || '',
     tralleState: rawData?.tralleState || {},
     cache: rawData?.cache || null,
   };

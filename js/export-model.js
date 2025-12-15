@@ -211,6 +211,7 @@ export function buildExportModel(raw = {}, options = {}) {
         : raw.system
           ? [raw.system]
           : []
+  const comment = metaInfo.comment || raw.info?.comment || raw.comment || ''
 
   const systemsFromItems = Array.from(new Set(
     items
@@ -236,6 +237,7 @@ export function buildExportModel(raw = {}, options = {}) {
     jobFactor: asNumber(raw.jobFactor, 1) || 1,
     createdAt: raw.createdAt || metaInfo.createdAt || new Date().toISOString(),
     exportedAt: options.exportedAt || new Date().toISOString(),
+    comment,
   }
 
   const info = {
@@ -246,6 +248,7 @@ export function buildExportModel(raw = {}, options = {}) {
     dato: meta.date,
     montoer: metaInfo.montoer || raw.info?.montoer || '',
     jobType,
+    comment,
   }
 
   const extraFields = {

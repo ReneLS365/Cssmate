@@ -8,28 +8,6 @@ const BORING_BETON_RATE = 11.49;
 const OPSKYDELIGT_RATE = 9.67;
 const KM_RATE = DEFAULT_KM_RATE;
 
-const SUPPORTED_EXCEL_SYSTEMS = ['bosta', 'haki', 'modex', 'alfix'];
-
-function sanitizeSystemList(list) {
-  if (!list) return [];
-  const array = Array.isArray(list)
-    ? list
-    : (typeof list === 'string'
-      ? [list]
-      : (list && typeof list[Symbol.iterator] === 'function'
-        ? Array.from(list)
-        : []));
-  const unique = [];
-  array.forEach(entry => {
-    const normalized = typeof entry === 'string' ? entry.trim().toLowerCase() : '';
-    if (!normalized || !SUPPORTED_EXCEL_SYSTEMS.includes(normalized)) return;
-    if (!unique.includes(normalized)) {
-      unique.push(normalized);
-    }
-  });
-  return unique;
-}
-
 function getRawAkkordData() {
   if (typeof window !== 'undefined') {
     const rawBuilder = window.cssmateBuildAkkordDataRaw || window.cssmateBuildAkkordData;
@@ -42,10 +20,7 @@ function getRawAkkordData() {
     }
   }
   const sagsnummer = document.getElementById('sagsnummer')?.value || 'ukendt';
-  const excelSelection = Array.from(document.querySelectorAll('input[name="akkordExcelSystem"][type="checkbox"]'))
-    .filter(input => input.checked)
-    .map(input => (input.value || '').toString().toLowerCase())
-    .filter(Boolean);
+  const comment = document.getElementById('akkordComment')?.value || '';
   return {
     info: {
       sagsnummer,
@@ -54,9 +29,10 @@ function getRawAkkordData() {
       navn: document.getElementById('sagsnavn')?.value || '',
       dato: document.getElementById('sagsdato')?.value || new Date().toISOString().slice(0, 10),
       montoer: document.getElementById('sagsmontoer')?.value || '',
+      comment,
     },
     meta: {
-      excelSystems: excelSelection,
+      comment,
     },
     materials: [],
     totals: {},
@@ -66,7 +42,7 @@ function getRawAkkordData() {
     tralleSum: 0,
     tralleState: {},
     systems: [],
-    excelSystems: excelSelection,
+    comment,
   };
 }
 
@@ -135,11 +111,7 @@ export function buildAkkordData(rawInput) {
     : Array.isArray(metaSource.systems)
       ? metaSource.systems
       : [];
-  const excelSystems = sanitizeSystemList(
-    raw.excelSystems
-    || metaSource.excelSystems
-    || systems,
-  );
+  const comment = raw.comment || metaInfo.comment || metaSource.comment || '';
   const totalMaterialer = linjer.reduce((sum, line) => sum + Number(line.linjeBelob || 0), 0);
 
   const inputs = raw.extraInputs || {};
@@ -214,12 +186,12 @@ export function buildAkkordData(rawInput) {
       ...info,
       beskrivelse: info.navn,
       systems,
-      excelSystems,
       createdAt,
+      comment,
     },
     info,
     systems,
-    excelSystems,
+    comment,
     akkord,
     extras,
     linjer,

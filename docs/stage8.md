@@ -15,7 +15,7 @@ Denne fase samler QA-arbejdet efter Stage 1-7 og fokuserer på eksporternes korr
 1. Udfyld en fuld sag (Sagsinfo, Optælling, Løn, Ekstraarbejde) så alle sektioner har data.
 2. Eksportér PDF, ZIP og JSON.
 3. PDF: Åbn filen og sammenlign sagsinfo, totalsummer og materialer med UI. Ret PDF-genereringen ved uoverensstemmelser.
-4. ZIP: Pak ud og bekræft, at PDF og JSON (og evt. Excel) svarer til UI-data.
+4. ZIP: Pak ud og bekræft, at PDF og JSON svarer til UI-data.
 5. JSON: Gem, reload appen, importér JSON, og bekræft at alle felter gendannes korrekt. Ret importlogik ved fejl.
 6. Udvid automatiske tests til round-trip og filindhold, hvis muligt.
 

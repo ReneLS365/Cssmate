@@ -1,6 +1,6 @@
 {
   "name": "sscaff-app",
-  "version": "2025.12.10",
+  "version": "2025.13.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -26,7 +26,6 @@
     "compare:json": "node scripts/compare-json.js release-artifacts/v2025.12.10/basic/basic.json release-artifacts/v2025.12.10/basic/basic-roundtrip.json",
     "dev:mat-debug": "npx http-server . -p 4174 --silent",
     "perf:bundle": "size-limit",
-    "export:fix": "node tools/export-fix/index.js",
     "verify:env": "node tools/verify/verify-env.js",
     "test:exports": "npm run test:export",
     "verify:build-and-tests": "npm run clean --if-present && npm ci && npm run build && npm run lint --if-present && npm run typecheck --if-present && npm run test --if-present && npm run test:unit --if-present && npm run test:exports --if-present && npm run test:e2e --if-present && npm run perf:bundle --if-present",
@@ -48,8 +47,7 @@
     "linkinator": "^7.5.0",
     "pdf-lib": "^1.17.1",
     "size-limit": "^11.1.4",
-    "terser": "^5.36.0",
-    "xlsx": "^0.18.5"
+    "terser": "^5.36.0"
   },
   "size-limit": [
     {

@@ -247,14 +247,9 @@ button{cursor:pointer}
 .export-actions button{padding:0.4rem 0.5rem;font-size:0.85rem;border-radius:0.75rem;background:var(--panel-soft);border:1px solid var(--border);min-height:44px;position:relative;overflow:hidden}
 .export-actions button.is-busy{color:var(--muted)}
 .export-actions button.is-busy::after{content:"";position:absolute;right:10px;top:50%;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:999px;transform:translateY(-50%);animation:button-spin .9s linear infinite}
-.export-system-selector{display:flex;flex-direction:column;gap:0.35rem;padding:0.75rem;border:1px dashed var(--border);border-radius:10px;background:var(--panel-soft)}
-.export-system-selector legend{padding:0 4px;font-size:0.95rem}
-.export-system-options{display:flex;flex-direction:column;gap:0.35rem}
-.export-system-option{display:flex;align-items:flex-start;gap:0.5rem;font-size:0.9rem;color:var(--text)}
-.export-system-option input{margin-top:0.2rem}
-.export-system-option__label{font-weight:500}
-.export-system-option__hint{display:block;font-size:0.75rem;color:var(--muted)}
-.export-system-option--inactive .export-system-option__label{opacity:0.7}
+.export-comment{display:flex;flex-direction:column;gap:0.35rem;padding:0.75rem;border:1px dashed var(--border);border-radius:10px;background:var(--panel-soft)}
+.export-comment legend{padding:0 4px;font-size:0.95rem}
+#panel-lon .export-comment textarea{background:#ffffff;color:#000000;border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--pad);width:100%;font-size:1rem;line-height:1.4;resize:vertical}
 .history-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.5rem;color:var(--muted);font-size:0.9rem;position:relative;min-height:3.5rem}
 .history-list.is-loading::before{content:"Henter historik…";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:0.9rem;color:var(--muted);background:linear-gradient(90deg,rgba(0,0,0,0.03),rgba(0,0,0,0.05),rgba(0,0,0,0.03));background-size:200% 100%;animation:history-shimmer 1.2s linear infinite}
 .history-list.is-loading>*{opacity:0.45;pointer-events:none}
