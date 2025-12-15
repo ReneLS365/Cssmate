@@ -5,11 +5,14 @@
   --surface-2:#24262c;
   --text:#f5f6f8;
   --muted:#c6c8cf;
+  --text-strong:var(--text);
   --border:#363842;
   --accent:#9cb4cf;
   --accent-strong:#f2b661;
+  --accent-soft:color-mix(in srgb, var(--accent) 18%, transparent);
   --text-on-accent:#0f1625;
   --text-on-accent-strong:#0f1625;
+  --card:var(--surface);
   --danger:#ff6b6b;
   --success:#7bd99a;
 
@@ -55,11 +58,14 @@
   --surface-2:#f6f7fb;
   --text:#0f1625;
   --muted:#5c6677;
+  --text-strong:#0f1625;
   --border:#d8dce4;
   --accent:#3f7ac8;
   --accent-strong:#f2b661;
+  --accent-soft:color-mix(in srgb, var(--accent) 22%, transparent);
   --text-on-accent:#f5f6f8;
   --text-on-accent-strong:#0f1625;
+  --card:var(--surface);
   --panel-soft:color-mix(in srgb, var(--surface-2) 80%, #000 20%);
   --panel-muted:color-mix(in srgb, var(--surface) 84%, #000 16%);
 }
@@ -199,6 +205,7 @@ html.app-booting .app-root::after{content:"Loader app…";position:fixed;top:10p
 html.app-ready .app-root::after{display:none}
 .tab-panels{flex:1 1 auto;min-height:0;overflow-y:auto;padding:clamp(0.5rem,2vw,1rem) 0 clamp(1rem,4vw,1.75rem);width:100%;margin:0 auto}
 .tab-panel{min-width:0}
+.tab-panel{color:var(--text)}
 fieldset{border:1px solid var(--border);background:var(--panel);border-radius:var(--r-md);margin:0;padding:var(--pad)}
 .card{border:1px solid var(--border);background:var(--panel);border-radius:var(--r-md);padding:0.85rem 0.95rem;display:flex;flex-direction:column;gap:var(--gap);content-visibility:auto;contain-intrinsic-size:320px;box-shadow:0 1px 0 rgba(255,255,255,0.02)}
 .card-header{display:flex;flex-direction:column;gap:0.35rem}
@@ -233,6 +240,8 @@ button{cursor:pointer}
 .job-history__list h3{margin:0 0 0.25rem;font-size:1rem}
 .job-history__hint{margin:0 0 0.75rem;font-size:0.85rem;color:var(--muted)}
 .job-history__list{display:flex;flex-direction:column;gap:0.5rem}
+.tab-panel#panel-historik,.tab-panel#panel-historik h2,.tab-panel#panel-historik p,.tab-panel#panel-historik li,.tab-panel#panel-historik .history-table__head,.tab-panel#panel-historik .history-table__cell,.tab-panel#panel-historik .history-list__empty{color:var(--text)}
+.tab-panel#panel-historik .history-table__head{color:var(--text)}
 .export-panel{gap:0.75rem}
 .export-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:0.5rem}
 .export-actions button{padding:0.4rem 0.5rem;font-size:0.85rem;border-radius:0.75rem;background:var(--panel-soft);border:1px solid var(--border);min-height:44px;position:relative;overflow:hidden}
@@ -274,6 +283,8 @@ button{cursor:pointer}
 .history-item__note{margin:0;font-size:0.9rem;color:var(--muted)}
 .history-item__actions{display:flex;gap:0.5rem;flex-wrap:wrap}
 .history-item__actions button{flex:1 1 auto;min-width:120px}
+.tab-panel#panel-hjaelp,.tab-panel#panel-hjaelp h3,.tab-panel#panel-hjaelp p,.tab-panel#panel-hjaelp li,.tab-panel#panel-hjaelp legend,.tab-panel#panel-hjaelp strong,.tab-panel#panel-hjaelp ol,.tab-panel#panel-hjaelp ul{color:var(--text)}
+.tab-panel#panel-hjaelp a{color:var(--accent)}
 @media (min-width:641px){
   .history-item__header{padding:0.75rem 1rem}
   .history-item__body{padding:0.75rem 1rem 1rem}
@@ -295,6 +306,7 @@ button{cursor:pointer}
   display: flex;
   flex-direction: column;
   width: 100%;
+  color: var(--text);
 }
 .material-row,
 .csm-row {
@@ -312,6 +324,8 @@ button{cursor:pointer}
 
 .material-row + .material-row,
 .csm-row + .csm-row { margin-top: 8px; }
+
+.material-options,.material-options span,.material-options strong{color:var(--text)}
 
 .material-row.manual,
 .csm-row.manual { background: var(--elev); }
@@ -343,7 +357,7 @@ button{cursor:pointer}
 .csm-name { min-width: 140px; text-align: left; }
 .manual .csm-name { font-weight: 600; }
 .material-name{min-width:140px;text-align:left}
-.material-total{text-align:right;white-space:nowrap}
+.material-total{text-align:right;white-space:nowrap;color:var(--text)}
 
 .csm-qty,
 .csm-price,
@@ -365,6 +379,15 @@ button{cursor:pointer}
   color: var(--text);
   font-size: 0.95rem;
 }
+
+.material-row .mat-qty,
+.material-row .mat-price,
+.material-row .mat-sum,
+.material-row .mat-name,
+.csm-row .csm-qty,
+.csm-row .csm-price,
+.csm-row .csm-sum,
+.csm-row .csm-name{color:var(--text)}
 
 @media (max-width:400px){
   .material-row,
@@ -391,7 +414,7 @@ button{cursor:pointer}
 .totals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--gap)}
 .totals div{display:flex;flex-direction:column;gap:4px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px}
 .totals span{color:var(--muted);font-size:0.85rem}
-.totals strong{font-size:1.25rem}
+.totals strong{font-size:1.25rem;color:var(--text)}
 .hint{font-size:0.9rem;color:var(--muted);margin:0;min-height:1.2em}
 .hint.error{color:#ff9b9b}
 .hint.success{color:#8adbae}
@@ -548,6 +571,7 @@ button{cursor:pointer}
   body{background:#fff;color:#000}
   fieldset{border-color:#000;background:#fff}
   .materials{max-height:none}
+  .totals strong{color:#000}
 }
 
 :root{
