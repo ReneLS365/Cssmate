@@ -4,10 +4,29 @@ import { connect } from '@fireproof/partykit';
 const LEDGER_TEAM_PREFIX = 'sscaff-team-';
 const LEDGER_VERSION = 1;
 const STORAGE_PREFIX = 'sscaff:shared-ledger:';
+const TEAM_ID_STORAGE_KEY = 'sscaff-team-id';
 
 export function formatTeamId(rawTeamId) {
   const cleaned = (rawTeamId || '').toString().trim() || 'default';
   return cleaned.startsWith(LEDGER_TEAM_PREFIX) ? cleaned : `${LEDGER_TEAM_PREFIX}${cleaned}`;
+}
+
+export function resolveTeamId(rawTeamId) {
+  if (rawTeamId) return formatTeamId(rawTeamId);
+
+  try {
+    if (typeof window !== 'undefined') {
+      const fromWindow = window.TEAM_ID;
+      if (fromWindow) return formatTeamId(fromWindow);
+
+      const stored = window.localStorage?.getItem(TEAM_ID_STORAGE_KEY);
+      if (stored) return formatTeamId(stored);
+    }
+  } catch (error) {
+    console.warn('Kunne ikke læse Team ID', error);
+  }
+
+  return formatTeamId('default');
 }
 
 function getStorage() {

@@ -4,7 +4,7 @@ import { buildAkkordJsonPayload } from './export-json.js';
 import { buildExportModel } from './export-model.js';
 import { buildExportFileBaseName, buildJobSnapshot } from './job-snapshot.js';
 import { appendHistoryEntry } from './storageHistory.js';
-import { publishSharedCase, formatTeamId } from './shared-ledger.js';
+import { publishSharedCase, resolveTeamId } from './shared-ledger.js';
 
 function isDebugExportEnabled() {
   if (typeof window === 'undefined') return false;
@@ -161,7 +161,7 @@ export async function exportAkkordJsonAndPdf(options = {}) {
     }
 
     await publishSharedCaseFn({
-      teamId: formatTeamId(typeof window !== 'undefined' ? window.TEAM_ID : undefined),
+      teamId: resolveTeamId(typeof window !== 'undefined' ? window.TEAM_ID : undefined),
       jobNumber: context.meta?.sagsnummer || context.model?.meta?.caseNumber,
       caseKind: (context.model?.meta?.jobType || 'montage').toLowerCase(),
       system: context.model?.meta?.system || (context.model?.meta?.systems || [])[0] || '',
@@ -340,17 +340,3 @@ export {
   handleImportAkkordAction,
   handlePrintAkkord,
 };
-
-function waitForDownloadTick(delay = 150) {
-  return new Promise(resolve => {
-    const timer = typeof window !== 'undefined' && typeof window.setTimeout === 'function'
-      ? window.setTimeout
-      : setTimeout;
-    timer(resolve, delay);
-  });
-}
-
-function ensurePdfExtension(filename) {
-  if (typeof filename !== 'string') return `${sanitizeFilename(filename || 'akkordseddel')}.pdf`;
-  return filename.toLowerCase().endsWith('.pdf') ? filename : `${filename}.pdf`;
-}

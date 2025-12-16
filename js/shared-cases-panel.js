@@ -1,13 +1,9 @@
-import { listSharedGroups, downloadCaseJson, importCasePayload, updateCaseStatus, deleteSharedCase, getCurrentUserId, formatTeamId, getSharedLedger } from './shared-ledger.js';
+import { listSharedGroups, downloadCaseJson, importCasePayload, updateCaseStatus, deleteSharedCase, getCurrentUserId, formatTeamId, getSharedLedger, resolveTeamId } from './shared-ledger.js';
 import { exportPDFBlob } from './export-pdf.js';
 import { buildExportModel } from './export-model.js';
 import { downloadBlob } from './utils/downloadBlob.js';
 
-const TEAM_ID = formatTeamId(
-  (typeof window !== 'undefined' && window.TEAM_ID)
-    || (typeof window !== 'undefined' && window.localStorage?.getItem('sscaff-team-id'))
-    || 'default',
-);
+const TEAM_ID = resolveTeamId();
 const { connection } = getSharedLedger(TEAM_ID);
 
 function getFilters() {
