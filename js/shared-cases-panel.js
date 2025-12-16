@@ -4,7 +4,9 @@ import { buildExportModel } from './export-model.js';
 import { downloadBlob } from './utils/downloadBlob.js';
 
 const TEAM_ID = resolveTeamId();
+const DISPLAY_TEAM_ID = TEAM_ID.replace(/^sscaff-team-/, '');
 const { connection } = getSharedLedger(TEAM_ID);
+let sharedCasesPanelInitialized = false;
 
 function getFilters() {
   const job = document.getElementById('sharedFilterJob');
@@ -186,7 +188,7 @@ function renderGroup(group, userId, onChange) {
 
 function setSharedStatus(text) {
   const status = document.getElementById('sharedStatus');
-  if (status) status.textContent = text;
+  if (status) status.textContent = `Team: ${DISPLAY_TEAM_ID} · ${text}`;
 }
 
 function updateSharedStatus() {
@@ -213,13 +215,14 @@ function initTeamIdInput() {
   if (!isDefaultTeam) return;
   const input = document.getElementById('teamIdInput');
   const saveButton = document.getElementById('saveTeamId');
-  if (input && typeof input.value === 'string') input.value = '';
+  if (input && typeof input.value === 'string') input.value = DISPLAY_TEAM_ID;
   if (!saveButton) return;
   saveButton.addEventListener('click', () => {
     const value = input?.value?.trim();
     if (!value) return;
     try {
-      window.localStorage?.setItem('sscaff-team-id', value);
+      const formatted = formatTeamId(value);
+      window.localStorage?.setItem('csmate:teamId', formatted);
       window.location.reload();
     } catch (error) {
       console.warn('Kunne ikke gemme Team ID', error);
@@ -228,8 +231,10 @@ function initTeamIdInput() {
 }
 
 export function initSharedCasesPanel() {
+  if (sharedCasesPanelInitialized) return;
   const container = document.getElementById('sharedCasesList');
   if (!container) return;
+  sharedCasesPanelInitialized = true;
   const refreshBtn = document.getElementById('refreshSharedCases');
   const filters = ['sharedFilterJob', 'sharedFilterStatus', 'sharedFilterKind']
     .map(id => document.getElementById(id))

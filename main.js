@@ -5423,8 +5423,9 @@ async function initApp() {
       setupGuideModal();
       setupAdminControls();
       setupA9Integration();
-      initSharedCasesPanel();
     });
+
+    runWhenIdle(() => initSharedCasesPanel());
 
   document.getElementById('btnBeregnLon')?.addEventListener('click', () => beregnLon());
 

@@ -4,29 +4,47 @@ import { connect } from '@fireproof/partykit';
 const LEDGER_TEAM_PREFIX = 'sscaff-team-';
 const LEDGER_VERSION = 1;
 const STORAGE_PREFIX = 'sscaff:shared-ledger:';
-const TEAM_ID_STORAGE_KEY = 'sscaff-team-id';
+const TEAM_ID_STORAGE_KEY = 'csmate:teamId';
+const DEFAULT_TEAM_ID = 'Hulmose';
 
 export function formatTeamId(rawTeamId) {
   const cleaned = (rawTeamId || '').toString().trim() || 'default';
   return cleaned.startsWith(LEDGER_TEAM_PREFIX) ? cleaned : `${LEDGER_TEAM_PREFIX}${cleaned}`;
 }
 
-export function resolveTeamId(rawTeamId) {
-  if (rawTeamId) return formatTeamId(rawTeamId);
-
+function persistTeamId(teamId) {
   try {
-    if (typeof window !== 'undefined') {
-      const fromWindow = window.TEAM_ID;
-      if (fromWindow) return formatTeamId(fromWindow);
+    const storage = getStorage();
+    storage?.setItem(TEAM_ID_STORAGE_KEY, teamId);
+  } catch (error) {
+    console.warn('Kunne ikke gemme Team ID', error);
+  }
+}
 
-      const stored = window.localStorage?.getItem(TEAM_ID_STORAGE_KEY);
-      if (stored) return formatTeamId(stored);
-    }
+function readTeamIdFromStorage() {
+  try {
+    const storage = getStorage();
+    if (!storage) return null;
+    const stored = storage.getItem(TEAM_ID_STORAGE_KEY);
+    if (stored && stored.trim()) return stored;
   } catch (error) {
     console.warn('Kunne ikke læse Team ID', error);
   }
+  return null;
+}
 
-  return formatTeamId('default');
+export function resolveTeamId(rawTeamId) {
+  const enforcedTeamId = formatTeamId(DEFAULT_TEAM_ID);
+  const requestedTeamId = rawTeamId || (typeof window !== 'undefined' ? window.TEAM_ID : null) || readTeamIdFromStorage();
+  const formattedRequested = requestedTeamId ? formatTeamId(requestedTeamId) : enforcedTeamId;
+
+  if (formattedRequested !== enforcedTeamId) {
+    persistTeamId(enforcedTeamId);
+    return enforcedTeamId;
+  }
+
+  persistTeamId(enforcedTeamId);
+  return enforcedTeamId;
 }
 
 function getStorage() {
