@@ -763,6 +763,20 @@ button{cursor:pointer}
 .history-item__body{margin-top:0.35rem;border:1px solid var(--border);border-radius:10px;padding:0.65rem 0.75rem;background:var(--panel)}
 .history-item__actions{justify-content:flex-end}
 
+.shared-filters{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));align-items:flex-end;margin-bottom:12px}
+.shared-filter-actions{display:flex;justify-content:flex-end}
+.shared-cases-list{display:flex;flex-direction:column;gap:8px}
+.shared-group{border:1px solid #e5e7eb;border-radius:8px;padding:6px 10px;background:#f8fafc}
+.shared-group summary{font-weight:600;cursor:pointer}
+.shared-case-item{border:1px solid #e5e7eb;border-radius:6px;padding:8px 10px;background:#fff;margin:6px 0}
+.shared-case-title{font-weight:600}
+.shared-case-meta,.shared-case-totals{color:#4b5563;font-size:14px}
+.shared-case-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.shared-status{margin-bottom:8px;color:#4b5563}
+.team-id-input{display:flex;gap:8px;align-items:center;margin:8px 0}
+.team-id-input label{font-weight:600}
+.team-id-input input{flex:1}
+
 /* Debug outlines for material rows (kept to visualize rendered layout) */
 .material-row{outline:1px solid red !important}
 .material-row>*{outline:1px dashed lime !important}

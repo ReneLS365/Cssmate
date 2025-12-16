@@ -18,6 +18,7 @@ import { saveDraft, loadDraft, clearDraft } from './js/storageDraft.js'
 import { appendHistoryEntry, loadHistory as loadHistoryEntries, deleteHistoryEntry, migrateHistory, buildHistoryKey as computeHistoryKey } from './js/storageHistory.js'
 import { normalizeHistoryEntry as baseNormalizeHistoryEntry, normalizeHistoryList, formatDateLabel, normalizeSearchValue } from './js/history-normalizer.js'
 import { downloadBlob } from './js/utils/downloadBlob.js'
+import { initSharedCasesPanel } from './js/shared-cases-panel.js'
 import './boot-inline.js'
 
 if (typeof document !== 'undefined') {
@@ -214,7 +215,7 @@ async function ensureZipLibLazy () {
 const IOS_INSTALL_PROMPT_DISMISSED_KEY = 'csmate.iosInstallPromptDismissed'
 const TAB_STORAGE_KEY = 'csmate:lastTab'
 const LEGACY_TAB_STORAGE_KEYS = ['sscaff:lastTab', 'cssmate:lastActiveTab']
-const KNOWN_TAB_ID_ORDER = ['sagsinfo', 'optaelling', 'lon', 'historik', 'hjaelp']
+const KNOWN_TAB_ID_ORDER = ['sagsinfo', 'optaelling', 'lon', 'historik', 'delte-sager', 'hjaelp']
 const KNOWN_TAB_IDS = new Set(KNOWN_TAB_ID_ORDER)
 const DEFAULT_TAB_ID = KNOWN_TAB_ID_ORDER[0]
 const INSTALL_BUTTON_DISABLED_TOOLTIP = 'Tilføj via browsermenu på denne platform'
@@ -5418,11 +5419,12 @@ async function initApp() {
     optaellingContainer.addEventListener('change', handleOptaellingInput);
   }
 
-  runWhenIdle(() => {
-    setupGuideModal();
-    setupAdminControls();
-    setupA9Integration();
-  });
+    runWhenIdle(() => {
+      setupGuideModal();
+      setupAdminControls();
+      setupA9Integration();
+      initSharedCasesPanel();
+    });
 
   document.getElementById('btnBeregnLon')?.addEventListener('click', () => beregnLon());
 

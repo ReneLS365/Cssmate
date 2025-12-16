@@ -9,7 +9,7 @@ if (versionScriptUrl) {
   importScripts('/js/version.js')
 }
 
-const CACHE_VERSION = 'sscaff-v-20251217000000001' // bumped to refresh caches efter Excel-fjernelse og kommentar-felt
+const CACHE_VERSION = 'sscaff-v-20251217000000002' // bumped after delt sager fanen
 const CACHE_NAME = 'sscaff-' + CACHE_VERSION
 const PRECACHE_URLS = [
   '/',
@@ -25,6 +25,8 @@ const PRECACHE_URLS = [
   '/src/styles/fixes.css',
   '/js/akkord-export.js',
   '/js/akkord-export-ui.js',
+  '/js/shared-ledger.js',
+  '/js/shared-cases-panel.js',
   '/js/storageDraft.js',
   '/js/storageHistory.js',
   '/js/history-normalizer.js',

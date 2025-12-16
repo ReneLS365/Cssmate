@@ -31,10 +31,16 @@
     "verify:build-and-tests": "npm run clean --if-present && npm ci && npm run build && npm run lint --if-present && npm run typecheck --if-present && npm run test --if-present && npm run test:unit --if-present && npm run test:exports --if-present && npm run test:e2e --if-present && npm run perf:bundle --if-present",
     "test:lh": "bash scripts/run-lhci.sh",
     "verify:perf": "npm run build && npm run test:lh",
-    "verify:deploy": "npm run verify:build-and-tests && npm run verify:perf"
+    "verify:deploy": "npm run verify:build-and-tests && npm run verify:perf",
+    "partykit:dev": "partykit dev",
+    "partykit:deploy": "partykit deploy"
   },
   "dependencies": {
-    "chromium": "^3.0.3"
+    "@fireproof/core": "^0.24.0",
+    "@fireproof/partykit": "^0.19.118",
+    "chromium": "^3.0.3",
+    "partykit": "^0.0.115",
+    "partysocket": "^1.1.6"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",
