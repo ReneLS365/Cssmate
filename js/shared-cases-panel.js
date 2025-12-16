@@ -1,4 +1,4 @@
-import { listSharedGroups, downloadCaseJson, importCasePayload, updateCaseStatus, deleteSharedCase, getCurrentUserId, formatTeamId } from './shared-ledger.js';
+import { listSharedGroups, downloadCaseJson, importCasePayload, updateCaseStatus, deleteSharedCase, getCurrentUserId, formatTeamId, getSharedLedger } from './shared-ledger.js';
 import { exportPDFBlob } from './export-pdf.js';
 import { buildExportModel } from './export-model.js';
 import { downloadBlob } from './utils/downloadBlob.js';
@@ -8,6 +8,7 @@ const TEAM_ID = formatTeamId(
     || (typeof window !== 'undefined' && window.localStorage?.getItem('sscaff-team-id'))
     || 'default',
 );
+const { connection } = getSharedLedger(TEAM_ID);
 
 function getFilters() {
   const job = document.getElementById('sharedFilterJob');
@@ -187,6 +188,49 @@ function renderGroup(group, userId, onChange) {
   return details;
 }
 
+function setSharedStatus(text) {
+  const status = document.getElementById('sharedStatus');
+  if (status) status.textContent = text;
+}
+
+function updateSharedStatus() {
+  if (!connection) {
+    setSharedStatus('Offline – ingen sync');
+    return;
+  }
+  setSharedStatus('Synkroniserer …');
+  if (typeof connection.ready === 'function') {
+    connection.ready().then(() => setSharedStatus('Synkroniseret')).catch(error => {
+      console.warn('Sync forbindelse fejlede', error);
+      setSharedStatus('Offline – ingen sync');
+    });
+  } else {
+    setSharedStatus('Synkroniseret');
+  }
+}
+
+function initTeamIdInput() {
+  const container = document.getElementById('teamIdInputContainer');
+  if (!container) return;
+  const isDefaultTeam = TEAM_ID === formatTeamId('default');
+  container.hidden = !isDefaultTeam;
+  if (!isDefaultTeam) return;
+  const input = document.getElementById('teamIdInput');
+  const saveButton = document.getElementById('saveTeamId');
+  if (input && typeof input.value === 'string') input.value = '';
+  if (!saveButton) return;
+  saveButton.addEventListener('click', () => {
+    const value = input?.value?.trim();
+    if (!value) return;
+    try {
+      window.localStorage?.setItem('sscaff-team-id', value);
+      window.location.reload();
+    } catch (error) {
+      console.warn('Kunne ikke gemme Team ID', error);
+    }
+  });
+}
+
 export function initSharedCasesPanel() {
   const container = document.getElementById('sharedCasesList');
   if (!container) return;
@@ -194,6 +238,8 @@ export function initSharedCasesPanel() {
   const filters = ['sharedFilterJob', 'sharedFilterStatus', 'sharedFilterKind']
     .map(id => document.getElementById(id))
     .filter(Boolean);
+  updateSharedStatus();
+  initTeamIdInput();
 
   const refresh = async () => {
     if (!container) return;

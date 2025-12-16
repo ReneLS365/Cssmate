@@ -60,7 +60,7 @@ let buildAkkordDataImpl = buildAkkordData;
 let buildAkkordJsonPayloadImpl = buildAkkordJsonPayload;
 let handleImportAkkordImpl = handleImportAkkord;
 let buildJobSnapshotImpl = buildJobSnapshot;
-let publishSharedCaseImpl = publishSharedCase;
+let publishSharedCaseFn = publishSharedCase;
 
 export function initExportPanel() {
   bind('#btn-print-akkord', handlePrintAkkord);
@@ -160,7 +160,7 @@ export async function exportAkkordJsonAndPdf(options = {}) {
       throw exportErrors[0] || new Error('Eksport mislykkedes');
     }
 
-    await publishSharedCaseImpl({
+    await publishSharedCaseFn({
       teamId: formatTeamId(typeof window !== 'undefined' ? window.TEAM_ID : undefined),
       jobNumber: context.meta?.sagsnummer || context.model?.meta?.caseNumber,
       caseKind: (context.model?.meta?.jobType || 'montage').toLowerCase(),
@@ -330,7 +330,7 @@ export function setExportDependencies(overrides = {}) {
   handleImportAkkordImpl = typeof overrides.handleImportAkkord === 'function'
     ? overrides.handleImportAkkord
     : handleImportAkkord;
-  publishSharedCaseImpl = typeof overrides.publishSharedCase === 'function'
+  publishSharedCaseFn = typeof overrides.publishSharedCase === 'function'
     ? overrides.publishSharedCase
     : publishSharedCase;
 }

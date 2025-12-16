@@ -772,6 +772,10 @@ button{cursor:pointer}
 .shared-case-title{font-weight:600}
 .shared-case-meta,.shared-case-totals{color:#4b5563;font-size:14px}
 .shared-case-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.shared-status{margin-bottom:8px;color:#4b5563}
+.team-id-input{display:flex;gap:8px;align-items:center;margin:8px 0}
+.team-id-input label{font-weight:600}
+.team-id-input input{flex:1}
 
 /* Debug outlines for material rows (kept to visualize rendered layout) */
 .material-row{outline:1px solid red !important}

@@ -1,3 +1,6 @@
+import { fireproof } from '@fireproof/core';
+import { connect } from '@fireproof/partykit';
+
 const LEDGER_TEAM_PREFIX = 'sscaff-team-';
 const LEDGER_VERSION = 1;
 const STORAGE_PREFIX = 'sscaff:shared-ledger:';
@@ -17,7 +20,7 @@ function ensureUserId() {
     const storage = getStorage();
     const key = `${STORAGE_PREFIX}user`;
     if (!storage) return 'offline-user';
-    let existing = storage.getItem(key);
+    const existing = storage.getItem(key);
     if (existing && existing.trim()) return existing;
     const created = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
@@ -29,44 +32,8 @@ function ensureUserId() {
   }
 }
 
-function loadLedger(teamId) {
-  const storage = getStorage();
-  if (!storage) return null;
-  const raw = storage.getItem(`${STORAGE_PREFIX}${teamId}`);
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw);
-    if (parsed && parsed.version === LEDGER_VERSION) return parsed;
-  } catch {
-    storage.removeItem(`${STORAGE_PREFIX}${teamId}`);
-  }
-  return null;
-}
-
-function persistLedger(teamId, ledger) {
-  const storage = getStorage();
-  if (!storage) return;
-  try {
-    storage.setItem(`${STORAGE_PREFIX}${teamId}`, JSON.stringify({ ...ledger, version: LEDGER_VERSION }));
-  } catch (error) {
-    console.warn('Kunne ikke gemme delt ledger', error);
-  }
-}
-
 function normalizeJobNumber(jobNumber) {
   return (jobNumber || '').toString().trim() || 'UKENDT';
-}
-
-function normalizeSearchValue(value) {
-  return (value || '').toString().toLowerCase();
-}
-
-function ensureLedger(teamId) {
-  const existing = loadLedger(teamId);
-  if (existing) return existing;
-  const fresh = { version: LEDGER_VERSION, cases: {}, groups: {}, lastSync: Date.now() };
-  persistLedger(teamId, fresh);
-  return fresh;
 }
 
 function ensureCaseId() {
@@ -75,124 +42,149 @@ function ensureCaseId() {
     : `case-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function buildSearchText(caseDoc, payloadText = '') {
-  const parts = [
-    caseDoc.jobNumber,
-    caseDoc.caseKind,
-    caseDoc.system,
-    payloadText,
-  ];
-  return parts
-    .filter(Boolean)
-    .map(normalizeSearchValue)
-    .join(' ');
+function resolveConnectionHost() {
+  if (typeof import.meta !== 'undefined') {
+    const host = import.meta?.env?.PUBLIC_PARTYKIT_HOST;
+    if (host) return host;
+  }
+  if (typeof process !== 'undefined' && process?.env?.PUBLIC_PARTYKIT_HOST) {
+    return process.env.PUBLIC_PARTYKIT_HOST;
+  }
+  if (typeof window !== 'undefined' && window.PUBLIC_PARTYKIT_HOST) {
+    return window.PUBLIC_PARTYKIT_HOST;
+  }
+  return null;
+}
+
+const ledgers = {};
+
+export function getSharedLedger(teamId) {
+  const name = formatTeamId(teamId);
+  if (!ledgers[name]) {
+    const ledger = fireproof(name);
+    const host = resolveConnectionHost();
+    const connection = host ? connect.partykit(ledger, host) : null;
+    ledgers[name] = { ledger, connection };
+  }
+  return ledgers[name];
 }
 
 export function getCurrentUserId() {
   return ensureUserId();
 }
 
+function normalizeCaseDoc(doc) {
+  if (!doc || doc._deleted) return null;
+  const jobNumber = normalizeJobNumber(doc.jobNumber);
+  const createdAt = doc.createdAt || '';
+  const updatedAt = doc.updatedAt || createdAt;
+  return {
+    ...doc,
+    version: LEDGER_VERSION,
+    caseId: doc.caseId || doc._id,
+    jobNumber,
+    createdAt,
+    updatedAt,
+    lastUpdatedAt: updatedAt,
+  };
+}
+
 export async function publishSharedCase({ teamId, jobNumber, caseKind, system, totals, status = 'kladde', jsonContent }) {
-  const ledger = ensureLedger(teamId);
+  const { ledger } = getSharedLedger(teamId);
   const caseId = ensureCaseId();
   const now = new Date().toISOString();
-  const userId = ensureUserId();
-  const groupKey = normalizeJobNumber(jobNumber);
-  const payloadText = `${groupKey} ${system}`;
-  const caseDoc = {
+  const doc = {
+    _id: caseId,
     type: 'case',
     caseId,
     parentCaseId: null,
-    jobNumber: groupKey,
+    jobNumber: normalizeJobNumber(jobNumber),
     caseKind,
-    createdBy: userId,
-    createdAt: now,
     system,
     totals: totals || { materials: 0, montage: 0, demontage: 0, total: 0 },
     status,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: ensureUserId(),
     immutable: true,
     attachments: {
-      json: { type: 'json', content: jsonContent, createdAt: now },
+      json: { data: jsonContent, createdAt: now },
       pdf: null,
     },
-    searchText: buildSearchText({ jobNumber: groupKey, caseKind, system }, payloadText),
   };
-
-  const group = ledger.groups[groupKey] || {
-    type: 'case-group',
-    jobNumber: groupKey,
-    createdAt: now,
-    lastUpdatedAt: now,
-    cases: [],
-  };
-
-  group.cases = Array.from(new Set([...group.cases, caseId]));
-  group.lastUpdatedAt = now;
-  ledger.groups[groupKey] = group;
-  ledger.cases[caseId] = caseDoc;
-  ledger.lastSync = Date.now();
-  persistLedger(teamId, ledger);
-  return { caseDoc, group };
+  await ledger.put(doc);
+  return doc;
 }
 
 export async function listSharedGroups(teamId) {
-  const ledger = ensureLedger(teamId);
-  const groups = Object.values(ledger.groups || {});
-  return groups
+  const { ledger } = getSharedLedger(teamId);
+  const response = await ledger.allDocs({ includeDeleted: false });
+  const cases = response.rows
+    .map(row => normalizeCaseDoc(row.value))
+    .filter(Boolean)
+    .filter(entry => entry.type === 'case');
+
+  const groups = new Map();
+  cases.forEach(entry => {
+    const existing = groups.get(entry.jobNumber) || { jobNumber: entry.jobNumber, cases: [], lastUpdatedAt: entry.lastUpdatedAt };
+    existing.cases.push(entry);
+    const timestamp = entry.lastUpdatedAt || entry.createdAt || '';
+    if (!existing.lastUpdatedAt || timestamp.localeCompare(existing.lastUpdatedAt) > 0) {
+      existing.lastUpdatedAt = timestamp;
+    }
+    groups.set(entry.jobNumber, existing);
+  });
+
+  return Array.from(groups.values())
     .map(group => ({
       ...group,
-      cases: (group.cases || [])
-        .map(caseId => ledger.cases[caseId])
-        .filter(Boolean)
-        .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
+      cases: group.cases.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
     }))
     .sort((a, b) => (b.lastUpdatedAt || '').localeCompare(a.lastUpdatedAt || ''));
 }
 
 export async function getSharedCase(teamId, caseId) {
-  const ledger = ensureLedger(teamId);
-  return ledger.cases[caseId] || null;
+  try {
+    const { ledger } = getSharedLedger(teamId);
+    const doc = await ledger.get(caseId);
+    return normalizeCaseDoc(doc);
+  } catch (error) {
+    console.warn('Kunne ikke hente sag', error);
+    return null;
+  }
 }
 
 export async function deleteSharedCase(teamId, caseId, userId) {
-  const ledger = ensureLedger(teamId);
-  const caseDoc = ledger.cases[caseId];
-  if (!caseDoc) return false;
-  if (caseDoc.createdBy && caseDoc.createdBy !== userId) return false;
-  delete ledger.cases[caseId];
-  Object.values(ledger.groups).forEach(group => {
-    group.cases = (group.cases || []).filter(id => id !== caseId);
-    group.lastUpdatedAt = new Date().toISOString();
-  });
-  persistLedger(teamId, ledger);
+  const entry = await getSharedCase(teamId, caseId);
+  if (!entry) return false;
+  if (entry.createdBy && entry.createdBy !== userId) return false;
+  const { ledger } = getSharedLedger(teamId);
+  await ledger.del(caseId);
   return true;
 }
 
 export async function updateCaseStatus(teamId, caseId, status, userId) {
-  const ledger = ensureLedger(teamId);
-  const caseDoc = ledger.cases[caseId];
-  if (!caseDoc) return null;
-  if (caseDoc.createdBy && caseDoc.createdBy !== userId) return null;
-  caseDoc.status = status;
-  ledger.cases[caseId] = caseDoc;
-  const group = ledger.groups[caseDoc.jobNumber];
-  if (group) {
-    group.lastUpdatedAt = new Date().toISOString();
-    ledger.groups[caseDoc.jobNumber] = group;
-  }
-  persistLedger(teamId, ledger);
-  return caseDoc;
+  const entry = await getSharedCase(teamId, caseId);
+  if (!entry) return null;
+  if (entry.createdBy && entry.createdBy !== userId) return null;
+  const { ledger } = getSharedLedger(teamId);
+  const updatedAt = new Date().toISOString();
+  const next = { ...entry, status, updatedAt, lastUpdatedAt: updatedAt };
+  await ledger.put(next);
+  return next;
 }
 
 export async function downloadCaseJson(teamId, caseId) {
-  const caseDoc = await getSharedCase(teamId, caseId);
-  if (!caseDoc?.attachments?.json?.content) return null;
-  const blob = new Blob([caseDoc.attachments.json.content], { type: 'application/json' });
-  return { blob, fileName: `${caseDoc.jobNumber || 'akkord'}-${caseDoc.caseId}.json` };
+  const entry = await getSharedCase(teamId, caseId);
+  const content = entry?.attachments?.json?.data;
+  if (!content) return null;
+  const blob = new Blob([content], { type: 'application/json' });
+  return { blob, fileName: `${entry.jobNumber || 'akkord'}-${entry.caseId}.json` };
 }
 
 export async function importCasePayload(teamId, caseId) {
-  const caseDoc = await getSharedCase(teamId, caseId);
-  if (!caseDoc?.attachments?.json?.content) return null;
-  return caseDoc.attachments.json.content;
+  const entry = await getSharedCase(teamId, caseId);
+  const content = entry?.attachments?.json?.data;
+  if (!content) return null;
+  return content;
 }
