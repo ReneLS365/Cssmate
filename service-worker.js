@@ -9,7 +9,7 @@ if (versionScriptUrl) {
   importScripts('/js/version.js')
 }
 
-const CACHE_VERSION = 'sscaff-v-20251216210714381' // bumped after delt sager fanen
+const CACHE_VERSION = 'sscaff-v-20251219100000001' // bumped efter Firestore sync
 const CACHE_NAME = 'sscaff-' + CACHE_VERSION
 const PRECACHE_URLS = [
   '/',
@@ -26,6 +26,7 @@ const PRECACHE_URLS = [
   '/js/akkord-export.js',
   '/js/akkord-export-ui.js',
   '/js/shared-ledger.js',
+  '/js/shared-firestore.js',
   '/js/shared-cases-panel.js',
   '/js/storageDraft.js',
   '/js/storageHistory.js',

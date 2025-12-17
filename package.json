@@ -36,13 +36,10 @@
     "partykit:deploy": "partykit deploy"
   },
   "dependencies": {
-    "@fireproof/core": "^0.24.0",
-    "@fireproof/partykit": "^0.19.118",
-    "chromium": "^3.0.3",
-    "partykit": "^0.0.115",
-    "partysocket": "^1.1.6"
+    "chromium": "^3.0.3"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^3.0.1",
     "@playwright/test": "^1.57.0",
     "@size-limit/file": "^11.1.4",
     "express": "^4.18.2",

@@ -160,8 +160,10 @@ export async function exportAkkordJsonAndPdf(options = {}) {
       throw exportErrors[0] || new Error('Eksport mislykkedes');
     }
 
+    const resolvedTeamId = await resolveTeamId(typeof window !== 'undefined' ? window.TEAM_ID : undefined);
+
     await publishSharedCaseFn({
-      teamId: resolveTeamId(typeof window !== 'undefined' ? window.TEAM_ID : undefined),
+      teamId: resolvedTeamId,
       jobNumber: context.meta?.sagsnummer || context.model?.meta?.caseNumber,
       caseKind: (context.model?.meta?.jobType || 'montage').toLowerCase(),
       system: context.model?.meta?.system || (context.model?.meta?.systems || [])[0] || '',
@@ -179,8 +181,10 @@ export async function exportAkkordJsonAndPdf(options = {}) {
     return { jsonFileName: jsonResult.fileName };
   } catch (error) {
     console.error('Export failed', error);
-    const fallback = 'Der opstod en fejl under eksporten. Prøv igen – eller kontakt kontoret.';
-    const message = error?.message ? `${fallback} (${error.message})` : fallback;
+    const fallback = error?.code === 'permission-denied'
+      ? 'Du har ikke adgang til at dele sager for dette team.'
+      : 'Der opstod en fejl under eksporten. Prøv igen – eller kontakt kontoret.';
+    const message = error?.message && error.message !== fallback ? `${fallback} (${error.message})` : fallback;
     notifyAction(message, 'error');
     throw error;
   } finally {
