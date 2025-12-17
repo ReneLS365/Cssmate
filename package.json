@@ -6,7 +6,8 @@
   "scripts": {
     "test": "node --test tests/*.test.js",
     "test:unit": "node --test tests/*.test.js",
-    "test:integration": "npx firebase emulators:exec --project cssmate-test --only firestore \"node --test tests/integration/*.test.js\"",
+    "test:integration": "npx firebase emulators:exec --project sscaff-43a33 --only firestore \"node --test tests/integration/*.test.js\"",
+    "test:rules": "npx firebase emulators:exec --project sscaff-43a33 --only firestore \"node --test tests/integration/firestore-rules.test.js\"",
     "lint": "npm run test:html",
     "format": "npm run lint",
     "prepare": "node scripts/prepare-playwright.js",
@@ -14,7 +15,8 @@
     "bump-sw-version": "node scripts/bump-sw-version.js",
     "update-prices": "node scripts/update-price-lists.js",
     "start:ci": "node scripts/serve-with-headers.js 4173 ./",
-    "build": "npm run bump:sw && npm run bump-sw-version && npm run build:min-js",
+    "build:firebase-env": "node scripts/generate-firebase-config.js",
+    "build": "npm run build:firebase-env && npm run bump:sw && npm run bump-sw-version && npm run build:min-js",
     "build:min-js": "npx terser main.js -c -m -o main.min.js",
     "lh:mobile": "mkdir -p ./docs/lighthouse && CHROME_BIN=$(command -v google-chrome-stable || command -v google-chrome || command -v chromium-browser || command -v chromium || true) && CHROME_PATH=${CHROME_PATH:-$CHROME_BIN} lighthouse ${LHCI_URL:-https://sscaff.netlify.app} --form-factor=mobile --screenEmulation.mobile=true --only-categories=performance,accessibility,best-practices,seo --throttling-method=provided --throttling.rttMs=0 --throttling.requestLatencyMs=0 --throttling.downloadThroughputKbps=0 --throttling.uploadThroughputKbps=0 --throttling.cpuSlowdownMultiplier=1 --chrome-flags=\"--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --ignore-certificate-errors\" --output=json --output-path=./docs/lighthouse/latest-mobile.json",
     "test:html": "html-validate \"index.html\"",
@@ -30,7 +32,7 @@
     "perf:bundle": "size-limit",
     "verify:env": "node tools/verify/verify-env.js",
     "test:exports": "npm run test:export",
-    "verify:build-and-tests": "npm run clean --if-present && npm ci && npm run build && npm run lint --if-present && npm run typecheck --if-present && npm run test --if-present && npm run test:exports --if-present && npm run test:e2e --if-present && npm run perf:bundle --if-present",
+    "verify:build-and-tests": "npm run clean --if-present && npm ci && npm run build && npm run lint --if-present && npm run typecheck --if-present && npm run test --if-present && npm run test:rules --if-present && npm run test:exports --if-present && npm run test:e2e --if-present && npm run perf:bundle --if-present",
     "test:lh": "bash scripts/run-lhci.sh",
     "verify:perf": "npm run build && npm run test:lh",
     "verify:deploy": "npm run verify:build-and-tests && npm run verify:perf",
@@ -41,7 +43,7 @@
     "chromium": "^3.0.3"
   },
   "devDependencies": {
-    "@firebase/rules-unit-testing": "^3.0.1",
+    "@firebase/rules-unit-testing": "^3.0.4",
     "@playwright/test": "^1.57.0",
     "@size-limit/file": "^11.1.4",
     "express": "^4.18.2",

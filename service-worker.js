@@ -6,16 +6,17 @@ const versionScriptUrl = swBaseUrl ? new URL('./js/version.js', swBaseUrl) : nul
 if (versionScriptUrl) {
   importScripts(versionScriptUrl.href)
 } else {
-  importScripts('/js/version.js')
+importScripts('/js/version.js')
 }
 
-const CACHE_VERSION = 'sscaff-v-20251219100000001' // bumped efter Firestore sync
+const CACHE_VERSION = 'sscaff-v-20251219120000001' // bumped efter Firestore sync
 const CACHE_NAME = 'sscaff-' + CACHE_VERSION
 const PRECACHE_URLS = [
   '/',
   '/index.html',
   '/main.js',
   '/main.min.js',
+  '/js/firebase-env.js',
   '/boot-inline.js',
   '/style.css',
   '/print.css',

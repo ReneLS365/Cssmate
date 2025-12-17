@@ -19,6 +19,25 @@ const teamCache = {
   membership: null,
 };
 
+async function fetchUserProfile(uid) {
+  if (!uid) return null;
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const ref = sdk.doc(db, 'users', uid);
+  const snapshot = await sdk.getDoc(ref);
+  if (!snapshot.exists()) return null;
+  const data = snapshot.data() || {};
+  if (data.active === false) return null;
+  return {
+    teamId: data.teamId ? formatTeamId(data.teamId) : null,
+    uid,
+    role: data.role || 'member',
+    email: data.email || '',
+    displayName: data.displayName || data.name || '',
+    active: data.active !== false,
+  };
+}
+
 export function formatTeamId(rawTeamId) {
   const cleaned = (rawTeamId || '').toString().trim() || 'default';
   return cleaned.startsWith(LEDGER_TEAM_PREFIX) ? cleaned : `${LEDGER_TEAM_PREFIX}${cleaned}`;
@@ -54,15 +73,24 @@ function getCachedTeam(uid) {
 }
 
 async function fetchMembership(teamId, uid) {
+  const profile = await fetchUserProfile(uid);
+  const resolvedTeam = teamId ? formatTeamId(teamId) : profile?.teamId;
+  if (profile && (!resolvedTeam || profile.teamId === resolvedTeam)) {
+    return {
+      ...profile,
+      teamId: profile.teamId || resolvedTeam,
+    };
+  }
+
   const db = await getFirestoreDb();
   const sdk = await getFirestoreHelpers();
-  const ref = sdk.doc(db, 'teams', teamId, 'members', uid);
+  const ref = sdk.doc(db, 'teams', resolvedTeam || teamId, 'members', uid);
   const snapshot = await sdk.getDoc(ref);
   if (!snapshot.exists()) return null;
   const data = snapshot.data() || {};
   if (data.active === false) return null;
   return {
-    teamId,
+    teamId: resolvedTeam || teamId,
     uid,
     role: data.role || 'member',
     email: data.email || '',
@@ -71,6 +99,11 @@ async function fetchMembership(teamId, uid) {
 }
 
 async function fetchMemberships(uid) {
+  const profile = await fetchUserProfile(uid);
+  if (profile?.teamId) {
+    return [{ ...profile, teamId: profile.teamId }];
+  }
+
   const db = await getFirestoreDb();
   const sdk = await getFirestoreHelpers();
   const query = sdk.query(sdk.collectionGroup(db, 'members'), sdk.where('uid', '==', uid));
@@ -159,8 +192,10 @@ function normalizeCaseDoc(doc, { includeDeleted = false } = {}) {
   const updatedAt = timestampToIso(data.updatedAt) || createdAt;
   const lastUpdatedAt = timestampToIso(data.lastUpdatedAt) || updatedAt;
   const jobNumber = normalizeJobNumber(data.jobNumber);
+  const teamIdFromPath = doc?.ref?.parent?.parent?.id ? formatTeamId(doc.ref.parent.parent.id) : null;
   return {
     ...data,
+    teamId: data.teamId || teamIdFromPath || '',
     version: LEDGER_VERSION,
     caseId: data.caseId || data._id || doc.id,
     jobNumber,
@@ -225,6 +260,7 @@ export async function publishSharedCase({ teamId, jobNumber, caseKind, system, t
     type: 'case',
     caseId: ref.id,
     parentCaseId: null,
+    teamId: resolvedTeamId,
     jobNumber: normalizeJobNumber(jobNumber),
     caseKind,
     system,
@@ -304,7 +340,16 @@ export async function deleteSharedCase(teamId, caseId, actor) {
   }
   const { sdk, ref } = await getCaseDocument(resolvedTeamId, caseId);
   const updatedAt = sdk.serverTimestamp();
-  const next = { ...entry, status: 'deleted', deletedAt: updatedAt, deletedBy: normalizedActor.uid, updatedAt, lastUpdatedAt: updatedAt, updatedBy: normalizedActor.uid };
+  const next = {
+    ...entry,
+    teamId: entry.teamId || resolvedTeamId,
+    status: 'deleted',
+    deletedAt: updatedAt,
+    deletedBy: normalizedActor.uid,
+    updatedAt,
+    lastUpdatedAt: updatedAt,
+    updatedBy: normalizedActor.uid,
+  };
   await sdk.updateDoc(ref, next);
   await recordAuditEvent(resolvedTeamId, { caseId, action: 'DELETE', actor: normalizedActor, summary: 'Soft delete' });
   return true;
@@ -317,7 +362,16 @@ export async function restoreSharedCase(teamId, caseId, actor) {
   if (membership.role !== 'admin') throw new PermissionDeniedError('Kun admin kan gendanne sager.');
   const { sdk, ref } = await getCaseDocument(resolvedTeamId, caseId);
   const updatedAt = sdk.serverTimestamp();
-  const next = { ...entry, status: entry.status === 'deleted' ? 'kladde' : entry.status, deletedAt: null, deletedBy: null, updatedAt, lastUpdatedAt: updatedAt, updatedBy: normalizedActor.uid };
+  const next = {
+    ...entry,
+    teamId: entry.teamId || resolvedTeamId,
+    status: entry.status === 'deleted' ? 'kladde' : entry.status,
+    deletedAt: null,
+    deletedBy: null,
+    updatedAt,
+    lastUpdatedAt: updatedAt,
+    updatedBy: normalizedActor.uid,
+  };
   await sdk.updateDoc(ref, next);
   await recordAuditEvent(resolvedTeamId, { caseId, action: 'RESTORE', actor: normalizedActor, summary: 'Gendannet delt sag' });
   return normalizeCaseDoc({ ...next, createdAt: entry.createdAt });
@@ -332,7 +386,14 @@ export async function updateCaseStatus(teamId, caseId, status, actor) {
   }
   const { sdk, ref } = await getCaseDocument(resolvedTeamId, caseId);
   const updatedAt = sdk.serverTimestamp();
-  const next = { ...entry, status, updatedAt, lastUpdatedAt: updatedAt, updatedBy: normalizedActor.uid };
+  const next = {
+    ...entry,
+    teamId: entry.teamId || resolvedTeamId,
+    status,
+    updatedAt,
+    lastUpdatedAt: updatedAt,
+    updatedBy: normalizedActor.uid,
+  };
   await sdk.updateDoc(ref, next);
   await recordAuditEvent(resolvedTeamId, { caseId, action: 'STATUS', actor: normalizedActor, summary: `Status → ${status}` });
   return normalizeCaseDoc({ ...next, createdAt: entry.createdAt });
@@ -361,8 +422,21 @@ export async function exportSharedBackup(teamId) {
   const now = new Date().toISOString();
   const casesSnapshot = await sdk.getDocs(sdk.collection(db, 'teams', resolvedTeamId, 'cases'));
   const auditSnapshot = await sdk.getDocs(sdk.collection(db, 'teams', resolvedTeamId, 'audit'));
-  const cases = casesSnapshot.docs.map(doc => ({ caseId: doc.id, ...doc.data(), createdAt: timestampToIso(doc.data().createdAt), updatedAt: timestampToIso(doc.data().updatedAt), lastUpdatedAt: timestampToIso(doc.data().lastUpdatedAt), deletedAt: doc.data().deletedAt ? timestampToIso(doc.data().deletedAt) : null }));
-  const audit = auditSnapshot.docs.map(doc => ({ _id: doc.id, ...doc.data(), timestamp: timestampToIso(doc.data().timestamp) }));
+  const cases = casesSnapshot.docs.map(doc => ({
+    caseId: doc.id,
+    ...doc.data(),
+    teamId: doc.data().teamId || resolvedTeamId,
+    createdAt: timestampToIso(doc.data().createdAt),
+    updatedAt: timestampToIso(doc.data().updatedAt),
+    lastUpdatedAt: timestampToIso(doc.data().lastUpdatedAt),
+    deletedAt: doc.data().deletedAt ? timestampToIso(doc.data().deletedAt) : null,
+  }));
+  const audit = auditSnapshot.docs.map(doc => ({
+    _id: doc.id,
+    ...doc.data(),
+    teamId: doc.data().teamId || resolvedTeamId,
+    timestamp: timestampToIso(doc.data().timestamp),
+  }));
   const backup = {
     schemaVersion: BACKUP_SCHEMA_VERSION,
     teamId: resolvedTeamId,
@@ -430,6 +504,7 @@ export async function importSharedBackup(teamId, payload, actor) {
     const prepared = {
       ...doc,
       caseId: docId,
+      teamId: resolvedTeamId,
       createdAt: toTimestamp(sdk, doc.createdAt) || sdk.serverTimestamp(),
       updatedAt: toTimestamp(sdk, doc.updatedAt) || sdk.serverTimestamp(),
       lastUpdatedAt: toTimestamp(sdk, doc.lastUpdatedAt || doc.updatedAt) || sdk.serverTimestamp(),
@@ -448,6 +523,7 @@ export async function importSharedBackup(teamId, payload, actor) {
       if (snapshot.exists()) continue;
       const prepared = {
         ...entry,
+        teamId: resolvedTeamId,
         actor: normalizeBackupAuditActor(entry.actor, payload.schemaVersion),
         timestamp: toTimestamp(sdk, entry.timestamp) || sdk.serverTimestamp(),
       };
@@ -487,6 +563,14 @@ export async function saveTeamMember(teamId, member) {
   if (!payload.uid) throw new Error('Manglende bruger-id');
   const ref = sdk.doc(db, 'teams', resolvedTeamId, 'members', payload.uid);
   await sdk.setDoc(ref, payload, { merge: true });
+  await sdk.setDoc(sdk.doc(db, 'users', payload.uid), {
+    uid: payload.uid,
+    teamId: resolvedTeamId,
+    role: payload.role || 'member',
+    email: payload.email || '',
+    displayName: payload.displayName || payload.name || '',
+    active: payload.active !== false,
+  }, { merge: true });
   await recordAuditEvent(resolvedTeamId, {
     caseId: null,
     action: 'MEMBER_UPDATE',
@@ -503,6 +587,7 @@ export async function deactivateTeamMember(teamId, memberId) {
   const sdk = await getFirestoreHelpers();
   const ref = sdk.doc(db, 'teams', resolvedTeamId, 'members', memberId);
   await sdk.setDoc(ref, { active: false }, { merge: true });
+  await sdk.setDoc(sdk.doc(db, 'users', memberId), { active: false, teamId: resolvedTeamId }, { merge: true });
   await recordAuditEvent(resolvedTeamId, {
     caseId: null,
     action: 'MEMBER_DEACTIVATE',

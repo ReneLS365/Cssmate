@@ -13,22 +13,9 @@ const listeners = new Set();
 
 function getFirebaseConfig() {
   if (typeof window === 'undefined') return null;
-  if (window.FIREBASE_CONFIG && typeof window.FIREBASE_CONFIG === 'object') return window.FIREBASE_CONFIG;
-  const scriptConfig = document.querySelector('script[data-firebase-config]');
-  if (scriptConfig?.dataset?.firebaseConfig) {
-    try {
-      return JSON.parse(scriptConfig.dataset.firebaseConfig);
-    } catch (error) {
-      console.warn('Ugyldigt Firebase config i data-firebase-config', error);
-    }
-  }
-  const metaConfig = document.querySelector('meta[name="firebase-config"]');
-  if (metaConfig?.content) {
-    try {
-      return JSON.parse(metaConfig.content);
-    } catch (error) {
-      console.warn('Ugyldigt Firebase config i meta[name="firebase-config"]', error);
-    }
+  const config = window.FIREBASE_CONFIG;
+  if (config && typeof config === 'object' && Object.keys(config).length > 0) {
+    return config;
   }
   return null;
 }
@@ -45,7 +32,7 @@ async function loadFirebaseSdk() {
 
 export async function getFirebaseAppInstance() {
   const config = getFirebaseConfig();
-  if (!config) throw new Error('Firebase konfiguration mangler');
+  if (!config) throw new Error('Firebase konfiguration mangler (VITE_FIREBASE_*)');
   const sdk = await loadFirebaseSdk();
   return sdk.getApps?.().length ? sdk.getApp() : sdk.initializeApp(config);
 }
@@ -74,7 +61,7 @@ export async function initSharedAuth() {
   initPromise = (async () => {
     const config = getFirebaseConfig();
     if (!config) {
-      setAuthState({ user: null, error: new Error('Firebase konfiguration mangler') });
+      setAuthState({ user: null, error: new Error('Firebase konfiguration mangler (VITE_FIREBASE_*)') });
       return null;
     }
     try {
@@ -140,8 +127,12 @@ function getProvider(providerId) {
 }
 
 export function getEnabledProviders() {
-  if (typeof window !== 'undefined' && Array.isArray(window.FIREBASE_AUTH_PROVIDERS)) {
-    return window.FIREBASE_AUTH_PROVIDERS;
+  if (typeof window !== 'undefined') {
+    const providers = window.FIREBASE_AUTH_PROVIDERS;
+    if (Array.isArray(providers)) return providers;
+    if (typeof providers === 'string' && providers.trim()) {
+      return providers.split(',').map(entry => entry.trim()).filter(Boolean);
+    }
   }
   return DEFAULT_ENABLED_PROVIDERS;
 }
