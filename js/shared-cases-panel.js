@@ -94,6 +94,7 @@ function bindAuthControls(onAuthenticated) {
   onAuthStateChange((context) => {
     authState = context;
     updateAuthUi();
+    bindBackupActions();
     if (context.isReady) setPanelVisibility(true);
     if (context.isAuthenticated && typeof onAuthenticated === 'function') {
       onAuthenticated();
