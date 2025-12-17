@@ -391,6 +391,15 @@
       <div id="sharedAuthStatus" class="shared-status" aria-live="polite">Log ind for at se delte sager.</div>
       <div id="sharedAdminNotice" class="shared-status" aria-live="polite"></div>
       <div id="sharedStatus" class="shared-status" aria-live="polite"></div>
+      <div class="shared-auth-controls" aria-live="polite">
+        <div id="sharedLoginButtons" class="shared-login-buttons">
+          <button id="sharedLogin-google" type="button" data-role="primary">Log ind med Google</button>
+          <button id="sharedLogin-microsoft" type="button">Log ind med Microsoft</button>
+          <button id="sharedLogin-apple" type="button" hidden>Log ind med Apple</button>
+          <button id="sharedLogin-facebook" type="button" hidden>Log ind med Facebook</button>
+        </div>
+        <button id="sharedLogout" type="button" class="shared-logout" hidden>Log ud</button>
+      </div>
       <div id="teamIdInputContainer" class="team-id-input">
         <label for="teamIdInput">Team ID:</label>
         <input id="teamIdInput" type="text" placeholder="f.eks. hulmose">

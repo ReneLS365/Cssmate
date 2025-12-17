@@ -2,7 +2,7 @@ import { listSharedGroups, downloadCaseJson, importCasePayload, updateCaseStatus
 import { exportPDFBlob } from './export-pdf.js';
 import { buildExportModel } from './export-model.js';
 import { downloadBlob } from './utils/downloadBlob.js';
-import { getAuthContext, getUserDisplay, userIsAdmin } from './shared-auth.js';
+import { getAuthContext, getUserDisplay, userIsAdmin, initSharedAuth, waitForAuthReady, loginWithProvider, logoutUser, getEnabledProviders, onAuthStateChange } from './shared-auth.js';
 
 const TEAM_ID = resolveTeamId();
 const DISPLAY_TEAM_ID = TEAM_ID.replace(/^sscaff-team-/, '');
@@ -10,16 +10,97 @@ const { connection } = getSharedLedger(TEAM_ID);
 let sharedCasesPanelInitialized = false;
 let refreshBtn;
 let authState;
+let sharedCard;
+let loginButtonsContainer;
+let logoutButton;
+let backupActionsBound = false;
+
+function setPanelVisibility(isReady) {
+  if (sharedCard) sharedCard.hidden = !isReady;
+}
 
 function requireAuth() {
   const status = document.getElementById('sharedAuthStatus');
   authState = getAuthContext();
+  if (!authState?.isReady) {
+    if (status) status.textContent = authState?.message || 'Login initialiseres…';
+    return false;
+  }
   if (!authState?.isAuthenticated) {
-    if (status) status.textContent = 'Log ind for at se delte sager.';
+    if (status) status.textContent = authState?.message || 'Log ind for at se delte sager.';
     return false;
   }
   if (status) status.textContent = `Logget ind som ${getUserDisplay(authState.user)}`;
   return true;
+}
+
+function updateAuthUi() {
+  const status = document.getElementById('sharedAuthStatus');
+  const enabledProviders = getEnabledProviders();
+  ['google', 'microsoft', 'apple', 'facebook'].forEach((providerId) => {
+    const button = document.getElementById(`sharedLogin-${providerId}`);
+    if (button) button.hidden = !enabledProviders.includes(providerId);
+  });
+  authState = getAuthContext();
+  if (!authState?.isReady) {
+    if (status) status.textContent = authState?.message || 'Login initialiseres…';
+  } else if (!authState?.isAuthenticated) {
+    if (status) status.textContent = authState?.message || 'Log ind for at se delte sager.';
+  } else if (status) {
+    status.textContent = `Logget ind som ${getUserDisplay(authState.user)}`;
+  }
+  if (loginButtonsContainer) loginButtonsContainer.hidden = Boolean(authState?.isAuthenticated);
+  if (logoutButton) logoutButton.hidden = !authState?.isAuthenticated;
+}
+
+function bindAuthControls(onAuthenticated) {
+  loginButtonsContainer = document.getElementById('sharedLoginButtons');
+  logoutButton = document.getElementById('sharedLogout');
+  const buttons = {
+    google: document.getElementById('sharedLogin-google'),
+    microsoft: document.getElementById('sharedLogin-microsoft'),
+    apple: document.getElementById('sharedLogin-apple'),
+    facebook: document.getElementById('sharedLogin-facebook'),
+  };
+  const attachHandler = (providerId, button) => {
+    if (!button) return;
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      const status = document.getElementById('sharedAuthStatus');
+      if (status) status.textContent = 'Logger ind…';
+      try {
+        await loginWithProvider(providerId);
+      } catch (error) {
+        console.error('Login fejlede', error);
+        alert(error?.message || 'Login fejlede');
+      } finally {
+        button.disabled = false;
+      }
+    });
+  };
+  Object.entries(buttons).forEach(([providerId, button]) => attachHandler(providerId, button));
+  if (logoutButton) {
+    logoutButton.addEventListener('click', async () => {
+      logoutButton.disabled = true;
+      try {
+        await logoutUser();
+      } catch (error) {
+        console.warn('Logout fejlede', error);
+      } finally {
+        logoutButton.disabled = false;
+      }
+    });
+  }
+  onAuthStateChange((context) => {
+    authState = context;
+    updateAuthUi();
+    bindBackupActions();
+    if (context.isReady) setPanelVisibility(true);
+    if (context.isAuthenticated && typeof onAuthenticated === 'function') {
+      onAuthenticated();
+    }
+  });
+  updateAuthUi();
 }
 
 function getFilters() {
@@ -254,14 +335,11 @@ function bindBackupActions() {
   const adminNotice = document.getElementById('sharedAdminNotice');
   const admin = userIsAdmin(authState?.user);
   if (adminNotice) adminNotice.textContent = admin ? 'Admin: Backup & restore tilladelser aktiv.' : 'Login som admin for backup.';
-  if (!admin) {
-    if (exportBtn) exportBtn.disabled = true;
-    if (importInput) importInput.disabled = true;
-    return;
-  }
+  if (exportBtn) exportBtn.disabled = !admin;
+  if (importInput) importInput.disabled = !admin;
+  if (!admin || backupActionsBound) return;
 
   if (exportBtn) {
-    exportBtn.disabled = false;
     exportBtn.addEventListener('click', async () => {
       exportBtn.disabled = true;
       try {
@@ -278,7 +356,6 @@ function bindBackupActions() {
   }
 
   if (importInput) {
-    importInput.disabled = false;
     importInput.addEventListener('change', async (event) => {
       const file = event?.target?.files?.[0];
       if (!file) return;
@@ -297,6 +374,7 @@ function bindBackupActions() {
       }
     });
   }
+  backupActionsBound = true;
 }
 
 export function initSharedCasesPanel() {
@@ -304,22 +382,20 @@ export function initSharedCasesPanel() {
   const container = document.getElementById('sharedCasesList');
   if (!container) return;
   sharedCasesPanelInitialized = true;
+  sharedCard = document.querySelector('#panel-delte-sager .shared-cases');
+  setPanelVisibility(false);
   refreshBtn = document.getElementById('refreshSharedCases');
   const filters = ['sharedFilterJob', 'sharedFilterStatus', 'sharedFilterKind']
     .map(id => document.getElementById(id))
     .filter(Boolean);
   updateSharedStatus();
   initTeamIdInput();
-  if (!requireAuth()) {
-    container.textContent = 'Log ind for at se delte sager.';
-    return;
-  }
-  bindBackupActions();
 
   const refresh = async () => {
     if (!container) return;
     if (!requireAuth()) {
-      container.textContent = 'Login mangler.';
+      container.textContent = authState?.message || 'Login mangler.';
+      setRefreshState('idle');
       return;
     }
     setRefreshState('loading');
@@ -355,5 +431,29 @@ export function initSharedCasesPanel() {
   if (refreshBtn) refreshBtn.addEventListener('click', refresh);
   filters.forEach(input => input.addEventListener('input', () => refresh()))
 
-  refresh();
+  bindAuthControls(() => {
+    if (!requireAuth()) {
+      container.textContent = authState?.message || 'Log ind for at se delte sager.';
+      setRefreshState('idle');
+      return;
+    }
+    bindBackupActions();
+    refresh();
+  });
+
+  const startAuth = async () => {
+    await initSharedAuth();
+    const context = await waitForAuthReady();
+    authState = context;
+    updateAuthUi();
+    setPanelVisibility(true);
+    if (!requireAuth()) {
+      container.textContent = authState?.message || 'Log ind for at se delte sager.';
+      return;
+    }
+    bindBackupActions();
+    refresh();
+  };
+
+  startAuth();
 }
