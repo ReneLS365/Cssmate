@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function memberDoc(teamId) {
+      return get(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid));
+    }
+
+    function isMember(teamId) {
+      return isSignedIn() && memberDoc(teamId).exists() && memberDoc(teamId).data.active != false;
+    }
+
+    function isAdmin(teamId) {
+      return isMember(teamId) && memberDoc(teamId).data.role == 'admin';
+    }
+
+    match /teams/{teamId} {
+      match /members/{userId} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow write: if isAdmin(teamId);
+      }
+
+      match /cases/{caseId} {
+        allow read: if isMember(teamId) && (!exists(/databases/$(database)/documents/teams/$(teamId)/cases/$(caseId)) || resource.data.deletedAt == null || isAdmin(teamId));
+        allow create: if isMember(teamId);
+        allow update: if (isAdmin(teamId) || (isMember(teamId) && resource.data.createdBy == request.auth.uid)) && request.resource.data.createdBy == resource.data.createdBy;
+        allow delete: if isAdmin(teamId);
+      }
+
+      match /audit/{auditId} {
+        allow read: if isMember(teamId);
+        allow create: if isMember(teamId);
+        allow update: if isAdmin(teamId);
+        allow delete: if isAdmin(teamId);
+      }
+
+      match /backups/{backupId} {
+        allow read, write: if isAdmin(teamId);
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 const DEFAULT_PROVIDER = 'custom';
 const DEFAULT_ENABLED_PROVIDERS = ['google', 'microsoft'];
-const FIREBASE_SDK_VERSION = '10.12.2';
+export const FIREBASE_SDK_VERSION = '10.12.2';
 
 let authInstance = null;
 let authModule = null;
@@ -41,6 +41,13 @@ async function loadFirebaseSdk() {
   ]);
   authModule = { initializeApp, getApp, getApps, ...auth };
   return authModule;
+}
+
+export async function getFirebaseAppInstance() {
+  const config = getFirebaseConfig();
+  if (!config) throw new Error('Firebase konfiguration mangler');
+  const sdk = await loadFirebaseSdk();
+  return sdk.getApps?.().length ? sdk.getApp() : sdk.initializeApp(config);
 }
 
 function notify() {
