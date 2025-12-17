@@ -1,13 +1,26 @@
-import { listSharedGroups, downloadCaseJson, importCasePayload, updateCaseStatus, deleteSharedCase, getCurrentUserId, formatTeamId, getSharedLedger, resolveTeamId } from './shared-ledger.js';
+import { listSharedGroups, downloadCaseJson, importCasePayload, updateCaseStatus, deleteSharedCase, formatTeamId, getSharedLedger, resolveTeamId, exportSharedBackup, importSharedBackup } from './shared-ledger.js';
 import { exportPDFBlob } from './export-pdf.js';
 import { buildExportModel } from './export-model.js';
 import { downloadBlob } from './utils/downloadBlob.js';
+import { getAuthContext, getUserDisplay, userIsAdmin } from './shared-auth.js';
 
 const TEAM_ID = resolveTeamId();
 const DISPLAY_TEAM_ID = TEAM_ID.replace(/^sscaff-team-/, '');
 const { connection } = getSharedLedger(TEAM_ID);
 let sharedCasesPanelInitialized = false;
 let refreshBtn;
+let authState;
+
+function requireAuth() {
+  const status = document.getElementById('sharedAuthStatus');
+  authState = getAuthContext();
+  if (!authState?.isAuthenticated) {
+    if (status) status.textContent = 'Log ind for at se delte sager.';
+    return false;
+  }
+  if (status) status.textContent = `Logget ind som ${getUserDisplay(authState.user)}`;
+  return true;
+}
 
 function getFilters() {
   const job = document.getElementById('sharedFilterJob');
@@ -111,7 +124,7 @@ function createCaseActions(entry, userId, onChange) {
   });
   container.appendChild(pdfBtn);
 
-  if (entry.createdBy === userId) {
+  if (entry.createdBy === userId || userIsAdmin(authState?.user)) {
     const statusBtn = document.createElement('button');
     statusBtn.type = 'button';
     statusBtn.textContent = entry.status === 'godkendt' ? 'Markér kladde' : 'Godkend';
@@ -119,7 +132,7 @@ function createCaseActions(entry, userId, onChange) {
       statusBtn.disabled = true;
       try {
         const next = entry.status === 'godkendt' ? 'kladde' : 'godkendt';
-        await updateCaseStatus(TEAM_ID, entry.caseId, next, userId);
+        await updateCaseStatus(TEAM_ID, entry.caseId, next, authState?.user);
         await onChange();
       } catch (error) {
         console.error('Status opdatering fejlede', error);
@@ -132,12 +145,12 @@ function createCaseActions(entry, userId, onChange) {
 
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
-    deleteBtn.textContent = 'Slet';
+    deleteBtn.textContent = 'Soft delete';
     deleteBtn.addEventListener('click', async () => {
-      if (!confirm('Slet sag?')) return;
+      if (!confirm('Soft delete?')) return;
       deleteBtn.disabled = true;
       try {
-        await deleteSharedCase(TEAM_ID, entry.caseId, userId);
+        await deleteSharedCase(TEAM_ID, entry.caseId, authState?.user);
         await onChange();
       } catch (error) {
         console.error('Sletning fejlede', error);
@@ -235,6 +248,57 @@ function initTeamIdInput() {
   });
 }
 
+function bindBackupActions() {
+  const exportBtn = document.getElementById('sharedBackupExport');
+  const importInput = document.getElementById('sharedBackupImport');
+  const adminNotice = document.getElementById('sharedAdminNotice');
+  const admin = userIsAdmin(authState?.user);
+  if (adminNotice) adminNotice.textContent = admin ? 'Admin: Backup & restore tilladelser aktiv.' : 'Login som admin for backup.';
+  if (!admin) {
+    if (exportBtn) exportBtn.disabled = true;
+    if (importInput) importInput.disabled = true;
+    return;
+  }
+
+  if (exportBtn) {
+    exportBtn.disabled = false;
+    exportBtn.addEventListener('click', async () => {
+      exportBtn.disabled = true;
+      try {
+        const backup = await exportSharedBackup(TEAM_ID);
+        const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+        downloadBlob(blob, `shared-backup-${TEAM_ID}-${Date.now()}.json`);
+      } catch (error) {
+        console.error('Backup export fejlede', error);
+        alert('Kunne ikke eksportere backup');
+      } finally {
+        exportBtn.disabled = false;
+      }
+    });
+  }
+
+  if (importInput) {
+    importInput.disabled = false;
+    importInput.addEventListener('change', async (event) => {
+      const file = event?.target?.files?.[0];
+      if (!file) return;
+      importInput.disabled = true;
+      try {
+        const text = await file.text();
+        const payload = JSON.parse(text);
+        await importSharedBackup(TEAM_ID, payload, authState?.user);
+        alert('Backup importeret');
+      } catch (error) {
+        console.error('Backup import fejlede', error);
+        alert(error?.message || 'Kunne ikke importere backup');
+      } finally {
+        importInput.value = '';
+        importInput.disabled = false;
+      }
+    });
+  }
+}
+
 export function initSharedCasesPanel() {
   if (sharedCasesPanelInitialized) return;
   const container = document.getElementById('sharedCasesList');
@@ -246,12 +310,21 @@ export function initSharedCasesPanel() {
     .filter(Boolean);
   updateSharedStatus();
   initTeamIdInput();
+  if (!requireAuth()) {
+    container.textContent = 'Log ind for at se delte sager.';
+    return;
+  }
+  bindBackupActions();
 
   const refresh = async () => {
     if (!container) return;
+    if (!requireAuth()) {
+      container.textContent = 'Login mangler.';
+      return;
+    }
     setRefreshState('loading');
     container.textContent = 'Henter sager…';
-    const currentUser = getCurrentUserId();
+    const currentUser = authState?.user?.uid || 'offline-user';
     try {
       const groups = await listSharedGroups(TEAM_ID);
       const activeFilters = getFilters();

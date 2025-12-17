@@ -776,6 +776,7 @@ button{cursor:pointer}
 .team-id-input{display:flex;gap:8px;align-items:center;margin:8px 0}
 .team-id-input label{font-weight:600}
 .team-id-input input{flex:1}
+.shared-admin-actions{display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap}
 
 /* Debug outlines for material rows (kept to visualize rendered layout) */
 .material-row{outline:1px solid red !important}
