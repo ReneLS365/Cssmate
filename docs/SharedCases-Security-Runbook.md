@@ -3,7 +3,7 @@
 Denne runbook beskriver, hvordan "Delt sager" drives sikkert med privat adgang, lang tids retention og backup/restore.
 
 ## Adgang & roller
-- **Login:** Konfigurer en auth-udbyder med flere identiteter (Google, Microsoft, Facebook, Apple eller e-mail/magic link). Eksponér en global `window.cssmateAuth.currentUser` med felterne `uid`, `email`, `displayName`, `providerId` og optionalt `role`.
+- **Login:** Konfigurer Firebase Auth med multi-provider (Google og Microsoft som minimum, evt. Apple/Facebook). Udsæt runtime-konfiguration via `window.FIREBASE_CONFIG = { apiKey, authDomain, projectId, appId }` og eventuelt `window.FIREBASE_AUTH_PROVIDERS = ['google','microsoft','apple']`. Brugerne logger ind via “Log ind med Google/Microsoft”-knapperne i UI, og navnet/e-mail vises i statusfeltet.
 - **Default team:** Hvis intet andet er angivet, bruges team `Hulmose`. Sæt `window.TEAM_ID` eller brug feltet i UI for at skifte.
 - **Roller:**
   - `member`: kan læse/opdatere egne sager.
@@ -31,9 +31,9 @@ Denne runbook beskriver, hvordan "Delt sager" drives sikkert med privat adgang, 
 - **Gendannelse:** Soft-deleted sager gendannes med `RESTORE` audit event. Ingen hard delete uden manuel godkendelse udenfor appen.
 
 ## Multi-provider opsætning
-1. Opret projekt i f.eks. Firebase Auth eller Supabase Auth.
-2. Aktiver Google, Microsoft, Facebook, Apple samt evt. e-mail/magic-link.
-3. Efter login skal klienten sætte `window.cssmateAuth.currentUser` til auth-objektet (uid/email/displayName/providerId/role).
+1. Opret Firebase-projekt og aktivér Auth.
+2. Slå Google- og Microsoft-udbydere til (Apple/Facebook kan aktiveres efter behov) og kontrollér at popup eller redirect er tilladt.
+3. Indsæt `window.FIREBASE_CONFIG` i HTML (eller via build-opsætning) med `apiKey`, `authDomain`, `projectId` og `appId`. Justér valgfrit `window.FIREBASE_AUTH_PROVIDERS` for at styre hvilke knapper der vises.
 4. (Valgfrit) Tilføj admin-e-mails i `window.SHARED_ADMIN_EMAILS = ['leder@example.com']`.
 
 ## Drift & fejlhåndtering

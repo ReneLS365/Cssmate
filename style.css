@@ -777,6 +777,10 @@ button{cursor:pointer}
 .team-id-input label{font-weight:600}
 .team-id-input input{flex:1}
 .shared-admin-actions{display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap}
+.shared-auth-controls{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.shared-login-buttons{display:flex;flex-wrap:wrap;gap:8px}
+.shared-login-buttons button{flex:1 1 160px}
+.shared-logout{align-self:flex-start}
 
 /* Debug outlines for material rows (kept to visualize rendered layout) */
 .material-row{outline:1px solid red !important}
