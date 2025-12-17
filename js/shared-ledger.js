@@ -3,7 +3,7 @@ import { getFirestoreDb, getFirestoreHelpers, toIsoString } from './shared-fires
 
 const LEDGER_TEAM_PREFIX = 'sscaff-team-';
 const LEDGER_VERSION = 1;
-const BACKUP_SCHEMA_VERSION = 1;
+const BACKUP_SCHEMA_VERSION = 2;
 const DEFAULT_TEAM_ID = 'Hulmose';
 
 class PermissionDeniedError extends Error {
@@ -92,6 +92,7 @@ function normalizeActor(actor, membership) {
   return {
     uid: base.uid || base.id || 'user',
     email: base.email || '',
+    name: base.name || base.displayName || '',
     displayName: base.displayName || base.name || '',
     providerId: base.providerId || base.provider || 'custom',
     role: membership?.role || base.role || null,
@@ -186,15 +187,18 @@ async function recordAuditEvent(teamId, { caseId, action, actor, summary = '' })
     const { teamId: resolvedTeamId, actor: normalizedActor } = await getTeamContext(teamId);
     const db = await getFirestoreDb();
     const sdk = await getFirestoreHelpers();
+    const actorPayload = {
+      uid: normalizedActor.uid || 'user',
+      email: normalizedActor.email || '',
+      name: normalizedActor.name || normalizedActor.displayName || '',
+    };
     const doc = {
       _id: ensureAuditId(),
       type: 'audit',
+      teamId: resolvedTeamId,
       caseId,
       action,
-      actor: normalizedActor.uid,
-      actorEmail: normalizedActor.email || '',
-      actorName: normalizedActor.displayName || '',
-      providerId: normalizedActor.providerId || 'custom',
+      actor: actorPayload,
       timestamp: sdk.serverTimestamp(),
       summary,
     };
@@ -231,7 +235,7 @@ export async function publishSharedCase({ teamId, jobNumber, caseKind, system, t
     lastUpdatedAt: now,
     createdBy: normalizedActor.uid,
     createdByEmail: normalizedActor.email || '',
-    createdByName: normalizedActor.displayName || '',
+    createdByName: normalizedActor.name || normalizedActor.displayName || '',
     updatedBy: normalizedActor.uid,
     immutable: true,
     deletedAt: null,
@@ -350,7 +354,7 @@ export async function importCasePayload(teamId, caseId) {
 }
 
 export async function exportSharedBackup(teamId) {
-  const { teamId: resolvedTeamId, membership } = await getTeamContext(teamId);
+  const { teamId: resolvedTeamId, membership, actor } = await getTeamContext(teamId);
   if (membership.role !== 'admin') throw new PermissionDeniedError('Kun admin kan eksportere backup.');
   const db = await getFirestoreDb();
   const sdk = await getFirestoreHelpers();
@@ -359,15 +363,18 @@ export async function exportSharedBackup(teamId) {
   const auditSnapshot = await sdk.getDocs(sdk.collection(db, 'teams', resolvedTeamId, 'audit'));
   const cases = casesSnapshot.docs.map(doc => ({ caseId: doc.id, ...doc.data(), createdAt: timestampToIso(doc.data().createdAt), updatedAt: timestampToIso(doc.data().updatedAt), lastUpdatedAt: timestampToIso(doc.data().lastUpdatedAt), deletedAt: doc.data().deletedAt ? timestampToIso(doc.data().deletedAt) : null }));
   const audit = auditSnapshot.docs.map(doc => ({ _id: doc.id, ...doc.data(), timestamp: timestampToIso(doc.data().timestamp) }));
-  return {
+  const backup = {
     schemaVersion: BACKUP_SCHEMA_VERSION,
     teamId: resolvedTeamId,
     exportedAt: now,
+    exportedBy: { uid: actor.uid, email: actor.email, name: actor.name || actor.displayName || '' },
     retentionYears: 5,
     cases,
     audit,
     metadata: { format: 'sscaff-shared-backup', source: 'sscaff-app' },
   };
+  await recordAuditEvent(resolvedTeamId, { caseId: null, action: 'BACKUP_EXPORT', actor, summary: `Backup eksport ${cases.length} sager` });
+  return backup;
 }
 
 function toTimestamp(sdk, value) {
@@ -377,14 +384,31 @@ function toTimestamp(sdk, value) {
   return sdk.Timestamp.fromDate(date);
 }
 
+export function validateBackupSchema(payload) {
+  if (!payload || ![BACKUP_SCHEMA_VERSION, 1].includes(payload.schemaVersion)) {
+    throw new Error('Ukendt backup-format');
+  }
+  return payload;
+}
+
+function normalizeBackupAuditActor(actor, schemaVersion) {
+  if (actor && typeof actor === 'object') {
+    return {
+      uid: actor.uid || actor.id || 'legacy',
+      email: actor.email || '',
+      name: actor.name || actor.displayName || '',
+    };
+  }
+  const legacyName = schemaVersion === 1 && typeof actor === 'string' ? actor : '';
+  return { uid: 'legacy', email: '', name: legacyName };
+}
+
 export async function importSharedBackup(teamId, payload, actor) {
   const { teamId: resolvedTeamId, actor: normalizedActor, membership } = await getTeamContext(teamId);
   if (membership.role !== 'admin') throw new PermissionDeniedError('Kun admin kan importere backup.');
   const db = await getFirestoreDb();
   const sdk = await getFirestoreHelpers();
-  if (!payload || payload.schemaVersion !== BACKUP_SCHEMA_VERSION) {
-    throw new Error('Ukendt backup-format');
-  }
+  validateBackupSchema(payload);
   const existing = await sdk.getDocs(sdk.collection(db, 'teams', resolvedTeamId, 'cases'));
   const existingMap = new Map(existing.docs.map(doc => [doc.id, doc.data()]));
   let restored = 0;
@@ -422,10 +446,21 @@ export async function importSharedBackup(teamId, payload, actor) {
       const ref = sdk.doc(db, 'teams', resolvedTeamId, 'audit', entry._id);
       const snapshot = await sdk.getDoc(ref);
       if (snapshot.exists()) continue;
-      const prepared = { ...entry, timestamp: toTimestamp(sdk, entry.timestamp) || sdk.serverTimestamp() };
+      const prepared = {
+        ...entry,
+        actor: normalizeBackupAuditActor(entry.actor, payload.schemaVersion),
+        timestamp: toTimestamp(sdk, entry.timestamp) || sdk.serverTimestamp(),
+      };
       await sdk.setDoc(ref, prepared);
     }
   }
+
+  await recordAuditEvent(resolvedTeamId, {
+    caseId: null,
+    action: 'BACKUP_IMPORT',
+    actor: normalizedActor,
+    summary: `Backup import færdig (restored=${restored}, conflicts=${conflicts})`,
+  });
 
   return { restored, conflicts };
 }
@@ -436,6 +471,44 @@ export async function hardDeleteCase(teamId, caseId) {
   const { sdk, ref } = await getCaseDocument(resolvedTeamId, caseId);
   await sdk.deleteDoc(ref);
   await recordAuditEvent(resolvedTeamId, { caseId, action: 'HARD_DELETE', actor: membership, summary: 'Sletning' });
+  return true;
+}
+
+export async function saveTeamMember(teamId, member) {
+  const { teamId: resolvedTeamId, membership, actor } = await getTeamContext(teamId);
+  if (membership.role !== 'admin') throw new PermissionDeniedError('Kun admin kan ændre medlemmer.');
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const payload = {
+    ...member,
+    uid: member.uid || member.id,
+    active: member.active !== false,
+  };
+  if (!payload.uid) throw new Error('Manglende bruger-id');
+  const ref = sdk.doc(db, 'teams', resolvedTeamId, 'members', payload.uid);
+  await sdk.setDoc(ref, payload, { merge: true });
+  await recordAuditEvent(resolvedTeamId, {
+    caseId: null,
+    action: 'MEMBER_UPDATE',
+    actor,
+    summary: `Medlem ${payload.uid} opdateret`,
+  });
+  return payload;
+}
+
+export async function deactivateTeamMember(teamId, memberId) {
+  const { teamId: resolvedTeamId, membership, actor } = await getTeamContext(teamId);
+  if (membership.role !== 'admin') throw new PermissionDeniedError('Kun admin kan ændre medlemmer.');
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const ref = sdk.doc(db, 'teams', resolvedTeamId, 'members', memberId);
+  await sdk.setDoc(ref, { active: false }, { merge: true });
+  await recordAuditEvent(resolvedTeamId, {
+    caseId: null,
+    action: 'MEMBER_DEACTIVATE',
+    actor,
+    summary: `Medlem ${memberId} deaktiveret`,
+  });
   return true;
 }
 
