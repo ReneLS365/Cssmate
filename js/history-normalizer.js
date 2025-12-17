@@ -65,12 +65,23 @@ function formatDateLabel (timestamp, { timeZone } = {}) {
   }
 }
 
+function stripDiacritics (value) {
+  if (!value || typeof value.normalize !== 'function') return value
+  return value
+    .normalize('NFD')
+    .replace(/\p{Mark}/gu, '')
+    .replace(/[øØ]/g, 'o')
+    .replace(/[åÅ]/g, 'a')
+    .replace(/[æÆ]/g, 'ae')
+}
+
 function normalizeSearchValue (value) {
-  return (value || '')
+  const base = (value || '')
     .toString()
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, ' ')
+  const folded = stripDiacritics(base) || base
+  return folded.replace(/\s+/g, ' ')
 }
 
 function pickNumber (candidates = []) {
