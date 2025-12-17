@@ -2,6 +2,14 @@
   command = "npm run build"
   publish = "."
 
+ [context.deploy-preview]
+  command = "npm run build"
+  publish = "."
+
+[context.branch-deploy]
+  command = "npm run build"
+  publish = "."
+
 [[plugins]]
   package = "netlify-plugin-a11y"
   [plugins.inputs]

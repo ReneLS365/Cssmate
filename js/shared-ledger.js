@@ -34,17 +34,14 @@ function readTeamIdFromStorage() {
 }
 
 export function resolveTeamId(rawTeamId) {
-  const enforcedTeamId = formatTeamId(DEFAULT_TEAM_ID);
-  const requestedTeamId = rawTeamId || (typeof window !== 'undefined' ? window.TEAM_ID : null) || readTeamIdFromStorage();
-  const formattedRequested = requestedTeamId ? formatTeamId(requestedTeamId) : enforcedTeamId;
+  const requestedTeamId = rawTeamId
+    || (typeof window !== 'undefined' ? window.TEAM_ID : null)
+    || readTeamIdFromStorage();
 
-  if (formattedRequested !== enforcedTeamId) {
-    persistTeamId(enforcedTeamId);
-    return enforcedTeamId;
-  }
-
-  persistTeamId(enforcedTeamId);
-  return enforcedTeamId;
+  const normalizedRequest = (requestedTeamId || '').toString().trim();
+  const resolved = normalizedRequest ? formatTeamId(normalizedRequest) : formatTeamId(DEFAULT_TEAM_ID);
+  persistTeamId(resolved);
+  return resolved;
 }
 
 function getStorage() {
@@ -96,7 +93,9 @@ function resolveConnectionHost() {
 const ledgers = {};
 
 export function getSharedLedger(teamId) {
-  const name = formatTeamId(teamId);
+  const cleanedTeamId = (teamId || '').toString().trim();
+  if (!cleanedTeamId) return { ledger: null, connection: null };
+  const name = formatTeamId(cleanedTeamId);
   if (!ledgers[name]) {
     const ledger = fireproof(name);
     const host = resolveConnectionHost();
@@ -128,6 +127,7 @@ function normalizeCaseDoc(doc) {
 
 export async function publishSharedCase({ teamId, jobNumber, caseKind, system, totals, status = 'kladde', jsonContent }) {
   const { ledger } = getSharedLedger(teamId);
+  if (!ledger) throw new Error('Team ID mangler eller er ugyldigt');
   const caseId = ensureCaseId();
   const now = new Date().toISOString();
   const doc = {
@@ -155,6 +155,7 @@ export async function publishSharedCase({ teamId, jobNumber, caseKind, system, t
 
 export async function listSharedGroups(teamId) {
   const { ledger } = getSharedLedger(teamId);
+  if (!ledger) throw new Error('Team ID mangler eller er ugyldigt');
   const response = await ledger.allDocs({ includeDeleted: false });
   const cases = response.rows
     .map(row => normalizeCaseDoc(row.value))
@@ -183,6 +184,7 @@ export async function listSharedGroups(teamId) {
 export async function getSharedCase(teamId, caseId) {
   try {
     const { ledger } = getSharedLedger(teamId);
+    if (!ledger) throw new Error('Team ID mangler eller er ugyldigt');
     const doc = await ledger.get(caseId);
     return normalizeCaseDoc(doc);
   } catch (error) {
@@ -196,6 +198,7 @@ export async function deleteSharedCase(teamId, caseId, userId) {
   if (!entry) return false;
   if (entry.createdBy && entry.createdBy !== userId) return false;
   const { ledger } = getSharedLedger(teamId);
+  if (!ledger) return false;
   await ledger.del(caseId);
   return true;
 }
@@ -205,6 +208,7 @@ export async function updateCaseStatus(teamId, caseId, status, userId) {
   if (!entry) return null;
   if (entry.createdBy && entry.createdBy !== userId) return null;
   const { ledger } = getSharedLedger(teamId);
+  if (!ledger) return null;
   const updatedAt = new Date().toISOString();
   const next = { ...entry, status, updatedAt, lastUpdatedAt: updatedAt };
   await ledger.put(next);
