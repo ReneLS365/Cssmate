@@ -75,3 +75,26 @@ test('backup operations kræver admin og korrekt team', async (t) => {
 
   await assertSucceeds(adminDb.doc('teams/sscaff-team-alpha/backups/backup-1').set({ createdAt: new Date().toISOString() }));
 });
+
+test('audit logs er append-only', async (t) => {
+  const testEnv = await setupEnv(t);
+  if (!testEnv) return;
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await db.doc('teams/sscaff-team-alpha/members/audit-user').set({ uid: 'audit-user', role: 'member', active: true });
+    await db.doc('teams/sscaff-team-alpha/members/audit-admin').set({ uid: 'audit-admin', role: 'admin', active: true });
+  });
+
+  const memberDb = testEnv.authenticatedContext('audit-user').firestore();
+  const adminDb = testEnv.authenticatedContext('audit-admin').firestore();
+  const eventData = {
+    action: 'TEST',
+    actor: { uid: 'audit-user', email: 'audit@example.com', name: 'Audit User' },
+    timestamp: new Date(),
+    summary: 'append only',
+  };
+
+  await assertSucceeds(memberDb.doc('teams/sscaff-team-alpha/audit/event-1').set(eventData));
+  await assertFails(memberDb.doc('teams/sscaff-team-alpha/audit/event-1').set({ ...eventData, summary: 'forsøg på update' }));
+  await assertFails(adminDb.doc('teams/sscaff-team-alpha/audit/event-1').delete());
+});
