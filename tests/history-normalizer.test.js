@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { normalizeHistoryEntry, normalizeHistoryList, formatDateLabel } from '../js/history-normalizer.js'
+import { normalizeHistoryEntry, normalizeHistoryList, formatDateLabel, normalizeSearchValue } from '../js/history-normalizer.js'
 
 test('normalizeHistoryEntry respects timestamp for createdAt', () => {
   const entry = { id: 'case-a', timestamp: 1734094140000 }
@@ -52,4 +52,9 @@ test('precomputed display strings include address, hours and base wage', () => {
   assert.ok(normalized.displayDateWithAddress.includes('Hovedgaden 2'))
   assert.equal(normalized.displayHours, '7,5')
   assert.equal(normalized.displayBaseWage, '267,01 kr/t')
+})
+
+test('normalizeSearchValue strips accents for more forgiving search', () => {
+  const folded = normalizeSearchValue('Østergade Århus')
+  assert.equal(folded, 'ostergade arhus')
 })
