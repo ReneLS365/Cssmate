@@ -9,15 +9,17 @@ import {
 } from '@firebase/rules-unit-testing';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const rules = readFileSync(path.join(__dirname, '..', 'firestore.rules'), 'utf8');
+const rules = readFileSync(path.join(__dirname, '..', '..', 'firestore.rules'), 'utf8');
+const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST || process.env.FIREBASE_EMULATOR_HOST;
+const integrationTest = emulatorHost ? test : test.skip;
 
 async function setupEnv(t) {
-  const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
   const [host, portString] = emulatorHost.split(':');
+  const port = portString ? Number(portString) : 8080;
   try {
     const testEnv = await initializeTestEnvironment({
       projectId: 'cssmate-test',
-      firestore: { rules, host, port: Number(portString) },
+      firestore: { rules, host, port },
     });
     t.after(async () => {
       await testEnv.cleanup();
@@ -29,7 +31,7 @@ async function setupEnv(t) {
   }
 }
 
-test('members kan læse og skrive i deres eget team', async (t) => {
+integrationTest('members kan læse og skrive i deres eget team', async (t) => {
   const testEnv = await setupEnv(t);
   if (!testEnv) return;
   await testEnv.withSecurityRulesDisabled(async (context) => {
@@ -44,7 +46,7 @@ test('members kan læse og skrive i deres eget team', async (t) => {
   await assertFails(memberDb.doc('teams/sscaff-team-beta/cases/other').get());
 });
 
-test('admin kan gendanne og hard delete på eget team', async (t) => {
+integrationTest('admin kan gendanne og hard delete på eget team', async (t) => {
   const testEnv = await setupEnv(t);
   if (!testEnv) return;
   await testEnv.withSecurityRulesDisabled(async (context) => {
@@ -58,7 +60,7 @@ test('admin kan gendanne og hard delete på eget team', async (t) => {
   await assertSucceeds(adminDb.doc('teams/sscaff-team-alpha/cases/case-restore').delete());
 });
 
-test('backup operations kræver admin og korrekt team', async (t) => {
+integrationTest('backup operations kræver admin og korrekt team', async (t) => {
   const testEnv = await setupEnv(t);
   if (!testEnv) return;
   await testEnv.withSecurityRulesDisabled(async (context) => {
@@ -76,7 +78,7 @@ test('backup operations kræver admin og korrekt team', async (t) => {
   await assertSucceeds(adminDb.doc('teams/sscaff-team-alpha/backups/backup-1').set({ createdAt: new Date().toISOString() }));
 });
 
-test('audit logs er append-only', async (t) => {
+integrationTest('audit logs er append-only', async (t) => {
   const testEnv = await setupEnv(t);
   if (!testEnv) return;
   await testEnv.withSecurityRulesDisabled(async (context) => {
