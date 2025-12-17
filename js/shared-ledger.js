@@ -148,9 +148,9 @@ export function getCurrentUserId() {
   return ensureUserId();
 }
 
-function normalizeCaseDoc(doc) {
+function normalizeCaseDoc(doc, { includeDeleted = false } = {}) {
   if (!doc || doc._deleted) return null;
-  if (doc.deletedAt) return null;
+  if (doc.deletedAt && !includeDeleted) return null;
   const jobNumber = normalizeJobNumber(doc.jobNumber);
   const createdAt = doc.createdAt || '';
   const updatedAt = doc.updatedAt || createdAt;
@@ -257,12 +257,12 @@ export async function listSharedGroups(teamId) {
     .sort((a, b) => (b.lastUpdatedAt || '').localeCompare(a.lastUpdatedAt || ''));
 }
 
-export async function getSharedCase(teamId, caseId) {
+export async function getSharedCase(teamId, caseId, { includeDeleted = false } = {}) {
   try {
     const { ledger } = getSharedLedger(teamId);
     if (!ledger) throw new Error('Team ID mangler eller er ugyldigt');
     const doc = await ledger.get(caseId);
-    return normalizeCaseDoc(doc);
+    return normalizeCaseDoc(doc, { includeDeleted });
   } catch (error) {
     console.warn('Kunne ikke hente sag', error);
     return null;
@@ -284,7 +284,7 @@ export async function deleteSharedCase(teamId, caseId, actor) {
 }
 
 export async function restoreSharedCase(teamId, caseId, actor) {
-  const entry = await getSharedCase(teamId, caseId);
+  const entry = await getSharedCase(teamId, caseId, { includeDeleted: true });
   if (!entry) return null;
   const normalizedActor = normalizeActor(actor);
   const { ledger } = getSharedLedger(teamId);
