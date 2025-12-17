@@ -4,7 +4,10 @@ import { buildExportModel } from './export-model.js';
 import { downloadBlob } from './utils/downloadBlob.js';
 
 const TEAM_ID = resolveTeamId();
+const DISPLAY_TEAM_ID = TEAM_ID.replace(/^sscaff-team-/, '');
 const { connection } = getSharedLedger(TEAM_ID);
+let sharedCasesPanelInitialized = false;
+let refreshBtn;
 
 function getFilters() {
   const job = document.getElementById('sharedFilterJob');
@@ -186,7 +189,14 @@ function renderGroup(group, userId, onChange) {
 
 function setSharedStatus(text) {
   const status = document.getElementById('sharedStatus');
-  if (status) status.textContent = text;
+  if (status) status.textContent = `Team: ${DISPLAY_TEAM_ID} · ${text}`;
+}
+
+function setRefreshState(state = 'idle') {
+  if (!refreshBtn) return;
+  const label = state === 'loading' ? 'Opdaterer…' : state === 'error' ? 'Prøv igen' : 'Opdater';
+  refreshBtn.textContent = label;
+  refreshBtn.disabled = state === 'loading';
 }
 
 function updateSharedStatus() {
@@ -208,18 +218,16 @@ function updateSharedStatus() {
 function initTeamIdInput() {
   const container = document.getElementById('teamIdInputContainer');
   if (!container) return;
-  const isDefaultTeam = TEAM_ID === formatTeamId('default');
-  container.hidden = !isDefaultTeam;
-  if (!isDefaultTeam) return;
   const input = document.getElementById('teamIdInput');
   const saveButton = document.getElementById('saveTeamId');
-  if (input && typeof input.value === 'string') input.value = '';
+  if (input && typeof input.value === 'string') input.value = DISPLAY_TEAM_ID;
   if (!saveButton) return;
   saveButton.addEventListener('click', () => {
     const value = input?.value?.trim();
     if (!value) return;
     try {
-      window.localStorage?.setItem('sscaff-team-id', value);
+      const formatted = formatTeamId(value);
+      window.localStorage?.setItem('csmate:teamId', formatted);
       window.location.reload();
     } catch (error) {
       console.warn('Kunne ikke gemme Team ID', error);
@@ -228,9 +236,11 @@ function initTeamIdInput() {
 }
 
 export function initSharedCasesPanel() {
+  if (sharedCasesPanelInitialized) return;
   const container = document.getElementById('sharedCasesList');
   if (!container) return;
-  const refreshBtn = document.getElementById('refreshSharedCases');
+  sharedCasesPanelInitialized = true;
+  refreshBtn = document.getElementById('refreshSharedCases');
   const filters = ['sharedFilterJob', 'sharedFilterStatus', 'sharedFilterKind']
     .map(id => document.getElementById(id))
     .filter(Boolean);
@@ -239,6 +249,7 @@ export function initSharedCasesPanel() {
 
   const refresh = async () => {
     if (!container) return;
+    setRefreshState('loading');
     container.textContent = 'Henter sager…';
     const currentUser = getCurrentUserId();
     try {
@@ -253,12 +264,18 @@ export function initSharedCasesPanel() {
         const empty = document.createElement('p');
         empty.textContent = 'Ingen delte sager endnu.';
         container.appendChild(empty);
+        setRefreshState('idle');
         return;
       }
       filtered.forEach(group => container.appendChild(renderGroup(group, currentUser, refresh)));
+      setSharedStatus('Synkroniseret');
+      setRefreshState('idle');
     } catch (error) {
       console.error('Kunne ikke hente delte sager', error);
-      container.textContent = 'Kunne ikke hente delte sager.';
+      const message = error?.message || 'Kunne ikke hente delte sager.';
+      container.textContent = `${message} Tjek netværk eller ret Team ID.`;
+      setSharedStatus(`Fejl: ${message}`);
+      setRefreshState('error');
     }
   };
 

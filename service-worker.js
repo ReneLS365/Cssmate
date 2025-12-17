@@ -9,7 +9,7 @@ if (versionScriptUrl) {
   importScripts('/js/version.js')
 }
 
-const CACHE_VERSION = 'sscaff-v-20251217000000002' // bumped after delt sager fanen
+const CACHE_VERSION = 'sscaff-v-20251216210714381' // bumped after delt sager fanen
 const CACHE_NAME = 'sscaff-' + CACHE_VERSION
 const PRECACHE_URLS = [
   '/',
