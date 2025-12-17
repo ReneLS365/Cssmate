@@ -3,7 +3,7 @@ import { getFirestoreDb, getFirestoreHelpers, toIsoString } from './shared-fires
 
 const LEDGER_TEAM_PREFIX = 'sscaff-team-';
 const LEDGER_VERSION = 1;
-const BACKUP_SCHEMA_VERSION = 1;
+const BACKUP_SCHEMA_VERSION = 2;
 const DEFAULT_TEAM_ID = 'Hulmose';
 
 class PermissionDeniedError extends Error {
@@ -385,10 +385,22 @@ function toTimestamp(sdk, value) {
 }
 
 export function validateBackupSchema(payload) {
-  if (!payload || payload.schemaVersion !== BACKUP_SCHEMA_VERSION) {
+  if (!payload || ![BACKUP_SCHEMA_VERSION, 1].includes(payload.schemaVersion)) {
     throw new Error('Ukendt backup-format');
   }
   return payload;
+}
+
+function normalizeBackupAuditActor(actor, schemaVersion) {
+  if (actor && typeof actor === 'object') {
+    return {
+      uid: actor.uid || actor.id || 'legacy',
+      email: actor.email || '',
+      name: actor.name || actor.displayName || '',
+    };
+  }
+  const legacyName = schemaVersion === 1 && typeof actor === 'string' ? actor : '';
+  return { uid: 'legacy', email: '', name: legacyName };
 }
 
 export async function importSharedBackup(teamId, payload, actor) {
@@ -434,7 +446,11 @@ export async function importSharedBackup(teamId, payload, actor) {
       const ref = sdk.doc(db, 'teams', resolvedTeamId, 'audit', entry._id);
       const snapshot = await sdk.getDoc(ref);
       if (snapshot.exists()) continue;
-      const prepared = { ...entry, timestamp: toTimestamp(sdk, entry.timestamp) || sdk.serverTimestamp() };
+      const prepared = {
+        ...entry,
+        actor: normalizeBackupAuditActor(entry.actor, payload.schemaVersion),
+        timestamp: toTimestamp(sdk, entry.timestamp) || sdk.serverTimestamp(),
+      };
       await sdk.setDoc(ref, prepared);
     }
   }
