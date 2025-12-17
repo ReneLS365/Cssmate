@@ -5,6 +5,7 @@ const LEDGER_TEAM_PREFIX = 'sscaff-team-';
 const LEDGER_VERSION = 1;
 const STORAGE_PREFIX = 'sscaff:shared-ledger:';
 const TEAM_ID_STORAGE_KEY = 'csmate:teamId';
+const LEGACY_TEAM_ID_KEYS = ['sscaff-team-id'];
 const DEFAULT_TEAM_ID = 'Hulmose';
 
 export function formatTeamId(rawTeamId) {
@@ -27,6 +28,15 @@ function readTeamIdFromStorage() {
     if (!storage) return null;
     const stored = storage.getItem(TEAM_ID_STORAGE_KEY);
     if (stored && stored.trim()) return stored;
+
+    for (const legacyKey of LEGACY_TEAM_ID_KEYS) {
+      const legacyValue = storage.getItem(legacyKey);
+      if (legacyValue && legacyValue.trim()) {
+        const normalizedLegacy = legacyValue.trim();
+        persistTeamId(normalizedLegacy);
+        return normalizedLegacy;
+      }
+    }
   } catch (error) {
     console.warn('Kunne ikke læse Team ID', error);
   }
