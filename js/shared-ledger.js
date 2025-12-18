@@ -1,79 +1,46 @@
-import { fireproof } from '@fireproof/core';
-import { connect } from '@fireproof/partykit';
+import { getAuthContext, waitForAuthReady } from './shared-auth.js';
+import { getFirestoreDb, getFirestoreHelpers, toIsoString } from './shared-firestore.js';
 
 const LEDGER_TEAM_PREFIX = 'sscaff-team-';
 const LEDGER_VERSION = 1;
-const STORAGE_PREFIX = 'sscaff:shared-ledger:';
-const TEAM_ID_STORAGE_KEY = 'csmate:teamId';
-const LEGACY_TEAM_ID_KEYS = ['sscaff-team-id'];
+const BACKUP_SCHEMA_VERSION = 2;
 const DEFAULT_TEAM_ID = 'Hulmose';
+
+class PermissionDeniedError extends Error {
+  constructor(message) {
+    super(message);
+    this.code = 'permission-denied';
+  }
+}
+
+const teamCache = {
+  uid: null,
+  teamId: null,
+  membership: null,
+};
+
+async function fetchUserProfile(uid) {
+  if (!uid) return null;
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const ref = sdk.doc(db, 'users', uid);
+  const snapshot = await sdk.getDoc(ref);
+  if (!snapshot.exists()) return null;
+  const data = snapshot.data() || {};
+  if (data.active === false) return null;
+  return {
+    teamId: data.teamId ? formatTeamId(data.teamId) : null,
+    uid,
+    role: data.role || 'member',
+    email: data.email || '',
+    displayName: data.displayName || data.name || '',
+    active: data.active !== false,
+  };
+}
 
 export function formatTeamId(rawTeamId) {
   const cleaned = (rawTeamId || '').toString().trim() || 'default';
   return cleaned.startsWith(LEDGER_TEAM_PREFIX) ? cleaned : `${LEDGER_TEAM_PREFIX}${cleaned}`;
-}
-
-function persistTeamId(teamId) {
-  try {
-    const storage = getStorage();
-    storage?.setItem(TEAM_ID_STORAGE_KEY, teamId);
-  } catch (error) {
-    console.warn('Kunne ikke gemme Team ID', error);
-  }
-}
-
-function readTeamIdFromStorage() {
-  try {
-    const storage = getStorage();
-    if (!storage) return null;
-    const stored = storage.getItem(TEAM_ID_STORAGE_KEY);
-    if (stored && stored.trim()) return stored;
-
-    for (const legacyKey of LEGACY_TEAM_ID_KEYS) {
-      const legacyValue = storage.getItem(legacyKey);
-      if (legacyValue && legacyValue.trim()) {
-        const normalizedLegacy = legacyValue.trim();
-        persistTeamId(normalizedLegacy);
-        return normalizedLegacy;
-      }
-    }
-  } catch (error) {
-    console.warn('Kunne ikke læse Team ID', error);
-  }
-  return null;
-}
-
-export function resolveTeamId(rawTeamId) {
-  const requestedTeamId = rawTeamId
-    || (typeof window !== 'undefined' ? window.TEAM_ID : null)
-    || readTeamIdFromStorage();
-
-  const normalizedRequest = (requestedTeamId || '').toString().trim();
-  const resolved = normalizedRequest ? formatTeamId(normalizedRequest) : formatTeamId(DEFAULT_TEAM_ID);
-  persistTeamId(resolved);
-  return resolved;
-}
-
-function getStorage() {
-  if (typeof localStorage === 'undefined') return null;
-  return localStorage;
-}
-
-function ensureUserId() {
-  try {
-    const storage = getStorage();
-    const key = `${STORAGE_PREFIX}user`;
-    if (!storage) return 'offline-user';
-    const existing = storage.getItem(key);
-    if (existing && existing.trim()) return existing;
-    const created = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID()
-      : `user-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    storage.setItem(key, created);
-    return created;
-  } catch {
-    return 'offline-user';
-  }
 }
 
 function normalizeJobNumber(jobNumber) {
@@ -112,37 +79,130 @@ function ensureCaseId() {
     : `case-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function resolveConnectionHost() {
-  if (typeof import.meta !== 'undefined') {
-    const host = import.meta?.env?.PUBLIC_PARTYKIT_HOST;
-    if (host) return host;
-  }
-  if (typeof process !== 'undefined' && process?.env?.PUBLIC_PARTYKIT_HOST) {
-    return process.env.PUBLIC_PARTYKIT_HOST;
-  }
-  if (typeof window !== 'undefined' && window.PUBLIC_PARTYKIT_HOST) {
-    return window.PUBLIC_PARTYKIT_HOST;
+function ensureAuditId() {
+  return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `audit-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function cacheTeamResolution(uid, teamId, membership) {
+  teamCache.uid = uid;
+  teamCache.teamId = teamId;
+  teamCache.membership = membership || null;
+}
+
+function getCachedTeam(uid) {
+  if (uid && uid === teamCache.uid && teamCache.teamId) {
+    return { teamId: teamCache.teamId, membership: teamCache.membership };
   }
   return null;
 }
 
-const ledgers = {};
-
-export function getSharedLedger(teamId) {
-  const cleanedTeamId = (teamId || '').toString().trim();
-  if (!cleanedTeamId) return { ledger: null, connection: null };
-  const name = formatTeamId(cleanedTeamId);
-  if (!ledgers[name]) {
-    const ledger = fireproof(name);
-    const host = resolveConnectionHost();
-    const connection = host ? connect.partykit(ledger, host) : null;
-    ledgers[name] = { ledger, connection };
+async function fetchMembership(teamId, uid) {
+  const profile = await fetchUserProfile(uid);
+  const resolvedTeam = teamId ? formatTeamId(teamId) : profile?.teamId;
+  if (profile && (!resolvedTeam || profile.teamId === resolvedTeam)) {
+    return {
+      ...profile,
+      teamId: profile.teamId || resolvedTeam,
+    };
   }
-  return ledgers[name];
+
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const ref = sdk.doc(db, 'teams', resolvedTeam || teamId, 'members', uid);
+  const snapshot = await sdk.getDoc(ref);
+  if (!snapshot.exists()) return null;
+  const data = snapshot.data() || {};
+  if (data.active === false) return null;
+  return {
+    teamId: resolvedTeam || teamId,
+    uid,
+    role: data.role || 'member',
+    email: data.email || '',
+    displayName: data.displayName || '',
+  };
 }
 
-export function getCurrentUserId() {
-  return ensureUserId();
+async function fetchMemberships(uid) {
+  const profile = await fetchUserProfile(uid);
+  if (profile?.teamId) {
+    return [{ ...profile, teamId: profile.teamId }];
+  }
+
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const query = sdk.query(sdk.collectionGroup(db, 'members'), sdk.where('uid', '==', uid));
+  const snapshot = await sdk.getDocs(query);
+  return snapshot.docs
+    .map(doc => ({
+      teamId: doc.ref?.parent?.parent?.id ? formatTeamId(doc.ref.parent.parent.id) : null,
+      uid,
+      role: doc.data()?.role || 'member',
+      email: doc.data()?.email || '',
+      displayName: doc.data()?.displayName || '',
+      active: doc.data()?.active !== false,
+    }))
+    .filter(entry => Boolean(entry.teamId) && entry.active);
+}
+
+function normalizeActor(actor, membership) {
+  const base = actor || {};
+  return {
+    uid: base.uid || base.id || 'user',
+    email: base.email || '',
+    name: base.name || base.displayName || '',
+    displayName: base.displayName || base.name || '',
+    providerId: base.providerId || base.provider || 'custom',
+    role: membership?.role || base.role || null,
+  };
+}
+
+async function resolveMembership(teamId, uid) {
+  const cached = getCachedTeam(uid);
+  if (cached?.teamId === teamId && cached.membership) return cached.membership;
+  return fetchMembership(teamId, uid);
+}
+
+export async function resolveTeamId(rawTeamId) {
+  const auth = getAuthContext();
+  const uid = auth?.user?.uid;
+  const provided = rawTeamId
+    || (typeof window !== 'undefined' ? window.TEAM_ID : null);
+  const normalizedProvided = provided ? formatTeamId(provided) : null;
+
+  if (auth?.isAuthenticated && uid) {
+    if (normalizedProvided) {
+      const membership = await resolveMembership(normalizedProvided, uid);
+      if (membership) {
+        cacheTeamResolution(uid, normalizedProvided, membership);
+        return normalizedProvided;
+      }
+    }
+    const cached = getCachedTeam(uid);
+    if (cached?.teamId) return cached.teamId;
+
+    const memberships = await fetchMemberships(uid);
+    const first = memberships[0];
+    if (first?.teamId) {
+      cacheTeamResolution(uid, first.teamId, first);
+      return first.teamId;
+    }
+    throw new PermissionDeniedError('Ingen team-tilknytning fundet for din bruger.');
+  }
+
+  if (normalizedProvided) return normalizedProvided;
+  return formatTeamId(DEFAULT_TEAM_ID);
+}
+
+export async function getTeamMembership(teamId) {
+  await waitForAuthReady();
+  const auth = getAuthContext();
+  if (!auth?.isAuthenticated || !auth.user?.uid) return null;
+  const resolvedTeamId = formatTeamId(teamId || (await resolveTeamId()));
+  const membership = await resolveMembership(resolvedTeamId, auth.user.uid) || (await fetchMemberships(auth.user.uid))[0];
+  if (membership) cacheTeamResolution(auth.user.uid, resolvedTeamId, membership);
+  return membership ? { ...membership, teamId: resolvedTeamId } : null;
 }
 
 function normalizeCaseDoc(doc) {
@@ -152,9 +212,10 @@ function normalizeCaseDoc(doc) {
   const updatedAt = normalizeTimestampValue(doc.updatedAt || doc.lastUpdatedAt || createdAt);
   const lastUpdatedAt = normalizeTimestampValue(doc.lastUpdatedAt || updatedAt);
   return {
-    ...doc,
+    ...data,
+    teamId: data.teamId || teamIdFromPath || '',
     version: LEDGER_VERSION,
-    caseId: doc.caseId || doc._id,
+    caseId: data.caseId || data._id || doc.id,
     jobNumber,
     createdAt,
     updatedAt,
@@ -177,8 +238,9 @@ export async function publishSharedCase({ teamId, jobNumber, caseKind, system, t
   const doc = {
     _id: caseId,
     type: 'case',
-    caseId,
+    caseId: ref.id,
     parentCaseId: null,
+    teamId: resolvedTeamId,
     jobNumber: normalizeJobNumber(jobNumber),
     caseKind,
     system,
@@ -186,25 +248,36 @@ export async function publishSharedCase({ teamId, jobNumber, caseKind, system, t
     status,
     createdAt: now,
     updatedAt: now,
-    createdBy: ensureUserId(),
+    lastUpdatedAt: now,
+    createdBy: normalizedActor.uid,
+    createdByEmail: normalizedActor.email || '',
+    createdByName: normalizedActor.name || normalizedActor.displayName || '',
+    updatedBy: normalizedActor.uid,
     immutable: true,
+    deletedAt: null,
     attachments: {
       json: { data: jsonContent, createdAt: now },
       pdf: null,
     },
+    actorRole: membership?.role || null,
   };
-  await ledger.put(doc);
-  return doc;
+  await sdk.setDoc(ref, payload);
+  const snapshot = await sdk.getDoc(ref);
+  const normalized = normalizeCaseDoc(snapshot);
+  await recordAuditEvent(resolvedTeamId, { caseId: ref.id, action: 'CREATE', actor: normalizedActor, summary: 'Ny delt sag' });
+  return normalized;
 }
 
 export async function listSharedGroups(teamId) {
-  const { ledger } = getSharedLedger(teamId);
-  if (!ledger) throw new Error('Team ID mangler eller er ugyldigt');
-  const response = await ledger.allDocs({ includeDeleted: false });
-  const cases = response.rows
-    .map(row => normalizeCaseDoc(row.value))
-    .filter(Boolean)
-    .filter(entry => entry.type === 'case');
+  const { teamId: resolvedTeamId } = await getTeamContext(teamId);
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const query = sdk.query(
+    sdk.collection(db, 'teams', resolvedTeamId, 'cases'),
+    sdk.where('deletedAt', '==', null),
+  );
+  const response = await sdk.getDocs(query);
+  const cases = response.docs.map(doc => normalizeCaseDoc(doc)).filter(Boolean).filter(entry => entry.type === 'case');
 
   const groups = new Map();
   cases.forEach(entry => {
@@ -225,25 +298,40 @@ export async function listSharedGroups(teamId) {
     .sort((a, b) => (b.lastUpdatedAt || '').localeCompare(a.lastUpdatedAt || ''));
 }
 
-export async function getSharedCase(teamId, caseId) {
+export async function getSharedCase(teamId, caseId, { includeDeleted = false } = {}) {
   try {
-    const { ledger } = getSharedLedger(teamId);
-    if (!ledger) throw new Error('Team ID mangler eller er ugyldigt');
-    const doc = await ledger.get(caseId);
-    return normalizeCaseDoc(doc);
+    const { teamId: resolvedTeamId } = await getTeamContext(teamId);
+    const { sdk, ref } = await getCaseDocument(resolvedTeamId, caseId);
+    const doc = await sdk.getDoc(ref);
+    return normalizeCaseDoc(doc, { includeDeleted });
   } catch (error) {
     console.warn('Kunne ikke hente sag', error);
+    if (error?.code === 'permission-denied') throw error;
     return null;
   }
 }
 
-export async function deleteSharedCase(teamId, caseId, userId) {
+export async function deleteSharedCase(teamId, caseId, actor) {
   const entry = await getSharedCase(teamId, caseId);
   if (!entry) return false;
-  if (entry.createdBy && entry.createdBy !== userId) return false;
-  const { ledger } = getSharedLedger(teamId);
-  if (!ledger) return false;
-  await ledger.del(caseId);
+  const { teamId: resolvedTeamId, actor: normalizedActor, membership } = await getTeamContext(teamId);
+  if (entry.createdBy && entry.createdBy !== normalizedActor.uid && membership.role !== 'admin') {
+    throw new PermissionDeniedError('Kun opretter eller admin kan slette sagen.');
+  }
+  const { sdk, ref } = await getCaseDocument(resolvedTeamId, caseId);
+  const updatedAt = sdk.serverTimestamp();
+  const next = {
+    ...entry,
+    teamId: entry.teamId || resolvedTeamId,
+    status: 'deleted',
+    deletedAt: updatedAt,
+    deletedBy: normalizedActor.uid,
+    updatedAt,
+    lastUpdatedAt: updatedAt,
+    updatedBy: normalizedActor.uid,
+  };
+  await sdk.updateDoc(ref, next);
+  await recordAuditEvent(resolvedTeamId, { caseId, action: 'DELETE', actor: normalizedActor, summary: 'Soft delete' });
   return true;
 }
 
@@ -279,3 +367,188 @@ export async function importCasePayload(teamId, caseId) {
   if (!content) return null;
   return content;
 }
+
+export async function exportSharedBackup(teamId) {
+  const { teamId: resolvedTeamId, membership, actor } = await getTeamContext(teamId);
+  if (membership.role !== 'admin') throw new PermissionDeniedError('Kun admin kan eksportere backup.');
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const now = new Date().toISOString();
+  const casesSnapshot = await sdk.getDocs(sdk.collection(db, 'teams', resolvedTeamId, 'cases'));
+  const auditSnapshot = await sdk.getDocs(sdk.collection(db, 'teams', resolvedTeamId, 'audit'));
+  const cases = casesSnapshot.docs.map(doc => ({
+    caseId: doc.id,
+    ...doc.data(),
+    teamId: doc.data().teamId || resolvedTeamId,
+    createdAt: timestampToIso(doc.data().createdAt),
+    updatedAt: timestampToIso(doc.data().updatedAt),
+    lastUpdatedAt: timestampToIso(doc.data().lastUpdatedAt),
+    deletedAt: doc.data().deletedAt ? timestampToIso(doc.data().deletedAt) : null,
+  }));
+  const audit = auditSnapshot.docs.map(doc => ({
+    _id: doc.id,
+    ...doc.data(),
+    teamId: doc.data().teamId || resolvedTeamId,
+    timestamp: timestampToIso(doc.data().timestamp),
+  }));
+  const backup = {
+    schemaVersion: BACKUP_SCHEMA_VERSION,
+    teamId: resolvedTeamId,
+    exportedAt: now,
+    exportedBy: { uid: actor.uid, email: actor.email, name: actor.name || actor.displayName || '' },
+    retentionYears: 5,
+    cases,
+    audit,
+    metadata: { format: 'sscaff-shared-backup', source: 'sscaff-app' },
+  };
+  await recordAuditEvent(resolvedTeamId, { caseId: null, action: 'BACKUP_EXPORT', actor, summary: `Backup eksport ${cases.length} sager` });
+  return backup;
+}
+
+function toTimestamp(sdk, value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.valueOf())) return null;
+  return sdk.Timestamp.fromDate(date);
+}
+
+export function validateBackupSchema(payload) {
+  if (!payload || ![BACKUP_SCHEMA_VERSION, 1].includes(payload.schemaVersion)) {
+    throw new Error('Ukendt backup-format');
+  }
+  return payload;
+}
+
+function normalizeBackupAuditActor(actor, schemaVersion) {
+  if (actor && typeof actor === 'object') {
+    return {
+      uid: actor.uid || actor.id || 'legacy',
+      email: actor.email || '',
+      name: actor.name || actor.displayName || '',
+    };
+  }
+  const legacyName = schemaVersion === 1 && typeof actor === 'string' ? actor : '';
+  return { uid: 'legacy', email: '', name: legacyName };
+}
+
+export async function importSharedBackup(teamId, payload, actor) {
+  const { teamId: resolvedTeamId, actor: normalizedActor, membership } = await getTeamContext(teamId);
+  if (membership.role !== 'admin') throw new PermissionDeniedError('Kun admin kan importere backup.');
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  validateBackupSchema(payload);
+  const existing = await sdk.getDocs(sdk.collection(db, 'teams', resolvedTeamId, 'cases'));
+  const existingMap = new Map(existing.docs.map(doc => [doc.id, doc.data()]));
+  let restored = 0;
+  let conflicts = 0;
+
+  for (const doc of payload.cases || []) {
+    const docId = doc.caseId || doc._id;
+    if (!docId) continue;
+    const prior = existingMap.get(docId);
+    const incomingUpdatedAt = doc.updatedAt || doc.lastUpdatedAt || doc.createdAt || '';
+    const priorUpdatedAt = prior?.updatedAt || prior?.lastUpdatedAt || prior?.createdAt || '';
+    const shouldReplace = !prior || incomingUpdatedAt.localeCompare(priorUpdatedAt) >= 0;
+    if (!shouldReplace) {
+      conflicts += 1;
+      await recordAuditEvent(resolvedTeamId, { caseId: docId, action: 'RESTORE_CONFLICT', actor: normalizedActor, summary: 'Backup konflikt – ældre data bevaret' });
+      continue;
+    }
+    const ref = sdk.doc(db, 'teams', resolvedTeamId, 'cases', docId);
+    const prepared = {
+      ...doc,
+      caseId: docId,
+      teamId: resolvedTeamId,
+      createdAt: toTimestamp(sdk, doc.createdAt) || sdk.serverTimestamp(),
+      updatedAt: toTimestamp(sdk, doc.updatedAt) || sdk.serverTimestamp(),
+      lastUpdatedAt: toTimestamp(sdk, doc.lastUpdatedAt || doc.updatedAt) || sdk.serverTimestamp(),
+      deletedAt: doc.deletedAt ? toTimestamp(sdk, doc.deletedAt) : null,
+    };
+    await sdk.setDoc(ref, prepared, { merge: true });
+    restored += 1;
+    await recordAuditEvent(resolvedTeamId, { caseId: docId, action: 'RESTORE', actor: normalizedActor, summary: 'Backup importeret' });
+  }
+
+  if (Array.isArray(payload.audit)) {
+    for (const entry of payload.audit) {
+      if (!entry?._id) continue;
+      const ref = sdk.doc(db, 'teams', resolvedTeamId, 'audit', entry._id);
+      const snapshot = await sdk.getDoc(ref);
+      if (snapshot.exists()) continue;
+      const prepared = {
+        ...entry,
+        teamId: resolvedTeamId,
+        actor: normalizeBackupAuditActor(entry.actor, payload.schemaVersion),
+        timestamp: toTimestamp(sdk, entry.timestamp) || sdk.serverTimestamp(),
+      };
+      await sdk.setDoc(ref, prepared);
+    }
+  }
+
+  await recordAuditEvent(resolvedTeamId, {
+    caseId: null,
+    action: 'BACKUP_IMPORT',
+    actor: normalizedActor,
+    summary: `Backup import færdig (restored=${restored}, conflicts=${conflicts})`,
+  });
+
+  return { restored, conflicts };
+}
+
+export async function hardDeleteCase(teamId, caseId) {
+  const { teamId: resolvedTeamId, membership } = await getTeamContext(teamId);
+  if (membership.role !== 'admin') throw new PermissionDeniedError('Kun admin kan hard delete.');
+  const { sdk, ref } = await getCaseDocument(resolvedTeamId, caseId);
+  await sdk.deleteDoc(ref);
+  await recordAuditEvent(resolvedTeamId, { caseId, action: 'HARD_DELETE', actor: membership, summary: 'Sletning' });
+  return true;
+}
+
+export async function saveTeamMember(teamId, member) {
+  const { teamId: resolvedTeamId, membership, actor } = await getTeamContext(teamId);
+  if (membership.role !== 'admin') throw new PermissionDeniedError('Kun admin kan ændre medlemmer.');
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const payload = {
+    ...member,
+    uid: member.uid || member.id,
+    active: member.active !== false,
+  };
+  if (!payload.uid) throw new Error('Manglende bruger-id');
+  const ref = sdk.doc(db, 'teams', resolvedTeamId, 'members', payload.uid);
+  await sdk.setDoc(ref, payload, { merge: true });
+  await sdk.setDoc(sdk.doc(db, 'users', payload.uid), {
+    uid: payload.uid,
+    teamId: resolvedTeamId,
+    role: payload.role || 'member',
+    email: payload.email || '',
+    displayName: payload.displayName || payload.name || '',
+    active: payload.active !== false,
+  }, { merge: true });
+  await recordAuditEvent(resolvedTeamId, {
+    caseId: null,
+    action: 'MEMBER_UPDATE',
+    actor,
+    summary: `Medlem ${payload.uid} opdateret`,
+  });
+  return payload;
+}
+
+export async function deactivateTeamMember(teamId, memberId) {
+  const { teamId: resolvedTeamId, membership, actor } = await getTeamContext(teamId);
+  if (membership.role !== 'admin') throw new PermissionDeniedError('Kun admin kan ændre medlemmer.');
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const ref = sdk.doc(db, 'teams', resolvedTeamId, 'members', memberId);
+  await sdk.setDoc(ref, { active: false }, { merge: true });
+  await sdk.setDoc(sdk.doc(db, 'users', memberId), { active: false, teamId: resolvedTeamId }, { merge: true });
+  await recordAuditEvent(resolvedTeamId, {
+    caseId: null,
+    action: 'MEMBER_DEACTIVATE',
+    actor,
+    summary: `Medlem ${memberId} deaktiveret`,
+  });
+  return true;
+}
+
+export { PermissionDeniedError };
