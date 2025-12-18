@@ -8,6 +8,7 @@ import {
   assertFails,
 } from '@firebase/rules-unit-testing';
 
+const PROJECT_ID = 'sscaff-43a33';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rules = readFileSync(path.join(__dirname, '..', '..', 'firestore.rules'), 'utf8');
 const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST || process.env.FIREBASE_EMULATOR_HOST;
@@ -18,7 +19,7 @@ async function setupEnv(t) {
   const port = portString ? Number(portString) : 8080;
   try {
     const testEnv = await initializeTestEnvironment({
-      projectId: 'cssmate-test',
+      projectId: PROJECT_ID,
       firestore: { rules, host, port },
     });
     t.after(async () => {
@@ -31,72 +32,159 @@ async function setupEnv(t) {
   }
 }
 
-integrationTest('members kan læse og skrive i deres eget team', async (t) => {
+integrationTest('brugerprofiler kan kun ændre rolle/team via admin', async (t) => {
   const testEnv = await setupEnv(t);
   if (!testEnv) return;
+
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
-    await db.doc('teams/sscaff-team-alpha/members/user-1').set({ uid: 'user-1', role: 'member', active: true });
-    await db.doc('teams/sscaff-team-alpha/cases/case-1').set({ status: 'kladde', deletedAt: null });
+    await db.doc('users/admin-1').set({ uid: 'admin-1', role: 'admin', teamId: 'sscaff-team-alpha' });
+    await db.doc('users/user-1').set({ uid: 'user-1', role: 'member', teamId: 'sscaff-team-alpha' });
   });
 
-  const memberDb = testEnv.authenticatedContext('user-1').firestore();
-  await assertSucceeds(memberDb.doc('teams/sscaff-team-alpha/cases/case-1').get());
-  await assertSucceeds(memberDb.doc('teams/sscaff-team-alpha/cases/case-2').set({ status: 'kladde', deletedAt: null }));
-  await assertFails(memberDb.doc('teams/sscaff-team-beta/cases/other').get());
-});
-
-integrationTest('admin kan gendanne og hard delete på eget team', async (t) => {
-  const testEnv = await setupEnv(t);
-  if (!testEnv) return;
-  await testEnv.withSecurityRulesDisabled(async (context) => {
-    const db = context.firestore();
-    await db.doc('teams/sscaff-team-alpha/members/admin-1').set({ uid: 'admin-1', role: 'admin', active: true });
-    await db.doc('teams/sscaff-team-alpha/cases/case-restore').set({ status: 'deleted', deletedAt: new Date().toISOString() });
-  });
+  const userDb = testEnv.authenticatedContext('user-1').firestore();
+  await assertSucceeds(userDb.doc('users/user-1').get());
+  await assertFails(userDb.doc('users/user-2').get());
+  await assertSucceeds(userDb.doc('users/user-1').set({ displayName: 'User One' }, { merge: true }));
+  await assertFails(userDb.doc('users/user-1').set({ role: 'admin' }, { merge: true }));
+  await assertFails(userDb.doc('users/user-1').set({ teamId: 'sscaff-team-beta' }, { merge: true }));
 
   const adminDb = testEnv.authenticatedContext('admin-1').firestore();
-  await assertSucceeds(adminDb.doc('teams/sscaff-team-alpha/cases/case-restore').set({ deletedAt: null }, { merge: true }));
-  await assertSucceeds(adminDb.doc('teams/sscaff-team-alpha/cases/case-restore').delete());
+  await assertSucceeds(adminDb.doc('users/user-1').set({ role: 'member', teamId: 'sscaff-team-alpha' }, { merge: true }));
+  await assertSucceeds(adminDb.doc('users/user-2').set({ role: 'member', teamId: 'sscaff-team-beta' }));
 });
 
-integrationTest('backup operations kræver admin og korrekt team', async (t) => {
+integrationTest('team-admin kan skrive brugerprofiler for eget team', async (t) => {
   const testEnv = await setupEnv(t);
   if (!testEnv) return;
+
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
-    await db.doc('teams/sscaff-team-alpha/members/user-2').set({ uid: 'user-2', role: 'member', active: true });
-    await db.doc('teams/sscaff-team-alpha/members/admin-2').set({ uid: 'admin-2', role: 'admin', active: true });
+    await db.doc('users/admin-team').set({ uid: 'admin-team', role: 'member', teamId: 'sscaff-team-alpha' });
+    await db.doc('users/member-1').set({ uid: 'member-1', role: 'member', teamId: 'sscaff-team-alpha' });
+    await db.doc('teams/sscaff-team-alpha/members/admin-team').set({ uid: 'admin-team', role: 'admin', active: true });
+    await db.doc('teams/sscaff-team-alpha/members/member-1').set({ uid: 'member-1', role: 'member', active: true });
   });
 
-  const memberDb = testEnv.authenticatedContext('user-2').firestore();
-  const adminDb = testEnv.authenticatedContext('admin-2').firestore();
+  const adminDb = testEnv.authenticatedContext('admin-team').firestore();
+  const memberDb = testEnv.authenticatedContext('member-1').firestore();
 
-  await assertFails(memberDb.doc('teams/sscaff-team-alpha/backups/backup-1').set({ createdAt: new Date().toISOString() }));
-  await assertFails(memberDb.doc('teams/sscaff-team-beta/backups/backup-2').get());
+  await assertSucceeds(adminDb.doc('users/member-1').set({
+    teamId: 'sscaff-team-alpha',
+    role: 'member',
+    displayName: 'Member One',
+  }, { merge: true }));
 
-  await assertSucceeds(adminDb.doc('teams/sscaff-team-alpha/backups/backup-1').set({ createdAt: new Date().toISOString() }));
+  await assertFails(adminDb.doc('users/member-1').set({
+    teamId: 'sscaff-team-beta',
+  }, { merge: true }));
+
+  await assertFails(memberDb.doc('users/admin-team').set({
+    displayName: 'Ikke admin',
+  }, { merge: true }));
 });
 
-integrationTest('audit logs er append-only', async (t) => {
+integrationTest('shared cases er låst til teamet fra brugerprofilen', async (t) => {
   const testEnv = await setupEnv(t);
   if (!testEnv) return;
+
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
-    await db.doc('teams/sscaff-team-alpha/members/audit-user').set({ uid: 'audit-user', role: 'member', active: true });
-    await db.doc('teams/sscaff-team-alpha/members/audit-admin').set({ uid: 'audit-admin', role: 'admin', active: true });
+    await db.doc('users/admin-1').set({ uid: 'admin-1', role: 'admin', teamId: 'sscaff-team-alpha' });
+    await db.doc('users/member-a').set({ uid: 'member-a', role: 'member', teamId: 'sscaff-team-alpha' });
+    await db.doc('users/member-b').set({ uid: 'member-b', role: 'member', teamId: 'sscaff-team-beta' });
   });
 
-  const memberDb = testEnv.authenticatedContext('audit-user').firestore();
-  const adminDb = testEnv.authenticatedContext('audit-admin').firestore();
-  const eventData = {
+  const alphaDb = testEnv.authenticatedContext('member-a').firestore();
+  const betaDb = testEnv.authenticatedContext('member-b').firestore();
+  const adminDb = testEnv.authenticatedContext('admin-1').firestore();
+
+  await assertSucceeds(alphaDb.doc('teams/sscaff-team-alpha/cases/case-1').set({
+    teamId: 'sscaff-team-alpha',
+    createdBy: 'member-a',
+    status: 'kladde',
+    deletedAt: null,
+    createdAt: new Date(),
+  }));
+
+  await assertFails(alphaDb.doc('teams/sscaff-team-beta/cases/case-x').set({
+    teamId: 'sscaff-team-beta',
+    createdBy: 'member-a',
+    status: 'kladde',
+  }));
+
+  await assertFails(betaDb.doc('teams/sscaff-team-alpha/cases/case-1').get());
+
+  await assertSucceeds(adminDb.doc('teams/sscaff-team-alpha/cases/case-1').set({
+    status: 'godkendt',
+    teamId: 'sscaff-team-alpha',
+  }, { merge: true }));
+
+  await assertFails(adminDb.doc('teams/sscaff-team-alpha/cases/case-1').set({
+    teamId: 'sscaff-team-beta',
+  }, { merge: true }));
+});
+
+integrationTest('kun creator eller admin kan opdatere sager', async (t) => {
+  const testEnv = await setupEnv(t);
+  if (!testEnv) return;
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await db.doc('users/admin-1').set({ uid: 'admin-1', role: 'admin', teamId: 'sscaff-team-alpha' });
+    await db.doc('users/member-a').set({ uid: 'member-a', role: 'member', teamId: 'sscaff-team-alpha' });
+    await db.doc('users/member-b').set({ uid: 'member-b', role: 'member', teamId: 'sscaff-team-alpha' });
+  });
+
+  const creatorDb = testEnv.authenticatedContext('member-a').firestore();
+  const otherMemberDb = testEnv.authenticatedContext('member-b').firestore();
+  const adminDb = testEnv.authenticatedContext('admin-1').firestore();
+  const caseRef = creatorDb.doc('teams/sscaff-team-alpha/cases/case-owner');
+
+  await assertSucceeds(caseRef.set({
+    teamId: 'sscaff-team-alpha',
+    createdBy: 'member-a',
+    status: 'kladde',
+    createdAt: new Date(),
+  }));
+
+  await assertFails(otherMemberDb.doc('teams/sscaff-team-alpha/cases/case-owner').set({
+    status: 'ændret',
+  }, { merge: true }));
+
+  await assertSucceeds(caseRef.set({
+    status: 'klar',
+  }, { merge: true }));
+
+  await assertSucceeds(adminDb.doc('teams/sscaff-team-alpha/cases/case-owner').set({
+    status: 'admin-godkendt',
+  }, { merge: true }));
+});
+
+integrationTest('audit/ledger-indgange er append-only per team', async (t) => {
+  const testEnv = await setupEnv(t);
+  if (!testEnv) return;
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await db.doc('users/audit-user').set({ uid: 'audit-user', role: 'member', teamId: 'sscaff-team-alpha' });
+  });
+
+  const ledgerDb = testEnv.authenticatedContext('audit-user').firestore();
+  const auditRef = ledgerDb.doc('teams/sscaff-team-alpha/audit/event-1');
+
+  await assertSucceeds(auditRef.set({
+    teamId: 'sscaff-team-alpha',
     action: 'TEST',
     actor: { uid: 'audit-user', email: 'audit@example.com', name: 'Audit User' },
     timestamp: new Date(),
     summary: 'append only',
-  };
+  }));
 
-  await assertSucceeds(memberDb.doc('teams/sscaff-team-alpha/audit/event-1').set(eventData));
-  await assertFails(memberDb.doc('teams/sscaff-team-alpha/audit/event-1').set({ ...eventData, summary: 'forsøg på update' }));
-  await assertFails(adminDb.doc('teams/sscaff-team-alpha/audit/event-1').delete());
+  await assertFails(auditRef.set({
+    teamId: 'sscaff-team-alpha',
+    summary: 'forsøg på update',
+  }, { merge: true }));
+
+  await assertFails(auditRef.delete());
 });
