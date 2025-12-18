@@ -1,8 +1,14 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isSignedIn() {
-      return request.auth != null;
+    function signedIn() {
+      return request.auth != null && request.auth.uid is string;
+    }
+
+    function isWhitelistedAdmin() {
+      return signedIn()
+        && request.auth.token.email is string
+        && request.auth.token.email in ['mr.lion1995@gmail.com', 'MR.LION1995@GMAIL.COM', 'rene@hulmose.dk', 'RENE@HULMOSE.DK'];
     }
 
     function memberDoc(teamId, uid) {
@@ -19,7 +25,7 @@ service cloud.firestore {
     }
 
     function isMember(teamId) {
-      return isSignedIn() && teamId is string && memberActive(teamId, request.auth.uid);
+      return signedIn() && teamId is string && memberActive(teamId, request.auth.uid);
     }
 
     function isAdmin(teamId) {
@@ -37,12 +43,20 @@ service cloud.firestore {
     }
 
     function teamIdUnchanged(teamId) {
-      return (resource.data == null || !('teamId' in resource.data) || resource.data.teamId == teamId) &&
-        (request.resource == null || !('teamId' in request.resource.data) || request.resource.data.teamId == teamId);
+      return (resource.data == null || !('teamId' in resource.data) || resource.data.teamId == teamId)
+        && (request.resource == null || !('teamId' in request.resource.data) || request.resource.data.teamId == teamId);
     }
 
     function isCaseCreator(teamId) {
       return resource.data != null && resource.data.teamId == teamId && resource.data.createdBy is string && request.auth.uid == resource.data.createdBy;
+    }
+
+    function roleStable() {
+      return resource.data == null || !(request.resource.data.role is string && request.resource.data.role != resource.data.role);
+    }
+
+    function teamStable() {
+      return resource.data == null || !(request.resource.data.teamId is string && resource.data.teamId is string && request.resource.data.teamId != resource.data.teamId);
     }
 
     function hasAuditActor() {
@@ -54,21 +68,24 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow read: if isSignedIn() && (request.auth.uid == uid || (requestedTeamId() is string && isAdmin(requestedTeamId())));
-      allow create, update: if isSignedIn() && (request.auth.uid == uid || (requestedTeamId() is string && isAdmin(requestedTeamId())));
+      allow read: if signedIn() && (request.auth.uid == uid || (requestedTeamId() is string && isAdmin(requestedTeamId())));
+      allow create, update: if signedIn() && (
+        (request.auth.uid == uid && roleStable() && teamStable())
+        || (requestedTeamId() is string && isAdmin(requestedTeamId()))
+      );
       allow delete: if false;
     }
 
     match /teams/{teamId} {
-      allow create: if isSignedIn() && !exists(/databases/$(database)/documents/teams/$(teamId));
+      allow create: if isWhitelistedAdmin() && !exists(/databases/$(database)/documents/teams/$(teamId));
       allow read: if isMember(teamId);
       allow update, delete: if isAdmin(teamId);
 
       match /members/{userId} {
-        allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin(teamId));
-        allow create: if isSignedIn() && (
-          (userId == request.auth.uid && !exists(/databases/$(database)/documents/teams/$(teamId))) ||
-          isAdmin(teamId)
+        allow read: if signedIn() && (request.auth.uid == userId || isAdmin(teamId));
+        allow create: if signedIn() && (
+          (isWhitelistedAdmin() && request.auth.uid == userId)
+          || isAdmin(teamId)
         );
         allow update, delete: if isAdmin(teamId);
       }
