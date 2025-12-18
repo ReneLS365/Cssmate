@@ -5,3 +5,6 @@ window.FIREBASE_AUTH_PROVIDERS = [
   "google"
 ];
 window.FIREBASE_APP_CHECK_SITE_KEY = "6LfFeS8sAAAAAH9hsS136zJ6YOQkpRZKniSIIYYI";
+window.SHARED_ADMIN_EMAILS = [
+  "mr.lion1995@gmail.com"
+];

@@ -4,7 +4,7 @@ import { getFirestoreDb, getFirestoreHelpers, toIsoString } from './shared-fires
 const LEDGER_TEAM_PREFIX = 'sscaff-team-';
 const LEDGER_VERSION = 1;
 const BACKUP_SCHEMA_VERSION = 2;
-const DEFAULT_TEAM_ID = 'Hulmose';
+const DEFAULT_TEAM_ID = 'hulmose';
 
 class PermissionDeniedError extends Error {
   constructor(message) {
