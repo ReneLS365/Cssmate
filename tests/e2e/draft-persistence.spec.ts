@@ -1,7 +1,20 @@
 import { expect, test } from '@playwright/test'
 
+async function ensureLoggedIn (page) {
+  const gate = page.locator('#authGate')
+  if (await gate.count() === 0) return
+  if (await gate.isHidden()) return
+  await gate.waitFor({ state: 'visible' })
+  const googleButton = page.getByRole('button', { name: /Google/i })
+  if (await googleButton.isVisible()) {
+    await googleButton.click()
+  }
+  await gate.waitFor({ state: 'hidden' })
+}
+
 async function resetClientState (page) {
   await page.goto('/')
+  await ensureLoggedIn(page)
   await page.waitForSelector('#sagsnummer')
 }
 

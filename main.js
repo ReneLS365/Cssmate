@@ -19,6 +19,8 @@ import { appendHistoryEntry, loadHistory as loadHistoryEntries, deleteHistoryEnt
 import { normalizeHistoryEntry as baseNormalizeHistoryEntry, normalizeHistoryList, formatDateLabel, normalizeSearchValue } from './js/history-normalizer.js'
 import { downloadBlob } from './js/utils/downloadBlob.js'
 import { initSharedCasesPanel } from './js/shared-cases-panel.js'
+import { initAuthGate } from './src/auth/auth-gate.js'
+import { getAuthIdentity } from './src/auth/auth-provider.js'
 import './boot-inline.js'
 
 if (typeof document !== 'undefined') {
@@ -2741,6 +2743,13 @@ function collectProjectSnapshot(exportInfo) {
 function buildHistoryEntryFromSnapshot(snapshot, exportInfo = {}) {
   if (!snapshot || typeof snapshot !== 'object') return null;
   const info = deriveSagsinfoFromEntry({ data: snapshot, payload: exportInfo.jobPayload });
+  const createdBy = getAuthIdentity();
+  const meta = { ...info };
+  if (createdBy?.uid) {
+    meta.createdByUid = createdBy.uid;
+    if (createdBy.email) meta.createdByEmail = createdBy.email;
+    if (createdBy.displayName) meta.createdByName = createdBy.displayName;
+  }
   const totals = exportInfo.totals || snapshot.totals || {};
   const createdAt = exportInfo.timestamp || snapshot.timestamp || Date.now();
   const timeZone = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : undefined;
@@ -2753,7 +2762,7 @@ function buildHistoryEntryFromSnapshot(snapshot, exportInfo = {}) {
     updatedAtMs: createdAt,
     tzOffsetMin,
     timeZone,
-    meta: { ...info },
+    meta,
     totals,
     payload: exportInfo.jobPayload || snapshot.payload || null,
     source: exportInfo.type || 'export',
@@ -5539,7 +5548,9 @@ async function restoreDraftOnLoad() {
 }
 
 async function startApp () {
+  const authGate = initAuthGate()
   try {
+    await authGate.waitForVerifiedAccess()
     await initApp()
     await restoreDraftOnLoad()
   } catch (error) {

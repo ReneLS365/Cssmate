@@ -1,0 +1,214 @@
+import { initAuthProvider } from './auth-provider.js'
+
+let gate
+let loadingScreen
+let loginScreen
+let verifyScreen
+let messageEl
+let emailInput
+let passwordInput
+let googleButton
+let loginButton
+let signupButton
+let forgotButton
+let resendButton
+let verifiedButton
+let logoutButton
+let authProvider
+let isSubmitting = false
+
+function setMessage (text, variant = '') {
+  if (!messageEl) return
+  messageEl.textContent = text || ''
+  messageEl.dataset.variant = variant || ''
+}
+
+function showSection (section) {
+  if (!gate) return
+  loadingScreen?.setAttribute('hidden', '')
+  loginScreen?.setAttribute('hidden', '')
+  verifyScreen?.setAttribute('hidden', '')
+  if (section === 'loading') loadingScreen?.removeAttribute('hidden')
+  if (section === 'login') loginScreen?.removeAttribute('hidden')
+  if (section === 'verify') verifyScreen?.removeAttribute('hidden')
+  if (gate?.toggleAttribute) {
+    gate.toggleAttribute('data-locked', section !== 'hidden')
+  } else if (gate?.setAttribute) {
+    if (section !== 'hidden') {
+      gate.setAttribute('data-locked', 'true')
+    } else {
+      gate.removeAttribute('data-locked')
+    }
+  }
+  document.documentElement.classList.toggle('auth-locked', section !== 'hidden')
+}
+
+function setGateVisible (visible) {
+  if (!gate) return
+  if (visible) {
+    gate.removeAttribute('hidden')
+    document.body?.classList?.add('auth-overlay-open')
+  } else {
+    gate.setAttribute('hidden', '')
+    document.body?.classList?.remove('auth-overlay-open')
+    setMessage('')
+  }
+}
+
+function disableForm (disabled) {
+  isSubmitting = disabled
+  ;[
+    googleButton,
+    loginButton,
+    signupButton,
+    forgotButton,
+    resendButton,
+    verifiedButton,
+    logoutButton,
+  ].forEach((btn) => {
+    if (btn) btn.disabled = disabled
+  })
+  if (emailInput) emailInput.disabled = disabled && emailInput.dataset.locked !== 'false'
+  if (passwordInput) passwordInput.disabled = disabled && passwordInput.dataset.locked !== 'false'
+}
+
+async function handleAuthAction (fn, successMessage) {
+  if (isSubmitting) return
+  try {
+    disableForm(true)
+    setMessage('')
+    await fn()
+    if (successMessage) setMessage(successMessage, 'success')
+  } catch (error) {
+    console.warn('Auth action fejlede', error)
+    setMessage(error?.message || 'Kunne ikke udføre handlingen', 'error')
+  } finally {
+    disableForm(false)
+  }
+}
+
+function bindLoginHandlers () {
+  if (googleButton) {
+    googleButton.addEventListener('click', async () => {
+      await handleAuthAction(() => authProvider.actions.signInWithGoogle(), 'Logger ind…')
+    })
+  }
+  if (loginButton) {
+    loginButton.addEventListener('click', async () => {
+      const email = emailInput?.value || ''
+      const password = passwordInput?.value || ''
+      await handleAuthAction(
+        () => authProvider.actions.signInWithEmail(email, password),
+        'Logger ind…'
+      )
+    })
+  }
+  if (signupButton) {
+    signupButton.addEventListener('click', async () => {
+      const email = emailInput?.value || ''
+      const password = passwordInput?.value || ''
+      await handleAuthAction(
+        () => authProvider.actions.signUpWithEmail(email, password),
+        'Konto oprettet. Tjek din email for bekræftelse.'
+      )
+    })
+  }
+  if (forgotButton) {
+    forgotButton.addEventListener('click', async () => {
+      const email = emailInput?.value || ''
+      await handleAuthAction(
+        () => authProvider.actions.sendPasswordReset(email),
+        'Link til nulstilling er sendt, hvis emailen findes.'
+      )
+    })
+  }
+  if (resendButton) {
+    resendButton.addEventListener('click', async () => {
+      await handleAuthAction(
+        () => authProvider.actions.resendVerification(),
+        'Bekræftelsesmail sendt igen.'
+      )
+    })
+  }
+  if (verifiedButton) {
+    verifiedButton.addEventListener('click', async () => {
+      await handleAuthAction(
+        () => authProvider.actions.reloadUser(),
+        'Tjekker verificering…'
+      )
+    })
+  }
+  if (logoutButton) {
+    logoutButton.addEventListener('click', async () => {
+      await handleAuthAction(() => authProvider.actions.signOut(), 'Logget ud')
+    })
+  }
+}
+
+function updateProviderButtons () {
+  if (!googleButton || !authProvider?.getEnabledProviders) return
+  const enabled = authProvider.getEnabledProviders()
+  googleButton.hidden = !enabled.includes('google')
+}
+
+function handleAuthChange (state) {
+  if (!state?.isReady) {
+    setGateVisible(true)
+    showSection('loading')
+    setMessage(state?.message || 'Logger ind…')
+    return
+  }
+  if (!state.isAuthenticated) {
+    setGateVisible(true)
+    showSection('login')
+    updateProviderButtons()
+    setMessage(state?.message || 'Log ind for at fortsætte')
+    return
+  }
+  if (state.requiresVerification) {
+    setGateVisible(true)
+    showSection('verify')
+    setMessage('Bekræft din email før du bruger appen.')
+    return
+  }
+  showSection('hidden')
+  setGateVisible(false)
+  setMessage('')
+}
+
+export function initAuthGate () {
+  if (gate) return {
+    waitForVerifiedAccess: () => authProvider.waitForVerifiedUser(),
+  }
+
+  gate = document.getElementById('authGate')
+  loadingScreen = document.getElementById('authLoadingScreen')
+  loginScreen = document.getElementById('authLoginScreen')
+  verifyScreen = document.getElementById('authVerifyScreen')
+  messageEl = document.getElementById('authMessage')
+  emailInput = document.getElementById('authEmail')
+  passwordInput = document.getElementById('authPassword')
+  googleButton = document.getElementById('authGoogle')
+  loginButton = document.getElementById('authLogin')
+  signupButton = document.getElementById('authSignup')
+  forgotButton = document.getElementById('authForgot')
+  resendButton = document.getElementById('authResend')
+  verifiedButton = document.getElementById('authVerified')
+  logoutButton = document.getElementById('authLogout')
+
+  if (!gate || typeof gate.setAttribute !== 'function') {
+    console.warn('AuthGate markup mangler')
+    return {
+      waitForVerifiedAccess: () => Promise.resolve(),
+    }
+  }
+
+  authProvider = initAuthProvider()
+  bindLoginHandlers()
+  authProvider.onChange(handleAuthChange)
+  handleAuthChange(authProvider.getState())
+
+  return {
+    waitForVerifiedAccess: () => authProvider.waitForVerifiedUser(),
+  }
+}
