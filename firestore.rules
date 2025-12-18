@@ -35,6 +35,13 @@ service cloud.firestore {
       return memberDoc(teamId, uid).data != null && memberData(teamId, uid).active != false;
     }
 
+    function targetUserTeamId(uid) {
+      let requestedTeam = request.resource.data.teamId is string ? request.resource.data.teamId : null;
+      let existingTeam = resource.data != null && resource.data.teamId is string ? resource.data.teamId : null;
+      let profileTeam = userData(uid).teamId is string ? userData(uid).teamId : null;
+      return requestedTeam != null ? requestedTeam : (existingTeam != null ? existingTeam : profileTeam);
+    }
+
     function isAdminForTeam(teamId) {
       return isSignedIn() && (
         userRole(request.auth.uid) == 'admin' ||
@@ -64,6 +71,20 @@ service cloud.firestore {
         ('teamId' in request.resource.data && request.resource.data.teamId != current.teamId);
     }
 
+    function canAdministerUser(targetTeamId) {
+      return userRole(request.auth.uid) == 'admin' || (targetTeamId is string && isAdminForTeam(targetTeamId));
+    }
+
+    function canWriteUser(uid) {
+      let targetTeamId = targetUserTeamId(uid);
+      let canElevate = canAdministerUser(targetTeamId);
+      return (request.auth.uid == uid || canElevate) && (canElevate || !restrictedUserChange(uid));
+    }
+
+    function canEditCase(teamId) {
+      return isAdminForTeam(teamId) || (resource.data.createdBy is string && resource.data.createdBy == request.auth.uid);
+    }
+
     function hasAuditActor() {
       return request.resource.data.actor is map
         && request.resource.data.actor.uid is string
@@ -73,9 +94,7 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if isSignedIn() && (request.auth.uid == uid || userRole(request.auth.uid) == 'admin');
-      allow create, update: if isSignedIn()
-        && (request.auth.uid == uid || userRole(request.auth.uid) == 'admin')
-        && (userRole(request.auth.uid) == 'admin' || !restrictedUserChange(uid));
+      allow create, update: if isSignedIn() && canWriteUser(uid);
       allow delete: if false;
     }
 
@@ -88,7 +107,7 @@ service cloud.firestore {
       match /cases/{caseId} {
         allow read: if isTeamMember(teamId);
         allow create: if isTeamMember(teamId) && teamIdMatchesRequest(teamId);
-        allow update: if isTeamMember(teamId) && teamIdUnchanged(teamId);
+        allow update: if isTeamMember(teamId) && teamIdUnchanged(teamId) && canEditCase(teamId);
         allow delete: if isAdminForTeam(teamId);
       }
 
