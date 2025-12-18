@@ -14,6 +14,10 @@ let providerData = [];
 let useMockAuth = false;
 let mockUser = null;
 const listeners = new Set();
+let appCheckInitPromise = null;
+let appCheckStarted = false;
+let appCheckModule = null;
+const APP_CHECK_FALLBACK_SITE_KEY = '6LfFeS8sAAAAAH9hsS136zJ6YOQkpRZKniSIIYYI';
 
 function isLocalhost() {
   if (typeof window === 'undefined') return false;
@@ -75,11 +79,57 @@ async function loadFirebaseSdk() {
   return authModule;
 }
 
+async function loadAppCheckSdk() {
+  if (appCheckModule) return appCheckModule;
+  appCheckModule = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-app-check.js`);
+  return appCheckModule;
+}
+
+function getAppCheckSiteKey() {
+  if (typeof window !== 'undefined' && window.FIREBASE_APP_CHECK_SITE_KEY) {
+    return `${window.FIREBASE_APP_CHECK_SITE_KEY}`.trim();
+  }
+  console.warn('App Check site key mangler, bruger fallback (reCAPTCHA v3).');
+  return APP_CHECK_FALLBACK_SITE_KEY;
+}
+
+function isDevBuild() {
+  return Boolean((typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV) || isLocalhost());
+}
+
+async function ensureAppCheck(app) {
+  if (!app || appCheckStarted) return;
+  if (appCheckInitPromise) return appCheckInitPromise;
+  appCheckInitPromise = (async () => {
+    try {
+      const siteKey = getAppCheckSiteKey();
+      const sdk = await loadAppCheckSdk();
+      if (isDevBuild() && typeof self !== 'undefined') {
+        try {
+          self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+        } catch (error) {
+          console.warn('Kunne ikke aktivere App Check debug token', error);
+        }
+      }
+      sdk.initializeAppCheck(app, {
+        provider: new sdk.ReCaptchaV3Provider(siteKey),
+        isTokenAutoRefreshEnabled: true,
+      });
+      appCheckStarted = true;
+    } catch (error) {
+      console.warn('App Check init fejlede', error);
+    }
+  })();
+  return appCheckInitPromise;
+}
+
 export async function getFirebaseAppInstance() {
   const config = getFirebaseConfig();
   if (!config) throw new Error('Firebase konfiguration mangler (VITE_FIREBASE_*)');
   const sdk = await loadFirebaseSdk();
-  return sdk.getApps?.().length ? sdk.getApp() : sdk.initializeApp(config);
+  const app = sdk.getApps?.().length ? sdk.getApp() : sdk.initializeApp(config);
+  await ensureAppCheck(app);
+  return app;
 }
 
 function notify() {
@@ -117,8 +167,8 @@ export async function initSharedAuth() {
       return null;
     }
     try {
+      const app = await getFirebaseAppInstance();
       const sdk = await loadFirebaseSdk();
-      const app = sdk.getApps?.().length ? sdk.getApp() : sdk.initializeApp(config);
       authInstance = sdk.getAuth(app);
       try {
         await sdk.setPersistence(authInstance, sdk.browserLocalPersistence);
