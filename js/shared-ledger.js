@@ -135,6 +135,13 @@ function normalizeCaseDoc(doc) {
   };
 }
 
+function resolveUpdatedTimestamp(source) {
+  const TimestampCtor = source?.constructor;
+  if (TimestampCtor && typeof TimestampCtor.now === 'function') return TimestampCtor.now();
+  if (TimestampCtor && typeof TimestampCtor.fromDate === 'function') return TimestampCtor.fromDate(new Date());
+  return new Date().toISOString();
+}
+
 export async function publishSharedCase({ teamId, jobNumber, caseKind, system, totals, status = 'kladde', jsonContent }) {
   const { ledger } = getSharedLedger(teamId);
   if (!ledger) throw new Error('Team ID mangler eller er ugyldigt');
@@ -214,15 +221,21 @@ export async function deleteSharedCase(teamId, caseId, userId) {
 }
 
 export async function updateCaseStatus(teamId, caseId, status, userId) {
-  const entry = await getSharedCase(teamId, caseId);
-  if (!entry) return null;
-  if (entry.createdBy && entry.createdBy !== userId) return null;
   const { ledger } = getSharedLedger(teamId);
   if (!ledger) return null;
-  const updatedAt = new Date().toISOString();
-  const next = { ...entry, status, updatedAt, lastUpdatedAt: updatedAt };
+  let doc;
+  try {
+    doc = await ledger.get(caseId);
+  } catch (error) {
+    console.warn('Kunne ikke hente sag', error);
+    return null;
+  }
+  if (!doc || doc._deleted) return null;
+  if (doc.createdBy && doc.createdBy !== userId) return null;
+  const updatedAt = resolveUpdatedTimestamp(doc.updatedAt || doc.lastUpdatedAt || doc.createdAt);
+  const next = { ...doc, status, updatedAt, lastUpdatedAt: updatedAt };
   await ledger.put(next);
-  return next;
+  return normalizeCaseDoc(next);
 }
 
 export async function downloadCaseJson(teamId, caseId) {
