@@ -1,3 +1,5 @@
+import { getAdminEmails, isAdminEmail, normalizeEmail } from '../src/auth/roles.js';
+
 const DEFAULT_PROVIDER = 'custom';
 const DEFAULT_ENABLED_PROVIDERS = ['google', 'microsoft'];
 export const FIREBASE_SDK_VERSION = '10.12.2';
@@ -424,13 +426,9 @@ export async function reloadCurrentUser() {
 }
 
 export function userIsAdmin(user) {
-  const email = (user?.email || '').toLowerCase();
-  const adminList = (() => {
-    if (typeof window === 'undefined') return [];
-    if (Array.isArray(window.SHARED_ADMIN_EMAILS)) return window.SHARED_ADMIN_EMAILS;
-    return [];
-  })();
-  return Boolean(user?.role === 'admin' || (email && adminList.map(entry => entry.toLowerCase()).includes(email)));
+  if (!user) return false;
+  if (user.role === 'admin' || user.claims?.role === 'admin') return true;
+  return isAdminEmail(user.email);
 }
 
 export function getUserDisplay(user) {
@@ -448,6 +446,7 @@ function normalizeUser(user) {
   return {
     uid: user.uid || user.id || user.email || 'user',
     email: user.email || '',
+    emailNormalized: normalizeEmail(user.email),
     displayName: user.displayName || user.name || '',
     providerId: user.providerId || user.provider || primaryProvider?.providerId || DEFAULT_PROVIDER,
     role: user.role || user.claims?.role || null,
@@ -455,4 +454,20 @@ function normalizeUser(user) {
     providerIds,
     providerData: user.providerData || [],
   };
+}
+
+export function getUserProviderName(user) {
+  if (!user) return '';
+  const providers = collectProviderIds(user);
+  const providerId = providers[0] || user.providerId || user.provider || '';
+  if (providerId.includes('google')) return 'Google';
+  if (providerId.includes('microsoft')) return 'Microsoft';
+  if (providerId.includes('apple')) return 'Apple';
+  if (providerId.includes('facebook')) return 'Facebook';
+  if (providerId.includes('password')) return 'Email / password';
+  return providerId || 'Login';
+}
+
+export function getAdminWhitelist () {
+  return getAdminEmails();
 }

@@ -2,7 +2,7 @@ import { listSharedGroups, downloadCaseJson, importCasePayload, updateCaseStatus
 import { exportPDFBlob } from './export-pdf.js';
 import { buildExportModel } from './export-model.js';
 import { downloadBlob } from './utils/downloadBlob.js';
-import { getAuthContext, getUserDisplay, userIsAdmin, initSharedAuth, waitForAuthReady, loginWithProvider, logoutUser, getEnabledProviders, onAuthStateChange } from './shared-auth.js';
+import { getAuthContext, getUserDisplay, userIsAdmin, initSharedAuth, waitForAuthReady, loginWithProvider, logoutUser, getEnabledProviders, onAuthStateChange, getUserProviderName } from './shared-auth.js';
 
 let sharedCasesPanelInitialized = false;
 let refreshBtn;
@@ -15,18 +15,94 @@ let teamId = '';
 let displayTeamId = '';
 let membershipRole = '';
 let teamError = '';
+let roleStatus;
+let accessStatus;
+let errorBanner;
+let teamIdInput;
+let teamIdSaveButton;
+
+const TEAM_STORAGE_KEY = 'sscaff.teamId';
+const TEAM_PREFIX = 'sscaff-team-';
+const DEFAULT_TEAM_SLUG = 'hulmose';
+
+function getStoredTeamId () {
+  if (typeof window === 'undefined') return '';
+  try {
+    return window.localStorage?.getItem(TEAM_STORAGE_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+function persistTeamId (value) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage?.setItem(TEAM_STORAGE_KEY, value || '');
+  } catch (error) {
+    console.warn('Kunne ikke gemme team ID', error);
+  }
+}
+
+function getDisplayTeamId (rawTeamId) {
+  const label = (rawTeamId || '').replace(new RegExp(`^${TEAM_PREFIX}`, 'i'), '').trim();
+  if (label) return label;
+  return DEFAULT_TEAM_SLUG;
+}
+
+displayTeamId = getStoredTeamId() || DEFAULT_TEAM_SLUG;
 
 function ensureTeamSelected() {
   if (!teamId) throw new PermissionDeniedError(teamError || 'Vælg et team for at fortsætte.');
   return teamId;
 }
 
+function describePermissionError (error, attemptedTeamId) {
+  const message = (error?.message || '').toString();
+  const normalized = message.toLowerCase();
+  if (error?.code === 'permission-denied' || error instanceof PermissionDeniedError || normalized.includes('missing or insufficient permissions')) {
+    const teamLabel = getDisplayTeamId(attemptedTeamId || teamId || displayTeamId);
+    return `Du er logget ind, men har ikke adgang til team '${teamLabel}'. Kontakt admin eller skift team (kun admin).`;
+  }
+  if (normalized.includes('network') || normalized.includes('offline')) {
+    return 'Ingen forbindelse – tjek netværket.';
+  }
+  return '';
+}
+
+function setInlineError (message) {
+  if (!errorBanner) return;
+  if (message) {
+    errorBanner.textContent = message;
+    errorBanner.hidden = false;
+  } else {
+    errorBanner.textContent = '';
+    errorBanner.hidden = true;
+  }
+}
+
+function clearInlineError () {
+  setInlineError('');
+}
+
+function isAdminUser () {
+  if (membershipRole === 'admin') return true;
+  return userIsAdmin(authState?.user);
+}
+
+function handleActionError (error, fallbackMessage, { teamContext } = {}) {
+  const permissionMessage = describePermissionError(error, teamContext);
+  const message = permissionMessage || error?.message || fallbackMessage;
+  setInlineError(message);
+}
+
 async function syncTeamContext(preferredTeamId) {
   try {
-    const resolved = await resolveTeamId(preferredTeamId);
+    const desiredTeam = preferredTeamId || displayTeamId || getStoredTeamId() || DEFAULT_TEAM_SLUG;
+    const resolved = await resolveTeamId(desiredTeam);
     const membership = await getTeamMembership(resolved);
     teamId = resolved;
-    displayTeamId = resolved.replace(/^sscaff-team-/, '');
+    displayTeamId = getDisplayTeamId(resolved);
+    persistTeamId(displayTeamId);
     membershipRole = membership?.role || '';
     teamError = '';
     updateSharedStatus();
@@ -34,8 +110,9 @@ async function syncTeamContext(preferredTeamId) {
   } catch (error) {
     teamId = '';
     membershipRole = '';
-    teamError = error?.message || 'Ingen adgang til team.';
+    teamError = describePermissionError(error, preferredTeamId) || error?.message || 'Ingen adgang til team.';
     updateSharedStatus();
+    setInlineError(teamError);
     throw error;
   }
 }
@@ -49,21 +126,26 @@ function requireAuth() {
   authState = getAuthContext();
   if (!authState?.isReady) {
     if (status) status.textContent = authState?.message || 'Login initialiseres…';
+    setInlineError(authState?.message || '');
     return false;
   }
   if (!authState?.isAuthenticated) {
     if (status) status.textContent = authState?.message || 'Log ind for at se delte sager.';
+    setInlineError('Log ind først for at se delte sager.');
     return false;
   }
   if (teamError) {
     if (status) status.textContent = teamError;
+    setInlineError(teamError);
     return false;
   }
   if (!teamId) {
     if (status) status.textContent = 'Vælg et team for at fortsætte.';
+    setInlineError('Vælg et team for at fortsætte.');
     return false;
   }
   if (status) status.textContent = `Logget ind som ${getUserDisplay(authState.user)}`;
+  clearInlineError();
   return true;
 }
 
@@ -75,15 +157,24 @@ function updateAuthUi() {
     if (button) button.hidden = !enabledProviders.includes(providerId);
   });
   authState = getAuthContext();
+  const providerName = getUserProviderName(authState?.user);
+  const uidShort = authState?.user?.uid ? authState.user.uid.slice(0, 6) : '';
+  const admin = isAdminUser();
   if (!authState?.isReady) {
     if (status) status.textContent = authState?.message || 'Login initialiseres…';
+    if (roleStatus) roleStatus.textContent = 'Rolle: Ukendt';
   } else if (!authState?.isAuthenticated) {
     if (status) status.textContent = authState?.message || 'Log ind for at se delte sager.';
+    if (roleStatus) roleStatus.textContent = 'Rolle: Ikke logget ind';
   } else if (status) {
-    status.textContent = `Logget ind som ${getUserDisplay(authState.user)}`;
+    const providerLabel = providerName ? ` · Provider: ${providerName}` : '';
+    const uidLabel = uidShort ? ` · UID: ${uidShort}` : '';
+    status.textContent = `Logget ind som: ${getUserDisplay(authState.user)}${providerLabel}${uidLabel}`;
+    if (roleStatus) roleStatus.textContent = admin ? 'Rolle: Admin (whitelist)' : 'Rolle: Montør (read-only)';
   }
   if (loginButtonsContainer) loginButtonsContainer.hidden = Boolean(authState?.isAuthenticated);
   if (logoutButton) logoutButton.hidden = !authState?.isAuthenticated;
+  updateTeamAccessState();
 }
 
 function bindAuthControls(onAuthenticated) {
@@ -105,7 +196,7 @@ function bindAuthControls(onAuthenticated) {
         await loginWithProvider(providerId);
       } catch (error) {
         console.error('Login fejlede', error);
-        alert(error?.message || 'Login fejlede');
+        setInlineError(error?.message || 'Login fejlede');
       } finally {
         button.disabled = false;
       }
@@ -140,11 +231,12 @@ function bindAuthControls(onAuthenticated) {
       }
     } else {
       teamId = '';
-      displayTeamId = '';
+      displayTeamId = getStoredTeamId() || DEFAULT_TEAM_SLUG;
       membershipRole = '';
       teamError = '';
       backupActionsBound = false;
       updateSharedStatus();
+      updateTeamAccessState();
     }
   });
   updateAuthUi();
@@ -213,7 +305,7 @@ function createCaseActions(entry, userId, onChange) {
       await handleImport(entry.caseId);
     } catch (error) {
       console.error('Import fejlede', error);
-      alert(error?.message || 'Import fejlede');
+      handleActionError(error, 'Import fejlede', { teamContext: teamId });
     } finally {
       importBtn.disabled = false;
     }
@@ -229,7 +321,7 @@ function createCaseActions(entry, userId, onChange) {
       await handleJsonDownload(entry.caseId);
     } catch (error) {
       console.error('Download fejlede', error);
-      alert(error?.message || 'Kunne ikke hente JSON');
+      handleActionError(error, 'Kunne ikke hente JSON', { teamContext: teamId });
     } finally {
       jsonBtn.disabled = false;
     }
@@ -245,7 +337,7 @@ function createCaseActions(entry, userId, onChange) {
       await handlePdfDownload(entry);
     } catch (error) {
       console.error('PDF fejlede', error);
-      alert(error?.message || 'Kunne ikke generere PDF');
+      handleActionError(error, 'Kunne ikke generere PDF', { teamContext: teamId });
     } finally {
       pdfBtn.disabled = false;
     }
@@ -264,7 +356,7 @@ function createCaseActions(entry, userId, onChange) {
         await onChange();
       } catch (error) {
         console.error('Status opdatering fejlede', error);
-        alert('Kunne ikke opdatere status');
+        handleActionError(error, 'Kunne ikke opdatere status', { teamContext: teamId });
       } finally {
         statusBtn.disabled = false;
       }
@@ -282,7 +374,7 @@ function createCaseActions(entry, userId, onChange) {
         await onChange();
       } catch (error) {
         console.error('Sletning fejlede', error);
-        alert('Kunne ikke slette sag');
+        handleActionError(error, 'Kunne ikke slette sag', { teamContext: teamId });
       } finally {
         deleteBtn.disabled = false;
       }
@@ -343,36 +435,45 @@ function setRefreshState(state = 'idle') {
 
 function updateSharedStatus() {
   if (teamError) {
-    setSharedStatus(`Fejl: ${teamError}`);
-    return;
+    setSharedStatus(`Adgang: ${teamError}`);
+  } else if (!teamId) {
+    setSharedStatus('Adgang: Vælg team for at hente sager');
+  } else {
+    setSharedStatus('Adgang: OK');
   }
-  if (!teamId) {
-    setSharedStatus('Vælg team for at hente sager');
-    return;
+  const admin = isAdminUser();
+  if (accessStatus) {
+    const locked = !authState?.isAuthenticated ? 'Log ind for at vælge team.' : admin ? 'Team kan redigeres.' : 'Team låst (kun admin kan ændre).';
+    const accessLabel = teamError ? 'Adgang: Mangler rettigheder' : 'Adgang: OK';
+    accessStatus.textContent = `${accessLabel} · ${locked}`;
   }
-  setSharedStatus('Synkroniseret');
+  updateTeamAccessState();
 }
 
 function initTeamIdInput() {
   const container = document.getElementById('teamIdInputContainer');
   if (!container) return;
-  const input = document.getElementById('teamIdInput');
-  const saveButton = document.getElementById('saveTeamId');
-  if (input && typeof input.value === 'string') input.value = displayTeamId;
-  if (!saveButton) return;
-  saveButton.addEventListener('click', async () => {
-    const value = input?.value?.trim();
-    if (!value) return;
-    saveButton.disabled = true;
+  teamIdInput = document.getElementById('teamIdInput');
+  teamIdSaveButton = document.getElementById('saveTeamId');
+  if (teamIdInput && typeof teamIdInput.value === 'string') teamIdInput.value = displayTeamId;
+  if (!teamIdSaveButton) return;
+  teamIdSaveButton.addEventListener('click', async () => {
+    const value = teamIdInput?.value?.trim();
+    if (!value) {
+      setInlineError('Angiv et Team ID først.');
+      return;
+    }
+    teamIdSaveButton.disabled = true;
     try {
       const formatted = formatTeamId(value);
       await syncTeamContext(formatted);
       updateSharedStatus();
+      clearInlineError();
     } catch (error) {
       console.warn('Kunne ikke sætte Team ID', error);
-      alert(error?.message || 'Ingen adgang til valgt team');
+      setInlineError(error?.message || 'Ingen adgang til valgt team');
     } finally {
-      saveButton.disabled = false;
+      teamIdSaveButton.disabled = false;
     }
   });
 }
@@ -382,7 +483,7 @@ function bindBackupActions() {
   const importInput = document.getElementById('sharedBackupImport');
   const adminNotice = document.getElementById('sharedAdminNotice');
   const admin = membershipRole === 'admin' || userIsAdmin(authState?.user);
-  if (adminNotice) adminNotice.textContent = admin ? 'Admin: Backup & restore tilladelser aktiv.' : 'Login som admin for backup.';
+  if (adminNotice) adminNotice.textContent = admin ? 'Rolle: Admin (whitelist) · Backup & import er aktiv.' : 'Rolle: Montør (read-only) · Backup kræver admin.';
   if (exportBtn) exportBtn.disabled = !admin;
   if (importInput) importInput.disabled = !admin;
   if (!admin || backupActionsBound) return;
@@ -396,7 +497,7 @@ function bindBackupActions() {
         downloadBlob(blob, `shared-backup-${teamId}-${Date.now()}.json`);
       } catch (error) {
         console.error('Backup export fejlede', error);
-        alert('Kunne ikke eksportere backup');
+        setInlineError(describePermissionError(error, teamId) || 'Kunne ikke eksportere backup');
       } finally {
         exportBtn.disabled = false;
       }
@@ -412,10 +513,10 @@ function bindBackupActions() {
         const text = await file.text();
         const payload = JSON.parse(text);
         await importSharedBackup(ensureTeamSelected(), payload, authState?.user);
-        alert('Backup importeret');
+        clearInlineError();
       } catch (error) {
         console.error('Backup import fejlede', error);
-        alert(error?.message || 'Kunne ikke importere backup');
+        setInlineError(describePermissionError(error, teamId) || error?.message || 'Kunne ikke importere backup');
       } finally {
         importInput.value = '';
         importInput.disabled = false;
@@ -425,12 +526,29 @@ function bindBackupActions() {
   backupActionsBound = true;
 }
 
+function updateTeamAccessState () {
+  const admin = isAdminUser();
+  const loggedIn = Boolean(authState?.isAuthenticated);
+  if (teamIdInput) {
+    if (!teamIdInput.value) teamIdInput.value = displayTeamId || '';
+    teamIdInput.disabled = !admin || !loggedIn;
+    teamIdInput.readOnly = !admin || !loggedIn;
+    teamIdInput.placeholder = loggedIn ? 'f.eks. hulmose' : 'Log ind for at vælge team';
+  }
+  if (teamIdSaveButton) {
+    teamIdSaveButton.disabled = !admin || !loggedIn;
+  }
+}
+
 export function initSharedCasesPanel() {
   if (sharedCasesPanelInitialized) return;
   const container = document.getElementById('sharedCasesList');
   if (!container) return;
   sharedCasesPanelInitialized = true;
   sharedCard = document.querySelector('#panel-delte-sager .shared-cases');
+  roleStatus = document.getElementById('sharedRoleStatus');
+  accessStatus = document.getElementById('sharedAccessStatus');
+  errorBanner = document.getElementById('sharedInlineError');
   setPanelVisibility(false);
   refreshBtn = document.getElementById('refreshSharedCases');
   const filters = ['sharedFilterJob', 'sharedFilterStatus', 'sharedFilterKind']
@@ -466,13 +584,15 @@ export function initSharedCasesPanel() {
       }
       filtered.forEach(group => container.appendChild(renderGroup(group, currentUser, refresh)));
       setSharedStatus('Synkroniseret');
+      clearInlineError();
       setRefreshState('idle');
     } catch (error) {
       console.error('Kunne ikke hente delte sager', error);
       const denied = error?.code === 'permission-denied' || error instanceof PermissionDeniedError;
-      const message = denied ? 'Du har ikke adgang til dette team.' : (error?.message || 'Kunne ikke hente delte sager.');
+      const message = describePermissionError(error, teamId) || error?.message || 'Kunne ikke hente delte sager.';
       if (denied) teamError = message;
       container.textContent = `${message} ${denied ? '' : 'Tjek netværk eller ret Team ID.'}`.trim();
+      setInlineError(message);
       setSharedStatus(`Fejl: ${message}`);
       setRefreshState('error');
     }
