@@ -267,13 +267,13 @@ export async function logoutUser() {
 
 export function getAuthContext() {
   if (!authReady) {
-    return { isReady: false, isAuthenticated: false, user: null, providers: [], message: 'Login initialiseres…' };
+    return { isReady: false, isAuthenticated: false, user: null, providers: [], message: 'Login initialiseres…', error: authError };
   }
   if (authError) {
-    return { isReady: true, isAuthenticated: false, user: null, providers: [], message: authError.message || 'Login-fejl' };
+    return { isReady: true, isAuthenticated: false, user: null, providers: [], message: authError.message || 'Login-fejl', error: authError };
   }
   if (!currentUser) {
-    return { isReady: true, isAuthenticated: false, user: null, providers: [], message: 'Log ind for at se delte sager.' };
+    return { isReady: true, isAuthenticated: false, user: null, providers: [], message: 'Log ind for at se delte sager.', error: null };
   }
   const isVerified = isUserVerified(currentUser);
   const requiresVerification = !isVerified;
@@ -285,6 +285,7 @@ export function getAuthContext() {
     isVerified,
     requiresVerification,
     message: requiresVerification ? 'Bekræft din email for adgang.' : '',
+    error: null,
   };
 }
 
