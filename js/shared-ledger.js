@@ -80,6 +80,32 @@ function normalizeJobNumber(jobNumber) {
   return (jobNumber || '').toString().trim() || 'UKENDT';
 }
 
+function normalizeTimestampValue(timestampLike) {
+  if (!timestampLike) return '';
+  if (typeof timestampLike === 'string') return timestampLike;
+  if (typeof timestampLike.toISOString === 'function') {
+    try {
+      return timestampLike.toISOString();
+    } catch {
+      // ignore and keep trying other shapes
+    }
+  }
+  if (typeof timestampLike.toDate === 'function') {
+    const date = timestampLike.toDate();
+    if (date && typeof date.toISOString === 'function') return date.toISOString();
+  }
+  if (typeof timestampLike === 'number') {
+    const date = new Date(timestampLike);
+    if (!Number.isNaN(date.getTime())) return date.toISOString();
+  }
+  if (typeof timestampLike === 'object' && typeof timestampLike.seconds === 'number') {
+    const millis = timestampLike.seconds * 1000 + (timestampLike.nanoseconds || 0) / 1e6;
+    const date = new Date(millis);
+    if (!Number.isNaN(date.getTime())) return date.toISOString();
+  }
+  return timestampLike?.toString?.() || '';
+}
+
 function ensureCaseId() {
   return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
@@ -122,8 +148,9 @@ export function getCurrentUserId() {
 function normalizeCaseDoc(doc) {
   if (!doc || doc._deleted) return null;
   const jobNumber = normalizeJobNumber(doc.jobNumber);
-  const createdAt = doc.createdAt || '';
-  const updatedAt = doc.updatedAt || createdAt;
+  const createdAt = normalizeTimestampValue(doc.createdAt);
+  const updatedAt = normalizeTimestampValue(doc.updatedAt || doc.lastUpdatedAt || createdAt);
+  const lastUpdatedAt = normalizeTimestampValue(doc.lastUpdatedAt || updatedAt);
   return {
     ...doc,
     version: LEDGER_VERSION,
@@ -131,14 +158,14 @@ function normalizeCaseDoc(doc) {
     jobNumber,
     createdAt,
     updatedAt,
-    lastUpdatedAt: updatedAt,
+    lastUpdatedAt,
   };
 }
 
 function resolveUpdatedTimestamp(source) {
   const TimestampCtor = source?.constructor;
-  if (TimestampCtor && typeof TimestampCtor.now === 'function') return TimestampCtor.now();
-  if (TimestampCtor && typeof TimestampCtor.fromDate === 'function') return TimestampCtor.fromDate(new Date());
+  if (TimestampCtor && typeof TimestampCtor.now === 'function') return normalizeTimestampValue(TimestampCtor.now());
+  if (TimestampCtor && typeof TimestampCtor.fromDate === 'function') return normalizeTimestampValue(TimestampCtor.fromDate(new Date()));
   return new Date().toISOString();
 }
 
