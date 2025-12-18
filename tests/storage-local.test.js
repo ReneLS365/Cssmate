@@ -174,6 +174,21 @@ test('appendHistoryEntry dedupes identical payloads via historyKey', () => {
   })
 })
 
+test('appendHistoryEntry replaces older entries for same case with changed payload', () => {
+  withMockWindow(() => {
+    const firstPayload = { info: { sagsnummer: '4242', navn: 'Testvej' }, totals: { projektsum: 100 } }
+    const secondPayload = { info: { sagsnummer: '4242', navn: 'Testvej' }, totals: { projektsum: 275 } }
+
+    appendHistoryEntry({ meta: { sagsnummer: '4242' }, payload: firstPayload, createdAt: 1 })
+    appendHistoryEntry({ meta: { sagsnummer: '4242' }, payload: secondPayload, createdAt: 5 })
+
+    const history = loadHistory()
+    assert.equal(history.length, 1)
+    assert.equal(history[0].payload.totals.projektsum, 275)
+    assert.equal(history[0].createdAt, 5)
+  })
+})
+
 test('migrateHistory dedupes entries without sagsnummer using fallback key', () => {
   withMockWindow((storage) => {
     const raw = {
