@@ -151,17 +151,20 @@ function buildPayloadHash (entry = {}) {
   return fnv1a32(sanitized)
 }
 
-function buildHistoryKey (entry = {}) {
+function buildCaseKey (entry = {}) {
   const meta = entry.meta || entry.data?.sagsinfo || entry.payload?.job?.info || entry.payload?.info || entry.payload?.meta || {}
   const sagsnummer = normalizeKeyPart(meta.sagsnummer || meta.caseNumber)
   const navn = normalizeKeyPart(meta.navn || meta.opgave || meta.title)
   const adresse = normalizeKeyPart(meta.adresse || meta.address || meta.site)
   const kunde = normalizeKeyPart(meta.kunde || meta.customer)
-  const jobIdentity = sagsnummer
-    ? `case:${sagsnummer}`
-    : (adresse || kunde)
-      ? `client:${stableHash([kunde, adresse].filter(Boolean).join('|'))}`
-      : (isFiniteNumber(entry.createdAtMs) ? `time:${entry.createdAtMs}` : null)
+  if (sagsnummer) return `case:${sagsnummer}`
+  if (adresse || kunde) return `client:${stableHash([kunde, adresse].filter(Boolean).join('|'))}`
+  if (navn) return `client:${stableHash([navn, adresse, kunde].filter(Boolean).join('|'))}`
+  return null
+}
+
+function buildHistoryKey (entry = {}) {
+  const jobIdentity = buildCaseKey(entry) || (isFiniteNumber(entry.createdAtMs) ? `time:${entry.createdAtMs}` : null)
 
   const summary = summarizePayload(entry)
   const payloadHash = buildPayloadHash(entry) || (summary ? stableHash(summary) : null)
@@ -199,8 +202,9 @@ function normalizeEntry (entry) {
     timeZone,
     source: entry.source || 'export',
   }
-  normalized.historyKey = entry.historyKey || buildHistoryKey(normalized) || null
-  normalized.caseKey = entry.caseKey || normalized.historyKey || buildHistoryKey(normalized) || normalized.id
+  const caseKey = entry.caseKey || buildCaseKey(normalized) || null
+  normalized.historyKey = entry.historyKey || buildHistoryKey({ ...normalized, caseKey }) || null
+  normalized.caseKey = caseKey || normalized.historyKey || normalized.id
   return normalized
 }
 
@@ -208,7 +212,7 @@ function dedupeEntries (entries = []) {
   const byKey = new Map()
   entries.filter(Boolean).forEach(raw => {
     const entry = normalizeEntry(raw)
-    const key = entry.historyKey || entry.caseKey
+    const key = entry.caseKey || entry.historyKey
     if (!key) return
     const existing = byKey.get(key)
     if (!existing || (entry.createdAt || 0) >= (existing.createdAt || 0)) {
@@ -233,10 +237,10 @@ function loadLastAttempt () {
   return parsed
 }
 
-function persistLastAttempt (historyKey, createdAt) {
+function persistLastAttempt (historyKey, createdAt, caseKey) {
   const storage = getStorage()
-  if (!storage || !historyKey) return
-  const payload = { key: historyKey, at: Date.now(), createdAt }
+  if (!storage || (!historyKey && !caseKey)) return
+  const payload = { key: historyKey, caseKey, at: Date.now(), createdAt }
   const serialized = safeStringify(payload)
   if (serialized) storage.setItem(LAST_HISTORY_KEY, serialized)
 }
@@ -272,25 +276,31 @@ export function appendHistoryEntry (entry) {
   const normalized = normalizeEntry(entry)
   const current = loadHistory()
   const now = Date.now()
-  if (normalized.historyKey) {
+  if (normalized.historyKey || normalized.caseKey) {
     const lastAttempt = loadLastAttempt()
-    const isRecentClick = lastAttempt?.key === normalized.historyKey
+    const matchesHistoryKey = normalized.historyKey && lastAttempt?.key === normalized.historyKey
+    const matchesCaseKey = normalized.caseKey && lastAttempt?.caseKey === normalized.caseKey
+    const isRecentClick = (matchesHistoryKey || matchesCaseKey)
       && (now - (lastAttempt.at || 0)) < DOUBLE_CLICK_WINDOW_MS
     const createdDelta = Math.abs((lastAttempt?.createdAt || 0) - (normalized.createdAt || 0))
     if (isRecentClick && createdDelta < DOUBLE_CLICK_WINDOW_MS) {
-      const existingFast = current.find(item => item.historyKey === normalized.historyKey)
+      const existingFast = current.find(item =>
+        (matchesHistoryKey && item.historyKey === normalized.historyKey) ||
+        (matchesCaseKey && item.caseKey === normalized.caseKey)
+      )
       if (existingFast && (normalized.createdAt || 0) > (existingFast.createdAt || 0)) {
         const merged = dedupeEntries([normalized, ...current.filter(item => item !== existingFast)])
         persistState(merged)
-        persistLastAttempt(normalized.historyKey, normalized.createdAt)
-        return merged.find(item => item.historyKey === normalized.historyKey) || normalized
+        persistLastAttempt(normalized.historyKey, normalized.createdAt, normalized.caseKey)
+        return merged.find(item => item.caseKey === normalized.caseKey) || merged.find(item => item.historyKey === normalized.historyKey) || normalized
       }
       return existingFast || normalized
     }
   }
-  const existingIndex = normalized.historyKey
-    ? current.findIndex(item => item.historyKey === normalized.historyKey)
-    : -1
+  const existingIndex = current.findIndex(item =>
+    (normalized.caseKey && item.caseKey === normalized.caseKey) ||
+    (normalized.historyKey && item.historyKey === normalized.historyKey)
+  )
   if (existingIndex >= 0) {
     const existing = current[existingIndex]
     if ((normalized.createdAt || 0) > (existing.createdAt || 0)) {
@@ -298,14 +308,14 @@ export function appendHistoryEntry (entry) {
       const deduped = dedupeEntries(current)
       persistState(deduped)
     }
-    persistLastAttempt(normalized.historyKey, normalized.createdAt)
-    return current.find(item => item.historyKey === normalized.historyKey) || normalized
+    persistLastAttempt(normalized.historyKey, normalized.createdAt, normalized.caseKey)
+    return current.find(item => item.caseKey === normalized.caseKey) || current.find(item => item.historyKey === normalized.historyKey) || normalized
   }
 
   const merged = dedupeEntries([normalized, ...current])
   persistState(merged)
-  persistLastAttempt(normalized.historyKey, normalized.createdAt)
-  return merged.find(item => item.caseKey === normalized.caseKey) || normalized
+  persistLastAttempt(normalized.historyKey, normalized.createdAt, normalized.caseKey)
+  return merged.find(item => item.caseKey === normalized.caseKey) || merged.find(item => item.historyKey === normalized.historyKey) || normalized
 }
 
 export function deleteHistoryEntry (id) {
