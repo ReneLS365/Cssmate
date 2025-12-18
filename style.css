@@ -773,7 +773,15 @@ button{cursor:pointer}
 .shared-case-meta,.shared-case-totals{color:#4b5563;font-size:14px}
 .shared-case-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .shared-status{margin-bottom:8px;color:#4b5563}
-.team-id-input{display:flex;gap:8px;align-items:center;margin:8px 0}
+.shared-status-card{display:grid;gap:6px;margin:8px 0;padding:10px;border:1px solid #e5e7eb;border-radius:10px;background:#f8fafc}
+.shared-status-row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px;color:#111827}
+.shared-status-row strong{font-weight:700;font-size:15px}
+.shared-status-uid{display:flex;align-items:center;gap:8px}
+.shared-status-uid button{padding:4px 8px;font-size:13px}
+.shared-bootstrap{margin-left:8px}
+.shared-debug{margin:8px 0}
+.shared-debug pre{background:#0f172a;color:#e5e7eb;padding:10px;border-radius:8px;white-space:pre-wrap;font-size:12px;max-height:160px;overflow:auto}
+.team-id-input{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}
 .team-id-input label{font-weight:600}
 .team-id-input input{flex:1}
 .shared-admin-actions{display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap}

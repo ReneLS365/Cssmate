@@ -4,12 +4,23 @@ import { getFirestoreDb, getFirestoreHelpers, toIsoString } from './shared-fires
 const LEDGER_TEAM_PREFIX = 'sscaff-team-';
 const LEDGER_VERSION = 1;
 const BACKUP_SCHEMA_VERSION = 2;
-const DEFAULT_TEAM_ID = 'hulmose';
+const DEFAULT_TEAM_SLUG = 'hulmose';
+const DEFAULT_TEAM_ID = `${LEDGER_TEAM_PREFIX}${DEFAULT_TEAM_SLUG}`;
 
 class PermissionDeniedError extends Error {
   constructor(message) {
     super(message);
     this.code = 'permission-denied';
+  }
+}
+
+class MembershipMissingError extends PermissionDeniedError {
+  constructor(teamId, uid, message) {
+    super(message || 'Du er ikke medlem af dette team.');
+    this.code = 'not-member';
+    this.teamId = teamId;
+    this.uid = uid;
+    this.expectedPath = teamId && uid ? `teams/${teamId}/members/${uid}` : '';
   }
 }
 
@@ -47,9 +58,27 @@ async function fetchUserProfile(uid) {
   };
 }
 
+export function normalizeTeamId(rawTeamId) {
+  const cleaned = (rawTeamId || '').toString().trim().toLowerCase();
+  const stripped = cleaned.replace(new RegExp(`^${LEDGER_TEAM_PREFIX}`, 'i'), '');
+  const normalized = stripped
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return normalized || DEFAULT_TEAM_SLUG;
+}
+
 export function formatTeamId(rawTeamId) {
-  const cleaned = (rawTeamId || '').toString().trim() || 'default';
-  return cleaned.startsWith(LEDGER_TEAM_PREFIX) ? cleaned : `${LEDGER_TEAM_PREFIX}${cleaned}`;
+  const normalized = normalizeTeamId(rawTeamId);
+  return normalized.startsWith(LEDGER_TEAM_PREFIX)
+    ? normalized
+    : `${LEDGER_TEAM_PREFIX}${normalized}`;
+}
+
+export function getDisplayTeamId(rawTeamId) {
+  const normalized = (rawTeamId || '').toString().trim();
+  if (!normalized) return DEFAULT_TEAM_SLUG;
+  return normalizeTeamId(normalized.replace(new RegExp(`^${LEDGER_TEAM_PREFIX}`, 'i'), '')) || DEFAULT_TEAM_SLUG;
 }
 
 function normalizeJobNumber(jobNumber) {
@@ -202,12 +231,19 @@ export async function resolveTeamId(rawTeamId) {
 export async function getTeamMembership(teamId, { allowBootstrap = false } = {}) {
   const user = await ensureAuthUser();
   const resolvedTeamId = formatTeamId(teamId || (await resolveTeamId()));
-  let membership = await resolveMembership(resolvedTeamId, user.uid) || (await fetchMemberships(user.uid))[0];
+  let membership = await resolveMembership(resolvedTeamId, user.uid);
+  if (!membership) {
+    const memberships = await fetchMemberships(user.uid);
+    membership = memberships.find(entry => entry.teamId === resolvedTeamId) || null;
+  }
   if (!membership && allowBootstrap) {
     membership = await ensureMembership(resolvedTeamId, user, { allowBootstrap: true });
   }
-  if (membership) cacheTeamResolution(user.uid, resolvedTeamId, membership);
-  return membership ? { ...membership, teamId: resolvedTeamId } : null;
+  if (membership) {
+    cacheTeamResolution(user.uid, resolvedTeamId, membership);
+    return { ...membership, teamId: resolvedTeamId };
+  }
+  throw new MembershipMissingError(resolvedTeamId, user.uid, 'Medlem ikke fundet for valgt team.');
 }
 
 async function ensureMembership(teamId, actor, { allowBootstrap = false } = {}) {
@@ -659,4 +695,4 @@ export async function deactivateTeamMember(teamId, memberId) {
   return true;
 }
 
-export { PermissionDeniedError };
+export { PermissionDeniedError, MembershipMissingError, DEFAULT_TEAM_ID, DEFAULT_TEAM_SLUG };

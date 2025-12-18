@@ -427,12 +427,26 @@
         <h2>Delt sager</h2>
         <p>Fælles sager publiceret fra teamet. Importer, download JSON eller generér PDF on-demand.</p>
       </header>
+      <div class="shared-status-card" aria-live="polite">
+        <div class="shared-status-row"><span>Logget ind:</span><strong id="sharedStatusLoggedIn">Nej</strong></div>
+        <div class="shared-status-row"><span>Bruger:</span><strong id="sharedStatusUser">–</strong></div>
+        <div class="shared-status-row shared-status-row--uid">
+          <span>UID:</span>
+          <div class="shared-status-uid">
+            <strong id="sharedStatusUid">–</strong>
+            <button id="sharedUidCopy" type="button">Kopiér</button>
+          </div>
+        </div>
+        <div class="shared-status-row"><span>Team ID:</span><strong id="sharedStatusTeam">–</strong></div>
+        <div class="shared-status-row"><span>Rolle:</span><strong id="sharedStatusRole">ikke medlem</strong></div>
+      </div>
       <div id="sharedAuthStatus" class="shared-status" aria-live="polite">Log ind for at se delte sager.</div>
       <div id="sharedRoleStatus" class="shared-status" aria-live="polite">Rolle: Ikke logget ind</div>
       <div id="sharedAdminNotice" class="shared-status" aria-live="polite"></div>
       <div id="sharedStatus" class="shared-status" aria-live="polite"></div>
       <div id="sharedAccessStatus" class="shared-status" aria-live="polite"></div>
       <div id="sharedInlineError" class="shared-status" aria-live="polite" role="alert" hidden></div>
+      <div id="sharedMembershipHint" class="shared-status" aria-live="polite" hidden></div>
       <div class="shared-auth-controls" aria-live="polite">
         <div id="sharedLoginButtons" class="shared-login-buttons">
           <button id="sharedLogin-google" type="button" data-role="primary">Log ind med Google</button>
@@ -446,12 +460,17 @@
         <label for="teamIdInput">Team ID:</label>
         <input id="teamIdInput" type="text" placeholder="f.eks. hulmose">
         <button id="saveTeamId" type="button">Gem</button>
+        <button id="sharedBootstrapTeam" type="button" class="shared-bootstrap" hidden>Opret team + tilføj mig</button>
       </div>
       <div class="shared-admin-actions">
         <button id="sharedBackupExport" type="button" disabled>Eksporter backup</button>
         <label class="sr-only" for="sharedBackupImport">Importer backup</label>
         <input id="sharedBackupImport" type="file" accept="application/json" disabled>
       </div>
+      <details id="sharedDebugPanel" class="shared-debug" hidden>
+        <summary>Debug-log</summary>
+        <pre id="sharedDebugLog" aria-live="polite"></pre>
+      </details>
       <div class="shared-filters">
         <label>
           <span>Jobnummer</span>
