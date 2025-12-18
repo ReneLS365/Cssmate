@@ -1,6 +1,7 @@
 const DEFAULT_PROVIDER = 'custom';
 const DEFAULT_ENABLED_PROVIDERS = ['google', 'microsoft'];
 export const FIREBASE_SDK_VERSION = '10.12.2';
+const MOCK_AUTH_STORAGE_KEY = 'cssmate:mockAuthUser';
 
 let authInstance = null;
 let authModule = null;
@@ -8,8 +9,52 @@ let initPromise = null;
 let authReady = false;
 let authError = null;
 let currentUser = null;
+let rawUser = null;
 let providerData = [];
+let useMockAuth = false;
+let mockUser = null;
 const listeners = new Set();
+
+function isLocalhost() {
+  if (typeof window === 'undefined') return false;
+  const host = (window.location?.hostname || '').toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+}
+
+function loadMockUser() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage?.getItem(MOCK_AUTH_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (error) {
+    console.warn('Kunne ikke læse mock login', error);
+    return null;
+  }
+}
+
+function persistMockUser(user) {
+  if (typeof window === 'undefined') return;
+  if (!user) {
+    try {
+      window.localStorage?.removeItem(MOCK_AUTH_STORAGE_KEY);
+    } catch (error) {
+      console.warn('Kunne ikke rydde mock login', error);
+    }
+    return;
+  }
+  try {
+    window.localStorage?.setItem(MOCK_AUTH_STORAGE_KEY, JSON.stringify(user));
+  } catch (error) {
+    console.warn('Kunne ikke gemme mock login', error);
+  }
+}
+
+function ensureMockUserVerified() {
+  if (!mockUser) return;
+  mockUser.emailVerified = true;
+  setAuthState({ user: mockUser, error: null });
+  persistMockUser(mockUser);
+}
 
 function getFirebaseConfig() {
   if (typeof window === 'undefined') return null;
@@ -49,8 +94,9 @@ function notify() {
 }
 
 function setAuthState({ user, error }) {
+  rawUser = user || null;
   currentUser = user ? normalizeUser(user) : null;
-  providerData = user?.providerData || [];
+  providerData = (user && user.providerData) ? user.providerData : (currentUser?.providerData || []);
   authError = error || null;
   authReady = true;
   notify();
@@ -61,6 +107,12 @@ export async function initSharedAuth() {
   initPromise = (async () => {
     const config = getFirebaseConfig();
     if (!config) {
+      if (isLocalhost()) {
+        useMockAuth = true;
+        mockUser = loadMockUser();
+        setAuthState({ user: mockUser, error: null });
+        return null;
+      }
       setAuthState({ user: null, error: new Error('Firebase konfiguration mangler (VITE_FIREBASE_*)') });
       return null;
     }
@@ -137,6 +189,26 @@ export function getEnabledProviders() {
   return DEFAULT_ENABLED_PROVIDERS;
 }
 
+function collectProviderIds(user) {
+  if (!user) return [];
+  if (Array.isArray(user.providerIds)) return user.providerIds.filter(Boolean);
+  if (Array.isArray(user.providerData)) {
+    return user.providerData.map(entry => entry?.providerId).filter(Boolean);
+  }
+  const id = user.providerId || user.provider;
+  return id ? [id] : [];
+}
+
+function isUserVerified(user) {
+  if (!user) return false;
+  const providers = collectProviderIds(user);
+  const hasPassword = providers.includes('password');
+  const hasFederated = providers.some(id => id && id !== 'password');
+  if (hasPassword) return Boolean(user.emailVerified);
+  if (hasFederated) return true;
+  return Boolean(user.emailVerified);
+}
+
 function shouldFallbackToRedirect(error) {
   if (!error) return false;
   const code = error?.code || '';
@@ -145,6 +217,20 @@ function shouldFallbackToRedirect(error) {
 
 export async function loginWithProvider(providerId) {
   await initSharedAuth();
+  if (useMockAuth) {
+    const mock = {
+      uid: `mock-${providerId || 'user'}`,
+      email: providerId === 'google' ? 'mock.google.user@example.com' : `${providerId || 'user'}@example.com`,
+      displayName: providerId === 'google' ? 'Mock Google Bruger' : 'Mock bruger',
+      providerId: providerId ? `${providerId}.com` : DEFAULT_PROVIDER,
+      emailVerified: true,
+      providerIds: [providerId ? `${providerId}.com` : DEFAULT_PROVIDER],
+    };
+    mockUser = mock;
+    persistMockUser(mockUser);
+    setAuthState({ user: mockUser, error: null });
+    return mockUser;
+  }
   if (!authModule || !authInstance) throw new Error('Login er ikke konfigureret.');
   const provider = getProvider(providerId);
   provider.setCustomParameters?.({ prompt: 'select_account' });
@@ -163,6 +249,12 @@ export async function loginWithProvider(providerId) {
 
 export async function logoutUser() {
   await initSharedAuth();
+  if (useMockAuth) {
+    mockUser = null;
+    persistMockUser(null);
+    setAuthState({ user: null, error: null });
+    return;
+  }
   if (!authModule || !authInstance) return;
   try {
     await authModule.signOut(authInstance);
@@ -183,13 +275,101 @@ export function getAuthContext() {
   if (!currentUser) {
     return { isReady: true, isAuthenticated: false, user: null, providers: [], message: 'Log ind for at se delte sager.' };
   }
+  const isVerified = isUserVerified(currentUser);
+  const requiresVerification = !isVerified;
   return {
     isReady: true,
     isAuthenticated: true,
     user: currentUser,
     providers: Array.isArray(providerData) ? providerData : [],
-    message: '',
+    isVerified,
+    requiresVerification,
+    message: requiresVerification ? 'Bekræft din email for adgang.' : '',
   };
+}
+
+export function getCurrentUser() {
+  return currentUser || null;
+}
+
+export async function signUpWithEmail(email, password) {
+  await initSharedAuth();
+  const cleanEmail = (email || '').trim();
+  if (!cleanEmail || !password) throw new Error('Udfyld email og adgangskode');
+  if (useMockAuth) {
+    mockUser = {
+      uid: `mock-${Date.now()}`,
+      email: cleanEmail.toLowerCase(),
+      displayName: cleanEmail,
+      providerId: 'password',
+      providerIds: ['password'],
+      emailVerified: false,
+    };
+    persistMockUser(mockUser);
+    setAuthState({ user: mockUser, error: null });
+    return mockUser;
+  }
+  if (!authModule || !authInstance) throw new Error('Login er ikke konfigureret.');
+  const credential = await authModule.createUserWithEmailAndPassword(authInstance, cleanEmail, password);
+  if (credential?.user) {
+    await authModule.sendEmailVerification(credential.user);
+    setAuthState({ user: credential.user, error: null });
+  }
+  return credential?.user || null;
+}
+
+export async function signInWithEmail(email, password) {
+  await initSharedAuth();
+  const cleanEmail = (email || '').trim();
+  if (!cleanEmail || !password) throw new Error('Udfyld email og adgangskode');
+  if (useMockAuth) {
+    if (!mockUser || mockUser.email !== cleanEmail.toLowerCase()) {
+      throw new Error('Brugeren findes ikke. Opret en konto først.');
+    }
+    setAuthState({ user: mockUser, error: null });
+    return mockUser;
+  }
+  if (!authModule || !authInstance) throw new Error('Login er ikke konfigureret.');
+  const credential = await authModule.signInWithEmailAndPassword(authInstance, cleanEmail, password);
+  setAuthState({ user: credential?.user, error: null });
+  return credential?.user || null;
+}
+
+export async function sendPasswordReset(email) {
+  await initSharedAuth();
+  const cleanEmail = (email || '').trim();
+  if (!cleanEmail) throw new Error('Angiv email-adresse');
+  if (useMockAuth) {
+    return true;
+  }
+  if (!authModule || !authInstance) throw new Error('Login er ikke konfigureret.');
+  await authModule.sendPasswordResetEmail(authInstance, cleanEmail);
+  return true;
+}
+
+export async function resendEmailVerification() {
+  await initSharedAuth();
+  if (useMockAuth) {
+    if (!mockUser) throw new Error('Ingen bruger er logget ind.');
+    return true;
+  }
+  if (!authModule || !authInstance) throw new Error('Login er ikke konfigureret.');
+  if (!authInstance.currentUser) throw new Error('Ingen bruger er logget ind.');
+  await authModule.sendEmailVerification(authInstance.currentUser);
+  return true;
+}
+
+export async function reloadCurrentUser() {
+  await initSharedAuth();
+  if (useMockAuth) {
+    ensureMockUserVerified();
+    return mockUser;
+  }
+  if (!authModule || !authInstance) throw new Error('Login er ikke konfigureret.');
+  if (!authInstance.currentUser) throw new Error('Ingen bruger er logget ind.');
+  await authModule.reload(authInstance.currentUser);
+  setAuthState({ user: authInstance.currentUser, error: null });
+  return authInstance.currentUser;
 }
 
 export function userIsAdmin(user) {
@@ -213,11 +393,15 @@ export function getUserDisplay(user) {
 
 function normalizeUser(user) {
   const primaryProvider = Array.isArray(user?.providerData) && user.providerData.length ? user.providerData[0] : null;
+  const providerIds = collectProviderIds(user);
   return {
     uid: user.uid || user.id || user.email || 'user',
     email: user.email || '',
     displayName: user.displayName || user.name || '',
     providerId: user.providerId || user.provider || primaryProvider?.providerId || DEFAULT_PROVIDER,
     role: user.role || user.claims?.role || null,
+    emailVerified: Boolean(user.emailVerified),
+    providerIds,
+    providerData: user.providerData || [],
   };
 }

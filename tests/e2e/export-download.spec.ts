@@ -9,6 +9,18 @@ async function persistDownload(download, testInfo, fallbackName) {
   return targetPath
 }
 
+async function ensureLoggedIn (page) {
+  const gate = page.locator('#authGate')
+  if (await gate.count() === 0) return
+  if (await gate.isHidden()) return
+  await gate.waitFor({ state: 'visible' })
+  const googleButton = page.getByRole('button', { name: /Google/i })
+  if (await googleButton.isVisible()) {
+    await googleButton.click()
+  }
+  await gate.waitFor({ state: 'hidden' })
+}
+
 test.afterEach(async ({ page }, testInfo) => {
   if (testInfo.status === testInfo.expectedStatus) return
   try {
@@ -39,6 +51,7 @@ test('eksport af akkordseddel downloader PDF og JSON', async ({ page }, testInfo
   page.on('pageerror', err => console.log(`[pageerror] ${err.message}`))
 
   await page.goto('/', { waitUntil: 'domcontentloaded' })
+  await ensureLoggedIn(page)
   await page.waitForSelector('#sagsnummer', { state: 'visible' })
 
   await page.getByLabel('Sagsnummer').fill(uniqueJob)

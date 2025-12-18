@@ -48,6 +48,44 @@
   <div class="pwa-install-wrap no-print">
     <button type="button" id="installBtn" class="pwa-install-btn" hidden>Installer app</button>
   </div>
+  <section id="authGate" class="auth-gate no-print" aria-live="polite" hidden>
+    <div class="auth-card" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+      <div id="authLoadingScreen" class="auth-section">
+        <h2 id="authTitle">Logger ind…</h2>
+        <p class="auth-subtitle">Vent mens login initialiseres.</p>
+      </div>
+      <div id="authLoginScreen" class="auth-section" hidden>
+        <h2 class="auth-title">Log ind</h2>
+        <p class="auth-subtitle">Log ind for at bruge akkordsedlen.</p>
+        <div class="auth-fields">
+          <label for="authEmail">
+            <span>Email</span>
+            <input id="authEmail" type="email" name="authEmail" autocomplete="email" inputmode="email">
+          </label>
+          <label for="authPassword">
+            <span>Adgangskode</span>
+            <input id="authPassword" type="password" name="authPassword" autocomplete="current-password">
+          </label>
+        </div>
+        <div class="auth-actions">
+          <button id="authGoogle" type="button" data-role="primary">Fortsæt med Google</button>
+          <button id="authLogin" type="button">Log ind</button>
+          <button id="authSignup" type="button">Opret konto</button>
+          <button id="authForgot" type="button" class="auth-link">Glemt kodeord</button>
+        </div>
+      </div>
+      <div id="authVerifyScreen" class="auth-section" hidden>
+        <h2 class="auth-title">Bekræft din email</h2>
+        <p class="auth-subtitle">Tjek din indbakke og bekræft din email for at få adgang.</p>
+        <div class="auth-actions">
+          <button id="authResend" type="button">Send igen</button>
+          <button id="authVerified" type="button" data-role="primary">Jeg har verificeret</button>
+          <button id="authLogout" type="button" class="auth-link">Log ud</button>
+        </div>
+      </div>
+      <p id="authMessage" class="auth-message" aria-live="polite"></p>
+    </div>
+  </section>
   <div id="app" class="app-shell">
     <header data-allow-click>
       <div class="bar">

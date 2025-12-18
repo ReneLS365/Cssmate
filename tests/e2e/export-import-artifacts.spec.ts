@@ -10,6 +10,18 @@ const SCENARIO_DIRS = {
   edge: path.join(ARTIFACT_ROOT, 'edge'),
 }
 
+async function ensureLoggedIn (page) {
+  const gate = page.locator('#authGate')
+  if (await gate.count() === 0) return
+  if (await gate.isHidden()) return
+  await gate.waitFor({ state: 'visible' })
+  const googleButton = page.getByRole('button', { name: /Google/i })
+  if (await googleButton.isVisible()) {
+    await googleButton.click()
+  }
+  await gate.waitFor({ state: 'hidden' })
+}
+
 async function ensureScenarioFolders() {
   await Promise.all(
     Object.values(SCENARIO_DIRS).map(dir => fs.mkdir(dir, { recursive: true })),
@@ -244,11 +256,13 @@ async function createCombinedJob(page) {
 
 test('basic job: export/import generates artifacts', async ({ page }) => {
   await page.goto('/')
+  await ensureLoggedIn(page)
   await createBasicJob(page)
 
   const { jsonPath } = await exportPdfAndJson(page, 'basic', 'basic')
 
   await page.goto('/')
+  await ensureLoggedIn(page)
   await importJson(page, jsonPath, { navn: 'Basisjob', kunde: 'Basis kunde' })
 
   await expect(page.getByLabel('Navn/opgave')).toHaveValue('Basisjob')
@@ -265,11 +279,13 @@ test('basic job: export/import generates artifacts', async ({ page }) => {
 
 test('multi-system job exports and imports with artifacts', async ({ page }) => {
   await page.goto('/')
+  await ensureLoggedIn(page)
   await createMultiSystemJob(page)
 
   const { jsonPath } = await exportPdfAndJson(page, 'multi', 'multi')
 
   await page.goto('/')
+  await ensureLoggedIn(page)
   await importJson(page, jsonPath, { navn: 'Multisystem', kunde: 'Flere systemer' })
 
   await expect(page.getByLabel('Navn/opgave')).toHaveValue('Multisystem')
@@ -281,11 +297,13 @@ test('multi-system job exports and imports with artifacts', async ({ page }) => 
 
 test('combined lists job exports and imports with artifacts', async ({ page }) => {
   await page.goto('/')
+  await ensureLoggedIn(page)
   await createCombinedJob(page)
 
   const { jsonPath } = await exportPdfAndJson(page, 'combined', 'combined')
 
   await page.goto('/')
+  await ensureLoggedIn(page)
   await importJson(page, jsonPath, { navn: 'Kombineret liste', kunde: 'Kombineret kunde' })
 
   await expect(page.getByLabel('Navn/opgave')).toHaveValue('Kombineret liste')
