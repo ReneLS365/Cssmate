@@ -1,4 +1,4 @@
-import { getAuthContext, waitForAuthReady } from './shared-auth.js';
+import { getAuthContext, waitForAuthReady, userIsAdmin } from './shared-auth.js';
 import { getFirestoreDb, getFirestoreHelpers, toIsoString } from './shared-firestore.js';
 
 const LEDGER_TEAM_PREFIX = 'sscaff-team-';
@@ -18,6 +18,15 @@ const teamCache = {
   teamId: null,
   membership: null,
 };
+
+async function ensureAuthUser() {
+  await waitForAuthReady();
+  const auth = getAuthContext();
+  if (!auth?.isAuthenticated || !auth.user?.uid) {
+    throw new PermissionDeniedError('Log ind for at fortsætte.');
+  }
+  return auth.user;
+}
 
 async function fetchUserProfile(uid) {
   if (!uid) return null;
@@ -117,10 +126,10 @@ async function fetchMembership(teamId, uid) {
   if (data.active === false) return null;
   return {
     teamId: resolvedTeam || teamId,
-    uid,
+    uid: data.uid || uid || snapshot.id,
     role: data.role || 'member',
     email: data.email || '',
-    displayName: data.displayName || '',
+    displayName: data.displayName || data.name || '',
   };
 }
 
@@ -140,7 +149,7 @@ async function fetchMemberships(uid) {
       uid,
       role: doc.data()?.role || 'member',
       email: doc.data()?.email || '',
-      displayName: doc.data()?.displayName || '',
+      displayName: doc.data()?.displayName || doc.data()?.name || '',
       active: doc.data()?.active !== false,
     }))
     .filter(entry => Boolean(entry.teamId) && entry.active);
@@ -165,20 +174,15 @@ async function resolveMembership(teamId, uid) {
 }
 
 export async function resolveTeamId(rawTeamId) {
-  const auth = getAuthContext();
-  const uid = auth?.user?.uid;
   const provided = rawTeamId
     || (typeof window !== 'undefined' ? window.TEAM_ID : null);
   const normalizedProvided = provided ? formatTeamId(provided) : null;
 
+  const auth = getAuthContext();
+  const uid = auth?.user?.uid;
+
   if (auth?.isAuthenticated && uid) {
-    if (normalizedProvided) {
-      const membership = await resolveMembership(normalizedProvided, uid);
-      if (membership) {
-        cacheTeamResolution(uid, normalizedProvided, membership);
-        return normalizedProvided;
-      }
-    }
+    if (normalizedProvided) return normalizedProvided;
     const cached = getCachedTeam(uid);
     if (cached?.teamId) return cached.teamId;
 
@@ -195,27 +199,86 @@ export async function resolveTeamId(rawTeamId) {
   return formatTeamId(DEFAULT_TEAM_ID);
 }
 
-export async function getTeamMembership(teamId) {
-  await waitForAuthReady();
-  const auth = getAuthContext();
-  if (!auth?.isAuthenticated || !auth.user?.uid) return null;
+export async function getTeamMembership(teamId, { allowBootstrap = false } = {}) {
+  const user = await ensureAuthUser();
   const resolvedTeamId = formatTeamId(teamId || (await resolveTeamId()));
-  const membership = await resolveMembership(resolvedTeamId, auth.user.uid) || (await fetchMemberships(auth.user.uid))[0];
-  if (membership) cacheTeamResolution(auth.user.uid, resolvedTeamId, membership);
+  let membership = await resolveMembership(resolvedTeamId, user.uid) || (await fetchMemberships(user.uid))[0];
+  if (!membership && allowBootstrap) {
+    membership = await ensureMembership(resolvedTeamId, user, { allowBootstrap: true });
+  }
+  if (membership) cacheTeamResolution(user.uid, resolvedTeamId, membership);
   return membership ? { ...membership, teamId: resolvedTeamId } : null;
 }
 
-function normalizeCaseDoc(doc) {
+async function ensureMembership(teamId, actor, { allowBootstrap = false } = {}) {
+  if (!actor?.uid) return null;
+  const existing = await fetchMembership(teamId, actor.uid);
+  if (existing) return existing;
+  if (!allowBootstrap || !userIsAdmin(actor)) return null;
+
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const teamRef = sdk.doc(db, 'teams', teamId);
+  const teamSnapshot = await sdk.getDoc(teamRef);
+  if (teamSnapshot.exists()) return null;
+
+  const memberRef = sdk.doc(db, 'teams', teamId, 'members', actor.uid);
+  const payload = {
+    uid: actor.uid,
+    role: 'admin',
+    email: actor.email || '',
+    displayName: actor.displayName || actor.name || '',
+    addedAt: sdk.serverTimestamp(),
+    addedByUid: actor.uid,
+    active: true,
+  };
+  await sdk.setDoc(memberRef, payload, { merge: true });
+  await sdk.setDoc(teamRef, {
+    teamId,
+    createdAt: sdk.serverTimestamp(),
+    createdByUid: actor.uid,
+    createdByEmail: actor.email || '',
+    createdByDisplayName: actor.displayName || actor.name || '',
+  });
+  await sdk.setDoc(sdk.doc(db, 'users', actor.uid), {
+    uid: actor.uid,
+    teamId,
+    role: 'admin',
+    email: payload.email,
+    displayName: payload.displayName,
+    active: true,
+  }, { merge: true });
+  return { ...payload, teamId };
+}
+
+async function getTeamContext(teamId, { allowBootstrap = false } = {}) {
+  const user = await ensureAuthUser();
+  const resolvedTeamId = formatTeamId(teamId || (await resolveTeamId()));
+  let membership = await resolveMembership(resolvedTeamId, user.uid);
+  if (!membership && allowBootstrap) {
+    membership = await ensureMembership(resolvedTeamId, user, { allowBootstrap: true });
+  }
+  if (!membership) throw new PermissionDeniedError('Du er ikke medlem af dette team.');
+  cacheTeamResolution(user.uid, resolvedTeamId, membership);
+  return { teamId: resolvedTeamId, membership, actor: normalizeActor(user, membership) };
+}
+
+function normalizeCaseDoc(doc, { includeDeleted = false } = {}) {
   if (!doc || doc._deleted) return null;
-  const jobNumber = normalizeJobNumber(doc.jobNumber);
-  const createdAt = normalizeTimestampValue(doc.createdAt);
-  const updatedAt = normalizeTimestampValue(doc.updatedAt || doc.lastUpdatedAt || createdAt);
-  const lastUpdatedAt = normalizeTimestampValue(doc.lastUpdatedAt || updatedAt);
+  const isSnapshot = typeof doc.data === 'function';
+  const data = isSnapshot ? (doc.data() || {}) : doc;
+  const teamIdFromPath = isSnapshot && doc.ref?.parent?.parent?.id ? formatTeamId(doc.ref.parent.parent.id) : formatTeamId(data.teamId || '');
+  const isDeleted = data.deletedAt || data.status === 'deleted';
+  if (isDeleted && !includeDeleted) return null;
+  const jobNumber = normalizeJobNumber(data.jobNumber);
+  const createdAt = normalizeTimestampValue(data.createdAt);
+  const updatedAt = normalizeTimestampValue(data.updatedAt || data.lastUpdatedAt || createdAt);
+  const lastUpdatedAt = normalizeTimestampValue(data.lastUpdatedAt || updatedAt);
   return {
     ...data,
-    teamId: data.teamId || teamIdFromPath || '',
+    teamId: teamIdFromPath || formatTeamId(data.teamId || ''),
     version: LEDGER_VERSION,
-    caseId: data.caseId || data._id || doc.id,
+    caseId: data.caseId || data._id || (isSnapshot ? doc.id : ''),
     jobNumber,
     createdAt,
     updatedAt,
@@ -230,13 +293,45 @@ function resolveUpdatedTimestamp(source) {
   return new Date().toISOString();
 }
 
+async function getCaseDocument(teamId, caseId) {
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const ref = sdk.doc(db, 'teams', teamId, 'cases', caseId);
+  return { db, sdk, ref };
+}
+
+async function recordAuditEvent(teamId, { caseId, action, actor, summary }) {
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const ref = sdk.doc(db, 'teams', teamId, 'audit', ensureAuditId());
+  const timestamp = sdk.serverTimestamp();
+  const payload = {
+    _id: ref.id,
+    teamId,
+    caseId: caseId || null,
+    action: action || 'UNKNOWN',
+    actor: {
+      uid: actor?.uid || actor?.id || 'user',
+      email: actor?.email || '',
+      name: actor?.name || actor?.displayName || '',
+    },
+    summary: summary || '',
+    timestamp,
+  };
+  await sdk.setDoc(ref, payload);
+  return payload;
+}
+
+function timestampToIso(value) {
+  return normalizeTimestampValue(value) || toIsoString(value) || '';
+}
+
 export async function publishSharedCase({ teamId, jobNumber, caseKind, system, totals, status = 'kladde', jsonContent }) {
-  const { ledger } = getSharedLedger(teamId);
-  if (!ledger) throw new Error('Team ID mangler eller er ugyldigt');
-  const caseId = ensureCaseId();
-  const now = new Date().toISOString();
-  const doc = {
-    _id: caseId,
+  const { teamId: resolvedTeamId, membership, actor } = await getTeamContext(teamId, { allowBootstrap: true });
+  const { sdk, ref } = await getCaseDocument(resolvedTeamId, ensureCaseId());
+  const now = sdk.serverTimestamp();
+  const payload = {
+    _id: ref.id,
     type: 'case',
     caseId: ref.id,
     parentCaseId: null,
@@ -249,10 +344,10 @@ export async function publishSharedCase({ teamId, jobNumber, caseKind, system, t
     createdAt: now,
     updatedAt: now,
     lastUpdatedAt: now,
-    createdBy: normalizedActor.uid,
-    createdByEmail: normalizedActor.email || '',
-    createdByName: normalizedActor.name || normalizedActor.displayName || '',
-    updatedBy: normalizedActor.uid,
+    createdBy: actor.uid,
+    createdByEmail: actor.email || '',
+    createdByName: actor.name || actor.displayName || '',
+    updatedBy: actor.uid,
     immutable: true,
     deletedAt: null,
     attachments: {
@@ -263,8 +358,8 @@ export async function publishSharedCase({ teamId, jobNumber, caseKind, system, t
   };
   await sdk.setDoc(ref, payload);
   const snapshot = await sdk.getDoc(ref);
-  const normalized = normalizeCaseDoc(snapshot);
-  await recordAuditEvent(resolvedTeamId, { caseId: ref.id, action: 'CREATE', actor: normalizedActor, summary: 'Ny delt sag' });
+  const normalized = normalizeCaseDoc(snapshot, { includeDeleted: true });
+  await recordAuditEvent(resolvedTeamId, { caseId: ref.id, action: 'CREATE', actor, summary: 'Ny delt sag' });
   return normalized;
 }
 
@@ -311,11 +406,11 @@ export async function getSharedCase(teamId, caseId, { includeDeleted = false } =
   }
 }
 
-export async function deleteSharedCase(teamId, caseId, actor) {
+export async function deleteSharedCase(teamId, caseId) {
   const entry = await getSharedCase(teamId, caseId);
   if (!entry) return false;
-  const { teamId: resolvedTeamId, actor: normalizedActor, membership } = await getTeamContext(teamId);
-  if (entry.createdBy && entry.createdBy !== normalizedActor.uid && membership.role !== 'admin') {
+  const { teamId: resolvedTeamId, actor, membership } = await getTeamContext(teamId);
+  if (entry.createdBy && entry.createdBy !== actor.uid && membership.role !== 'admin') {
     throw new PermissionDeniedError('Kun opretter eller admin kan slette sagen.');
   }
   const { sdk, ref } = await getCaseDocument(resolvedTeamId, caseId);
@@ -325,32 +420,35 @@ export async function deleteSharedCase(teamId, caseId, actor) {
     teamId: entry.teamId || resolvedTeamId,
     status: 'deleted',
     deletedAt: updatedAt,
-    deletedBy: normalizedActor.uid,
+    deletedBy: actor.uid,
     updatedAt,
     lastUpdatedAt: updatedAt,
-    updatedBy: normalizedActor.uid,
+    updatedBy: actor.uid,
   };
-  await sdk.updateDoc(ref, next);
-  await recordAuditEvent(resolvedTeamId, { caseId, action: 'DELETE', actor: normalizedActor, summary: 'Soft delete' });
+  await sdk.setDoc(ref, next, { merge: true });
+  await recordAuditEvent(resolvedTeamId, { caseId, action: 'DELETE', actor, summary: 'Soft delete' });
   return true;
 }
 
-export async function updateCaseStatus(teamId, caseId, status, userId) {
-  const { ledger } = getSharedLedger(teamId);
-  if (!ledger) return null;
-  let doc;
-  try {
-    doc = await ledger.get(caseId);
-  } catch (error) {
-    console.warn('Kunne ikke hente sag', error);
-    return null;
+export async function updateCaseStatus(teamId, caseId, status) {
+  const { teamId: resolvedTeamId, actor, membership } = await getTeamContext(teamId);
+  const { sdk, ref } = await getCaseDocument(resolvedTeamId, caseId);
+  const doc = await sdk.getDoc(ref);
+  if (!doc.exists()) return null;
+  const current = doc.data() || {};
+  if (current.createdBy && current.createdBy !== actor.uid && membership.role !== 'admin') {
+    throw new PermissionDeniedError('Kun opretter eller admin kan ændre status.');
   }
-  if (!doc || doc._deleted) return null;
-  if (doc.createdBy && doc.createdBy !== userId) return null;
-  const updatedAt = resolveUpdatedTimestamp(doc.updatedAt || doc.lastUpdatedAt || doc.createdAt);
-  const next = { ...doc, status, updatedAt, lastUpdatedAt: updatedAt };
-  await ledger.put(next);
-  return normalizeCaseDoc(next);
+  const updatedAt = sdk.serverTimestamp();
+  const next = {
+    status,
+    updatedAt,
+    lastUpdatedAt: updatedAt,
+    updatedBy: actor.uid,
+  };
+  await sdk.updateDoc(ref, next);
+  const updated = await sdk.getDoc(ref);
+  return normalizeCaseDoc(updated, { includeDeleted: true });
 }
 
 export async function downloadCaseJson(teamId, caseId) {
@@ -431,8 +529,8 @@ function normalizeBackupAuditActor(actor, schemaVersion) {
   return { uid: 'legacy', email: '', name: legacyName };
 }
 
-export async function importSharedBackup(teamId, payload, actor) {
-  const { teamId: resolvedTeamId, actor: normalizedActor, membership } = await getTeamContext(teamId);
+export async function importSharedBackup(teamId, payload) {
+  const { teamId: resolvedTeamId, actor, membership } = await getTeamContext(teamId);
   if (membership.role !== 'admin') throw new PermissionDeniedError('Kun admin kan importere backup.');
   const db = await getFirestoreDb();
   const sdk = await getFirestoreHelpers();
@@ -451,7 +549,7 @@ export async function importSharedBackup(teamId, payload, actor) {
     const shouldReplace = !prior || incomingUpdatedAt.localeCompare(priorUpdatedAt) >= 0;
     if (!shouldReplace) {
       conflicts += 1;
-      await recordAuditEvent(resolvedTeamId, { caseId: docId, action: 'RESTORE_CONFLICT', actor: normalizedActor, summary: 'Backup konflikt – ældre data bevaret' });
+      await recordAuditEvent(resolvedTeamId, { caseId: docId, action: 'RESTORE_CONFLICT', actor, summary: 'Backup konflikt – ældre data bevaret' });
       continue;
     }
     const ref = sdk.doc(db, 'teams', resolvedTeamId, 'cases', docId);
@@ -466,7 +564,7 @@ export async function importSharedBackup(teamId, payload, actor) {
     };
     await sdk.setDoc(ref, prepared, { merge: true });
     restored += 1;
-    await recordAuditEvent(resolvedTeamId, { caseId: docId, action: 'RESTORE', actor: normalizedActor, summary: 'Backup importeret' });
+    await recordAuditEvent(resolvedTeamId, { caseId: docId, action: 'RESTORE', actor, summary: 'Backup importeret' });
   }
 
   if (Array.isArray(payload.audit)) {
@@ -488,7 +586,7 @@ export async function importSharedBackup(teamId, payload, actor) {
   await recordAuditEvent(resolvedTeamId, {
     caseId: null,
     action: 'BACKUP_IMPORT',
-    actor: normalizedActor,
+    actor,
     summary: `Backup import færdig (restored=${restored}, conflicts=${conflicts})`,
   });
 
@@ -512,11 +610,21 @@ export async function saveTeamMember(teamId, member) {
   const payload = {
     ...member,
     uid: member.uid || member.id,
+    email: member.email || '',
+    displayName: member.displayName || member.name || '',
+    role: member.role || 'member',
     active: member.active !== false,
   };
   if (!payload.uid) throw new Error('Manglende bruger-id');
   const ref = sdk.doc(db, 'teams', resolvedTeamId, 'members', payload.uid);
-  await sdk.setDoc(ref, payload, { merge: true });
+  const existing = await sdk.getDoc(ref);
+  const now = sdk.serverTimestamp();
+  const prepared = {
+    ...payload,
+    addedAt: existing.exists() ? (existing.data()?.addedAt || now) : now,
+    addedByUid: existing.exists() ? (existing.data()?.addedByUid || actor.uid) : actor.uid,
+  };
+  await sdk.setDoc(ref, prepared, { merge: true });
   await sdk.setDoc(sdk.doc(db, 'users', payload.uid), {
     uid: payload.uid,
     teamId: resolvedTeamId,
@@ -531,7 +639,7 @@ export async function saveTeamMember(teamId, member) {
     actor,
     summary: `Medlem ${payload.uid} opdateret`,
   });
-  return payload;
+  return prepared;
 }
 
 export async function deactivateTeamMember(teamId, memberId) {

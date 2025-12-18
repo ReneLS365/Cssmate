@@ -5,23 +5,6 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function userProfile(uid) {
-      return get(/databases/$(database)/documents/users/$(uid));
-    }
-
-    function userData(uid) {
-      let profile = userProfile(uid);
-      return profile.data != null ? profile.data : {};
-    }
-
-    function userRole(uid) {
-      return userData(uid).role;
-    }
-
-    function userTeam(uid) {
-      return userData(uid).teamId;
-    }
-
     function memberDoc(teamId, uid) {
       return get(/databases/$(database)/documents/teams/$(teamId)/members/$(uid));
     }
@@ -35,90 +18,76 @@ service cloud.firestore {
       return memberDoc(teamId, uid).data != null && memberData(teamId, uid).active != false;
     }
 
-    function targetUserTeamId(uid) {
-      let requestedTeam = request.resource.data.teamId is string ? request.resource.data.teamId : null;
-      let existingTeam = resource.data != null && resource.data.teamId is string ? resource.data.teamId : null;
-      let profileTeam = userData(uid).teamId is string ? userData(uid).teamId : null;
-      return requestedTeam != null ? requestedTeam : (existingTeam != null ? existingTeam : profileTeam);
+    function isMember(teamId) {
+      return isSignedIn() && teamId is string && memberActive(teamId, request.auth.uid);
     }
 
-    function isAdminForTeam(teamId) {
-      return isSignedIn() && (
-        userRole(request.auth.uid) == 'admin' ||
-        (memberActive(teamId, request.auth.uid) && memberData(teamId, request.auth.uid).role == 'admin')
-      );
+    function isAdmin(teamId) {
+      return isMember(teamId) && memberData(teamId, request.auth.uid).role == 'admin';
     }
 
-    function isTeamMember(teamId) {
-      return isSignedIn() && (
-        (userTeam(request.auth.uid) is string && userTeam(request.auth.uid) == teamId) ||
-        memberActive(teamId, request.auth.uid)
-      );
+    function requestedTeamId() {
+      return request.resource != null && request.resource.data.teamId is string
+        ? request.resource.data.teamId
+        : (resource.data != null && resource.data.teamId is string ? resource.data.teamId : null);
     }
 
     function teamIdMatchesRequest(teamId) {
-      return request.resource.data.teamId == teamId;
+      return request.resource != null && request.resource.data.teamId == teamId;
     }
 
     function teamIdUnchanged(teamId) {
-      return (!('teamId' in resource.data) || resource.data.teamId == teamId) &&
-        (!('teamId' in request.resource.data) || request.resource.data.teamId == teamId);
+      return (resource.data == null || !('teamId' in resource.data) || resource.data.teamId == teamId) &&
+        (request.resource == null || !('teamId' in request.resource.data) || request.resource.data.teamId == teamId);
     }
 
-    function restrictedUserChange(uid) {
-      let current = userData(uid);
-      return ('role' in request.resource.data && request.resource.data.role != current.role) ||
-        ('teamId' in request.resource.data && request.resource.data.teamId != current.teamId);
-    }
-
-    function canAdministerUser(targetTeamId) {
-      return userRole(request.auth.uid) == 'admin' || (targetTeamId is string && isAdminForTeam(targetTeamId));
-    }
-
-    function canWriteUser(uid) {
-      let targetTeamId = targetUserTeamId(uid);
-      let canElevate = canAdministerUser(targetTeamId);
-      return (request.auth.uid == uid || canElevate) && (canElevate || !restrictedUserChange(uid));
-    }
-
-    function canEditCase(teamId) {
-      return isAdminForTeam(teamId) || (resource.data.createdBy is string && resource.data.createdBy == request.auth.uid);
+    function isCaseCreator(teamId) {
+      return resource.data != null && resource.data.teamId == teamId && resource.data.createdBy is string && request.auth.uid == resource.data.createdBy;
     }
 
     function hasAuditActor() {
-      return request.resource.data.actor is map
+      return request.resource != null
+        && request.resource.data.actor is map
         && request.resource.data.actor.uid is string
         && request.resource.data.actor.email is string
         && request.resource.data.actor.name is string;
     }
 
     match /users/{uid} {
-      allow read: if isSignedIn() && (request.auth.uid == uid || userRole(request.auth.uid) == 'admin');
-      allow create, update: if isSignedIn() && canWriteUser(uid);
+      allow read: if isSignedIn() && (request.auth.uid == uid || (requestedTeamId() is string && isAdmin(requestedTeamId())));
+      allow create, update: if isSignedIn() && (request.auth.uid == uid || (requestedTeamId() is string && isAdmin(requestedTeamId())));
       allow delete: if false;
     }
 
     match /teams/{teamId} {
+      allow create: if isSignedIn() && !exists(/databases/$(database)/documents/teams/$(teamId));
+      allow read: if isMember(teamId);
+      allow update, delete: if isAdmin(teamId);
+
       match /members/{userId} {
-        allow read: if isSignedIn() && (request.auth.uid == userId || isAdminForTeam(teamId));
-        allow write: if isAdminForTeam(teamId);
+        allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin(teamId));
+        allow create: if isSignedIn() && (
+          (userId == request.auth.uid && !exists(/databases/$(database)/documents/teams/$(teamId))) ||
+          isAdmin(teamId)
+        );
+        allow update, delete: if isAdmin(teamId);
       }
 
       match /cases/{caseId} {
-        allow read: if isTeamMember(teamId);
-        allow create: if isTeamMember(teamId) && teamIdMatchesRequest(teamId);
-        allow update: if isTeamMember(teamId) && teamIdUnchanged(teamId) && canEditCase(teamId);
-        allow delete: if isAdminForTeam(teamId);
+        allow read, list: if isMember(teamId);
+        allow create: if isMember(teamId) && teamIdMatchesRequest(teamId);
+        allow update: if isMember(teamId) && teamIdUnchanged(teamId) && (isAdmin(teamId) || isCaseCreator(teamId));
+        allow delete: if isMember(teamId) && (isAdmin(teamId) || isCaseCreator(teamId));
       }
 
       match /audit/{auditId} {
-        allow read: if isTeamMember(teamId);
-        allow create: if isTeamMember(teamId) && hasAuditActor() && teamIdMatchesRequest(teamId) && request.resource.data.timestamp is timestamp;
+        allow read: if isMember(teamId);
+        allow create: if isMember(teamId) && hasAuditActor() && teamIdMatchesRequest(teamId) && request.resource.data.timestamp is timestamp;
         allow update, delete: if false;
       }
 
       match /backups/{backupId} {
-        allow read, write: if isAdminForTeam(teamId);
+        allow read, write: if isAdmin(teamId);
       }
     }
   }

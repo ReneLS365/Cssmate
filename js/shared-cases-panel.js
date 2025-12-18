@@ -17,6 +17,9 @@ let membershipRole = '';
 let teamError = '';
 let roleStatus;
 let accessStatus;
+let statusBox;
+let authStatusBox;
+let adminNoticeBox;
 let errorBanner;
 let teamIdInput;
 let teamIdSaveButton;
@@ -84,6 +87,30 @@ function clearInlineError () {
   setInlineError('');
 }
 
+function hideLegacyStatus () {
+  [authStatusBox, roleStatus, accessStatus, adminNoticeBox].forEach(element => {
+    if (element) {
+      element.textContent = '';
+      element.hidden = true;
+    }
+  });
+}
+
+function renderStatusSummary (primaryMessage = '') {
+  if (!statusBox) statusBox = document.getElementById('sharedStatus');
+  const loginLabel = authState?.isAuthenticated ? `Login: ${getUserDisplay(authState.user)}` : 'Login: ikke logget ind';
+  const roleLabel = authState?.isAuthenticated ? `Rolle: ${membershipRole || (isAdminUser() ? 'admin' : 'medlem')}` : '';
+  const teamLabel = `Team: ${displayTeamId || 'ukendt'}`;
+  const accessLabel = teamError ? `Adgang: ${teamError}` : (teamId ? 'Adgang: OK' : 'Adgang: vælg team');
+  const summaryParts = [loginLabel, roleLabel, teamLabel, accessLabel].filter(Boolean);
+  const text = [primaryMessage, summaryParts.join(' · ')].filter(Boolean).join(' — ');
+  if (statusBox) {
+    statusBox.textContent = text;
+    statusBox.hidden = false;
+  }
+  hideLegacyStatus();
+}
+
 function isAdminUser () {
   if (membershipRole === 'admin') return true;
   return userIsAdmin(authState?.user);
@@ -99,7 +126,8 @@ async function syncTeamContext(preferredTeamId) {
   try {
     const desiredTeam = preferredTeamId || displayTeamId || getStoredTeamId() || DEFAULT_TEAM_SLUG;
     const resolved = await resolveTeamId(desiredTeam);
-    const membership = await getTeamMembership(resolved);
+    const membership = await getTeamMembership(resolved, { allowBootstrap: isAdminUser() });
+    if (!membership) throw new PermissionDeniedError('Du er ikke medlem af dette team.');
     teamId = resolved;
     displayTeamId = getDisplayTeamId(resolved);
     persistTeamId(displayTeamId);
@@ -122,35 +150,33 @@ function setPanelVisibility(isReady) {
 }
 
 function requireAuth() {
-  const status = document.getElementById('sharedAuthStatus');
   authState = getAuthContext();
   if (!authState?.isReady) {
-    if (status) status.textContent = authState?.message || 'Login initialiseres…';
+    renderStatusSummary(authState?.message || 'Login initialiseres…');
     setInlineError(authState?.message || '');
     return false;
   }
   if (!authState?.isAuthenticated) {
-    if (status) status.textContent = authState?.message || 'Log ind for at se delte sager.';
+    renderStatusSummary(authState?.message || 'Log ind for at se delte sager.');
     setInlineError('Log ind først for at se delte sager.');
     return false;
   }
   if (teamError) {
-    if (status) status.textContent = teamError;
+    renderStatusSummary(teamError);
     setInlineError(teamError);
     return false;
   }
   if (!teamId) {
-    if (status) status.textContent = 'Vælg et team for at fortsætte.';
+    renderStatusSummary('Vælg et team for at fortsætte.');
     setInlineError('Vælg et team for at fortsætte.');
     return false;
   }
-  if (status) status.textContent = `Logget ind som ${getUserDisplay(authState.user)}`;
+  renderStatusSummary(`Logget ind som ${getUserDisplay(authState.user)}`);
   clearInlineError();
   return true;
 }
 
 function updateAuthUi() {
-  const status = document.getElementById('sharedAuthStatus');
   const enabledProviders = getEnabledProviders();
   ['google', 'microsoft', 'apple', 'facebook'].forEach((providerId) => {
     const button = document.getElementById(`sharedLogin-${providerId}`);
@@ -161,16 +187,17 @@ function updateAuthUi() {
   const uidShort = authState?.user?.uid ? authState.user.uid.slice(0, 6) : '';
   const admin = isAdminUser();
   if (!authState?.isReady) {
-    if (status) status.textContent = authState?.message || 'Login initialiseres…';
-    if (roleStatus) roleStatus.textContent = 'Rolle: Ukendt';
+    renderStatusSummary(authState?.message || 'Login initialiseres…');
+    membershipRole = '';
   } else if (!authState?.isAuthenticated) {
-    if (status) status.textContent = authState?.message || 'Log ind for at se delte sager.';
-    if (roleStatus) roleStatus.textContent = 'Rolle: Ikke logget ind';
-  } else if (status) {
-    const providerLabel = providerName ? ` · Provider: ${providerName}` : '';
-    const uidLabel = uidShort ? ` · UID: ${uidShort}` : '';
-    status.textContent = `Logget ind som: ${getUserDisplay(authState.user)}${providerLabel}${uidLabel}`;
-    if (roleStatus) roleStatus.textContent = admin ? 'Rolle: Admin (whitelist)' : 'Rolle: Montør (read-only)';
+    renderStatusSummary(authState?.message || 'Log ind for at se delte sager.');
+    membershipRole = '';
+  } else {
+    const providerLabel = providerName ? `Provider: ${providerName}` : '';
+    const uidLabel = uidShort ? `UID: ${uidShort}` : '';
+    const message = [`Logget ind som: ${getUserDisplay(authState.user)}`, providerLabel, uidLabel].filter(Boolean).join(' · ');
+    renderStatusSummary(message || 'Logget ind');
+    membershipRole = admin ? 'admin' : membershipRole;
   }
   if (loginButtonsContainer) loginButtonsContainer.hidden = Boolean(authState?.isAuthenticated);
   if (logoutButton) logoutButton.hidden = !authState?.isAuthenticated;
@@ -421,9 +448,7 @@ function renderGroup(group, userId, onChange) {
 }
 
 function setSharedStatus(text) {
-  const status = document.getElementById('sharedStatus');
-  const label = displayTeamId || 'ukendt';
-  if (status) status.textContent = `Team: ${label} · ${text}`;
+  renderStatusSummary(text);
 }
 
 function setRefreshState(state = 'idle') {
@@ -433,20 +458,11 @@ function setRefreshState(state = 'idle') {
   refreshBtn.disabled = state === 'loading';
 }
 
-function updateSharedStatus() {
-  if (teamError) {
-    setSharedStatus(`Adgang: ${teamError}`);
-  } else if (!teamId) {
-    setSharedStatus('Adgang: Vælg team for at hente sager');
-  } else {
-    setSharedStatus('Adgang: OK');
-  }
-  const admin = isAdminUser();
-  if (accessStatus) {
-    const locked = !authState?.isAuthenticated ? 'Log ind for at vælge team.' : admin ? 'Team kan redigeres.' : 'Team låst (kun admin kan ændre).';
-    const accessLabel = teamError ? 'Adgang: Mangler rettigheder' : 'Adgang: OK';
-    accessStatus.textContent = `${accessLabel} · ${locked}`;
-  }
+function updateSharedStatus(message) {
+  const summaryMessage = message || (teamError
+    ? `Adgang: ${teamError}`
+    : (!teamId ? 'Adgang: Vælg team for at hente sager' : 'Adgang: OK'));
+  setSharedStatus(summaryMessage);
   updateTeamAccessState();
 }
 
@@ -481,9 +497,11 @@ function initTeamIdInput() {
 function bindBackupActions() {
   const exportBtn = document.getElementById('sharedBackupExport');
   const importInput = document.getElementById('sharedBackupImport');
-  const adminNotice = document.getElementById('sharedAdminNotice');
   const admin = membershipRole === 'admin' || userIsAdmin(authState?.user);
-  if (adminNotice) adminNotice.textContent = admin ? 'Rolle: Admin (whitelist) · Backup & import er aktiv.' : 'Rolle: Montør (read-only) · Backup kræver admin.';
+  if (adminNoticeBox) {
+    adminNoticeBox.textContent = '';
+    adminNoticeBox.hidden = true;
+  }
   if (exportBtn) exportBtn.disabled = !admin;
   if (importInput) importInput.disabled = !admin;
   if (!admin || backupActionsBound) return;
@@ -548,7 +566,11 @@ export function initSharedCasesPanel() {
   sharedCard = document.querySelector('#panel-delte-sager .shared-cases');
   roleStatus = document.getElementById('sharedRoleStatus');
   accessStatus = document.getElementById('sharedAccessStatus');
+  statusBox = document.getElementById('sharedStatus');
+  authStatusBox = document.getElementById('sharedAuthStatus');
+  adminNoticeBox = document.getElementById('sharedAdminNotice');
   errorBanner = document.getElementById('sharedInlineError');
+  hideLegacyStatus();
   setPanelVisibility(false);
   refreshBtn = document.getElementById('refreshSharedCases');
   const filters = ['sharedFilterJob', 'sharedFilterStatus', 'sharedFilterKind']
