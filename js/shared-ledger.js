@@ -2,14 +2,30 @@ import { getAuthContext, waitForAuthReady } from './shared-auth.js';
 import { getFirestoreDb, getFirestoreHelpers, toIsoString } from './shared-firestore.js';
 import { normalizeEmail } from '../src/auth/roles.js';
 import { updateTeamDebugState } from '../src/state/debug.js';
+import {
+  BOOTSTRAP_ADMIN_EMAIL,
+  DEFAULT_TEAM_ID,
+  DEFAULT_TEAM_SLUG,
+  TEAM_STORAGE_KEY,
+  formatTeamId,
+  getDisplayTeamId,
+  getStoredTeamId,
+  isBootstrapAdminEmail,
+  normalizeTeamId,
+  persistTeamId,
+  resolvePreferredTeamId,
+} from '../src/services/team-ids.js';
+import {
+  consumeInviteIfAny,
+  createTeamInvite,
+  ensureTeamForAdminIfMissing,
+  ensureUserDoc,
+  resolveMembership,
+  upsertUserTeamRoleCache,
+} from '../src/services/teams.js';
 
-const LEDGER_TEAM_PREFIX = 'sscaff-team-';
 const LEDGER_VERSION = 1;
 const BACKUP_SCHEMA_VERSION = 2;
-const DEFAULT_TEAM_SLUG = 'hulmose';
-const DEFAULT_TEAM_ID = `${LEDGER_TEAM_PREFIX}${DEFAULT_TEAM_SLUG}`;
-const TEAM_STORAGE_KEY = 'sscaff.teamId';
-const BOOTSTRAP_ADMIN_EMAIL = 'mr.lion1995@gmail.com';
 
 class PermissionDeniedError extends Error {
   constructor(message) {
@@ -60,58 +76,6 @@ async function ensureAuthUser() {
   }
   return auth.user;
 }
-export function normalizeTeamId(rawTeamId) {
-  const cleaned = (rawTeamId || '').toString().trim().toLowerCase();
-  const stripped = cleaned.replace(new RegExp(`^${LEDGER_TEAM_PREFIX}`, 'i'), '');
-  const normalized = stripped
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/-{2,}/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return normalized || DEFAULT_TEAM_SLUG;
-}
-
-export function formatTeamId(rawTeamId) {
-  const normalized = normalizeTeamId(rawTeamId);
-  return normalized.startsWith(LEDGER_TEAM_PREFIX)
-    ? normalized
-    : `${LEDGER_TEAM_PREFIX}${normalized}`;
-}
-
-export function getDisplayTeamId(rawTeamId) {
-  const normalized = (rawTeamId || '').toString().trim();
-  if (!normalized) return DEFAULT_TEAM_SLUG;
-  return normalizeTeamId(normalized.replace(new RegExp(`^${LEDGER_TEAM_PREFIX}`, 'i'), '')) || DEFAULT_TEAM_SLUG;
-}
-
-function getStoredTeamId() {
-  if (typeof window === 'undefined') return '';
-  try {
-    return window.localStorage?.getItem(TEAM_STORAGE_KEY) || '';
-  } catch (error) {
-    console.warn('Kunne ikke læse gemt team ID', error);
-    return '';
-  }
-}
-
-function persistTeamId(value) {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage?.setItem(TEAM_STORAGE_KEY, normalizeTeamId(value));
-  } catch (error) {
-    console.warn('Kunne ikke gemme team ID', error);
-  }
-}
-
-function resolvePreferredTeamId(rawTeamId) {
-  const stored = normalizeTeamId(rawTeamId || getStoredTeamId() || DEFAULT_TEAM_SLUG);
-  return formatTeamId(stored);
-}
-
-function isBootstrapAdmin(teamId, emailLower) {
-  const normalizedEmail = normalizeEmail(emailLower);
-  const targetTeam = formatTeamId(teamId || DEFAULT_TEAM_ID);
-  return normalizedEmail === normalizeEmail(BOOTSTRAP_ADMIN_EMAIL) && targetTeam === formatTeamId(DEFAULT_TEAM_ID);
-}
 
 function getTeamRef(sdk, db, teamId) {
   return sdk.doc(db, 'teams', teamId);
@@ -121,50 +85,21 @@ function getMemberRef(sdk, db, teamId, uid) {
   return sdk.doc(db, 'teams', teamId, 'members', uid);
 }
 
-function getInviteRef(sdk, db, teamId, emailLower) {
-  return sdk.doc(db, 'teams', teamId, 'invites', normalizeEmail(emailLower));
-}
-
-async function ensureTeamDocument(sdk, db, teamId, { allowCreate = false } = {}) {
+async function ensureTeamDocument(sdk, db, teamId, { allowCreate = false, ownerUid = null } = {}) {
   const ref = getTeamRef(sdk, db, teamId);
   const snapshot = await sdk.getDoc(ref);
   if (snapshot.exists()) return snapshot;
   if (!allowCreate) return null;
+  const now = sdk.serverTimestamp();
   const payload = {
     teamId,
     name: getDisplayTeamId(teamId),
-    createdAt: sdk.serverTimestamp(),
+    ownerUid: ownerUid || null,
+    createdAt: now,
+    updatedAt: now,
   };
   await sdk.setDoc(ref, payload, { merge: true });
   return sdk.getDoc(ref);
-}
-
-async function readInvite(sdk, db, teamId, emailLower) {
-  if (!emailLower) return null;
-  const ref = getInviteRef(sdk, db, teamId, emailLower);
-  const snapshot = await sdk.getDoc(ref);
-  if (!snapshot.exists()) return null;
-  return { ...(snapshot.data() || {}), id: snapshot.id };
-}
-
-async function ensureMemberDocument(sdk, db, teamId, user, role, { inviteData, allowBootstrap = false } = {}) {
-  const memberRef = getMemberRef(sdk, db, teamId, user.uid);
-  const existing = await sdk.getDoc(memberRef);
-  const now = sdk.serverTimestamp();
-  const prepared = {
-    uid: user.uid,
-    email: normalizeEmail(user.email),
-    displayName: user.displayName || user.name || '',
-    role: role === 'admin' ? 'admin' : 'member',
-    active: true,
-    createdAt: existing.exists() ? (existing.data()?.createdAt || now) : now,
-    updatedAt: now,
-    invitedByUid: inviteData?.invitedByUid || (allowBootstrap ? user.uid : undefined) || inviteData?.invitedBy,
-    invitedByEmail: inviteData?.invitedByEmail || (allowBootstrap ? normalizeEmail(user.email) : undefined) || inviteData?.invitedByEmail,
-  };
-  await sdk.setDoc(memberRef, prepared, { merge: true });
-  const updated = await sdk.getDoc(memberRef);
-  return { ...(updated.data() || {}), uid: user.uid, teamId };
 }
 
 async function guardTeamAccess(teamIdInput, user, { allowBootstrap = false } = {}) {
@@ -173,48 +108,58 @@ async function guardTeamAccess(teamIdInput, user, { allowBootstrap = false } = {
   const teamId = formatTeamId(teamIdInput || resolvePreferredTeamId(teamIdInput));
   const db = await getFirestoreDb();
   const sdk = await getFirestoreHelpers();
-  const canBootstrap = allowBootstrap && isBootstrapAdmin(teamId, emailLower);
+  const canBootstrap = allowBootstrap && isBootstrapAdminEmail(emailLower);
 
-  const inviteData = await readInvite(sdk, db, teamId, emailLower);
-  const memberRef = getMemberRef(sdk, db, teamId, user.uid);
-  const memberSnapshot = await sdk.getDoc(memberRef);
-  let memberData = memberSnapshot.exists() ? memberSnapshot.data() : null;
+  await ensureUserDoc(user);
 
-  if ((!inviteData || inviteData.active !== true) && !memberData && !canBootstrap) {
-    throw new InviteMissingError(teamId, emailLower, `Ingen adgang til team ${getDisplayTeamId(teamId)}. Kontakt admin.`);
+  let membership = await resolveMembership(user.uid);
+  let resolvedTeamId = membership?.teamId ? formatTeamId(membership.teamId) : teamId;
+
+  if (!membership && canBootstrap) {
+    membership = await ensureTeamForAdminIfMissing(user, resolvedTeamId);
   }
 
-  const teamDoc = await ensureTeamDocument(sdk, db, teamId, { allowCreate: canBootstrap });
-  if (!teamDoc && !canBootstrap) {
-    throw new InviteMissingError(teamId, emailLower, `Team '${getDisplayTeamId(teamId)}' findes ikke.`);
+  if (!membership) {
+    const inviteResult = await consumeInviteIfAny(emailLower, user.uid);
+    if (inviteResult?.membership) {
+      membership = { ...inviteResult.membership, inviteId: inviteResult.inviteId };
+      resolvedTeamId = formatTeamId(inviteResult.teamId || resolvedTeamId);
+    }
   }
 
-  if (canBootstrap && (!inviteData || inviteData.active !== true)) {
-    await sdk.setDoc(getInviteRef(sdk, db, teamId, emailLower), {
-      role: 'admin',
-      active: true,
-      invitedByUid: user.uid,
-      invitedByEmail: emailLower,
-      createdAt: sdk.serverTimestamp(),
-    }, { merge: true });
+  if (!membership) {
+    const memberSnapshot = await sdk.getDoc(getMemberRef(sdk, db, resolvedTeamId, user.uid));
+    if (memberSnapshot.exists()) {
+      membership = { ...(memberSnapshot.data() || {}), uid: user.uid, teamId: resolvedTeamId };
+    }
   }
 
-  const desiredRole = (inviteData?.role === 'admin' || canBootstrap) ? 'admin' : 'member';
-
-  if (!memberData) {
-    memberData = await ensureMemberDocument(sdk, db, teamId, user, desiredRole, { inviteData, allowBootstrap: canBootstrap });
+  if (!membership) {
+    throw new InviteMissingError(resolvedTeamId, emailLower, `Ingen adgang til team ${getDisplayTeamId(resolvedTeamId)}. Kontakt admin.`);
   }
 
-  if (memberData.active === false) {
-    throw new InactiveMemberError(teamId, user.uid, `Din adgang til team ${getDisplayTeamId(teamId)} er deaktiveret.`);
+  if (membership.active === false) {
+    throw new InactiveMemberError(resolvedTeamId, user.uid, `Din adgang til team ${getDisplayTeamId(resolvedTeamId)} er deaktiveret.`);
   }
 
-  const role = memberData.role === 'admin' || desiredRole === 'admin' ? 'admin' : 'member';
-  const membership = { ...memberData, teamId, uid: user.uid, role, email: normalizeEmail(memberData.email || emailLower) };
-  cacheTeamResolution(user.uid, teamId, membership);
-  persistTeamId(teamId);
-  updateTeamDebugState({ teamId, member: membership, teamResolved: true });
-  return { teamId, membership, invite: inviteData || null, role };
+  resolvedTeamId = formatTeamId(membership.teamId || resolvedTeamId);
+  const membershipRole = membership.role === 'owner' ? 'owner' : membership.role === 'admin' ? 'admin' : 'member';
+  const accessRole = membershipRole === 'owner' || membershipRole === 'admin' ? 'admin' : 'member';
+  const normalizedMembership = {
+    ...membership,
+    uid: membership.uid || user.uid,
+    teamId: resolvedTeamId,
+    email: membership.email || emailLower,
+    role: membershipRole,
+    active: membership.active !== false,
+  };
+
+  await ensureTeamDocument(sdk, db, resolvedTeamId, { allowCreate: canBootstrap, ownerUid: accessRole === 'admin' ? user.uid : null });
+  await upsertUserTeamRoleCache(user.uid, resolvedTeamId, normalizedMembership.role, { emailLower, displayName: user.displayName });
+  cacheTeamResolution(user.uid, resolvedTeamId, normalizedMembership);
+  persistTeamId(normalizeTeamId(resolvedTeamId));
+  updateTeamDebugState({ teamId: resolvedTeamId, member: normalizedMembership, teamResolved: true });
+  return { teamId: resolvedTeamId, membership: normalizedMembership, invite: null, role: accessRole };
 }
 
 function normalizeJobNumber(jobNumber) {
@@ -662,9 +607,11 @@ export async function saveTeamMember(teamId, member) {
     ...member,
     uid: member.uid || member.id,
     email: member.email || '',
+    emailLower: normalizeEmail(member.email),
     displayName: member.displayName || member.name || '',
     role: member.role || 'member',
     active: member.active !== false,
+    teamId: resolvedTeamId,
   };
   if (!payload.uid) throw new Error('Manglende bruger-id');
   const ref = sdk.doc(db, 'teams', resolvedTeamId, 'members', payload.uid);
@@ -714,35 +661,31 @@ export async function listTeamInvites(teamId) {
   const { teamId: resolvedTeamId } = await getTeamContext(teamId, { requireAdmin: true });
   const db = await getFirestoreDb();
   const sdk = await getFirestoreHelpers();
-  const snapshot = await sdk.getDocs(sdk.collection(db, 'teams', resolvedTeamId, 'invites'));
-  return snapshot.docs.map(doc => ({ email: doc.id, ...doc.data() }));
+  const invitesRef = sdk.collection(db, 'teamInvites');
+  const snapshot = await sdk.getDocs(sdk.query(invitesRef, sdk.where('teamId', '==', resolvedTeamId)));
+  return snapshot.docs.map(doc => {
+    const data = doc.data() || {}
+    const email = data.email || data.emailLower || ''
+    return { id: doc.id, inviteId: doc.id, email, emailLower: data.emailLower || email, ...data }
+  });
 }
 
 export async function saveTeamInvite(teamId, invite, actorOverride) {
   const { teamId: resolvedTeamId, actor } = await getTeamContext(teamId, { requireAdmin: true });
-  const db = await getFirestoreDb();
-  const sdk = await getFirestoreHelpers();
   const email = normalizeEmail(invite.email || invite.id || '');
   if (!email) throw new Error('Angiv email.');
   const role = invite.role === 'admin' ? 'admin' : 'member';
-  const ref = getInviteRef(sdk, db, resolvedTeamId, email);
-  const now = sdk.serverTimestamp();
-  const payload = {
-    role,
-    active: invite.active !== false,
+  const inviteRecord = await createTeamInvite(resolvedTeamId, email, role, {
     invitedByUid: actorOverride?.uid || actor.uid,
-    invitedByEmail: normalizeEmail(actorOverride?.email || actor.email || ''),
-    createdAt: invite.createdAt || now,
-    updatedAt: now,
-  };
-  await sdk.setDoc(ref, payload, { merge: true });
+    invitedByEmail: actorOverride?.email || actor.email || '',
+  });
   await recordAuditEvent(resolvedTeamId, {
     caseId: null,
     action: 'INVITE_SAVE',
     actor,
     summary: `Invite ${email} sat til ${role}`,
   });
-  return { email, ...payload };
+  return { ...inviteRecord, email: inviteRecord.emailLower || email };
 }
 
 export async function setMemberActive(teamId, memberId, active) {
@@ -760,4 +703,20 @@ export async function setMemberActive(teamId, memberId, active) {
   return true;
 }
 
-export { PermissionDeniedError, MembershipMissingError, InviteMissingError, InactiveMemberError, DEFAULT_TEAM_ID, DEFAULT_TEAM_SLUG, TEAM_STORAGE_KEY, getStoredTeamId, persistTeamId, guardTeamAccess, BOOTSTRAP_ADMIN_EMAIL };
+export {
+  PermissionDeniedError,
+  MembershipMissingError,
+  InviteMissingError,
+  InactiveMemberError,
+  DEFAULT_TEAM_ID,
+  DEFAULT_TEAM_SLUG,
+  TEAM_STORAGE_KEY,
+  getStoredTeamId,
+  persistTeamId,
+  guardTeamAccess,
+  BOOTSTRAP_ADMIN_EMAIL,
+  formatTeamId,
+  normalizeTeamId,
+  getDisplayTeamId,
+  resolvePreferredTeamId,
+};
