@@ -9,7 +9,7 @@ if (versionScriptUrl) {
 importScripts('/js/version.js')
 }
 
-const CACHE_VERSION = 'sscaff-v-20251219220812340' // bumped after teams/auth foundation updates
+const CACHE_VERSION = 'sscaff-v-20251220120000000' // bumped after team admin UI
 const CACHE_NAME = 'sscaff-' + CACHE_VERSION
 const PRECACHE_URLS = [
   '/',
@@ -31,6 +31,7 @@ const PRECACHE_URLS = [
   '/src/state/debug.js',
   '/src/state/user-store.js',
   '/src/ui/debug-overlay.js',
+  '/src/ui/team-admin-page.js',
   '/src/services/team-ids.js',
   '/src/services/teams.js',
   '/js/akkord-export.js',

@@ -23,6 +23,7 @@ import { initAuthGate } from './src/auth/auth-gate.js'
 import { getAuthIdentity } from './src/auth/auth-provider.js'
 import { updateCurrentView } from './src/state/debug.js'
 import { initDebugOverlay } from './src/ui/debug-overlay.js'
+import { initTeamAdminPage } from './src/ui/team-admin-page.js'
 import './boot-inline.js'
 
 if (typeof document !== 'undefined') {
@@ -221,7 +222,7 @@ async function ensureZipLibLazy () {
 const IOS_INSTALL_PROMPT_DISMISSED_KEY = 'csmate.iosInstallPromptDismissed'
 const TAB_STORAGE_KEY = 'csmate:lastTab'
 const LEGACY_TAB_STORAGE_KEYS = ['sscaff:lastTab', 'cssmate:lastActiveTab']
-const KNOWN_TAB_ID_ORDER = ['sagsinfo', 'optaelling', 'lon', 'historik', 'delte-sager', 'hjaelp']
+const KNOWN_TAB_ID_ORDER = ['sagsinfo', 'optaelling', 'lon', 'historik', 'delte-sager', 'team', 'hjaelp']
 const KNOWN_TAB_IDS = new Set(KNOWN_TAB_ID_ORDER)
 const DEFAULT_TAB_ID = KNOWN_TAB_ID_ORDER[0]
 const INSTALL_BUTTON_DISABLED_TOOLTIP = 'Tilføj via browsermenu på denne platform'
@@ -560,9 +561,9 @@ function refreshTabCollections() {
     return
   }
   tabButtons = Array.from(document.querySelectorAll('[role="tab"][data-tab-id]'))
-    .filter(button => isKnownTabId(button.dataset.tabId))
+    .filter(button => isKnownTabId(button.dataset.tabId) && !button.hasAttribute('data-tab-disabled') && !button.hidden)
   tabPanels = Array.from(document.querySelectorAll('[role="tabpanel"][data-tab-panel]'))
-    .filter(panel => isKnownTabId(panel.dataset.tabPanel))
+    .filter(panel => isKnownTabId(panel.dataset.tabPanel) && !panel.hasAttribute('data-tab-disabled'))
 }
 
 function ensureTabCollections() {
@@ -572,12 +573,29 @@ function ensureTabCollections() {
   return tabButtons.length && tabPanels.length
 }
 
+if (typeof window !== 'undefined') {
+  window.__cssmateRefreshTabs = refreshTabsAndValidate
+}
+
 function findFirstAvailableTabId() {
   const preferred = KNOWN_TAB_ID_ORDER.find(id => tabButtons.some(button => button.dataset.tabId === id))
   if (preferred) {
     return preferred
   }
   return tabButtons[0]?.dataset.tabId || DEFAULT_TAB_ID
+}
+
+function ensureActiveTabAvailable () {
+  if (!ensureTabCollections()) return
+  const hasActive = tabButtons.some(button => button.dataset.tabId === currentTabId)
+  if (!hasActive) {
+    setActiveTab(findFirstAvailableTabId(), { focus: false })
+  }
+}
+
+function refreshTabsAndValidate () {
+  refreshTabCollections()
+  ensureActiveTabAvailable()
 }
 
 function setActiveTab(tabId, { focus = false } = {}) {
@@ -5450,6 +5468,7 @@ async function initApp() {
       setupGuideModal();
       setupAdminControls();
       setupA9Integration();
+      initTeamAdminPage();
     });
 
     runWhenIdle(() => initSharedCasesPanel());
