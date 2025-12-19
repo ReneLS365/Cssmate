@@ -200,34 +200,27 @@ export async function consumeInviteIfAny (authUserEmailLower, authUid) {
     .map(doc => ({ id: doc.id, ...(doc.data() || {}) }))
     .filter(invite => invite.active !== false && !invite.usedAt)
   if (!invites.length) return null
-  const invite = invites[0]
-  const teamId = formatTeamId(invite.teamId || DEFAULT_TEAM_ID)
-  const normalizedInvite = await createTeamInvite(teamId, emailLower, invite.role, {
-    invitedByUid: invite.invitedByUid,
-    invitedByEmail: invite.invitedByEmail,
-  })
-  const inviteId = normalizedInvite?.inviteId || normalizedInvite?.id || invite.id
+  const firstInvite = invites[0]
+  const fallbackTeamId = formatTeamId(firstInvite.teamId || DEFAULT_TEAM_ID)
+  const deterministicInviteId = `${fallbackTeamId}__${emailLower}`
+  const primaryInvite = invites.find(invite => invite.id === deterministicInviteId) || firstInvite
+  const teamId = formatTeamId(primaryInvite.teamId || fallbackTeamId)
+  const inviteId = primaryInvite.id
+  const inviteDocIds = Array.from(new Set([inviteId, ...invites.map(invite => invite.id)]))
   const memberRef = sdk.doc(db, 'teams', teamId, 'members', authUid)
   const memberSnapshot = await sdk.getDoc(memberRef)
   const memberPayload = buildMemberPayload({
     sdk,
-    authUser: { uid: authUid, email: emailLower, displayName: invite.displayName || '' },
+    authUser: { uid: authUid, email: emailLower, displayName: primaryInvite.displayName || '' },
     teamId,
-    role: normalizeRole(invite.role),
+    role: normalizeRole(primaryInvite.role),
     existing: memberSnapshot.exists() ? memberSnapshot.data() : null,
   })
   memberPayload.inviteId = inviteId
   await sdk.setDoc(memberRef, memberPayload, { merge: true })
   await upsertUserTeamRoleCache(authUid, teamId, memberPayload.role, { emailLower })
   const usedPayload = { usedAt: sdk.serverTimestamp(), usedByUid: authUid, active: false, updatedAt: sdk.serverTimestamp() }
-  await sdk.setDoc(
-    sdk.doc(db, 'teamInvites', inviteId),
-    usedPayload,
-    { merge: true }
-  )
-  if (inviteId !== invite.id) {
-    await sdk.setDoc(sdk.doc(db, 'teamInvites', invite.id), usedPayload, { merge: true })
-  }
+  await Promise.all(inviteDocIds.map(id => sdk.setDoc(sdk.doc(db, 'teamInvites', id), usedPayload, { merge: true })))
   return { teamId, role: memberPayload.role, inviteId, membership: { ...memberPayload, inviteId } }
 }
 
