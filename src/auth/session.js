@@ -14,6 +14,7 @@ import {
 } from '../../js/shared-ledger.js'
 import { normalizeEmail } from './roles.js'
 import { updateSessionDebugState } from '../state/debug.js'
+import { markUserLoading, resetUserState, setUserLoadedState } from '../state/user-store.js'
 
 const SESSION_STATUS = {
   SIGNED_OUT: 'signedOut',
@@ -145,12 +146,13 @@ function canBootstrap (user, teamId) {
 async function evaluateAccess ({ allowBootstrap = false } = {}) {
   const auth = getAuthContext()
   if (!auth?.isAuthenticated || !auth.user) {
+    resetUserState()
     setState(buildState({ status: SESSION_STATUS.SIGNED_OUT, message: 'Log ind for at fortsætte' }))
     return null
   }
 
   const formattedTeam = formatTeamId(preferredTeamSlug)
-  const displayTeamId = getDisplayTeamId(formattedTeam)
+  let displayTeamId = getDisplayTeamId(formattedTeam)
 
   setState({
     status: SESSION_STATUS.SIGNING_IN,
@@ -163,6 +165,7 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
     memberExists: false,
     memberActive: null,
   })
+  markUserLoading()
 
   if (accessInFlight) return accessInFlight
 
@@ -171,8 +174,19 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
       const access = await guardTeamAccess(formattedTeam, auth.user, { allowBootstrap })
       const isAdmin = access.role === 'admin'
       const membership = access.membership
+      const resolvedTeamId = formatTeamId(access.teamId || formattedTeam)
+      preferredTeamSlug = normalizeTeamId(resolvedTeamId)
+      persistTeamId(preferredTeamSlug)
+      displayTeamId = getDisplayTeamId(resolvedTeamId)
       teamLockedFlag = !isAdmin
       persistTeamLock(teamLockedFlag)
+      setUserLoadedState({
+        uid: auth.user.uid || null,
+        email: auth.user.email || '',
+        displayName: auth.user.displayName || auth.user.name || '',
+        teamId: resolvedTeamId,
+        role: membership?.role || access.role,
+      })
       return setState({
         status: isAdmin ? SESSION_STATUS.ADMIN : SESSION_STATUS.MEMBER,
         role: access.role,
@@ -181,7 +195,7 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
         error: null,
         message: '',
         hasAccess: true,
-        teamId: formattedTeam,
+        teamId: resolvedTeamId,
         displayTeamId,
         canChangeTeam: isAdmin,
         teamLocked: teamLockedFlag,
@@ -197,6 +211,13 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
         || error instanceof InactiveMemberError
       const status = noAccessError ? SESSION_STATUS.NO_ACCESS : SESSION_STATUS.ERROR
       const inactiveMember = error instanceof InactiveMemberError
+      setUserLoadedState({
+        uid: auth.user.uid || null,
+        email: auth.user.email || '',
+        displayName: auth.user.displayName || auth.user.name || '',
+        teamId: '',
+        role: '',
+      })
       setState({
         status,
         role: null,
@@ -231,6 +252,7 @@ function handleAuthChange (context) {
   const authReady = Boolean(context?.isReady)
 
   if (!context?.isReady) {
+    markUserLoading()
     setState(buildState({
       status: SESSION_STATUS.SIGNING_IN,
       message: context?.message || 'Login initialiseres…',
@@ -245,6 +267,7 @@ function handleAuthChange (context) {
   }
 
   if (!context.isAuthenticated) {
+    resetUserState()
     setState(buildState({
       status: SESSION_STATUS.SIGNED_OUT,
       message: context?.message || 'Log ind for at fortsætte',
@@ -271,7 +294,17 @@ function handleAuthChange (context) {
     memberActive: null,
   })
 
-  if (requiresVerification) return baseState
+  if (requiresVerification) {
+    setUserLoadedState({
+      uid: context.user?.uid || null,
+      email: context.user?.email || '',
+      displayName: context.user?.displayName || context.user?.name || '',
+      teamId: '',
+      role: '',
+    })
+    return baseState
+  }
+  markUserLoading()
   return evaluateAccess()
 }
 
