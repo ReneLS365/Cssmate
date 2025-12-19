@@ -5,6 +5,7 @@ import { buildExportModel } from './export-model.js';
 import { buildExportFileBaseName, buildJobSnapshot } from './job-snapshot.js';
 import { appendHistoryEntry } from './storageHistory.js';
 import { publishSharedCase, resolveTeamId } from './shared-ledger.js';
+import { waitForAccess, getState as getSessionState } from '../src/auth/session.js';
 
 function isDebugExportEnabled() {
   if (typeof window === 'undefined') return false;
@@ -141,6 +142,11 @@ export async function exportAkkordJsonAndPdf(options = {}) {
   const exportErrors = [];
   try {
     notifyAction('Publicerer sag til fælles ledger…', 'info');
+    try {
+      await waitForAccess();
+    } catch (error) {
+      throw new Error(error?.message || 'Ingen adgang til delt team.');
+    }
     const context = buildExportContext();
     context.historySaved = Boolean(saveExportHistory(context));
     const jsonResult = (() => {
@@ -160,7 +166,7 @@ export async function exportAkkordJsonAndPdf(options = {}) {
       throw exportErrors[0] || new Error('Eksport mislykkedes');
     }
 
-    const resolvedTeamId = await resolveTeamId(typeof window !== 'undefined' ? window.TEAM_ID : undefined);
+    const resolvedTeamId = getSessionState()?.teamId || resolveTeamId(typeof window !== 'undefined' ? window.TEAM_ID : undefined);
 
     await publishSharedCaseFn({
       teamId: resolvedTeamId,

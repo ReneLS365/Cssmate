@@ -1,11 +1,14 @@
-import { getAuthContext, waitForAuthReady, userIsAdmin } from './shared-auth.js';
+import { getAuthContext, waitForAuthReady } from './shared-auth.js';
 import { getFirestoreDb, getFirestoreHelpers, toIsoString } from './shared-firestore.js';
+import { normalizeEmail } from '../src/auth/roles.js';
 
 const LEDGER_TEAM_PREFIX = 'sscaff-team-';
 const LEDGER_VERSION = 1;
 const BACKUP_SCHEMA_VERSION = 2;
 const DEFAULT_TEAM_SLUG = 'hulmose';
 const DEFAULT_TEAM_ID = `${LEDGER_TEAM_PREFIX}${DEFAULT_TEAM_SLUG}`;
+const TEAM_STORAGE_KEY = 'sscaff.teamId';
+const BOOTSTRAP_ADMIN_EMAIL = 'mr.lion1995@gmail.com';
 
 class PermissionDeniedError extends Error {
   constructor(message) {
@@ -24,6 +27,24 @@ class MembershipMissingError extends PermissionDeniedError {
   }
 }
 
+class InviteMissingError extends PermissionDeniedError {
+  constructor(teamId, email, message) {
+    super(message || 'Ingen aktiv invitation fundet.');
+    this.code = 'invite-missing';
+    this.teamId = teamId;
+    this.email = email;
+  }
+}
+
+class InactiveMemberError extends PermissionDeniedError {
+  constructor(teamId, uid, message) {
+    super(message || 'Medlemmet er deaktiveret.');
+    this.code = 'member-inactive';
+    this.teamId = teamId;
+    this.uid = uid;
+  }
+}
+
 const teamCache = {
   uid: null,
   teamId: null,
@@ -38,26 +59,6 @@ async function ensureAuthUser() {
   }
   return auth.user;
 }
-
-async function fetchUserProfile(uid) {
-  if (!uid) return null;
-  const db = await getFirestoreDb();
-  const sdk = await getFirestoreHelpers();
-  const ref = sdk.doc(db, 'users', uid);
-  const snapshot = await sdk.getDoc(ref);
-  if (!snapshot.exists()) return null;
-  const data = snapshot.data() || {};
-  if (data.active === false) return null;
-  return {
-    teamId: data.teamId ? formatTeamId(data.teamId) : null,
-    uid,
-    role: data.role || 'member',
-    email: data.email || '',
-    displayName: data.displayName || data.name || '',
-    active: data.active !== false,
-  };
-}
-
 export function normalizeTeamId(rawTeamId) {
   const cleaned = (rawTeamId || '').toString().trim().toLowerCase();
   const stripped = cleaned.replace(new RegExp(`^${LEDGER_TEAM_PREFIX}`, 'i'), '');
@@ -79,6 +80,139 @@ export function getDisplayTeamId(rawTeamId) {
   const normalized = (rawTeamId || '').toString().trim();
   if (!normalized) return DEFAULT_TEAM_SLUG;
   return normalizeTeamId(normalized.replace(new RegExp(`^${LEDGER_TEAM_PREFIX}`, 'i'), '')) || DEFAULT_TEAM_SLUG;
+}
+
+function getStoredTeamId() {
+  if (typeof window === 'undefined') return '';
+  try {
+    return window.localStorage?.getItem(TEAM_STORAGE_KEY) || '';
+  } catch (error) {
+    console.warn('Kunne ikke læse gemt team ID', error);
+    return '';
+  }
+}
+
+function persistTeamId(value) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage?.setItem(TEAM_STORAGE_KEY, normalizeTeamId(value));
+  } catch (error) {
+    console.warn('Kunne ikke gemme team ID', error);
+  }
+}
+
+function resolvePreferredTeamId(rawTeamId) {
+  const stored = normalizeTeamId(rawTeamId || getStoredTeamId() || DEFAULT_TEAM_SLUG);
+  return formatTeamId(stored);
+}
+
+function isBootstrapAdmin(teamId, emailLower) {
+  const normalizedEmail = normalizeEmail(emailLower);
+  const targetTeam = formatTeamId(teamId || DEFAULT_TEAM_ID);
+  return normalizedEmail === normalizeEmail(BOOTSTRAP_ADMIN_EMAIL) && targetTeam === formatTeamId(DEFAULT_TEAM_ID);
+}
+
+function getTeamRef(sdk, db, teamId) {
+  return sdk.doc(db, 'teams', teamId);
+}
+
+function getMemberRef(sdk, db, teamId, uid) {
+  return sdk.doc(db, 'teams', teamId, 'members', uid);
+}
+
+function getInviteRef(sdk, db, teamId, emailLower) {
+  return sdk.doc(db, 'teams', teamId, 'invites', normalizeEmail(emailLower));
+}
+
+async function ensureTeamDocument(sdk, db, teamId, { allowCreate = false } = {}) {
+  const ref = getTeamRef(sdk, db, teamId);
+  const snapshot = await sdk.getDoc(ref);
+  if (snapshot.exists()) return snapshot;
+  if (!allowCreate) return null;
+  const payload = {
+    teamId,
+    name: getDisplayTeamId(teamId),
+    createdAt: sdk.serverTimestamp(),
+  };
+  await sdk.setDoc(ref, payload, { merge: true });
+  return sdk.getDoc(ref);
+}
+
+async function readInvite(sdk, db, teamId, emailLower) {
+  if (!emailLower) return null;
+  const ref = getInviteRef(sdk, db, teamId, emailLower);
+  const snapshot = await sdk.getDoc(ref);
+  if (!snapshot.exists()) return null;
+  return { ...(snapshot.data() || {}), id: snapshot.id };
+}
+
+async function ensureMemberDocument(sdk, db, teamId, user, role, { inviteData, allowBootstrap = false } = {}) {
+  const memberRef = getMemberRef(sdk, db, teamId, user.uid);
+  const existing = await sdk.getDoc(memberRef);
+  const now = sdk.serverTimestamp();
+  const prepared = {
+    uid: user.uid,
+    email: normalizeEmail(user.email),
+    displayName: user.displayName || user.name || '',
+    role: role === 'admin' ? 'admin' : 'member',
+    active: true,
+    createdAt: existing.exists() ? (existing.data()?.createdAt || now) : now,
+    updatedAt: now,
+    invitedByUid: inviteData?.invitedByUid || (allowBootstrap ? user.uid : undefined) || inviteData?.invitedBy,
+    invitedByEmail: inviteData?.invitedByEmail || (allowBootstrap ? normalizeEmail(user.email) : undefined) || inviteData?.invitedByEmail,
+  };
+  await sdk.setDoc(memberRef, prepared, { merge: true });
+  const updated = await sdk.getDoc(memberRef);
+  return { ...(updated.data() || {}), uid: user.uid, teamId };
+}
+
+async function guardTeamAccess(teamIdInput, user, { allowBootstrap = false } = {}) {
+  if (!user?.uid) throw new PermissionDeniedError('Log ind for at fortsætte.');
+  const emailLower = normalizeEmail(user.email);
+  const teamId = formatTeamId(teamIdInput || resolvePreferredTeamId(teamIdInput));
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const canBootstrap = allowBootstrap && isBootstrapAdmin(teamId, emailLower);
+
+  const inviteData = await readInvite(sdk, db, teamId, emailLower);
+  const memberRef = getMemberRef(sdk, db, teamId, user.uid);
+  const memberSnapshot = await sdk.getDoc(memberRef);
+  let memberData = memberSnapshot.exists() ? memberSnapshot.data() : null;
+
+  if ((!inviteData || inviteData.active !== true) && !memberData && !canBootstrap) {
+    throw new InviteMissingError(teamId, emailLower, `Ingen adgang til team ${getDisplayTeamId(teamId)}. Kontakt admin.`);
+  }
+
+  const teamDoc = await ensureTeamDocument(sdk, db, teamId, { allowCreate: canBootstrap });
+  if (!teamDoc && !canBootstrap) {
+    throw new InviteMissingError(teamId, emailLower, `Team '${getDisplayTeamId(teamId)}' findes ikke.`);
+  }
+
+  if (canBootstrap && (!inviteData || inviteData.active !== true)) {
+    await sdk.setDoc(getInviteRef(sdk, db, teamId, emailLower), {
+      role: 'admin',
+      active: true,
+      invitedByUid: user.uid,
+      invitedByEmail: emailLower,
+      createdAt: sdk.serverTimestamp(),
+    }, { merge: true });
+  }
+
+  const desiredRole = (inviteData?.role === 'admin' || canBootstrap) ? 'admin' : 'member';
+
+  if (!memberData) {
+    memberData = await ensureMemberDocument(sdk, db, teamId, user, desiredRole, { inviteData, allowBootstrap: canBootstrap });
+  }
+
+  if (memberData.active === false) {
+    throw new InactiveMemberError(teamId, user.uid, `Din adgang til team ${getDisplayTeamId(teamId)} er deaktiveret.`);
+  }
+
+  const role = memberData.role === 'admin' || desiredRole === 'admin' ? 'admin' : 'member';
+  const membership = { ...memberData, teamId, uid: user.uid, role, email: normalizeEmail(memberData.email || emailLower) };
+  cacheTeamResolution(user.uid, teamId, membership);
+  persistTeamId(teamId);
+  return { teamId, membership, invite: inviteData || null, role };
 }
 
 function normalizeJobNumber(jobNumber) {
@@ -136,54 +270,6 @@ function getCachedTeam(uid) {
   return null;
 }
 
-async function fetchMembership(teamId, uid) {
-  const profile = await fetchUserProfile(uid);
-  const resolvedTeam = teamId ? formatTeamId(teamId) : profile?.teamId;
-  if (profile && (!resolvedTeam || profile.teamId === resolvedTeam)) {
-    return {
-      ...profile,
-      teamId: profile.teamId || resolvedTeam,
-    };
-  }
-
-  const db = await getFirestoreDb();
-  const sdk = await getFirestoreHelpers();
-  const ref = sdk.doc(db, 'teams', resolvedTeam || teamId, 'members', uid);
-  const snapshot = await sdk.getDoc(ref);
-  if (!snapshot.exists()) return null;
-  const data = snapshot.data() || {};
-  if (data.active === false) return null;
-  return {
-    teamId: resolvedTeam || teamId,
-    uid: data.uid || uid || snapshot.id,
-    role: data.role || 'member',
-    email: data.email || '',
-    displayName: data.displayName || data.name || '',
-  };
-}
-
-async function fetchMemberships(uid) {
-  const profile = await fetchUserProfile(uid);
-  if (profile?.teamId) {
-    return [{ ...profile, teamId: profile.teamId }];
-  }
-
-  const db = await getFirestoreDb();
-  const sdk = await getFirestoreHelpers();
-  const query = sdk.query(sdk.collectionGroup(db, 'members'), sdk.where('uid', '==', uid));
-  const snapshot = await sdk.getDocs(query);
-  return snapshot.docs
-    .map(doc => ({
-      teamId: doc.ref?.parent?.parent?.id ? formatTeamId(doc.ref.parent.parent.id) : null,
-      uid,
-      role: doc.data()?.role || 'member',
-      email: doc.data()?.email || '',
-      displayName: doc.data()?.displayName || doc.data()?.name || '',
-      active: doc.data()?.active !== false,
-    }))
-    .filter(entry => Boolean(entry.teamId) && entry.active);
-}
-
 function normalizeActor(actor, membership) {
   const base = actor || {};
   return {
@@ -196,107 +282,35 @@ function normalizeActor(actor, membership) {
   };
 }
 
-async function resolveMembership(teamId, uid) {
-  const cached = getCachedTeam(uid);
-  if (cached?.teamId === teamId && cached.membership) return cached.membership;
-  return fetchMembership(teamId, uid);
-}
-
-export async function resolveTeamId(rawTeamId) {
-  const provided = rawTeamId
-    || (typeof window !== 'undefined' ? window.TEAM_ID : null);
-  const normalizedProvided = provided ? formatTeamId(provided) : null;
-
-  const auth = getAuthContext();
-  const uid = auth?.user?.uid;
-
-  if (auth?.isAuthenticated && uid) {
-    if (normalizedProvided) return normalizedProvided;
-    const cached = getCachedTeam(uid);
-    if (cached?.teamId) return cached.teamId;
-
-    const memberships = await fetchMemberships(uid);
-    const first = memberships[0];
-    if (first?.teamId) {
-      cacheTeamResolution(uid, first.teamId, first);
-      return first.teamId;
-    }
-    throw new PermissionDeniedError('Ingen team-tilknytning fundet for din bruger.');
-  }
-
-  if (normalizedProvided) return normalizedProvided;
-  return formatTeamId(DEFAULT_TEAM_ID);
+export function resolveTeamId(rawTeamId) {
+  const provided = rawTeamId || (typeof window !== 'undefined' ? window.TEAM_ID : null);
+  if (provided) return formatTeamId(provided);
+  const cached = getCachedTeam(getAuthContext()?.user?.uid || null);
+  if (cached?.teamId) return cached.teamId;
+  return resolvePreferredTeamId(provided);
 }
 
 export async function getTeamMembership(teamId, { allowBootstrap = false } = {}) {
   const user = await ensureAuthUser();
-  const resolvedTeamId = formatTeamId(teamId || (await resolveTeamId()));
-  let membership = await resolveMembership(resolvedTeamId, user.uid);
-  if (!membership) {
-    const memberships = await fetchMemberships(user.uid);
-    membership = memberships.find(entry => entry.teamId === resolvedTeamId) || null;
-  }
-  if (!membership && allowBootstrap) {
-    membership = await ensureMembership(resolvedTeamId, user, { allowBootstrap: true });
-  }
-  if (membership) {
-    cacheTeamResolution(user.uid, resolvedTeamId, membership);
-    return { ...membership, teamId: resolvedTeamId };
+  const resolvedTeamId = formatTeamId(teamId || resolveTeamId(teamId));
+  const access = await guardTeamAccess(resolvedTeamId, user, { allowBootstrap });
+  if (access?.membership) {
+    cacheTeamResolution(user.uid, resolvedTeamId, access.membership);
+    return { ...access.membership, teamId: resolvedTeamId, role: access.role, invite: access.invite || null };
   }
   throw new MembershipMissingError(resolvedTeamId, user.uid, 'Medlem ikke fundet for valgt team.');
 }
 
-async function ensureMembership(teamId, actor, { allowBootstrap = false } = {}) {
-  if (!actor?.uid) return null;
-  const existing = await fetchMembership(teamId, actor.uid);
-  if (existing) return existing;
-  if (!allowBootstrap || !userIsAdmin(actor)) return null;
-
-  const db = await getFirestoreDb();
-  const sdk = await getFirestoreHelpers();
-  const teamRef = sdk.doc(db, 'teams', teamId);
-  const teamSnapshot = await sdk.getDoc(teamRef);
-  if (teamSnapshot.exists()) return null;
-
-  const memberRef = sdk.doc(db, 'teams', teamId, 'members', actor.uid);
-  const payload = {
-    uid: actor.uid,
-    role: 'admin',
-    email: actor.email || '',
-    displayName: actor.displayName || actor.name || '',
-    addedAt: sdk.serverTimestamp(),
-    addedByUid: actor.uid,
-    active: true,
-  };
-  await sdk.setDoc(memberRef, payload, { merge: true });
-  await sdk.setDoc(teamRef, {
-    teamId,
-    createdAt: sdk.serverTimestamp(),
-    createdByUid: actor.uid,
-    createdByEmail: actor.email || '',
-    createdByDisplayName: actor.displayName || actor.name || '',
-  });
-  await sdk.setDoc(sdk.doc(db, 'users', actor.uid), {
-    uid: actor.uid,
-    teamId,
-    role: 'admin',
-    email: payload.email,
-    displayName: payload.displayName,
-    active: true,
-  }, { merge: true });
-  return { ...payload, teamId };
-}
-
-async function getTeamContext(teamId, { allowBootstrap = false } = {}) {
+async function getTeamContext(teamId, { allowBootstrap = false, requireAdmin = false } = {}) {
   const user = await ensureAuthUser();
-  const resolvedTeamId = formatTeamId(teamId || (await resolveTeamId()));
-  let membership = await resolveMembership(resolvedTeamId, user.uid);
-  if (!membership && allowBootstrap) {
-    membership = await ensureMembership(resolvedTeamId, user, { allowBootstrap: true });
+  const resolvedTeamId = formatTeamId(teamId || resolveTeamId(teamId));
+  const access = await guardTeamAccess(resolvedTeamId, user, { allowBootstrap });
+  if (!access?.membership) throw new PermissionDeniedError('Du er ikke medlem af dette team.');
+  if (requireAdmin && access.role !== 'admin') {
+    throw new PermissionDeniedError('Kun admin kan udføre denne handling.');
   }
-  if (!membership) throw new PermissionDeniedError('Du er ikke medlem af dette team.');
-  cacheTeamResolution(user.uid, resolvedTeamId, membership);
-  return { teamId: resolvedTeamId, membership, actor: normalizeActor(user, membership) };
+  cacheTeamResolution(user.uid, resolvedTeamId, access.membership);
+  return { teamId: resolvedTeamId, membership: access.membership, actor: normalizeActor(user, access.membership), role: access.role, invite: access.invite };
 }
 
 function normalizeCaseDoc(doc, { includeDeleted = false } = {}) {
@@ -639,8 +653,7 @@ export async function hardDeleteCase(teamId, caseId) {
 }
 
 export async function saveTeamMember(teamId, member) {
-  const { teamId: resolvedTeamId, membership, actor } = await getTeamContext(teamId);
-  if (membership.role !== 'admin') throw new PermissionDeniedError('Kun admin kan ændre medlemmer.');
+  const { teamId: resolvedTeamId, actor } = await getTeamContext(teamId, { requireAdmin: true });
   const db = await getFirestoreDb();
   const sdk = await getFirestoreHelpers();
   const payload = {
@@ -657,18 +670,12 @@ export async function saveTeamMember(teamId, member) {
   const now = sdk.serverTimestamp();
   const prepared = {
     ...payload,
+    createdAt: existing.exists() ? (existing.data()?.createdAt || existing.data()?.addedAt || now) : now,
     addedAt: existing.exists() ? (existing.data()?.addedAt || now) : now,
     addedByUid: existing.exists() ? (existing.data()?.addedByUid || actor.uid) : actor.uid,
+    updatedAt: now,
   };
   await sdk.setDoc(ref, prepared, { merge: true });
-  await sdk.setDoc(sdk.doc(db, 'users', payload.uid), {
-    uid: payload.uid,
-    teamId: resolvedTeamId,
-    role: payload.role || 'member',
-    email: payload.email || '',
-    displayName: payload.displayName || payload.name || '',
-    active: payload.active !== false,
-  }, { merge: true });
   await recordAuditEvent(resolvedTeamId, {
     caseId: null,
     action: 'MEMBER_UPDATE',
@@ -679,13 +686,11 @@ export async function saveTeamMember(teamId, member) {
 }
 
 export async function deactivateTeamMember(teamId, memberId) {
-  const { teamId: resolvedTeamId, membership, actor } = await getTeamContext(teamId);
-  if (membership.role !== 'admin') throw new PermissionDeniedError('Kun admin kan ændre medlemmer.');
+  const { teamId: resolvedTeamId, actor } = await getTeamContext(teamId, { requireAdmin: true });
   const db = await getFirestoreDb();
   const sdk = await getFirestoreHelpers();
   const ref = sdk.doc(db, 'teams', resolvedTeamId, 'members', memberId);
-  await sdk.setDoc(ref, { active: false }, { merge: true });
-  await sdk.setDoc(sdk.doc(db, 'users', memberId), { active: false, teamId: resolvedTeamId }, { merge: true });
+  await sdk.setDoc(ref, { active: false, updatedAt: sdk.serverTimestamp() }, { merge: true });
   await recordAuditEvent(resolvedTeamId, {
     caseId: null,
     action: 'MEMBER_DEACTIVATE',
@@ -695,4 +700,62 @@ export async function deactivateTeamMember(teamId, memberId) {
   return true;
 }
 
-export { PermissionDeniedError, MembershipMissingError, DEFAULT_TEAM_ID, DEFAULT_TEAM_SLUG };
+export async function listTeamMembers(teamId) {
+  const { teamId: resolvedTeamId } = await getTeamContext(teamId, { requireAdmin: true });
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const snapshot = await sdk.getDocs(sdk.collection(db, 'teams', resolvedTeamId, 'members'));
+  return snapshot.docs.map(doc => ({ id: doc.id, uid: doc.id, ...doc.data() }));
+}
+
+export async function listTeamInvites(teamId) {
+  const { teamId: resolvedTeamId } = await getTeamContext(teamId, { requireAdmin: true });
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const snapshot = await sdk.getDocs(sdk.collection(db, 'teams', resolvedTeamId, 'invites'));
+  return snapshot.docs.map(doc => ({ email: doc.id, ...doc.data() }));
+}
+
+export async function saveTeamInvite(teamId, invite, actorOverride) {
+  const { teamId: resolvedTeamId, actor } = await getTeamContext(teamId, { requireAdmin: true });
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const email = normalizeEmail(invite.email || invite.id || '');
+  if (!email) throw new Error('Angiv email.');
+  const role = invite.role === 'admin' ? 'admin' : 'member';
+  const ref = getInviteRef(sdk, db, resolvedTeamId, email);
+  const now = sdk.serverTimestamp();
+  const payload = {
+    role,
+    active: invite.active !== false,
+    invitedByUid: actorOverride?.uid || actor.uid,
+    invitedByEmail: normalizeEmail(actorOverride?.email || actor.email || ''),
+    createdAt: invite.createdAt || now,
+    updatedAt: now,
+  };
+  await sdk.setDoc(ref, payload, { merge: true });
+  await recordAuditEvent(resolvedTeamId, {
+    caseId: null,
+    action: 'INVITE_SAVE',
+    actor,
+    summary: `Invite ${email} sat til ${role}`,
+  });
+  return { email, ...payload };
+}
+
+export async function setMemberActive(teamId, memberId, active) {
+  const { teamId: resolvedTeamId, actor } = await getTeamContext(teamId, { requireAdmin: true });
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const ref = sdk.doc(db, 'teams', resolvedTeamId, 'members', memberId);
+  await sdk.setDoc(ref, { active: Boolean(active), updatedAt: sdk.serverTimestamp() }, { merge: true });
+  await recordAuditEvent(resolvedTeamId, {
+    caseId: null,
+    action: Boolean(active) ? 'MEMBER_REACTIVATE' : 'MEMBER_DEACTIVATE',
+    actor,
+    summary: Boolean(active) ? `Medlem ${memberId} aktiveret` : `Medlem ${memberId} deaktiveret`,
+  });
+  return true;
+}
+
+export { PermissionDeniedError, MembershipMissingError, InviteMissingError, InactiveMemberError, DEFAULT_TEAM_ID, DEFAULT_TEAM_SLUG, TEAM_STORAGE_KEY, getStoredTeamId, persistTeamId, guardTeamAccess, BOOTSTRAP_ADMIN_EMAIL };

@@ -1,4 +1,5 @@
 import { initAuthProvider } from './auth-provider.js'
+import { initAuthSession, onChange as onSessionChange, getState as getSessionState, waitForAccess, SESSION_STATUS } from './session.js'
 
 let gate
 let loadingScreen
@@ -152,28 +153,36 @@ function updateProviderButtons () {
 }
 
 function handleAuthChange (state) {
-  if (!state?.isReady) {
-    setGateVisible(true)
-    showSection('loading')
-    setMessage(state?.message || 'Logger ind…')
+  const status = state?.status || SESSION_STATUS.SIGNING_IN
+  const requiresVerification = Boolean(state?.requiresVerification)
+  const hasAccess = status === SESSION_STATUS.ADMIN || status === SESSION_STATUS.MEMBER
+  const message = state?.message || (status === SESSION_STATUS.NO_ACCESS ? 'Ingen adgang til teamet.' : '')
+
+  if (hasAccess) {
+    showSection('hidden')
+    setGateVisible(false)
+    setMessage('')
     return
   }
-  if (!state.isAuthenticated) {
-    setGateVisible(true)
-    showSection('login')
-    updateProviderButtons()
-    setMessage(state?.message || 'Log ind for at fortsætte')
-    return
-  }
-  if (state.requiresVerification) {
-    setGateVisible(true)
+
+  setGateVisible(true)
+
+  if (requiresVerification) {
     showSection('verify')
     setMessage('Bekræft din email før du bruger appen.')
     return
   }
-  showSection('hidden')
-  setGateVisible(false)
-  setMessage('')
+
+  if (status === SESSION_STATUS.SIGNING_IN) {
+    showSection('loading')
+    setMessage(message || 'Logger ind…')
+    return
+  }
+
+  showSection('login')
+  updateProviderButtons()
+  const variant = status === SESSION_STATUS.NO_ACCESS || status === SESSION_STATUS.ERROR ? 'error' : ''
+  setMessage(message || 'Log ind for at fortsætte', variant)
 }
 
 export function initAuthGate () {
@@ -205,10 +214,11 @@ export function initAuthGate () {
 
   authProvider = initAuthProvider()
   bindLoginHandlers()
-  authProvider.onChange(handleAuthChange)
-  handleAuthChange(authProvider.getState())
+  initAuthSession()
+  onSessionChange(handleAuthChange)
+  handleAuthChange(getSessionState())
 
   return {
-    waitForVerifiedAccess: () => authProvider.waitForVerifiedUser(),
+    waitForVerifiedAccess: () => waitForAccess(),
   }
 }

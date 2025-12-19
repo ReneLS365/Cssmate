@@ -57,22 +57,27 @@
       <div id="authLoginScreen" class="auth-section" hidden>
         <h2 class="auth-title">Log ind</h2>
         <p class="auth-subtitle">Log ind for at bruge akkordsedlen.</p>
-        <div class="auth-fields">
-          <label for="authEmail">
-            <span>Email</span>
-            <input id="authEmail" type="email" name="authEmail" autocomplete="email" inputmode="email">
-          </label>
-          <label for="authPassword">
-            <span>Adgangskode</span>
-            <input id="authPassword" type="password" name="authPassword" autocomplete="current-password">
-          </label>
-        </div>
         <div class="auth-actions">
           <button id="authGoogle" type="button" data-role="primary">Fortsæt med Google</button>
-          <button id="authLogin" type="button">Log ind</button>
-          <button id="authSignup" type="button">Opret konto</button>
-          <button id="authForgot" type="button" class="auth-link">Glemt kodeord</button>
         </div>
+        <details id="authAdvanced" class="auth-advanced">
+          <summary>Avanceret (email + kodeord)</summary>
+          <div class="auth-fields">
+            <label for="authEmail">
+              <span>Email</span>
+              <input id="authEmail" type="email" name="authEmail" autocomplete="email" inputmode="email">
+            </label>
+            <label for="authPassword">
+              <span>Adgangskode</span>
+              <input id="authPassword" type="password" name="authPassword" autocomplete="current-password">
+            </label>
+          </div>
+          <div class="auth-actions">
+            <button id="authLogin" type="button">Log ind</button>
+            <button id="authSignup" type="button">Opret konto</button>
+            <button id="authForgot" type="button" class="auth-link">Glemt kodeord</button>
+          </div>
+        </details>
       </div>
       <div id="authVerifyScreen" class="auth-section" hidden>
         <h2 class="auth-title">Bekræft din email</h2>
@@ -448,7 +453,7 @@
       <div id="sharedInlineError" class="shared-status" aria-live="polite" role="alert" hidden></div>
       <div id="sharedMembershipHint" class="shared-status" aria-live="polite" hidden></div>
       <div class="shared-auth-controls" aria-live="polite">
-        <div id="sharedLoginButtons" class="shared-login-buttons">
+        <div id="sharedLoginButtons" class="shared-login-buttons" hidden>
           <button id="sharedLogin-google" type="button" data-role="primary">Log ind med Google</button>
           <button id="sharedLogin-microsoft" type="button">Log ind med Microsoft</button>
           <button id="sharedLogin-apple" type="button" hidden>Log ind med Apple</button>
@@ -467,6 +472,29 @@
         <label class="sr-only" for="sharedBackupImport">Importer backup</label>
         <input id="sharedBackupImport" type="file" accept="application/json" disabled>
       </div>
+      <section id="teamAdminPanel" class="team-admin" hidden>
+        <h3>Team administration</h3>
+        <div class="team-admin__invite">
+          <label for="teamInviteEmail">Email</label>
+          <input id="teamInviteEmail" type="email" autocomplete="email" placeholder="bruger@firma.dk">
+          <label for="teamInviteRole">Rolle</label>
+          <select id="teamInviteRole">
+            <option value="member">Medlem</option>
+            <option value="admin">Admin</option>
+          </select>
+          <button id="teamInviteSubmit" type="button">Invitér</button>
+        </div>
+        <div class="team-admin__lists">
+          <div class="team-admin__card">
+            <h4>Medlemmer</h4>
+            <div id="teamMembersList" class="team-admin__list"></div>
+          </div>
+          <div class="team-admin__card">
+            <h4>Invitationer</h4>
+            <div id="teamInvitesList" class="team-admin__list"></div>
+          </div>
+        </div>
+      </section>
       <details id="sharedDebugPanel" class="shared-debug" hidden>
         <summary>Debug-log</summary>
         <pre id="sharedDebugLog" aria-live="polite"></pre>
