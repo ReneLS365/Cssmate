@@ -1,62 +1,27 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
     function signedIn() {
       return request.auth != null && request.auth.uid is string;
     }
 
-    function isWhitelistedAdmin() {
+    function authEmail() {
+      return signedIn() && request.auth.token.email is string ? request.auth.token.email.lower() : '';
+    }
+
+    function memberDoc(teamId) {
+      return get(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid));
+    }
+
+    function isActiveMember(teamId) {
       return signedIn()
-        && request.auth.token.email is string
-        && request.auth.token.email in ['mr.lion1995@gmail.com', 'MR.LION1995@GMAIL.COM', 'rene@hulmose.dk', 'RENE@HULMOSE.DK'];
-    }
-
-    function memberDoc(teamId, uid) {
-      return get(/databases/$(database)/documents/teams/$(teamId)/members/$(uid));
-    }
-
-    function memberData(teamId, uid) {
-      let doc = memberDoc(teamId, uid);
-      return doc.data != null ? doc.data : {};
-    }
-
-    function memberActive(teamId, uid) {
-      return memberDoc(teamId, uid).data != null && memberData(teamId, uid).active != false;
-    }
-
-    function isMember(teamId) {
-      return signedIn() && teamId is string && memberActive(teamId, request.auth.uid);
+        && exists(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid))
+        && memberDoc(teamId).data.active != false;
     }
 
     function isAdmin(teamId) {
-      return isMember(teamId) && memberData(teamId, request.auth.uid).role == 'admin';
-    }
-
-    function requestedTeamId() {
-      return request.resource != null && request.resource.data.teamId is string
-        ? request.resource.data.teamId
-        : (resource.data != null && resource.data.teamId is string ? resource.data.teamId : null);
-    }
-
-    function teamIdMatchesRequest(teamId) {
-      return request.resource != null && request.resource.data.teamId == teamId;
-    }
-
-    function teamIdUnchanged(teamId) {
-      return (resource.data == null || !('teamId' in resource.data) || resource.data.teamId == teamId)
-        && (request.resource == null || !('teamId' in request.resource.data) || request.resource.data.teamId == teamId);
-    }
-
-    function isCaseCreator(teamId) {
-      return resource.data != null && resource.data.teamId == teamId && resource.data.createdBy is string && request.auth.uid == resource.data.createdBy;
-    }
-
-    function roleStable() {
-      return resource.data == null || !(request.resource.data.role is string && request.resource.data.role != resource.data.role);
-    }
-
-    function teamStable() {
-      return resource.data == null || !(request.resource.data.teamId is string && resource.data.teamId is string && request.resource.data.teamId != resource.data.teamId);
+      return isActiveMember(teamId) && memberDoc(teamId).data.role == 'admin';
     }
 
     function hasAuditActor() {
@@ -67,44 +32,65 @@ service cloud.firestore {
         && request.resource.data.actor.name is string;
     }
 
-    match /users/{uid} {
-      allow read: if signedIn() && (request.auth.uid == uid || (requestedTeamId() is string && isAdmin(requestedTeamId())));
-      allow create, update: if signedIn() && (
-        (request.auth.uid == uid && roleStable() && teamStable())
-        || (requestedTeamId() is string && isAdmin(requestedTeamId()))
-      );
-      allow delete: if false;
+    function hasActiveInvite(teamId) {
+      return signedIn()
+        && authEmail() != ''
+        && exists(/databases/$(database)/documents/teams/$(teamId)/invites/$(authEmail()))
+        && get(/databases/$(database)/documents/teams/$(teamId)/invites/$(authEmail())).data.active == true;
+    }
+
+    function isBootstrapAdmin(teamId) {
+      return signedIn()
+        && authEmail() == 'mr.lion1995@gmail.com'
+        && teamId == 'sscaff-team-hulmose';
+    }
+
+    function teamIdStable(teamId) {
+      return !('teamId' in request.resource.data) || request.resource.data.teamId == teamId;
     }
 
     match /teams/{teamId} {
-      allow create: if isWhitelistedAdmin() && !exists(/databases/$(database)/documents/teams/$(teamId));
-      allow read: if isMember(teamId);
+      allow create: if isAdmin(teamId) || isBootstrapAdmin(teamId);
+      allow read: if isActiveMember(teamId);
       allow update, delete: if isAdmin(teamId);
 
-      match /members/{userId} {
-        allow read: if signedIn() && (request.auth.uid == userId || isAdmin(teamId));
-        allow create: if signedIn() && (
-          (isWhitelistedAdmin() && request.auth.uid == userId)
-          || isAdmin(teamId)
+      match /members/{uid} {
+        allow read: if signedIn() && uid == request.auth.uid;
+        allow list: if isAdmin(teamId);
+        allow create: if (
+          isAdmin(teamId)
+          || (signedIn() && uid == request.auth.uid && hasActiveInvite(teamId))
+          || (isBootstrapAdmin(teamId) && uid == request.auth.uid)
+        ) && teamIdStable(teamId);
+        allow update: if (
+          isAdmin(teamId)
+          || (signedIn() && uid == request.auth.uid && hasActiveInvite(teamId) && teamIdStable(teamId) && request.resource.data.role == resource.data.role)
         );
-        allow update, delete: if isAdmin(teamId);
+        allow delete: if isAdmin(teamId);
+      }
+
+      match /invites/{emailLower} {
+        allow read: if isAdmin(teamId) || (signedIn() && emailLower.lower() == authEmail());
+        allow list: if isAdmin(teamId);
+        allow create, update, delete: if isAdmin(teamId) || (isBootstrapAdmin(teamId) && emailLower.lower() == authEmail());
       }
 
       match /cases/{caseId} {
-        allow read, list: if isMember(teamId);
-        allow create: if isMember(teamId) && teamIdMatchesRequest(teamId);
-        allow update: if isMember(teamId) && teamIdUnchanged(teamId) && (isAdmin(teamId) || isCaseCreator(teamId));
-        allow delete: if isMember(teamId) && (isAdmin(teamId) || isCaseCreator(teamId));
+        allow read, list: if isActiveMember(teamId);
+        allow create: if isActiveMember(teamId);
+        allow update: if isActiveMember(teamId);
+        allow delete: if isActiveMember(teamId);
       }
 
       match /audit/{auditId} {
-        allow read: if isMember(teamId);
-        allow create: if isMember(teamId) && hasAuditActor() && teamIdMatchesRequest(teamId) && request.resource.data.timestamp is timestamp;
+        allow read: if isActiveMember(teamId);
+        allow create: if isActiveMember(teamId) && hasAuditActor() && request.resource.data.teamId == teamId && request.resource.data.timestamp is timestamp;
         allow update, delete: if false;
       }
 
-      match /backups/{backupId} {
-        allow read, write: if isAdmin(teamId);
+      match /{document=**} {
+        allow read: if isActiveMember(teamId);
+        allow write: if isAdmin(teamId);
       }
     }
   }

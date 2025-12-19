@@ -1,14 +1,14 @@
-import { listSharedGroups, downloadCaseJson, importCasePayload, updateCaseStatus, deleteSharedCase, formatTeamId, resolveTeamId, exportSharedBackup, importSharedBackup, getTeamMembership, PermissionDeniedError, normalizeTeamId, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG } from './shared-ledger.js';
+import { listSharedGroups, downloadCaseJson, importCasePayload, updateCaseStatus, deleteSharedCase, formatTeamId, exportSharedBackup, importSharedBackup, PermissionDeniedError, normalizeTeamId, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG, saveTeamInvite, listTeamMembers, listTeamInvites, setMemberActive, saveTeamMember } from './shared-ledger.js';
 import { exportPDFBlob } from './export-pdf.js';
 import { buildExportModel } from './export-model.js';
 import { downloadBlob } from './utils/downloadBlob.js';
-import { getAuthContext, getUserDisplay, userIsAdmin, initSharedAuth, waitForAuthReady, loginWithProvider, logoutUser, getEnabledProviders, onAuthStateChange, getUserProviderName } from './shared-auth.js';
+import { getUserDisplay, logoutUser } from './shared-auth.js';
+import { initAuthSession, onChange as onSessionChange, getState as getSessionState, waitForAccess, setPreferredTeamId, requestBootstrapAccess, SESSION_STATUS } from '../src/auth/session.js';
 
 let sharedCasesPanelInitialized = false;
 let refreshBtn;
-let authState;
+let sessionState = {};
 let sharedCard;
-let loginButtonsContainer;
 let logoutButton;
 let backupActionsBound = false;
 let teamId = '';
@@ -35,28 +35,15 @@ let membershipHint;
 let debugPanel;
 let debugLogOutput;
 let hasDebugEntries = false;
+let debugMessagesSeen = new Set();
+let inviteEmailInput;
+let inviteRoleSelect;
+let inviteSubmitButton;
+let membersList;
+let invitesList;
+let adminPanel;
 
-const TEAM_STORAGE_KEY = 'sscaff.teamId';
-
-function getStoredTeamId () {
-  if (typeof window === 'undefined') return '';
-  try {
-    return window.localStorage?.getItem(TEAM_STORAGE_KEY) || '';
-  } catch {
-    return '';
-  }
-}
-
-function persistTeamId (value) {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage?.setItem(TEAM_STORAGE_KEY, value || '');
-  } catch (error) {
-    console.warn('Kunne ikke gemme team ID', error);
-  }
-}
-
-displayTeamId = normalizeTeamId(getStoredTeamId() || DEFAULT_TEAM_SLUG);
+displayTeamId = DEFAULT_TEAM_SLUG;
 
 function formatMissingMembershipMessage(teamIdValue, uid) {
   const teamLabel = getDisplayTeamId(teamIdValue || displayTeamId);
@@ -74,7 +61,7 @@ function describePermissionError (error, attemptedTeamId) {
   const message = (error?.message || '').toString();
   const normalized = message.toLowerCase();
   if (error instanceof MembershipMissingError) {
-    const uid = authState?.user?.uid || 'uid';
+    const uid = sessionState?.user?.uid || 'uid';
     return formatMissingMembershipMessage(error.teamId || attemptedTeamId, uid);
   }
   if (error?.code === 'permission-denied' || error instanceof PermissionDeniedError || normalized.includes('missing or insufficient permissions')) {
@@ -124,16 +111,17 @@ function renderStatusSummary (primaryMessage = '') {
 }
 
 function updateStatusCard() {
-  if (statusLoggedIn) statusLoggedIn.textContent = authState?.isAuthenticated ? 'Ja' : 'Nej';
-  if (statusUser) statusUser.textContent = authState?.isAuthenticated ? (authState?.user?.email || getUserDisplay(authState?.user)) : '–';
-  if (statusUid) statusUid.textContent = authState?.user?.uid || '–';
+  const loggedIn = Boolean(sessionState?.user);
+  if (statusLoggedIn) statusLoggedIn.textContent = loggedIn ? 'Ja' : 'Nej';
+  if (statusUser) statusUser.textContent = loggedIn ? (sessionState?.user?.email || getUserDisplay(sessionState?.user)) : '–';
+  if (statusUid) statusUid.textContent = sessionState?.user?.uid || '–';
   if (statusTeam) statusTeam.textContent = displayTeamId || DEFAULT_TEAM_SLUG;
-  if (statusRole) statusRole.textContent = membershipRole || (authState?.isAuthenticated ? 'ikke medlem' : 'ikke logget ind');
+  if (statusRole) statusRole.textContent = membershipRole || (loggedIn ? 'ikke medlem' : 'ikke logget ind');
 }
 
 function isAdminUser () {
   if (membershipRole === 'admin') return true;
-  return userIsAdmin(authState?.user);
+  return sessionState?.role === 'admin';
 }
 
 function handleActionError (error, fallbackMessage, { teamContext } = {}) {
@@ -145,14 +133,13 @@ function handleActionError (error, fallbackMessage, { teamContext } = {}) {
 function setTeamSelection(nextTeamId) {
   teamId = nextTeamId || '';
   displayTeamId = nextTeamId ? getDisplayTeamId(nextTeamId) : displayTeamId;
-  persistTeamId(displayTeamId);
   updateTeamAccessState();
   updateStatusCard();
 }
 
 function setMembershipError(error, fallbackTeamId) {
   membershipError = error;
-  const uid = authState?.user?.uid || 'uid';
+  const uid = sessionState?.user?.uid || 'uid';
   const message = error ? formatMissingMembershipMessage(fallbackTeamId || teamId, uid) : '';
   teamError = message;
   setInlineError(message);
@@ -163,6 +150,8 @@ function setMembershipError(error, fallbackTeamId) {
 
 function appendDebug(message) {
   if (!message) return;
+  if (debugMessagesSeen.has(message)) return;
+  debugMessagesSeen.add(message);
   const timestamp = new Date().toISOString();
   const entry = `${timestamp} – ${message}`;
   if (debugPanel) debugPanel.hidden = false;
@@ -176,29 +165,9 @@ function appendDebug(message) {
 
 async function syncTeamContext(preferredTeamId) {
   try {
-    const desiredTeam = normalizeTeamId(preferredTeamId || displayTeamId || getStoredTeamId() || DEFAULT_TEAM_SLUG);
-    const resolved = await resolveTeamId(desiredTeam);
-    setTeamSelection(resolved);
-    const membership = await getTeamMembership(resolved, { allowBootstrap: false });
-    membershipRole = membership?.role || '';
-    membershipError = null;
-    teamError = '';
-    updateSharedStatus();
-    appendDebug(`Team sync OK for ${resolved}`);
-    return resolved;
-  } catch (error) {
-    membershipRole = '';
-    const resolved = preferredTeamId ? formatTeamId(preferredTeamId) : teamId;
-    if (error instanceof MembershipMissingError) {
-      setMembershipError(error, resolved);
-    } else {
-      teamError = describePermissionError(error, preferredTeamId) || error?.message || 'Ingen adgang til team.';
-      membershipError = null;
-      setInlineError(teamError);
-    }
-    appendDebug(`Team sync fejl: ${error?.message || error}`);
-    updateSharedStatus();
-    throw error;
+    return preferredTeamId || null;
+  } catch {
+    return null;
   }
 }
 
@@ -207,28 +176,24 @@ function setPanelVisibility(isReady) {
 }
 
 function requireAuth() {
-  authState = getAuthContext();
-  if (!authState?.isReady) {
-    renderStatusSummary(authState?.message || 'Login initialiseres…');
-    setInlineError(authState?.message || '');
+  const hasAccess = sessionState?.status === SESSION_STATUS.ADMIN || sessionState?.status === SESSION_STATUS.MEMBER;
+  if (sessionState?.status === SESSION_STATUS.SIGNING_IN) {
+    renderStatusSummary(sessionState?.message || 'Login initialiseres…');
+    setInlineError(sessionState?.message || '');
     return false;
   }
-  if (!authState?.isAuthenticated) {
-    renderStatusSummary(authState?.message || 'Log ind for at se delte sager.');
+  if (!sessionState?.user || sessionState?.status === SESSION_STATUS.SIGNED_OUT) {
+    renderStatusSummary(sessionState?.message || 'Log ind for at se delte sager.');
     setInlineError('Log ind først for at se delte sager.');
     return false;
   }
-  if (teamError) {
-    renderStatusSummary(teamError);
-    setInlineError(teamError);
+  if (!hasAccess) {
+    const message = sessionState?.message || teamError || 'Ingen adgang til teamet.';
+    renderStatusSummary(message);
+    setInlineError(message);
     return false;
   }
-  if (!teamId) {
-    renderStatusSummary('Vælg et team for at fortsætte.');
-    setInlineError('Vælg et team for at fortsætte.');
-    return false;
-  }
-  renderStatusSummary(`Logget ind som ${getUserDisplay(authState.user)}`);
+  renderStatusSummary(`Logget ind som ${getUserDisplay(sessionState.user)}`);
   if (membershipError) {
     setMembershipError(null);
   }
@@ -236,64 +201,10 @@ function requireAuth() {
   return true;
 }
 
-function updateAuthUi() {
-  const enabledProviders = getEnabledProviders();
-  ['google', 'microsoft', 'apple', 'facebook'].forEach((providerId) => {
-    const button = document.getElementById(`sharedLogin-${providerId}`);
-    if (button) button.hidden = !enabledProviders.includes(providerId);
-  });
-  authState = getAuthContext();
-  const providerName = getUserProviderName(authState?.user);
-  const uidShort = authState?.user?.uid ? authState.user.uid.slice(0, 6) : '';
-  const admin = isAdminUser();
-  if (!authState?.isReady) {
-    renderStatusSummary(authState?.message || 'Login initialiseres…');
-    membershipRole = '';
-    membershipError = null;
-  } else if (!authState?.isAuthenticated) {
-    renderStatusSummary(authState?.message || 'Log ind for at se delte sager.');
-    membershipRole = '';
-    membershipError = null;
-  } else {
-    const providerLabel = providerName ? `Provider: ${providerName}` : '';
-    const uidLabel = uidShort ? `UID: ${uidShort}` : '';
-    const message = [`Logget ind som: ${getUserDisplay(authState.user)}`, providerLabel, uidLabel].filter(Boolean).join(' · ');
-    renderStatusSummary(message || 'Logget ind');
-    membershipRole = admin ? 'admin' : membershipRole;
-  }
-  if (loginButtonsContainer) loginButtonsContainer.hidden = Boolean(authState?.isAuthenticated);
-  if (logoutButton) logoutButton.hidden = !authState?.isAuthenticated;
-  updateStatusCard();
-  updateTeamAccessState();
-}
-
-function bindAuthControls(onAuthenticated) {
-  loginButtonsContainer = document.getElementById('sharedLoginButtons');
+function bindSessionControls(onAuthenticated, onAccessReady) {
   logoutButton = document.getElementById('sharedLogout');
-  const buttons = {
-    google: document.getElementById('sharedLogin-google'),
-    microsoft: document.getElementById('sharedLogin-microsoft'),
-    apple: document.getElementById('sharedLogin-apple'),
-    facebook: document.getElementById('sharedLogin-facebook'),
-  };
-  const attachHandler = (providerId, button) => {
-    if (!button) return;
-    button.addEventListener('click', async () => {
-      button.disabled = true;
-      const status = document.getElementById('sharedAuthStatus');
-      if (status) status.textContent = 'Logger ind…';
-      try {
-        await loginWithProvider(providerId);
-      } catch (error) {
-        console.error('Login fejlede', error);
-        setInlineError(error?.message || 'Login fejlede');
-      } finally {
-        button.disabled = false;
-      }
-    });
-  };
-  Object.entries(buttons).forEach(([providerId, button]) => attachHandler(providerId, button));
   if (logoutButton) {
+    logoutButton.hidden = false;
     logoutButton.addEventListener('click', async () => {
       logoutButton.disabled = true;
       try {
@@ -305,32 +216,48 @@ function bindAuthControls(onAuthenticated) {
       }
     });
   }
-  onAuthStateChange(async (context) => {
-    authState = context;
-    updateAuthUi();
-    if (context.isReady) setPanelVisibility(true);
-    if (context.isAuthenticated) {
-      try {
-        await syncTeamContext();
-      } catch (error) {
-        console.warn('Kunne ikke synkronisere team', error);
-      }
-      bindBackupActions();
-      if (typeof onAuthenticated === 'function') {
-        onAuthenticated();
-      }
-    } else {
-      teamId = '';
-      displayTeamId = getStoredTeamId() || DEFAULT_TEAM_SLUG;
-      membershipRole = '';
-      teamError = '';
-      membershipError = null;
-      backupActionsBound = false;
-      updateSharedStatus();
-      updateTeamAccessState();
+
+  initAuthSession();
+  let lastStatus = '';
+  onSessionChange((state) => {
+    sessionState = state || {};
+    teamId = state?.teamId ? formatTeamId(state.teamId) : '';
+    displayTeamId = state?.displayTeamId || (teamId ? getDisplayTeamId(teamId) : DEFAULT_TEAM_SLUG);
+    membershipRole = state?.role || '';
+    membershipError = null;
+    teamError = '';
+    if (state?.status === SESSION_STATUS.SIGNED_OUT) {
+      debugMessagesSeen.clear();
     }
+    if (state?.status === SESSION_STATUS.NO_ACCESS || state?.status === SESSION_STATUS.ERROR) {
+      teamError = state?.message || '';
+      membershipError = new MembershipMissingError(teamId, state?.user?.uid || 'uid', state?.message || '');
+      debugMessagesSeen.clear();
+    }
+    const hasAccess = state?.status === SESSION_STATUS.ADMIN || state?.status === SESSION_STATUS.MEMBER;
+    setPanelVisibility(state?.status !== SESSION_STATUS.SIGNED_OUT && state?.status !== SESSION_STATUS.SIGNING_IN);
+    updateSharedStatus();
+    updateTeamAccessState();
+    updateStatusCard();
+    if (logoutButton) logoutButton.hidden = !sessionState?.user;
+
+    if (hasAccess && lastStatus !== state.status) {
+      bindBackupActions();
+      if (typeof onAccessReady === 'function') onAccessReady();
+    }
+
+    if (hasAccess && isAdminUser()) {
+      refreshAdminData();
+    } else if (adminPanel) {
+      adminPanel.hidden = true;
+    }
+
+    if (hasAccess && typeof onAuthenticated === 'function') {
+      onAuthenticated();
+    }
+
+    lastStatus = state?.status || '';
   });
-  updateAuthUi();
 }
 
 function getFilters() {
@@ -435,7 +362,7 @@ function createCaseActions(entry, userId, onChange) {
   });
   container.appendChild(pdfBtn);
 
-  if (entry.createdBy === userId || userIsAdmin(authState?.user)) {
+  if (entry.createdBy === userId || isAdminUser()) {
     const statusBtn = document.createElement('button');
     statusBtn.type = 'button';
     statusBtn.textContent = entry.status === 'godkendt' ? 'Markér kladde' : 'Godkend';
@@ -443,7 +370,7 @@ function createCaseActions(entry, userId, onChange) {
       statusBtn.disabled = true;
       try {
         const next = entry.status === 'godkendt' ? 'kladde' : 'godkendt';
-        await updateCaseStatus(ensureTeamSelected(), entry.caseId, next, authState?.user);
+        await updateCaseStatus(ensureTeamSelected(), entry.caseId, next);
         await onChange();
       } catch (error) {
         console.error('Status opdatering fejlede', error);
@@ -461,7 +388,7 @@ function createCaseActions(entry, userId, onChange) {
       if (!confirm('Soft delete?')) return;
       deleteBtn.disabled = true;
       try {
-        await deleteSharedCase(ensureTeamSelected(), entry.caseId, authState?.user);
+        await deleteSharedCase(ensureTeamSelected(), entry.caseId);
         await onChange();
       } catch (error) {
         console.error('Sletning fejlede', error);
@@ -547,7 +474,9 @@ function initTeamIdInput() {
     teamIdSaveButton.disabled = true;
     try {
       const formatted = formatTeamId(value);
-      await syncTeamContext(formatted);
+      setPreferredTeamId(value);
+      setTeamSelection(formatted);
+      await waitForAccess();
       updateSharedStatus();
       clearInlineError();
     } catch (error) {
@@ -560,19 +489,15 @@ function initTeamIdInput() {
 }
 
 async function handleBootstrapTeam() {
-  if (!isAdminUser()) return;
   const targetTeam = teamId || formatTeamId(displayTeamId || DEFAULT_TEAM_SLUG);
   if (!targetTeam) return;
   if (bootstrapButton) bootstrapButton.disabled = true;
   try {
-    await getTeamMembership(targetTeam, { allowBootstrap: true });
+    await requestBootstrapAccess();
     membershipError = null;
     teamError = '';
-    membershipRole = 'admin';
-    updateSharedStatus();
-    clearInlineError();
     appendDebug(`Bootstrap færdig for ${targetTeam}`);
-    await syncTeamContext(targetTeam);
+    clearInlineError();
   } catch (error) {
     console.error('Bootstrap fejlede', error);
     handleActionError(error, 'Kunne ikke oprette team', { teamContext: targetTeam });
@@ -585,7 +510,7 @@ async function handleBootstrapTeam() {
 function bindBackupActions() {
   const exportBtn = document.getElementById('sharedBackupExport');
   const importInput = document.getElementById('sharedBackupImport');
-  const admin = membershipRole === 'admin' || userIsAdmin(authState?.user);
+  const admin = membershipRole === 'admin';
   if (adminNoticeBox) {
     adminNoticeBox.textContent = '';
     adminNoticeBox.hidden = true;
@@ -618,7 +543,7 @@ function bindBackupActions() {
       try {
         const text = await file.text();
         const payload = JSON.parse(text);
-        await importSharedBackup(ensureTeamSelected(), payload, authState?.user);
+        await importSharedBackup(ensureTeamSelected(), payload);
         clearInlineError();
       } catch (error) {
         console.error('Backup import fejlede', error);
@@ -632,24 +557,142 @@ function bindBackupActions() {
   backupActionsBound = true;
 }
 
+function renderInvitesList (invites = []) {
+  if (!invitesList) return;
+  invitesList.textContent = '';
+  if (!Array.isArray(invites) || !invites.length) {
+    const empty = document.createElement('p');
+    empty.textContent = 'Ingen aktive invitationer.';
+    invitesList.appendChild(empty);
+    return;
+  }
+  invites.forEach(invite => {
+    const row = document.createElement('div');
+    row.className = 'team-invite-row';
+    row.textContent = `${invite.email || invite.id || ''} · ${invite.role || 'member'} · ${invite.active === false ? 'deaktiveret' : 'aktiv'}`;
+    invitesList.appendChild(row);
+  });
+}
+
+function renderMembersList (members = []) {
+  if (!membersList) return;
+  membersList.textContent = '';
+  if (!Array.isArray(members) || !members.length) {
+    const empty = document.createElement('p');
+    empty.textContent = 'Ingen medlemmer endnu.';
+    membersList.appendChild(empty);
+    return;
+  }
+
+  members.forEach(member => {
+    const row = document.createElement('div');
+    row.className = 'team-member-row';
+    const memberId = member.uid || member.id;
+
+    const emailEl = document.createElement('div');
+    emailEl.className = 'team-member-email';
+    emailEl.textContent = member.email || memberId || 'Ukendt bruger';
+
+    const roleSelect = document.createElement('select');
+    roleSelect.innerHTML = '<option value="member">Medlem</option><option value="admin">Admin</option>';
+    roleSelect.value = member.role === 'admin' ? 'admin' : 'member';
+    roleSelect.addEventListener('change', async () => {
+      roleSelect.disabled = true;
+      try {
+        await saveTeamMember(ensureTeamSelected(), { ...member, uid: memberId, role: roleSelect.value });
+        clearInlineError();
+      } catch (error) {
+        handleActionError(error, 'Kunne ikke opdatere rolle', { teamContext: teamId });
+        roleSelect.value = member.role === 'admin' ? 'admin' : 'member';
+      } finally {
+        roleSelect.disabled = false;
+        refreshAdminData();
+      }
+    });
+
+    const toggleBtn = document.createElement('button');
+    const isActive = member.active !== false;
+    toggleBtn.type = 'button';
+    toggleBtn.textContent = isActive ? 'Deaktivér' : 'Aktivér';
+    toggleBtn.addEventListener('click', async () => {
+      toggleBtn.disabled = true;
+      try {
+        await setMemberActive(ensureTeamSelected(), memberId, !isActive);
+        clearInlineError();
+      } catch (error) {
+        handleActionError(error, 'Kunne ikke opdatere status', { teamContext: teamId });
+      } finally {
+        toggleBtn.disabled = false;
+        refreshAdminData();
+      }
+    });
+
+    row.append(emailEl, roleSelect, toggleBtn);
+    membersList.appendChild(row);
+  });
+}
+
+async function refreshAdminData () {
+  if (!isAdminUser() || !teamId) {
+    if (adminPanel) adminPanel.hidden = true;
+    return;
+  }
+  if (adminPanel) adminPanel.hidden = false;
+  try {
+    const [members, invites] = await Promise.all([
+      listTeamMembers(ensureTeamSelected()),
+      listTeamInvites(ensureTeamSelected()),
+    ]);
+    renderMembersList(members);
+    renderInvitesList(invites);
+    clearInlineError();
+  } catch (error) {
+    handleActionError(error, 'Kunne ikke hente medlemmer/invites', { teamContext: teamId });
+  }
+}
+
+async function handleInviteSubmit () {
+  if (!inviteEmailInput || !inviteRoleSelect) return;
+  const email = inviteEmailInput.value || '';
+  const role = inviteRoleSelect.value || 'member';
+  if (!email.trim()) {
+    setInlineError('Angiv email for invitation.');
+    return;
+  }
+  if (inviteSubmitButton) inviteSubmitButton.disabled = true;
+  try {
+    await saveTeamInvite(ensureTeamSelected(), { email, role, active: true });
+    inviteEmailInput.value = '';
+    clearInlineError();
+    refreshAdminData();
+  } catch (error) {
+    handleActionError(error, 'Kunne ikke sende invitation', { teamContext: teamId });
+  } finally {
+    if (inviteSubmitButton) inviteSubmitButton.disabled = false;
+  }
+}
+
 function updateTeamAccessState () {
   const admin = isAdminUser();
-  const loggedIn = Boolean(authState?.isAuthenticated);
+  const loggedIn = Boolean(sessionState?.user);
+  const locked = Boolean(sessionState?.teamLocked && !admin);
+  const allowTeamChange = admin || (!locked && !loggedIn);
   if (teamIdInput) {
     if (!teamIdInput.value) teamIdInput.value = displayTeamId || '';
-    teamIdInput.disabled = !admin || !loggedIn;
-    teamIdInput.readOnly = !admin || !loggedIn;
-    teamIdInput.placeholder = loggedIn ? 'f.eks. hulmose' : 'Log ind for at vælge team';
+    teamIdInput.disabled = !allowTeamChange;
+    teamIdInput.readOnly = !allowTeamChange;
+    teamIdInput.placeholder = allowTeamChange ? 'f.eks. hulmose' : 'Team låst';
   }
   if (teamIdSaveButton) {
-    teamIdSaveButton.disabled = !admin || !loggedIn;
+    teamIdSaveButton.disabled = !allowTeamChange;
   }
   if (bootstrapButton) {
-    bootstrapButton.hidden = !(membershipError && admin && loggedIn);
+    const showBootstrap = Boolean(sessionState?.bootstrapAvailable);
+    bootstrapButton.hidden = !showBootstrap;
     bootstrapButton.disabled = bootstrapButton.hidden;
   }
   if (membershipHint) {
-    const showHint = membershipError && admin && loggedIn;
+    const showHint = Boolean(sessionState?.bootstrapAvailable);
     membershipHint.hidden = !showHint;
     membershipHint.textContent = showHint ? 'Du kan oprette teamet og tilføje dig selv som admin.' : '';
   }
@@ -659,6 +702,10 @@ export function initSharedCasesPanel() {
   if (sharedCasesPanelInitialized) return;
   const container = document.getElementById('sharedCasesList');
   if (!container) return;
+  sessionState = getSessionState?.() || {};
+  displayTeamId = sessionState.displayTeamId || displayTeamId;
+  teamId = sessionState.teamId || teamId;
+  membershipRole = sessionState.role || membershipRole;
   sharedCasesPanelInitialized = true;
   sharedCard = document.querySelector('#panel-delte-sager .shared-cases');
   roleStatus = document.getElementById('sharedRoleStatus');
@@ -677,11 +724,17 @@ export function initSharedCasesPanel() {
   membershipHint = document.getElementById('sharedMembershipHint');
   debugPanel = document.getElementById('sharedDebugPanel');
   debugLogOutput = document.getElementById('sharedDebugLog');
+  adminPanel = document.getElementById('teamAdminPanel');
+  inviteEmailInput = document.getElementById('teamInviteEmail');
+  inviteRoleSelect = document.getElementById('teamInviteRole');
+  inviteSubmitButton = document.getElementById('teamInviteSubmit');
+  membersList = document.getElementById('teamMembersList');
+  invitesList = document.getElementById('teamInvitesList');
   if (uidCopyButton) {
     uidCopyButton.addEventListener('click', async () => {
-      if (!authState?.user?.uid || !navigator?.clipboard) return;
+      if (!sessionState?.user?.uid || !navigator?.clipboard) return;
       try {
-        await navigator.clipboard.writeText(authState.user.uid);
+        await navigator.clipboard.writeText(sessionState.user.uid);
         appendDebug('UID kopieret');
       } catch (error) {
         console.warn('Kunne ikke kopiere UID', error);
@@ -690,6 +743,9 @@ export function initSharedCasesPanel() {
   }
   if (bootstrapButton) {
     bootstrapButton.addEventListener('click', handleBootstrapTeam);
+  }
+  if (inviteSubmitButton) {
+    inviteSubmitButton.addEventListener('click', handleInviteSubmit);
   }
   hideLegacyStatus();
   setPanelVisibility(false);
@@ -704,13 +760,13 @@ export function initSharedCasesPanel() {
   const refresh = async () => {
     if (!container) return;
     if (!requireAuth()) {
-      container.textContent = teamError || authState?.message || 'Login mangler.';
+      container.textContent = teamError || sessionState?.message || 'Login mangler.';
       setRefreshState('idle');
       return;
     }
     setRefreshState('loading');
     container.textContent = 'Henter sager…';
-    const currentUser = authState?.user?.uid || 'offline-user';
+    const currentUser = sessionState?.user?.uid || 'offline-user';
     try {
       const groups = await listSharedGroups(ensureTeamSelected());
       const activeFilters = getFilters();
@@ -746,36 +802,15 @@ export function initSharedCasesPanel() {
   if (refreshBtn) refreshBtn.addEventListener('click', refresh);
   filters.forEach(input => input.addEventListener('input', () => refresh()))
 
-  bindAuthControls(() => {
+  bindSessionControls(() => refresh(), () => {
     if (!requireAuth()) {
-      container.textContent = teamError || authState?.message || 'Log ind for at se delte sager.';
+      container.textContent = teamError || sessionState?.message || 'Log ind for at se delte sager.';
       setRefreshState('idle');
       return;
     }
     bindBackupActions();
     refresh();
   });
-
-  const startAuth = async () => {
-    await initSharedAuth();
-    const context = await waitForAuthReady();
-    authState = context;
-    updateAuthUi();
-    setPanelVisibility(true);
-    try {
-      await syncTeamContext();
-    } catch (error) {
-      console.warn('Team kunne ikke hentes ved login', error);
-    }
-    if (!requireAuth()) {
-      container.textContent = teamError || authState?.message || 'Log ind for at se delte sager.';
-      return;
-    }
-    bindBackupActions();
-    refresh();
-  };
-
-  startAuth();
 }
 
 export { formatMissingMembershipMessage };

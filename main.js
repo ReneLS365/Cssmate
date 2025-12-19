@@ -5555,7 +5555,8 @@ async function startApp () {
     await restoreDraftOnLoad()
   } catch (error) {
     console.error('CSMate init fejlede', error)
-    updateActionHint('Kunne ikke initialisere appen. Opdater siden for at prøve igen.', 'error')
+    const message = error?.message || 'Kunne ikke initialisere appen. Opdater siden for at prøve igen.'
+    updateActionHint(message, 'error')
   } finally {
     markAppReady()
   }

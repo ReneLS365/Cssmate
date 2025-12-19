@@ -9,7 +9,7 @@ if (versionScriptUrl) {
 importScripts('/js/version.js')
 }
 
-const CACHE_VERSION = 'sscaff-v-20251218125104170' // bumped efter Firestore sync
+const CACHE_VERSION = 'sscaff-v-20251219151000000' // bumped efter auth/session opdatering
 const CACHE_NAME = 'sscaff-' + CACHE_VERSION
 const PRECACHE_URLS = [
   '/',
@@ -27,6 +27,7 @@ const PRECACHE_URLS = [
   '/src/auth/roles.js',
   '/src/auth/auth-gate.js',
   '/src/auth/auth-provider.js',
+  '/src/auth/session.js',
   '/js/akkord-export.js',
   '/js/akkord-export-ui.js',
   '/js/shared-ledger.js',
