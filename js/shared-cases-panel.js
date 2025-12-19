@@ -702,6 +702,8 @@ export function initSharedCasesPanel() {
   if (sharedCasesPanelInitialized) return;
   const container = document.getElementById('sharedCasesList');
   if (!container) return;
+  const sharedLoginButtons = document.getElementById('sharedLoginButtons');
+  if (sharedLoginButtons) sharedLoginButtons.hidden = true;
   sessionState = getSessionState?.() || {};
   displayTeamId = sessionState.displayTeamId || displayTeamId;
   teamId = sessionState.teamId || teamId;

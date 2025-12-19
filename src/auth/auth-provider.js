@@ -13,6 +13,7 @@ import {
   signUpWithEmail,
   waitForAuthReady,
 } from '../../js/shared-auth.js'
+import { updateAuthDebugState } from '../state/debug.js'
 
 let authState = null
 const listeners = new Set()
@@ -54,6 +55,7 @@ function normalizeState (context) {
 
 function notify () {
   const state = authState || normalizeState(getAuthContext())
+  updateAuthDebugState(state)
   listeners.forEach((listener) => {
     try {
       listener(state)

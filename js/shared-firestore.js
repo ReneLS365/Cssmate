@@ -1,4 +1,5 @@
 import { FIREBASE_SDK_VERSION, getFirebaseAppInstance } from './shared-auth.js';
+import { setLastFirestoreError } from '../src/state/debug.js';
 
 let firestoreModule = null;
 let firestoreDb = null;
@@ -19,7 +20,7 @@ export async function getFirestoreDb() {
 
 export async function getFirestoreHelpers() {
   const sdk = await loadFirestoreSdk();
-  return sdk;
+  return createTrackedHelpers(sdk);
 }
 
 export function toIsoString(value) {
@@ -34,4 +35,37 @@ export function toIsoString(value) {
   }
   if (typeof value === 'number') return new Date(value).toISOString();
   return value;
+}
+
+function inferPath(args = []) {
+  const first = args[0];
+  if (first?.path) return first.path;
+  if (first?.parent?.path) return first.parent.path;
+  if (typeof first === 'string') return first;
+  return '';
+}
+
+function createTrackedHelpers(sdk) {
+  const tracked = { ...sdk };
+  const methodsToWrap = ['getDoc', 'setDoc', 'updateDoc', 'deleteDoc', 'getDocs', 'addDoc'];
+  methodsToWrap.forEach(methodName => {
+    const original = sdk[methodName];
+    if (typeof original !== 'function') return;
+    tracked[methodName] = (...args) => {
+      try {
+        const result = original(...args);
+        if (result && typeof result.then === 'function') {
+          return result.catch(error => {
+            setLastFirestoreError(error, inferPath(args));
+            throw error;
+          });
+        }
+        return result;
+      } catch (error) {
+        setLastFirestoreError(error, inferPath(args));
+        throw error;
+      }
+    };
+  });
+  return tracked;
 }

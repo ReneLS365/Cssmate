@@ -13,6 +13,7 @@ import {
   normalizeTeamId,
 } from '../../js/shared-ledger.js'
 import { normalizeEmail } from './roles.js'
+import { updateSessionDebugState } from '../state/debug.js'
 
 const SESSION_STATUS = {
   SIGNED_OUT: 'signedOut',
@@ -84,6 +85,7 @@ function notify () {
 
 function setState (overrides) {
   sessionState = { ...sessionState, ...overrides }
+  updateSessionDebugState(sessionState)
   notify()
   return sessionState
 }
