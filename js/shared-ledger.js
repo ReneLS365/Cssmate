@@ -1,6 +1,7 @@
 import { getAuthContext, waitForAuthReady } from './shared-auth.js';
 import { getFirestoreDb, getFirestoreHelpers, toIsoString } from './shared-firestore.js';
 import { normalizeEmail } from '../src/auth/roles.js';
+import { updateTeamDebugState } from '../src/state/debug.js';
 
 const LEDGER_TEAM_PREFIX = 'sscaff-team-';
 const LEDGER_VERSION = 1;
@@ -212,6 +213,7 @@ async function guardTeamAccess(teamIdInput, user, { allowBootstrap = false } = {
   const membership = { ...memberData, teamId, uid: user.uid, role, email: normalizeEmail(memberData.email || emailLower) };
   cacheTeamResolution(user.uid, teamId, membership);
   persistTeamId(teamId);
+  updateTeamDebugState({ teamId, member: membership, teamResolved: true });
   return { teamId, membership, invite: inviteData || null, role };
 }
 

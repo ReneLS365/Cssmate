@@ -21,11 +21,15 @@ import { downloadBlob } from './js/utils/downloadBlob.js'
 import { initSharedCasesPanel } from './js/shared-cases-panel.js'
 import { initAuthGate } from './src/auth/auth-gate.js'
 import { getAuthIdentity } from './src/auth/auth-provider.js'
+import { updateCurrentView } from './src/state/debug.js'
+import { initDebugOverlay } from './src/ui/debug-overlay.js'
 import './boot-inline.js'
 
 if (typeof document !== 'undefined') {
   document.documentElement.classList.add('app-booting')
 }
+
+initDebugOverlay()
 
 function getCurrentAppVersion () {
   if (typeof window !== 'undefined' && typeof window.CSSMATE_APP_VERSION === 'string') {
@@ -624,6 +628,7 @@ function setActiveTab(tabId, { focus = false } = {}) {
   });
 
   currentTabId = nextTabId;
+  updateCurrentView(nextTabId)
   try {
     const storage = window.localStorage;
     if (storage) {
