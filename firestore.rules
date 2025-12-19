@@ -33,10 +33,7 @@ service cloud.firestore {
     }
 
     function hasActiveInvite(teamId) {
-      return signedIn()
-        && authEmail() != ''
-        && exists(/databases/$(database)/documents/teams/$(teamId)/invites/$(authEmail()))
-        && get(/databases/$(database)/documents/teams/$(teamId)/invites/$(authEmail())).data.active == true;
+      return activeInvite(teamId) != null;
     }
 
     function isBootstrapAdmin(teamId) {
@@ -49,6 +46,22 @@ service cloud.firestore {
       return !('teamId' in request.resource.data) || request.resource.data.teamId == teamId;
     }
 
+    function activeInvite(teamId) {
+      if (!signedIn() || authEmail() == '') return null;
+      let invite = get(/databases/$(database)/documents/teams/$(teamId)/invites/$(authEmail()));
+      return invite.exists() && invite.data.active == true ? invite : null;
+    }
+
+    function inviteRole(teamId) {
+      let invite = activeInvite(teamId);
+      return invite != null && invite.data.role == 'admin' ? 'admin' : 'member';
+    }
+
+    function isAuditPath(teamId) {
+      let target = request.resource != null ? request.resource.__name__.path : resource.__name__.path;
+      return target.matches('/databases/' + database + '/documents/teams/' + teamId + '/audit(/.*)?');
+    }
+
     match /teams/{teamId} {
       allow create: if isAdmin(teamId) || isBootstrapAdmin(teamId);
       allow read: if isActiveMember(teamId);
@@ -59,12 +72,12 @@ service cloud.firestore {
         allow list: if isAdmin(teamId);
         allow create: if (
           isAdmin(teamId)
-          || (signedIn() && uid == request.auth.uid && hasActiveInvite(teamId))
+          || (signedIn() && uid == request.auth.uid && hasActiveInvite(teamId) && request.resource.data.role == inviteRole(teamId))
           || (isBootstrapAdmin(teamId) && uid == request.auth.uid)
         ) && teamIdStable(teamId);
         allow update: if (
           isAdmin(teamId)
-          || (signedIn() && uid == request.auth.uid && hasActiveInvite(teamId) && teamIdStable(teamId) && request.resource.data.role == resource.data.role)
+          || (signedIn() && uid == request.auth.uid && hasActiveInvite(teamId) && teamIdStable(teamId) && request.resource.data.role == resource.data.role && request.resource.data.active == resource.data.active)
         );
         allow delete: if isAdmin(teamId);
       }
@@ -90,7 +103,7 @@ service cloud.firestore {
 
       match /{document=**} {
         allow read: if isActiveMember(teamId);
-        allow write: if isAdmin(teamId);
+        allow write: if isAdmin(teamId) && !isAuditPath(teamId);
       }
     }
   }
