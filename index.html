@@ -97,11 +97,12 @@
         <h1 class="ttl">akkordseddel</h1>
         <div class="topbar-nav">
           <nav class="tabs" role="tablist" aria-label="SSCaff sektioner">
-            <button id="tab-sagsinfo" class="tab tab--active" type="button" role="tab" data-tab-id="sagsinfo" aria-controls="panel-sagsinfo" aria-selected="true">Sagsinfo</button>
+              <button id="tab-sagsinfo" class="tab tab--active" type="button" role="tab" data-tab-id="sagsinfo" aria-controls="panel-sagsinfo" aria-selected="true">Sagsinfo</button>
               <button id="tab-optaelling" class="tab" type="button" role="tab" data-tab-id="optaelling" aria-controls="panel-optaelling" aria-selected="false">Optælling</button>
               <button id="tab-lon" class="tab" type="button" role="tab" data-tab-id="lon" aria-controls="panel-lon" aria-selected="false">Løn</button>
               <button id="tab-historik" class="tab" type="button" role="tab" data-tab-id="historik" aria-controls="panel-historik" aria-selected="false">Historik</button>
               <button id="tab-delte-sager" class="tab" type="button" role="tab" data-tab-id="delte-sager" aria-controls="panel-delte-sager" aria-selected="false">Delt sager</button>
+              <button id="tab-team" class="tab" type="button" role="tab" data-tab-id="team" aria-controls="panel-team" aria-selected="false" hidden data-tab-disabled="true">Team</button>
               <button id="tab-hjaelp" class="tab" type="button" role="tab" data-tab-id="hjaelp" aria-controls="panel-hjaelp" aria-selected="false">Hjælp</button>
             </nav>
           <div class="topbar-actions">
@@ -519,6 +520,77 @@
         </div>
       </div>
       <div id="sharedCasesList" class="shared-cases-list" aria-live="polite"></div>
+    </section>
+  </section>
+
+  <section
+    id="panel-team"
+    class="sektion tab-panel"
+    role="tabpanel"
+    data-tab-panel="team"
+    aria-labelledby="tab-team"
+    aria-hidden="true"
+    hidden
+    data-tab-disabled="true"
+  >
+    <section class="card team-admin no-print" aria-live="polite">
+      <header class="card-header">
+        <h2>Team</h2>
+        <p>Se teaminfo og administrer medlemmer. Kun synlig for admin/owner.</p>
+      </header>
+      <div class="team-admin__meta">
+        <div>
+          <span>Team navn</span>
+          <div class="field-with-icon">
+            <strong id="teamName">–</strong>
+            <button id="teamCopyName" type="button">Kopiér</button>
+          </div>
+        </div>
+        <div>
+          <span>Team ID</span>
+          <div class="field-with-icon">
+            <strong id="teamId">–</strong>
+            <button id="teamCopyId" type="button">Kopiér</button>
+          </div>
+        </div>
+      </div>
+      <div class="team-admin__actions">
+        <div class="team-admin__invite">
+          <label for="teamInviteEmailTeamPage">Email</label>
+          <input id="teamInviteEmailTeamPage" type="email" autocomplete="email" placeholder="bruger@firma.dk">
+          <label for="teamInviteRoleTeamPage">Rolle</label>
+          <select id="teamInviteRoleTeamPage">
+            <option value="member">Medlem</option>
+            <option value="admin">Admin</option>
+          </select>
+          <button id="teamInviteSubmitTeamPage" type="button">Invitér</button>
+        </div>
+        <div class="team-admin__invite">
+          <label for="teamUidInput">Tilføj via UID</label>
+          <input id="teamUidInput" type="text" placeholder="UID">
+          <label for="teamUidRole">Rolle</label>
+          <select id="teamUidRole">
+            <option value="member">Medlem</option>
+            <option value="admin">Admin</option>
+          </select>
+          <button id="teamUidSubmit" type="button">Tilføj medlem</button>
+        </div>
+      </div>
+      <div class="team-admin__lists">
+        <div class="team-admin__card">
+          <h4>Medlemmer</h4>
+          <div id="teamMembersListTeamPage" class="team-admin__list"></div>
+        </div>
+        <div class="team-admin__card">
+          <h4>Invitationer</h4>
+          <div id="teamInvitesListTeamPage" class="team-admin__list"></div>
+        </div>
+      </div>
+      <div class="btn-group">
+        <button id="teamRefresh" type="button">Opdater</button>
+        <button id="teamFixMembership" type="button">Ret medlemskab (René)</button>
+      </div>
+      <p id="teamAdminStatus" class="status-message" aria-live="polite"></p>
     </section>
   </section>
 

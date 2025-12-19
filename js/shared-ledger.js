@@ -162,6 +162,20 @@ async function guardTeamAccess(teamIdInput, user, { allowBootstrap = false } = {
   return { teamId: resolvedTeamId, membership: normalizedMembership, invite: null, role: accessRole };
 }
 
+async function getTeamDocument(teamId) {
+  const { teamId: resolvedTeamId } = await getTeamContext(teamId);
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const snapshot = await sdk.getDoc(getTeamRef(sdk, db, resolvedTeamId));
+  const data = snapshot.exists() ? snapshot.data() : {};
+  return {
+    id: resolvedTeamId,
+    teamId: resolvedTeamId,
+    name: data.name || getDisplayTeamId(resolvedTeamId),
+    ...data,
+  };
+}
+
 function normalizeJobNumber(jobNumber) {
   return (jobNumber || '').toString().trim() || 'UKENDT';
 }
@@ -688,6 +702,74 @@ export async function saveTeamInvite(teamId, invite, actorOverride) {
   return { ...inviteRecord, email: inviteRecord.emailLower || email };
 }
 
+export async function addTeamMemberByUid(teamId, memberUid, role = 'member') {
+  const { teamId: resolvedTeamId, actor } = await getTeamContext(teamId, { requireAdmin: true });
+  if (!memberUid) throw new Error('Angiv UID for medlemmet.');
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const memberRef = sdk.doc(db, 'teams', resolvedTeamId, 'members', memberUid);
+  const [existing, userSnapshot] = await Promise.all([
+    sdk.getDoc(memberRef),
+    sdk.getDoc(sdk.doc(db, 'users', memberUid)),
+  ]);
+  const userData = userSnapshot.exists() ? (userSnapshot.data() || {}) : {};
+  const now = sdk.serverTimestamp();
+  const normalizedRole = role === 'admin' ? 'admin' : 'member';
+  const payload = {
+    uid: memberUid,
+    email: userData.email || '',
+    emailLower: userData.emailLower || normalizeEmail(userData.email),
+    displayName: userData.displayName || '',
+    role: normalizedRole,
+    active: true,
+    teamId: resolvedTeamId,
+  };
+  const prepared = {
+    ...payload,
+    createdAt: existing.exists() ? (existing.data()?.createdAt || existing.data()?.addedAt || now) : now,
+    addedAt: existing.exists() ? (existing.data()?.addedAt || now) : now,
+    addedByUid: existing.exists() ? (existing.data()?.addedByUid || actor.uid) : actor.uid,
+    updatedAt: now,
+  };
+  await sdk.setDoc(memberRef, prepared, { merge: true });
+  await upsertUserTeamRoleCache(memberUid, resolvedTeamId, prepared.role, {
+    emailLower: payload.emailLower,
+    displayName: payload.displayName,
+  });
+  await recordAuditEvent(resolvedTeamId, {
+    caseId: null,
+    action: 'MEMBER_ADD_UID',
+    actor,
+    summary: `Medlem ${memberUid} sat til ${prepared.role}`,
+  });
+  return prepared;
+}
+
+export async function removeTeamMember(teamId, memberId) {
+  const { teamId: resolvedTeamId, actor, membership } = await getTeamContext(teamId, { requireAdmin: true });
+  if (!memberId) throw new Error('Angiv medlem der skal fjernes.');
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const ref = sdk.doc(db, 'teams', resolvedTeamId, 'members', memberId);
+  const snapshot = await sdk.getDoc(ref);
+  const data = snapshot.exists() ? (snapshot.data() || {}) : {};
+  const targetRole = data.role || 'member';
+  if (targetRole === 'owner') {
+    throw new PermissionDeniedError('Owner kan ikke fjernes fra teamet.');
+  }
+  if (memberId === (membership?.uid || actor.uid) && membership?.role === 'owner') {
+    throw new PermissionDeniedError('Owner kan ikke fjerne sig selv.');
+  }
+  await sdk.deleteDoc(ref);
+  await recordAuditEvent(resolvedTeamId, {
+    caseId: null,
+    action: 'MEMBER_REMOVE',
+    actor,
+    summary: `Medlem ${memberId} fjernet`,
+  });
+  return true;
+}
+
 export async function setMemberActive(teamId, memberId, active) {
   const { teamId: resolvedTeamId, actor } = await getTeamContext(teamId, { requireAdmin: true });
   const db = await getFirestoreDb();
@@ -719,4 +801,5 @@ export {
   normalizeTeamId,
   getDisplayTeamId,
   resolvePreferredTeamId,
+  getTeamDocument,
 };
