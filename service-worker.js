@@ -9,7 +9,7 @@ if (versionScriptUrl) {
 importScripts('/js/version.js')
 }
 
-const CACHE_VERSION = 'sscaff-v-20251220123000000' // bumped after adding debug overlay/cache entries
+const CACHE_VERSION = 'sscaff-v-20251219152010772' // bumped after adding debug overlay/cache entries
 const CACHE_NAME = 'sscaff-' + CACHE_VERSION
 const PRECACHE_URLS = [
   '/',

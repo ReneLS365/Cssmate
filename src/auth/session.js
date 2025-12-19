@@ -56,9 +56,10 @@ let sessionState = buildState({
 
 function buildState (overrides = {}) {
   const formattedTeam = formatTeamId(preferredTeamSlug)
-  return {
+  const baseState = {
     status: SESSION_STATUS.SIGNED_OUT,
     user: null,
+    authReady: false,
     teamId: formattedTeam,
     displayTeamId: getDisplayTeamId(formattedTeam),
     role: null,
@@ -68,12 +69,36 @@ function buildState (overrides = {}) {
     message: '',
     requiresVerification: false,
     providers: [],
+    teamResolved: false,
+    memberExists: false,
+    memberActive: null,
+    sessionReady: false,
     canChangeTeam: true,
     teamLocked: teamLockedFlag,
     bootstrapAvailable: false,
     hasAccess: false,
     ...overrides,
   }
+  baseState.sessionReady = computeSessionReady(baseState)
+  return baseState
+}
+
+function computeSessionReady (state = sessionState) {
+  const status = state?.status
+  const hasAccess = status === SESSION_STATUS.ADMIN || status === SESSION_STATUS.MEMBER
+  const memberExists = typeof state?.memberExists === 'boolean'
+    ? state.memberExists
+    : Boolean(state?.member)
+  const memberActive = state?.memberActive
+  return Boolean(
+    state?.authReady &&
+    state?.user &&
+    hasAccess &&
+    !state?.requiresVerification &&
+    state?.teamResolved &&
+    memberExists &&
+    memberActive !== false
+  )
 }
 
 function notify () {
@@ -84,7 +109,9 @@ function notify () {
 }
 
 function setState (overrides) {
-  sessionState = { ...sessionState, ...overrides }
+  const nextState = { ...sessionState, ...overrides }
+  nextState.sessionReady = computeSessionReady(nextState)
+  sessionState = nextState
   updateSessionDebugState(sessionState)
   notify()
   return sessionState
@@ -132,6 +159,9 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
     displayTeamId,
     error: null,
     bootstrapAvailable: false,
+    teamResolved: false,
+    memberExists: false,
+    memberActive: null,
   })
 
   if (accessInFlight) return accessInFlight
@@ -140,12 +170,13 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
     try {
       const access = await guardTeamAccess(formattedTeam, auth.user, { allowBootstrap })
       const isAdmin = access.role === 'admin'
+      const membership = access.membership
       teamLockedFlag = !isAdmin
       persistTeamLock(teamLockedFlag)
       return setState({
         status: isAdmin ? SESSION_STATUS.ADMIN : SESSION_STATUS.MEMBER,
         role: access.role,
-        member: access.membership,
+        member: membership,
         invite: access.invite || null,
         error: null,
         message: '',
@@ -155,6 +186,9 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
         canChangeTeam: isAdmin,
         teamLocked: teamLockedFlag,
         bootstrapAvailable: false,
+        teamResolved: true,
+        memberExists: Boolean(membership),
+        memberActive: membership?.active !== false,
       })
     } catch (error) {
       const bootstrapAvailable = canBootstrap(auth.user, formattedTeam)
@@ -162,6 +196,7 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
         || error instanceof MembershipMissingError
         || error instanceof InactiveMemberError
       const status = noAccessError ? SESSION_STATUS.NO_ACCESS : SESSION_STATUS.ERROR
+      const inactiveMember = error instanceof InactiveMemberError
       setState({
         status,
         role: null,
@@ -173,6 +208,9 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
         teamId: formattedTeam,
         displayTeamId,
         bootstrapAvailable: bootstrapAvailable && noAccessError,
+        teamResolved: true,
+        memberExists: inactiveMember ? true : false,
+        memberActive: inactiveMember ? false : null,
       })
       throw error
     } finally {
@@ -186,14 +224,22 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
 function handleAuthChange (context) {
   const providers = Array.isArray(context?.providers)
     ? context.providers.map(entry => entry?.providerId || entry?.provider).filter(Boolean)
-    : []
+    : Array.isArray(context?.user?.providerData)
+      ? context.user.providerData.map(entry => entry?.providerId || entry?.provider).filter(Boolean)
+      : []
   const usesPassword = providers.includes('password')
+  const authReady = Boolean(context?.isReady)
 
   if (!context?.isReady) {
     setState(buildState({
       status: SESSION_STATUS.SIGNING_IN,
       message: context?.message || 'Login initialiseres…',
       providers,
+      authReady,
+      user: null,
+      teamResolved: false,
+      memberExists: false,
+      memberActive: null,
     }))
     return
   }
@@ -203,17 +249,26 @@ function handleAuthChange (context) {
       status: SESSION_STATUS.SIGNED_OUT,
       message: context?.message || 'Log ind for at fortsætte',
       providers,
+      authReady: true,
+      user: null,
+      teamResolved: false,
+      memberExists: false,
+      memberActive: null,
     }))
     return
   }
 
   const requiresVerification = Boolean(context.requiresVerification && usesPassword)
   const baseState = setState({
+    authReady: true,
     user: context.user,
     providers,
     requiresVerification,
     status: requiresVerification ? SESSION_STATUS.SIGNING_IN : sessionState.status,
     message: requiresVerification ? 'Bekræft din email for at fortsætte' : 'Tjekker adgang…',
+    teamResolved: false,
+    memberExists: false,
+    memberActive: null,
   })
 
   if (requiresVerification) return baseState
@@ -254,7 +309,15 @@ function setPreferredTeamId (nextTeamId) {
   }
   preferredTeamSlug = normalized
   persistTeamId(preferredTeamSlug)
-  setState({ teamId: formatted, displayTeamId: getDisplayTeamId(formatted), teamLocked: teamLockedFlag })
+  setState({
+    teamId: formatted,
+    displayTeamId: getDisplayTeamId(formatted),
+    teamLocked: teamLockedFlag,
+    teamResolved: false,
+    memberExists: false,
+    memberActive: null,
+    status: SESSION_STATUS.SIGNING_IN,
+  })
   if (sessionState.user) {
     evaluateAccess().catch(() => {})
   }
@@ -264,7 +327,16 @@ function setPreferredTeamId (nextTeamId) {
 function waitForAccess ({ requireAdmin = false } = {}) {
   if (!initialized) {
     if (typeof window === 'undefined' || typeof navigator === 'undefined') {
-      sessionState = buildState({ status: SESSION_STATUS.ADMIN, hasAccess: true, role: 'admin' })
+      sessionState = buildState({
+        status: SESSION_STATUS.ADMIN,
+        hasAccess: true,
+        role: 'admin',
+        authReady: true,
+        user: sessionState.user || { uid: 'server', email: '' },
+        teamResolved: true,
+        memberExists: true,
+        memberActive: true,
+      })
       initialized = true
       return Promise.resolve({ ...sessionState })
     }

@@ -176,21 +176,18 @@ function setPanelVisibility(isReady) {
 }
 
 function requireAuth() {
-  const hasAccess = sessionState?.status === SESSION_STATUS.ADMIN || sessionState?.status === SESSION_STATUS.MEMBER;
+  const hasAccess = Boolean(sessionState?.sessionReady);
   if (sessionState?.status === SESSION_STATUS.SIGNING_IN) {
     renderStatusSummary(sessionState?.message || 'Login initialiseres…');
     setInlineError(sessionState?.message || '');
-    return false;
-  }
-  if (!sessionState?.user || sessionState?.status === SESSION_STATUS.SIGNED_OUT) {
-    renderStatusSummary(sessionState?.message || 'Log ind for at se delte sager.');
-    setInlineError('Log ind først for at se delte sager.');
+    setPanelVisibility(false);
     return false;
   }
   if (!hasAccess) {
-    const message = sessionState?.message || teamError || 'Ingen adgang til teamet.';
+    const message = sessionState?.message || teamError || 'Log ind via login-skærmen for at se delte sager.';
     renderStatusSummary(message);
     setInlineError(message);
+    setPanelVisibility(false);
     return false;
   }
   renderStatusSummary(`Logget ind som ${getUserDisplay(sessionState.user)}`);
@@ -198,6 +195,7 @@ function requireAuth() {
     setMembershipError(null);
   }
   clearInlineError();
+  setPanelVisibility(true);
   return true;
 }
 
@@ -234,8 +232,8 @@ function bindSessionControls(onAuthenticated, onAccessReady) {
       membershipError = new MembershipMissingError(teamId, state?.user?.uid || 'uid', state?.message || '');
       debugMessagesSeen.clear();
     }
-    const hasAccess = state?.status === SESSION_STATUS.ADMIN || state?.status === SESSION_STATUS.MEMBER;
-    setPanelVisibility(state?.status !== SESSION_STATUS.SIGNED_OUT && state?.status !== SESSION_STATUS.SIGNING_IN);
+    const hasAccess = Boolean(state?.sessionReady);
+    setPanelVisibility(Boolean(state?.sessionReady));
     updateSharedStatus();
     updateTeamAccessState();
     updateStatusCard();
@@ -702,11 +700,9 @@ export function initSharedCasesPanel() {
   if (sharedCasesPanelInitialized) return;
   const container = document.getElementById('sharedCasesList');
   if (!container) return;
-  const sharedLoginButtons = document.getElementById('sharedLoginButtons');
-  if (sharedLoginButtons) sharedLoginButtons.hidden = true;
   sessionState = getSessionState?.() || {};
-  displayTeamId = sessionState.displayTeamId || displayTeamId;
-  teamId = sessionState.teamId || teamId;
+  displayTeamId = sessionState.displayTeamId || displayTeamId || DEFAULT_TEAM_SLUG;
+  teamId = sessionState.teamId || teamId || formatTeamId(DEFAULT_TEAM_SLUG);
   membershipRole = sessionState.role || membershipRole;
   sharedCasesPanelInitialized = true;
   sharedCard = document.querySelector('#panel-delte-sager .shared-cases');

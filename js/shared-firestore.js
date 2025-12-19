@@ -45,9 +45,47 @@ function inferPath(args = []) {
   return '';
 }
 
+function wrapOnSnapshot(original) {
+  return (...args) => {
+    const path = inferPath(args);
+    const nextArgs = [...args];
+    const observerIndex = nextArgs.findIndex(arg => arg && typeof arg === 'object' && (typeof arg.next === 'function' || typeof arg.error === 'function'));
+    if (observerIndex !== -1) {
+      const observer = nextArgs[observerIndex];
+      nextArgs[observerIndex] = {
+        ...observer,
+        error: (error) => {
+          setLastFirestoreError(error, path);
+          if (typeof observer.error === 'function') observer.error(error);
+        },
+      };
+      if (!observer.error) {
+        nextArgs[observerIndex].error = (error) => setLastFirestoreError(error, path);
+      }
+      return original(...nextArgs);
+    }
+    const errorHandlerIndex = nextArgs.findIndex((arg, index) => index > 0 && typeof arg === 'function' && (index === nextArgs.length - 1 || typeof nextArgs[index + 1] !== 'function'));
+    if (errorHandlerIndex !== -1) {
+      const handler = nextArgs[errorHandlerIndex];
+      nextArgs[errorHandlerIndex] = (error) => {
+        setLastFirestoreError(error, path);
+        handler(error);
+      };
+      return original(...nextArgs);
+    }
+    const onNextIndex = nextArgs.findIndex((arg, index) => index > 0 && typeof arg === 'function');
+    if (onNextIndex !== -1) {
+      nextArgs.splice(onNextIndex + 1, 0, (error) => setLastFirestoreError(error, path));
+      return original(...nextArgs);
+    }
+    nextArgs.push(() => {}, (error) => setLastFirestoreError(error, path));
+    return original(...nextArgs);
+  };
+}
+
 function createTrackedHelpers(sdk) {
   const tracked = { ...sdk };
-  const methodsToWrap = ['getDoc', 'setDoc', 'updateDoc', 'deleteDoc', 'getDocs', 'addDoc'];
+  const methodsToWrap = ['getDoc', 'setDoc', 'updateDoc', 'deleteDoc', 'getDocs', 'addDoc', 'runTransaction'];
   methodsToWrap.forEach(methodName => {
     const original = sdk[methodName];
     if (typeof original !== 'function') return;
@@ -67,5 +105,8 @@ function createTrackedHelpers(sdk) {
       }
     };
   });
+  if (typeof sdk.onSnapshot === 'function') {
+    tracked.onSnapshot = wrapOnSnapshot(sdk.onSnapshot.bind(sdk));
+  }
   return tracked;
 }

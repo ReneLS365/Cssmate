@@ -2026,6 +2026,19 @@ if (typeof window !== 'undefined') {
   window.cssmateUpdateActionHint = updateActionHint;
 }
 
+function handleIndexMissingEvent (event) {
+  const detail = event?.detail || {};
+  const message = detail.message || 'Mangler Firestore index. Se console for create-index link.';
+  const path = detail.path ? ` (${detail.path})` : '';
+  updateActionHint(`${message}${path}`, 'error');
+}
+
+function registerIndexMissingHandler () {
+  if (typeof window === 'undefined') return;
+  window.removeEventListener('sscaff:index-missing', handleIndexMissingEvent);
+  window.addEventListener('sscaff:index-missing', handleIndexMissingEvent);
+}
+
 function promisifyRequest(request) {
   if (!request) return Promise.resolve(undefined);
   return new Promise((resolve, reject) => {
@@ -5553,9 +5566,11 @@ async function restoreDraftOnLoad() {
 }
 
 async function startApp () {
+  registerIndexMissingHandler()
   const authGate = initAuthGate()
   try {
-    await authGate.waitForVerifiedAccess()
+    const waitForSession = authGate?.waitForSessionReady || authGate?.waitForVerifiedAccess
+    if (waitForSession) await waitForSession()
     await initApp()
     await restoreDraftOnLoad()
   } catch (error) {
