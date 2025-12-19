@@ -51,9 +51,28 @@ function normalizeProviderIds (providers) {
 }
 
 function setState (updates) {
-  debugState = { ...debugState, ...updates }
+  const nextState = { ...debugState, ...updates }
+  nextState.sessionReady = deriveSessionReady(nextState)
+  debugState = nextState
   notify()
   return debugState
+}
+
+function deriveSessionReady (state) {
+  const hasUser = Boolean(state?.user?.uid)
+  const teamResolved = Boolean(state?.teamResolved)
+  const memberExists = Boolean(state?.memberExists)
+  const memberActive = state?.memberActive
+  const status = state?.sessionStatus || ''
+  const isSignedIn = status === 'signedIn_admin' || status === 'signedIn_member'
+  return Boolean(
+    state?.authReady &&
+    hasUser &&
+    teamResolved &&
+    memberExists &&
+    memberActive !== false &&
+    isSignedIn
+  )
 }
 
 export function onDebugChange (callback) {
@@ -104,20 +123,15 @@ export function updateTeamDebugState ({ teamId, member, teamResolved }) {
 }
 
 export function updateSessionDebugState (sessionState) {
-  const ready = Boolean(
-    sessionState &&
-    sessionState.user &&
-    !sessionState.requiresVerification &&
-    (sessionState.status === 'signedIn_admin' || sessionState.status === 'signedIn_member')
-  )
-  setState({
-    sessionReady: ready,
-    sessionStatus: sessionState?.status || '',
-  })
+  const status = sessionState?.status || ''
   updateTeamDebugState({
     teamId: sessionState?.teamId,
     member: sessionState?.member,
-    teamResolved: Boolean(sessionState?.user && sessionState?.status !== 'signingIn'),
+    teamResolved: Boolean(sessionState?.teamResolved || (sessionState?.user && status !== 'signingIn')),
+  })
+  setState({
+    sessionStatus: status,
+    sessionReady: Boolean(sessionState?.sessionReady),
   })
 }
 
@@ -132,12 +146,30 @@ export function setLastFirestoreError (error, path = '') {
   }
   const code = error?.code || error?.name || 'error'
   const message = error?.message || String(error)
+  const normalizedPath = path || ''
   setState({
     lastFirestoreError: {
       code,
       message,
-      path,
+      path: normalizedPath,
       at: new Date().toISOString(),
     },
   })
+  if (code === 'failed-precondition' && message?.toLowerCase?.()?.includes('index')) {
+    console.error(message)
+    dispatchIndexMissing(message, normalizedPath)
+  }
+}
+
+export function clearLastFirestoreError () {
+  setState({ lastFirestoreError: null })
+}
+
+function dispatchIndexMissing (message, path) {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return
+  const detail = {
+    message: message || 'Mangler Firestore index. Se console for create-index link.',
+    path: path || '',
+  }
+  window.dispatchEvent(new CustomEvent('sscaff:index-missing', { detail }))
 }

@@ -154,8 +154,13 @@ function updateProviderButtons () {
 
 function handleAuthChange (state) {
   const status = state?.status || SESSION_STATUS.SIGNING_IN
+  const authReady = Boolean(state?.authReady)
   const requiresVerification = Boolean(state?.requiresVerification)
-  const hasAccess = status === SESSION_STATUS.ADMIN || status === SESSION_STATUS.MEMBER
+  const hasUser = Boolean(state?.user)
+  const teamResolved = Boolean(state?.teamResolved)
+  const memberExists = Boolean(state?.memberExists)
+  const memberActive = state?.memberActive
+  const hasAccess = Boolean(state?.sessionReady || status === SESSION_STATUS.ADMIN || status === SESSION_STATUS.MEMBER)
   const message = state?.message || (status === SESSION_STATUS.NO_ACCESS ? 'Ingen adgang til teamet.' : '')
 
   if (hasAccess) {
@@ -167,15 +172,43 @@ function handleAuthChange (state) {
 
   setGateVisible(true)
 
+  if (!authReady) {
+    showSection('loading')
+    setMessage(state?.message || 'Login initialiseres…')
+    return
+  }
+
+  if (!hasUser) {
+    showSection('login')
+    updateProviderButtons()
+    const variant = status === SESSION_STATUS.NO_ACCESS || status === SESSION_STATUS.ERROR ? 'error' : ''
+    setMessage(message || 'Log ind for at fortsætte', variant)
+    return
+  }
+
   if (requiresVerification) {
     showSection('verify')
     setMessage('Bekræft din email før du bruger appen.')
     return
   }
 
-  if (status === SESSION_STATUS.SIGNING_IN) {
+  if (!teamResolved) {
     showSection('loading')
-    setMessage(message || 'Logger ind…')
+    setMessage('Tjekker team-adgang…')
+    return
+  }
+
+  if (!memberExists) {
+    showSection('login')
+    updateProviderButtons()
+    setMessage('Du er ikke tilføjet til et team endnu. Kontakt administrator.', 'error')
+    return
+  }
+
+  if (memberActive === false) {
+    showSection('login')
+    updateProviderButtons()
+    setMessage('Din konto er deaktiveret. Kontakt administrator.', 'error')
     return
   }
 
@@ -188,6 +221,7 @@ function handleAuthChange (state) {
 export function initAuthGate () {
   if (gate) return {
     waitForVerifiedAccess: () => authProvider.waitForVerifiedUser(),
+    waitForSessionReady: () => waitForAccess(),
   }
 
   gate = document.getElementById('authGate')
@@ -220,5 +254,6 @@ export function initAuthGate () {
 
   return {
     waitForVerifiedAccess: () => waitForAccess(),
+    waitForSessionReady: () => waitForAccess(),
   }
 }
