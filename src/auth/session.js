@@ -170,8 +170,10 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
   if (accessInFlight) return accessInFlight
 
   accessInFlight = (async () => {
+    const bootstrapEligible = canBootstrap(auth.user, formattedTeam)
+    const allowBootstrapAccess = Boolean(allowBootstrap || bootstrapEligible)
     try {
-      const access = await guardTeamAccess(formattedTeam, auth.user, { allowBootstrap })
+      const access = await guardTeamAccess(formattedTeam, auth.user, { allowBootstrap: allowBootstrapAccess })
       const isAdmin = access.role === 'admin'
       const membership = access.membership
       const resolvedTeamId = formatTeamId(access.teamId || formattedTeam)
@@ -205,7 +207,7 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
         memberActive: membership?.active !== false,
       })
     } catch (error) {
-      const bootstrapAvailable = canBootstrap(auth.user, formattedTeam)
+      const bootstrapAvailable = bootstrapEligible
       const noAccessError = error instanceof InviteMissingError
         || error instanceof MembershipMissingError
         || error instanceof InactiveMemberError
