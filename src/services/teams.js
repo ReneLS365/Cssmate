@@ -24,6 +24,64 @@ function normalizeRole (role) {
   return 'member'
 }
 
+function deterministicInviteId (teamIdInput, emailInput) {
+  const teamId = formatTeamId(teamIdInput || DEFAULT_TEAM_ID)
+  const emailLower = normalizeEmail(emailInput)
+  return `${teamId}__${emailLower || 'invite'}`
+}
+
+function normalizeInviteForSelection (invite, normalizedEmailLower) {
+  const inviteEmailLower = normalizeEmail(invite.emailLower || invite.email)
+  const targetEmail = inviteEmailLower || normalizedEmailLower
+  const teamId = formatTeamId(invite.teamId || DEFAULT_TEAM_ID)
+  const deterministicId = deterministicInviteId(teamId, targetEmail)
+  const id = invite.id || invite.inviteId || deterministicId
+  return {
+    ...invite,
+    id,
+    inviteId: invite.inviteId || id,
+    teamId,
+    emailLower: targetEmail,
+    role: normalizeRole(invite.role),
+    active: invite.active !== false,
+  }
+}
+
+function rankInvite (invite, normalizedEmailLower) {
+  const deterministicId = deterministicInviteId(invite.teamId, normalizedEmailLower)
+  const isDefaultTeam = formatTeamId(invite.teamId) === formatTeamId(DEFAULT_TEAM_ID)
+  const deterministicRank = invite.id === deterministicId ? 0 : 1
+  return { isDefaultTeam, deterministicRank }
+}
+
+function collectInviteIds (invites, normalizedEmailLower) {
+  const ids = invites.flatMap(invite => {
+    const deterministicId = deterministicInviteId(invite.teamId, normalizedEmailLower)
+    return [invite.id, invite.inviteId, deterministicId].filter(Boolean)
+  })
+  return Array.from(new Set(ids))
+}
+
+export function selectDeterministicInvite (invites, emailLowerInput) {
+  const normalizedEmailLower = normalizeEmail(emailLowerInput)
+  if (!normalizedEmailLower) return null
+  const normalizedInvites = (invites || [])
+    .map(invite => normalizeInviteForSelection(invite, normalizedEmailLower))
+    .filter(invite => invite.emailLower === normalizedEmailLower && invite.active !== false && !invite.usedAt)
+
+  if (!normalizedInvites.length) return null
+
+  normalizedInvites.sort((a, b) => {
+    const rankA = rankInvite(a, normalizedEmailLower)
+    const rankB = rankInvite(b, normalizedEmailLower)
+    if (rankA.isDefaultTeam !== rankB.isDefaultTeam) return rankA.isDefaultTeam ? -1 : 1
+    if (rankA.deterministicRank !== rankB.deterministicRank) return rankA.deterministicRank - rankB.deterministicRank
+    return a.id.localeCompare(b.id)
+  })
+
+  return { primary: normalizedInvites[0], inviteIds: collectInviteIds(normalizedInvites, normalizedEmailLower) }
+}
+
 function buildMemberPayload ({ sdk, authUser, teamId, role = 'member', existing }) {
   const now = sdk.serverTimestamp()
   const createdAt = existing?.createdAt || now
@@ -156,7 +214,7 @@ export async function createTeamInvite (teamIdInput, email, role = 'member', met
   const sdk = await getFirestoreHelpers()
   const teamId = formatTeamId(teamIdInput || DEFAULT_TEAM_ID)
   const invitesRef = sdk.collection(db, 'teamInvites')
-  const deterministicId = `${teamId}__${emailLower || 'invite'}`
+  const deterministicId = deterministicInviteId(teamId, emailLower)
   const deterministicRef = sdk.doc(invitesRef, deterministicId)
   const deterministicSnapshot = await sdk.getDoc(deterministicRef)
   const existingSnapshot = await sdk.getDocs(
@@ -196,17 +254,13 @@ export async function consumeInviteIfAny (authUserEmailLower, authUid) {
   const sdk = await getFirestoreHelpers()
   const invitesRef = sdk.collection(db, 'teamInvites')
   const snapshot = await sdk.getDocs(sdk.query(invitesRef, sdk.where('emailLower', '==', emailLower)))
-  const invites = snapshot.docs
-    .map(doc => ({ id: doc.id, ...(doc.data() || {}) }))
-    .filter(invite => invite.active !== false && !invite.usedAt)
-  if (!invites.length) return null
-  const firstInvite = invites[0]
-  const fallbackTeamId = formatTeamId(firstInvite.teamId || DEFAULT_TEAM_ID)
-  const deterministicInviteId = `${fallbackTeamId}__${emailLower}`
-  const primaryInvite = invites.find(invite => invite.id === deterministicInviteId) || firstInvite
-  const teamId = formatTeamId(primaryInvite.teamId || fallbackTeamId)
-  const inviteId = primaryInvite.id
-  const inviteDocIds = Array.from(new Set([inviteId, ...invites.map(invite => invite.id)]))
+  const invites = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() || {}) }))
+  const selection = selectDeterministicInvite(invites, emailLower)
+  if (!selection) return null
+  const primaryInvite = selection.primary
+  const teamId = formatTeamId(primaryInvite.teamId || DEFAULT_TEAM_ID)
+  const inviteId = primaryInvite.inviteId || primaryInvite.id
+  const inviteDocIds = selection.inviteIds.length ? selection.inviteIds : [inviteId]
   const memberRef = sdk.doc(db, 'teams', teamId, 'members', authUid)
   const memberSnapshot = await sdk.getDoc(memberRef)
   const memberPayload = buildMemberPayload({
@@ -242,7 +296,7 @@ export async function ensureTeamForAdminIfMissing (authUser, preferredTeamId = D
     existing: teamSnapshot.exists() ? teamSnapshot.data() : null,
   })
   await sdk.setDoc(memberRef, memberPayload, { merge: true })
-  await upsertUserTeamRoleCache(user.uid, teamId, memberPayload.role, { emailLower: user.email, displayName: user.displayName })
+  await upsertUserTeamRoleCache(user.uid, teamId, memberPayload.role, { emailLower: normalizeEmail(user.email), displayName: user.displayName })
   persistTeamId(normalizeTeamId(teamId))
   try {
     await createTeamInvite(teamId, DEFAULT_MEMBER_INVITE, 'member', { invitedByUid: user.uid, invitedByEmail: user.email })
