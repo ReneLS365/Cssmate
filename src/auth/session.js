@@ -58,7 +58,7 @@ function hasBootstrapRun (uid) {
   if (bootstrapMemory.has(uid)) return true
   if (typeof window === 'undefined') return false
   try {
-    const flag = window.localStorage?.getItem(`${BOOTSTRAP_FLAG_PREFIX}${uid}`)
+    const flag = window.sessionStorage?.getItem(`${BOOTSTRAP_FLAG_PREFIX}${uid}`)
     if (flag === '1') {
       bootstrapMemory.add(uid)
       return true
@@ -72,7 +72,7 @@ function markBootstrapRun (uid) {
   bootstrapMemory.add(uid)
   if (typeof window === 'undefined') return
   try {
-    window.localStorage?.setItem(`${BOOTSTRAP_FLAG_PREFIX}${uid}`, '1')
+    window.sessionStorage?.setItem(`${BOOTSTRAP_FLAG_PREFIX}${uid}`, '1')
   } catch {}
 }
 
