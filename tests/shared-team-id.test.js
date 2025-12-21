@@ -10,9 +10,9 @@ test('normalizeTeamId trims, lowercases og fjerner ulovlige tegn', () => {
   assert.equal(normalizeTeamId('sscaff-team-Alpha'), 'alpha')
 })
 
-test('formatTeamId tilføjer præfiks én gang', () => {
-  assert.equal(formatTeamId('alpha'), 'sscaff-team-alpha')
-  assert.equal(formatTeamId('sscaff-team-bravo'), 'sscaff-team-bravo')
+test('formatTeamId returnerer normaliseret slug uden præfiks', () => {
+  assert.equal(formatTeamId('alpha'), 'alpha')
+  assert.equal(formatTeamId('sscaff-team-bravo'), 'bravo')
 })
 
 test('getDisplayTeamId viser læsbar slug', () => {
@@ -22,6 +22,6 @@ test('getDisplayTeamId viser læsbar slug', () => {
 
 test('formatMissingMembershipMessage inkluderer sti til memberDoc', () => {
   const message = formatMissingMembershipMessage('sscaff-team-demo', 'uid-123')
-  assert.match(message, /teams\/sscaff-team-demo\/members\/uid-123/)
+  assert.match(message, /teams\/demo\/members\/uid-123/)
   assert.match(message.toLowerCase(), /ikke medlem/)
 })
