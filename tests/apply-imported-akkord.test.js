@@ -19,7 +19,7 @@ function createStubElement () {
     remove () {},
     closest () { return null },
     getBoundingClientRect () { return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 } },
-    classList: { add () {}, remove () {}, toggle () {} },
+    classList: { add () {}, remove () {}, toggle () {}, contains () { return false } },
     style: {},
     dataset: {},
     value: '',

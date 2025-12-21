@@ -13,6 +13,8 @@ const defaultState = {
   memberExists: false,
   memberActive: null,
   memberRole: '',
+  membershipStatus: 'loading',
+  membershipCheckPath: '',
   sessionReady: false,
   sessionStatus: '',
   currentView: '',
@@ -64,6 +66,7 @@ function deriveSessionReady (state) {
   const memberExists = Boolean(state?.memberExists)
   const memberActive = state?.memberActive
   const status = state?.sessionStatus || ''
+  const membershipStatus = state?.membershipStatus
   const isSignedIn = status === 'signedIn_admin' || status === 'signedIn_member'
   return Boolean(
     state?.authReady &&
@@ -71,7 +74,8 @@ function deriveSessionReady (state) {
     teamResolved &&
     memberExists &&
     memberActive !== false &&
-    isSignedIn
+    isSignedIn &&
+    membershipStatus === 'member'
   )
 }
 
@@ -111,7 +115,7 @@ export function updateAuthDebugState (authContext) {
   })
 }
 
-export function updateTeamDebugState ({ teamId, member, teamResolved }) {
+export function updateTeamDebugState ({ teamId, member, teamResolved, membershipStatus, membershipCheckPath }) {
   const memberExists = Boolean(member)
   setState({
     teamId: teamId || debugState.teamId,
@@ -119,6 +123,8 @@ export function updateTeamDebugState ({ teamId, member, teamResolved }) {
     memberExists,
     memberActive: memberExists ? member?.active !== false : null,
     memberRole: member?.role || '',
+    membershipStatus: membershipStatus || debugState.membershipStatus,
+    membershipCheckPath: membershipCheckPath || debugState.membershipCheckPath,
   })
 }
 
@@ -128,6 +134,8 @@ export function updateSessionDebugState (sessionState) {
     teamId: sessionState?.teamId,
     member: sessionState?.member,
     teamResolved: Boolean(sessionState?.teamResolved || (sessionState?.user && status !== 'signingIn')),
+    membershipStatus: sessionState?.membershipStatus,
+    membershipCheckPath: sessionState?.membershipCheckPath,
   })
   setState({
     sessionStatus: status,

@@ -159,6 +159,13 @@ Eksportformat kan være JSON, CSV eller begge, men **indholdet** skal matche ove
 * Ingen 404 på nødvendige assets.
 * Ingen TODO/FIXME tilbage i ændrede filer.
 
+### 1.7 Team-adgang (UID-lås)
+
+* Medlemsdokumenter **SKAL** gemmes som `teams/{teamId}/members/{auth.uid}` (doc.id = UID). Brug altid `doc(..., uid)` – aldrig `addDoc`/auto-ID.
+* Standardteam er `hulmose` (profilens `teamId` > UI/localStorage > fallback `hulmose`).
+* Admin-email (`mr.lion1995@gmail.com`) må auto-bootstrappes til default-teamet én gang pr. session, ellers brug manuel invite/membership.
+* Fejlfinding: Hvis AccessDenied/“Du er ikke tilføjet…”, opret dokumentet med brugerens UID på ovenstående sti og prøv igen. Dokumentér forventet sti i konsol-log.
+
 ---
 
 ## 2. Standard-kommandoer

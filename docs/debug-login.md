@@ -15,6 +15,8 @@ Brug denne guide når login eller Firestore-adgang fejler. Debug-overlayet kan t
   * `memberExists` – medlemsdoc fundet.
   * `memberRole` – `admin` eller `member`.
   * `memberActive` – false hvis deaktiveret.
+  * `membershipStatus` – `loading` / `member` / `not_member` / `error`.
+  * `memberPath` – forventet sti (`teams/{teamId}/members/{uid}`) der slås op.
 * **SESSION**
   * `sessionReady` – alle gates er opfyldt (authReady + user + teamResolved + memberExists + memberActive !== false).
   * `sessionStatus` – rå sessionstatus (`signedIn_admin`, `signedIn_member`, `signingIn`, osv.).
@@ -28,7 +30,7 @@ Brug denne guide når login eller Firestore-adgang fejler. Debug-overlayet kan t
 2. **user = null** – brug global login-skærm (AuthGate). Ingen login-knapper i “Delte sager”.
 3. **requiresVerification/password** – password-bruger skal bekræftes; brug “Send verifikationsmail igen” + “Jeg har verificeret”.
 4. **teamResolved = false** – vent på team-opslag. Standardteam er `hulmose`; check localStorage `sscaff.teamId`.
-5. **memberExists = false** – du er ikke tilføjet til teamet (`teams/{teamId}/members/{uid}`). Kontakt admin.
+5. **memberExists = false / membershipStatus = not_member** – AccessDenied vises i appen. Opret dokumentet `teams/{teamId}/members/{uid}` (doc.id = UID) med `role` og `active:true`, og prøv igen.
 6. **memberActive = false** – medlem deaktiveret. Kontakt admin for reaktivering.
 7. **sessionReady = false & lastFirestoreError.code = permission-denied** – typisk forkert teamId eller manglende medlem/rolle i Firestore.
 8. **lastFirestoreError.code = failed-precondition + “index”** – manglende Firestore-indeks. Appen viser banner “Mangler Firestore index…” og logger create-index link i konsollen (kræver `roles/datastore.indexAdmin` i IAM).
