@@ -1,12 +1,15 @@
 import { getFirestoreDb, getFirestoreHelpers } from '../../js/shared-firestore.js'
 import { formatTeamId } from './team-ids.js'
+import { isTeamDebugEnabled, teamDebug } from '../utils/team-debug.js'
 
-const TEAM_ACCESS_TIMEOUT_MS = 8000
+const TEAM_ACCESS_TIMEOUT_MS = 10000
 
 export const TEAM_ACCESS_STATUS = {
+  SIGNED_OUT: 'signed-out',
   CHECKING: 'checking',
   OK: 'ok',
-  NO_ACCESS: 'no-access',
+  NO_ACCESS: 'denied',
+  DENIED: 'denied',
   NEED_CREATE: 'need-create',
   ERROR: 'error',
 }
@@ -21,9 +24,9 @@ function baseResult ({ teamId, user }) {
     memberDoc: null,
     role: '',
     memberActive: null,
-    isOwner: false,
     isAdmin: false,
     error: null,
+    reason: '',
   }
 }
 
@@ -39,26 +42,34 @@ function mapError (error) {
   return { code, message }
 }
 
-async function resolveTeamAccessInner ({ teamId, user }) {
-  const initial = baseResult({ teamId, user })
-
-  if (!user?.uid) {
-    return {
-      ...initial,
-      status: TEAM_ACCESS_STATUS.NO_ACCESS,
-      error: { code: 'unauthenticated', message: 'Log ind for at fortsætte.' },
-    }
+function normalizeMemberDoc (snapshot, fallbackUid) {
+  if (!snapshot?.exists?.()) return null
+  const data = snapshot.data() || {}
+  const role = data.role === 'admin' ? 'admin' : 'member'
+  return {
+    ...data,
+    id: snapshot.id || fallbackUid || '',
+    uid: snapshot.id || fallbackUid || '',
+    role,
+    active: data.active !== false && data.disabled !== true,
+    disabled: data.disabled === true,
   }
+}
 
+async function readTeamAccess ({ teamId, user }) {
+  const initial = baseResult({ teamId, user })
+  if (!user?.uid) {
+    return { ...initial, status: TEAM_ACCESS_STATUS.SIGNED_OUT, reason: 'unauthenticated' }
+  }
   if (!teamId) {
     return {
       ...initial,
       status: TEAM_ACCESS_STATUS.ERROR,
+      reason: 'missing-team',
       error: { code: 'missing-team', message: 'TeamId mangler' },
     }
   }
 
-  let finalResult = { ...initial }
   try {
     const db = await getFirestoreDb()
     const sdk = await getFirestoreHelpers()
@@ -71,95 +82,156 @@ async function resolveTeamAccessInner ({ teamId, user }) {
     ])
 
     const teamDoc = teamSnap.exists() ? { ...(teamSnap.data() || {}), id: teamSnap.id || normalizedTeamId } : null
-    const memberDoc = memberSnap.exists()
-      ? { ...(memberSnap.data() || {}), id: memberSnap.id || user.uid, uid: memberSnap.id || user.uid }
-      : null
-    const isOwner = Boolean(teamDoc?.ownerUid && teamDoc.ownerUid === user.uid)
-    const memberRole = memberDoc?.role === 'owner' ? 'owner' : (memberDoc?.role === 'admin' ? 'admin' : 'member')
-    const isAdmin = Boolean(isOwner || memberRole === 'admin')
+    const memberDoc = normalizeMemberDoc(memberSnap, user.uid)
 
-    let status = TEAM_ACCESS_STATUS.OK
-    let error = null
     if (!teamSnap.exists()) {
-      status = TEAM_ACCESS_STATUS.NEED_CREATE
-      error = { code: 'missing-team', message: 'Team mangler. Opret eller vælg et andet team.' }
-    } else if (!memberSnap.exists()) {
-      status = TEAM_ACCESS_STATUS.NO_ACCESS
-      error = { code: 'not-member', message: 'Ingen adgang til dette team.' }
-    } else if (memberDoc.active === false) {
-      status = TEAM_ACCESS_STATUS.NO_ACCESS
-      error = { code: 'member-inactive', message: 'Medlemmet er deaktiveret.' }
+      return {
+        ...initial,
+        status: TEAM_ACCESS_STATUS.NEED_CREATE,
+        teamId: normalizedTeamId,
+        reason: 'missing-team',
+        teamDoc,
+        memberDoc,
+        error: { code: 'missing-team', message: 'Team mangler. Opret eller vælg et andet team.' },
+      }
     }
 
-    finalResult = {
+    if (!memberDoc) {
+      return {
+        ...initial,
+        status: TEAM_ACCESS_STATUS.DENIED,
+        teamId: normalizedTeamId,
+        reason: 'not-member',
+        teamDoc,
+        error: { code: 'not-member', message: 'Ingen adgang til dette team.' },
+      }
+    }
+
+    if (memberDoc.disabled) {
+      return {
+        ...initial,
+        status: TEAM_ACCESS_STATUS.DENIED,
+        teamId: normalizedTeamId,
+        reason: 'disabled',
+        teamDoc,
+        memberDoc,
+        error: { code: 'member-disabled', message: 'Medlemmet er deaktiveret.' },
+      }
+    }
+
+    const isAdmin = memberDoc.role === 'admin'
+    const result = {
       ...initial,
-      status,
+      status: TEAM_ACCESS_STATUS.OK,
       teamId: normalizedTeamId,
       teamDoc,
       memberDoc,
-      role: memberRole,
-      memberActive: memberDoc?.active !== false,
-      isOwner,
+      role: memberDoc.role,
+      memberActive: memberDoc.active,
       isAdmin,
-      error,
+      reason: 'ok',
+      error: null,
     }
+    return result
   } catch (error) {
-    finalResult = {
+    return {
       ...initial,
       status: TEAM_ACCESS_STATUS.ERROR,
+      reason: 'error',
       error: mapError(error),
     }
   }
-
-  return finalResult
 }
 
-export async function resolveTeamAccess ({ teamId, user }) {
-  return resolveTeamAccessInner({ teamId, user })
-}
-
-export async function resolveTeamAccessWithTimeout ({ teamId, user, timeoutMs = TEAM_ACCESS_TIMEOUT_MS }) {
+export async function getTeamAccess ({ teamId, user, timeoutMs = TEAM_ACCESS_TIMEOUT_MS }) {
   const timeoutPromise = new Promise((resolve) => {
     const timer = setTimeout(() => {
       resolve({
         ...baseResult({ teamId, user }),
         status: TEAM_ACCESS_STATUS.ERROR,
+        reason: 'timeout',
         error: { code: 'deadline-exceeded', message: 'Timeout while checking team access' },
       })
     }, timeoutMs)
     timer.unref?.()
   })
 
-  return Promise.race([
-    resolveTeamAccessInner({ teamId, user }),
+  const access = await Promise.race([
+    readTeamAccess({ teamId, user }),
     timeoutPromise,
   ])
+
+  if (isTeamDebugEnabled()) {
+    teamDebug('access-state', {
+      teamId: access.teamId,
+      uid: access.uid,
+      status: access.status,
+      reason: access.reason,
+      role: access.role,
+      error: access.error?.code || null,
+    })
+  }
+
+  return access
 }
 
-export async function bootstrapTeamMembership ({ teamId, user }) {
+export async function bootstrapTeamMembership ({ teamId, user, role = 'admin' }) {
+  return createTeamWithMembership({ teamId, user, role })
+}
+
+export async function createTeamWithMembership ({ teamId, user, role = 'admin' }) {
   if (!user?.uid) throw new Error('Not signed in')
   const db = await getFirestoreDb()
   const sdk = await getFirestoreHelpers()
   const normalizedTeamId = formatTeamId(teamId)
-  const memberRef = sdk.doc(db, 'teams', normalizedTeamId, 'members', user.uid)
-  const existing = await sdk.getDoc(memberRef)
-  const existingData = existing.exists() ? existing.data() || {} : {}
-  const payload = {
-    uid: user.uid,
-    email: user.email || '',
-    name: user.displayName || user.name || '',
-    active: true,
-    assigned: true,
+  const now = sdk.serverTimestamp()
+  const membershipRole = role === 'admin' ? 'admin' : 'member'
+
+  const result = await sdk.runTransaction(db, async (tx) => {
+    const teamRef = sdk.doc(db, 'teams', normalizedTeamId)
+    const memberRef = sdk.doc(db, 'teams', normalizedTeamId, 'members', user.uid)
+    const teamSnap = await tx.get(teamRef)
+    if (teamSnap.exists()) {
+      throw Object.assign(new Error('Team findes allerede'), { code: 'team-exists' })
+    }
+    const teamPayload = {
+      teamId: normalizedTeamId,
+      name: normalizedTeamId,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: user.uid,
+    }
+    const memberPayload = {
+      uid: user.uid,
+      email: user.email || '',
+      emailLower: (user.email || '').toLowerCase(),
+      role: membershipRole,
+      active: true,
+      createdAt: now,
+      addedAt: now,
+      updatedAt: now,
+      createdBy: user.uid,
+      teamId: normalizedTeamId,
+    }
+    tx.set(teamRef, teamPayload, { merge: true })
+    tx.set(memberRef, memberPayload, { merge: true })
+    return { teamPayload, memberPayload }
+  })
+
+  if (isTeamDebugEnabled()) {
+    teamDebug('team-bootstrap', { teamId: formatTeamId(teamId), uid: user.uid, role: result?.memberPayload?.role })
   }
-  if (!existingData.createdAt) {
-    payload.createdAt = sdk.serverTimestamp()
+
+  return {
+    teamId: formatTeamId(teamId),
+    teamDoc: { ...(result?.teamPayload || {}), id: formatTeamId(teamId) },
+    memberDoc: { ...(result?.memberPayload || {}), id: user.uid },
+    role: result?.memberPayload?.role || membershipRole,
   }
-  if (!existingData.role) {
-    payload.role = 'user'
-  }
-  await sdk.setDoc(memberRef, payload, { merge: true })
-  const nextSnapshot = await sdk.getDoc(memberRef)
-  return nextSnapshot.exists() ? { id: nextSnapshot.id, ...(nextSnapshot.data() || {}) } : payload
+}
+
+export function getTeamAccessWithTimeout (options) {
+  return getTeamAccess(options)
 }
 
 export {

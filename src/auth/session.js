@@ -11,8 +11,9 @@ import {
   normalizeTeamId,
   persistTeamId,
 } from '../services/team-ids.js'
-import { buildMemberDocPath } from '../services/teams.js'
-import { TEAM_ACCESS_STATUS, bootstrapTeamMembership, resolveTeamAccessWithTimeout } from '../services/team-access.js'
+import { buildMemberDocPath, ensureUserDoc } from '../services/teams.js'
+import { TEAM_ACCESS_STATUS, createTeamWithMembership, getTeamAccessWithTimeout } from '../services/team-access.js'
+import { teamDebug } from '../utils/team-debug.js'
 
 const SESSION_STATUS = {
   SIGNED_OUT: 'signedOut',
@@ -75,8 +76,11 @@ function markBootstrapRun (uid) {
 }
 
 let sessionState = buildState({
-  status: SESSION_STATUS.SIGNING_IN,
-  message: 'Login initialiseres…',
+  status: SESSION_STATUS.SIGNED_OUT,
+  message: 'Log ind for at fortsætte',
+  accessStatus: TEAM_ACCESS_STATUS.SIGNED_OUT,
+  accessError: null,
+  authReady: false,
 })
 
 function buildState (overrides = {}) {
@@ -97,10 +101,10 @@ function buildState (overrides = {}) {
     teamResolved: false,
     memberExists: false,
     memberActive: null,
-    membershipStatus: 'loading',
+    membershipStatus: 'idle',
     membershipCheckPath: '',
     membershipCheckTeamId: '',
-    accessStatus: TEAM_ACCESS_STATUS.CHECKING,
+    accessStatus: TEAM_ACCESS_STATUS.SIGNED_OUT,
     accessError: null,
     sessionReady: false,
     canChangeTeam: true,
@@ -191,8 +195,9 @@ function normalizeMemberDoc (memberDoc, teamId, uid) {
 
 function resolveAccessMessage (accessStatus, displayTeamId, accessError, memberDoc) {
   if (accessStatus === TEAM_ACCESS_STATUS.OK) return ''
-  if (accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS) return `Du er logget ind, men har ikke adgang til ${displayTeamId}. Kontakt admin.`
   if (accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE) return 'Teamet findes ikke. Opret det eller vælg et andet team.'
+  if (accessStatus === TEAM_ACCESS_STATUS.DENIED || accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS) return `Du er logget ind, men har ikke adgang til ${displayTeamId}. Kontakt admin.`
+  if (accessStatus === TEAM_ACCESS_STATUS.SIGNED_OUT) return 'Log ind for at fortsætte.'
   if (accessStatus === TEAM_ACCESS_STATUS.ERROR && accessError?.message) return accessError.message
   if (memberDoc?.active === false) return 'Din konto er deaktiveret. Kontakt administrator.'
   return 'Ingen adgang til teamet.'
@@ -205,10 +210,16 @@ async function evaluateAccess () {
     setState(buildState({
       status: SESSION_STATUS.SIGNED_OUT,
       message: 'Log ind for at fortsætte',
-      accessStatus: TEAM_ACCESS_STATUS.ERROR,
+      accessStatus: TEAM_ACCESS_STATUS.SIGNED_OUT,
       accessError: null,
     }))
     return null
+  }
+
+  try {
+    await ensureUserDoc(auth.user)
+  } catch (error) {
+    console.warn('Kunne ikke oprette brugerprofil', error)
   }
 
   const formattedTeam = formatTeamId(preferredTeamSlug)
@@ -246,16 +257,21 @@ async function evaluateAccess () {
       : null
     const memberExists = Boolean(member)
     const memberActive = memberExists ? member.active !== false : null
-    const isOwner = Boolean(accessResult?.isOwner)
-    const isAdmin = Boolean(accessStatus === TEAM_ACCESS_STATUS.OK && (accessResult?.isAdmin || member?.role === 'admin' || member?.role === 'owner' || isOwner))
+    const isAdmin = Boolean(accessStatus === TEAM_ACCESS_STATUS.OK && (accessResult?.isAdmin || member?.role === 'admin' || member?.role === 'owner'))
     const membershipStatus = accessStatus === TEAM_ACCESS_STATUS.OK
       ? 'member'
-      : accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS || accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE
+      : accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE || accessStatus === TEAM_ACCESS_STATUS.DENIED || accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS
         ? 'not_member'
-        : 'error'
+        : accessStatus === TEAM_ACCESS_STATUS.SIGNED_OUT
+          ? 'idle'
+          : 'error'
     const sessionStatus = membershipStatus === 'member'
       ? (isAdmin ? SESSION_STATUS.ADMIN : SESSION_STATUS.MEMBER)
-      : (accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS || accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE ? SESSION_STATUS.NO_ACCESS : SESSION_STATUS.ERROR)
+      : (accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE || accessStatus === TEAM_ACCESS_STATUS.DENIED || accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS
+          ? SESSION_STATUS.NO_ACCESS
+          : accessStatus === TEAM_ACCESS_STATUS.SIGNED_OUT
+            ? SESSION_STATUS.SIGNED_OUT
+            : SESSION_STATUS.ERROR)
     const message = resolveAccessMessage(accessStatus, resolvedDisplayTeamId, accessError, member)
     const errorObject = accessStatus === TEAM_ACCESS_STATUS.OK
       ? null
@@ -272,10 +288,10 @@ async function evaluateAccess () {
       setUserLoadedState({
         uid: currentUser?.uid || null,
         email: currentUser?.email || '',
-        displayName: currentUser?.displayName || currentUser?.name || '',
-        teamId: resolvedTeamId,
-        role: member?.role || (isAdmin ? 'admin' : 'member'),
-      })
+      displayName: currentUser?.displayName || currentUser?.name || '',
+      teamId: resolvedTeamId,
+      role: member?.role || (isAdmin ? 'admin' : 'member'),
+    })
     } else {
       setUserLoadedState({
         uid: currentUser?.uid || null,
@@ -285,10 +301,10 @@ async function evaluateAccess () {
         role: '',
       })
     }
-    const bootstrapAvailable = membershipStatus === 'not_member'
+    const bootstrapAvailable = accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE
       && canBootstrap(currentUser, resolvedTeamId)
       && !hasBootstrapRun(currentUser?.uid)
-    return setState({
+    const nextState = setState({
       status: sessionStatus,
       role: member?.role || (isAdmin ? 'admin' : null),
       member,
@@ -310,10 +326,18 @@ async function evaluateAccess () {
       accessStatus,
       accessError,
     })
+    teamDebug('session-access', {
+      status: nextState.status,
+      accessStatus,
+      teamId: resolvedTeamId,
+      role: nextState.role,
+      reason: accessResult?.reason || accessError?.code || 'unknown',
+    })
+    return nextState
   }
 
   const runPromise = (async () => {
-    const accessResult = await resolveTeamAccessWithTimeout({ teamId: formattedTeam, user: currentUser })
+    const accessResult = await getTeamAccessWithTimeout({ teamId: formattedTeam, user: currentUser })
     if (requestId !== accessRequestId) return sessionState
     return applyAccessResult(accessResult)
   })()
@@ -345,10 +369,10 @@ function handleAuthChange (context) {
       teamResolved: false,
       memberExists: false,
       memberActive: null,
-      membershipStatus: 'loading',
+      membershipStatus: 'idle',
       membershipCheckPath: '',
       membershipCheckTeamId: '',
-      accessStatus: TEAM_ACCESS_STATUS.CHECKING,
+      accessStatus: TEAM_ACCESS_STATUS.SIGNED_OUT,
       accessError: null,
     }))
     return
@@ -365,10 +389,10 @@ function handleAuthChange (context) {
       teamResolved: false,
       memberExists: false,
       memberActive: null,
-      membershipStatus: 'loading',
+      membershipStatus: 'idle',
       membershipCheckPath: '',
       membershipCheckTeamId: '',
-      accessStatus: TEAM_ACCESS_STATUS.CHECKING,
+      accessStatus: TEAM_ACCESS_STATUS.SIGNED_OUT,
       accessError: null,
     }))
     return
@@ -411,7 +435,6 @@ function initAuthSession () {
   initialized = true
   preferredTeamSlug = normalizeTeamId(preferredTeamSlug || DEFAULT_TEAM_SLUG)
   persistTeamId(preferredTeamSlug)
-  waitForAuthReady()?.catch?.(() => {})
   onAuthStateChange(handleAuthChange)
   handleAuthChange(getAuthContext())
   return getSessionApi()
@@ -479,6 +502,7 @@ function waitForAccess ({ requireAdmin = false } = {}) {
     }
     initAuthSession()
   }
+  waitForAuthReady()?.catch?.(() => {})
   if (typeof navigator === 'undefined') return Promise.resolve({ ...sessionState })
   if (satisfiesAccess(sessionState, requireAdmin)) return Promise.resolve({ ...sessionState })
   if ([SESSION_STATUS.NO_ACCESS, SESSION_STATUS.ERROR].includes(sessionState.status)) {
@@ -495,8 +519,9 @@ async function requestBootstrapAccess () {
   if (!canBootstrap(auth?.user, targetTeamId)) {
     throw new Error('Bootstrap er ikke tilladt for denne bruger.')
   }
-  await bootstrapTeamMembership({ teamId: targetTeamId, user: auth.user })
+  await createTeamWithMembership({ teamId: targetTeamId, user: auth.user })
   markBootstrapRun(auth?.user?.uid)
+  teamDebug('bootstrap-request', { teamId: targetTeamId, uid: auth?.user?.uid })
   return refreshAccess()
 }
 

@@ -128,7 +128,7 @@ function updateGuardContent (state) {
   const teamId = formatTeamId(state?.teamId || state?.membershipCheckTeamId || DEFAULT_TEAM_SLUG)
   const displayTeam = getDisplayTeamId(teamId)
   const userEmail = state?.user?.email || ''
-  const messageFallback = state?.message || (accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS
+  const messageFallback = state?.message || ((accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS || accessStatus === TEAM_ACCESS_STATUS.DENIED)
     ? `Du er logget ind, men har ikke adgang til ${displayTeam}. Kontakt admin.`
     : accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE
       ? 'Teamet findes ikke. Opret det eller vælg et andet team.'
@@ -137,7 +137,7 @@ function updateGuardContent (state) {
 
   let statusLabel = 'Tjekker adgang'
   if (accessStatus === TEAM_ACCESS_STATUS.OK) statusLabel = 'Adgang givet'
-  else if (accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS) statusLabel = 'Ingen team-adgang'
+  else if (accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS || accessStatus === TEAM_ACCESS_STATUS.DENIED) statusLabel = 'Ingen team-adgang'
   else if (accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE) statusLabel = 'Team mangler'
   else if (accessStatus === TEAM_ACCESS_STATUS.ERROR) statusLabel = 'Adgangsfejl'
   statusEl.textContent = statusLabel
@@ -158,7 +158,7 @@ function updateGuardContent (state) {
   emailEl.textContent = userEmail || '–'
   if (retryButton) retryButton.disabled = accessStatus === TEAM_ACCESS_STATUS.CHECKING || membershipStatus === 'loading'
   if (bootstrapButton) {
-    const showBootstrap = Boolean(state?.bootstrapAvailable || isAdminEmail(userEmail))
+    const showBootstrap = Boolean(state?.bootstrapAvailable)
     bootstrapButton.hidden = !showBootstrap
     bootstrapButton.disabled = !showBootstrap || accessStatus === TEAM_ACCESS_STATUS.CHECKING || membershipStatus === 'loading'
   }

@@ -102,6 +102,7 @@ function hideLegacyStatus () {
 function getAccessLabel () {
   const status = sessionState?.accessStatus || TEAM_ACCESS_STATUS.CHECKING;
   const message = teamError || sessionState?.message || '';
+  if (status === TEAM_ACCESS_STATUS.SIGNED_OUT) return 'Adgang: Log ind';
   if (status === TEAM_ACCESS_STATUS.OK && !message) return 'Adgang: OK';
   if (status === TEAM_ACCESS_STATUS.CHECKING && !message) return 'Adgang: Tjekker adgang…';
   const labelMessage = message || (status === TEAM_ACCESS_STATUS.OK ? '' : 'Ingen adgang');

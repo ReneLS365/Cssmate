@@ -5563,10 +5563,9 @@ async function startApp () {
   const authGate = initAuthGate()
   initAppGuard()
   try {
-    const waitForAuth = authGate?.waitForAuthReady || authGate?.waitForSessionReady || authGate?.waitForVerifiedAccess
-    if (waitForAuth) await waitForAuth()
     await initApp()
     await restoreDraftOnLoad()
+    authGate?.prefetchAuth?.()
   } catch (error) {
     console.error('CSMate init fejlede', error)
     const message = error?.message || 'Kunne ikke initialisere appen. Opdater siden for at prøve igen.'
