@@ -41,8 +41,8 @@ CSMate er en letvægtsudgave af den oprindelige Cssmate-applikation, målrettet 
 
 ## Firebase App Check (reCAPTCHA v3)
 
-- Netlify miljøvariabel: `VITE_FIREBASE_APP_CHECK_SITE_KEY=6LfFeS8sAAAAAH9hsS136zJ6YOQkpRZKniSIIYYI` (kan overskrives efter behov).
-- Lokal udvikling: læg samme nøgle i en `.env` fil (`VITE_FIREBASE_APP_CHECK_SITE_KEY=...`). Hvis variablen mangler, bruges fallback-nøglen og der logges kun en warning i konsollen.
+- Netlify miljøvariabler: `VITE_APP_CHECK_ENABLED=true` og `VITE_FIREBASE_RECAPTCHA_V3_SITE_KEY=<din_site_key>` (indsæt din egen nøgle i Netlify UI).
+- Lokal udvikling: brug samme nøgler i `.env` (`VITE_APP_CHECK_ENABLED=true` og `VITE_FIREBASE_RECAPTCHA_V3_SITE_KEY=...`). Mangler nøglen, falder appen tilbage til en standard reCAPTCHA v3 nøgle og logger en warning.
 - Debug mode (dev/localhost): åbn appen, kopier App Check debug token fra browserkonsollen, og tilføj den i Firebase Console → App Check → Debug tokens. Det gør udvikling muligt selv hvis enforcement aktiveres senere.
 
 ## CI & Codex

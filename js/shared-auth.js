@@ -4,6 +4,7 @@ const DEFAULT_PROVIDER = 'custom';
 const DEFAULT_ENABLED_PROVIDERS = ['google', 'microsoft'];
 export const FIREBASE_SDK_VERSION = '10.12.2';
 const MOCK_AUTH_STORAGE_KEY = 'cssmate:mockAuthUser';
+const DEFAULT_APP_CHECK_ENABLED = true;
 
 let authInstance = null;
 let authModule = null;
@@ -19,7 +20,38 @@ const listeners = new Set();
 let appCheckInitPromise = null;
 let appCheckStarted = false;
 let appCheckModule = null;
+let firebaseAppInstance = null;
+export let APP_CHECK_STATUS = 'off';
+export let APP_CHECK_REASON = '';
 const APP_CHECK_FALLBACK_SITE_KEY = '6LfFeS8sAAAAAH9hsS136zJ6YOQkpRZKniSIIYYI';
+
+function setAppCheckState(status, reason = '') {
+  APP_CHECK_STATUS = status;
+  APP_CHECK_REASON = reason || '';
+}
+
+function readEnvValue(name) {
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta.env && typeof import.meta.env[name] !== 'undefined') {
+      return import.meta.env[name];
+    }
+  } catch {}
+  if (typeof window !== 'undefined' && typeof window[name] !== 'undefined') {
+    return window[name];
+  }
+  return undefined;
+}
+
+function resolveAppCheckEnabledFlag() {
+  const envValue = readEnvValue('VITE_APP_CHECK_ENABLED');
+  const windowValue = typeof window !== 'undefined' ? window.FIREBASE_APP_CHECK_ENABLED : undefined;
+  const rawValue = typeof envValue !== 'undefined' ? envValue : windowValue;
+  if (typeof rawValue === 'boolean') return rawValue;
+  if (typeof rawValue === 'string') {
+    return rawValue.trim().toLowerCase() === 'true';
+  }
+  return DEFAULT_APP_CHECK_ENABLED;
+}
 
 function isLocalhost() {
   if (typeof window === 'undefined') return false;
@@ -88,9 +120,14 @@ async function loadAppCheckSdk() {
 }
 
 function getAppCheckSiteKey() {
-  if (typeof window !== 'undefined' && window.FIREBASE_APP_CHECK_SITE_KEY) {
-    return `${window.FIREBASE_APP_CHECK_SITE_KEY}`.trim();
-  }
+  const candidates = [
+    readEnvValue('VITE_FIREBASE_RECAPTCHA_V3_SITE_KEY'),
+    readEnvValue('VITE_FIREBASE_APP_CHECK_SITE_KEY'),
+    typeof window !== 'undefined' ? window.FIREBASE_RECAPTCHA_V3_SITE_KEY : null,
+    typeof window !== 'undefined' ? window.FIREBASE_APP_CHECK_SITE_KEY : null,
+  ].filter(Boolean);
+  const siteKey = candidates.find(value => typeof value === 'string' && value.trim());
+  if (siteKey) return siteKey.trim();
   console.warn('App Check site key mangler, bruger fallback (reCAPTCHA v3).');
   return APP_CHECK_FALLBACK_SITE_KEY;
 }
@@ -100,11 +137,29 @@ function isDevBuild() {
 }
 
 async function ensureAppCheck(app) {
-  if (!app || appCheckStarted) return;
+  if (!app) {
+    setAppCheckState('off', 'no_app');
+    return Promise.resolve(null);
+  }
+  if (appCheckStarted && appCheckInitPromise) return appCheckInitPromise;
   if (appCheckInitPromise) return appCheckInitPromise;
+
+  const enabled = resolveAppCheckEnabledFlag();
+  const siteKey = getAppCheckSiteKey();
+  if (!enabled) {
+    setAppCheckState('off', 'disabled');
+    appCheckInitPromise = Promise.resolve(null);
+    return appCheckInitPromise;
+  }
+  if (!siteKey) {
+    console.warn('App Check deaktiveret: mangler reCAPTCHA v3 site key.');
+    setAppCheckState('off', 'missing_site_key');
+    appCheckInitPromise = Promise.resolve(null);
+    return appCheckInitPromise;
+  }
+
   appCheckInitPromise = (async () => {
     try {
-      const siteKey = getAppCheckSiteKey();
       const sdk = await loadAppCheckSdk();
       if (isDevBuild() && typeof self !== 'undefined') {
         try {
@@ -118,9 +173,12 @@ async function ensureAppCheck(app) {
         isTokenAutoRefreshEnabled: true,
       });
       appCheckStarted = true;
+      setAppCheckState('on', '');
     } catch (error) {
       console.warn('App Check init fejlede', error);
+      setAppCheckState('failed', error?.message || 'init_failed');
     }
+    return null;
   })();
   return appCheckInitPromise;
 }
@@ -129,9 +187,13 @@ export async function getFirebaseAppInstance() {
   const config = getFirebaseConfig();
   if (!config) throw new Error('Firebase konfiguration mangler (VITE_FIREBASE_*)');
   const sdk = await loadFirebaseSdk();
-  const app = sdk.getApps?.().length ? sdk.getApp() : sdk.initializeApp(config);
-  await ensureAppCheck(app);
-  return app;
+  if (!firebaseAppInstance) {
+    firebaseAppInstance = sdk.getApps?.().length ? sdk.getApp() : sdk.initializeApp(config);
+  }
+  if (!appCheckStarted || !appCheckInitPromise) {
+    await ensureAppCheck(firebaseAppInstance);
+  }
+  return firebaseAppInstance;
 }
 
 function notify() {
