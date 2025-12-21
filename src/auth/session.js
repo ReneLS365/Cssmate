@@ -14,7 +14,7 @@ import {
   buildMemberDocPath,
 } from '../../js/shared-ledger.js'
 import { normalizeEmail } from './roles.js'
-import { updateSessionDebugState } from '../state/debug.js'
+import { setLastFirestoreError, updateSessionDebugState } from '../state/debug.js'
 import { markUserLoading, resetUserState, setUserLoadedState } from '../state/user-store.js'
 
 const SESSION_STATUS = {
@@ -257,6 +257,9 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
       const inactiveMember = error instanceof InactiveMemberError
       const targetTeamId = formatTeamId(error?.teamId || formattedTeam)
       const nextDisplayTeamId = getDisplayTeamId(targetTeamId)
+      if (error?.code) {
+        setLastFirestoreError(error, buildMemberDocPath(targetTeamId, auth.user.uid || ''))
+      }
       setUserLoadedState({
         uid: auth.user.uid || null,
         email: auth.user.email || '',

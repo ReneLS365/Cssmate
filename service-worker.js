@@ -9,8 +9,9 @@ if (versionScriptUrl) {
 importScripts('/js/version.js')
 }
 
-const CACHE_VERSION = 'sscaff-v-20251221095143218' // bumped after team admin UI
-const CACHE_NAME = 'sscaff-' + CACHE_VERSION
+const CACHE_VERSION = 'sscaff-v-20251221112306145' // bumped after team admin UI
+const RESOLVED_CACHE_VERSION = (typeof self !== 'undefined' && self.CSSMATE_BUILD_META?.cacheKey) ? self.CSSMATE_BUILD_META.cacheKey : CACHE_VERSION
+const CACHE_NAME = 'sscaff-' + RESOLVED_CACHE_VERSION
 const PRECACHE_URLS = [
   '/',
   '/index.html',
@@ -35,6 +36,7 @@ const PRECACHE_URLS = [
   '/src/ui/team-admin-page.js',
   '/src/services/team-ids.js',
   '/src/services/teams.js',
+  '/src/version.js',
   '/js/akkord-export.js',
   '/js/akkord-export-ui.js',
   '/js/shared-ledger.js',

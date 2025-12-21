@@ -21,7 +21,7 @@ import { downloadBlob } from './js/utils/downloadBlob.js'
 import { initSharedCasesPanel } from './js/shared-cases-panel.js'
 import { initAuthGate } from './src/auth/auth-gate.js'
 import { getAuthIdentity } from './src/auth/auth-provider.js'
-import { updateCurrentView } from './src/state/debug.js'
+import { applyBuildMetadata, updateCurrentView } from './src/state/debug.js'
 import { initDebugOverlay } from './src/ui/debug-overlay.js'
 import { initTeamAdminPage } from './src/ui/team-admin-page.js'
 import { initAppGuard } from './src/ui/app-guard.js'
@@ -32,6 +32,7 @@ if (typeof document !== 'undefined') {
 }
 
 initDebugOverlay()
+applyBuildMetadata()
 
 function getCurrentAppVersion () {
   if (typeof window !== 'undefined' && typeof window.CSSMATE_APP_VERSION === 'string') {

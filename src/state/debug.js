@@ -19,6 +19,18 @@ const defaultState = {
   sessionStatus: '',
   currentView: '',
   lastFirestoreError: null,
+  buildMeta: {
+    appVersion: '',
+    buildTime: '',
+    gitSha: '',
+    buildId: '',
+    cacheKey: '',
+    firebaseProjectId: '',
+    firebaseProjectAllowed: true,
+    allowedFirebaseProjects: [],
+    warnings: [],
+  },
+  lastCacheResetAt: '',
 }
 
 let debugState = { ...defaultState }
@@ -29,6 +41,7 @@ function getSnapshot () {
     ...debugState,
     user: { ...debugState.user },
     lastFirestoreError: debugState.lastFirestoreError ? { ...debugState.lastFirestoreError } : null,
+    buildMeta: { ...debugState.buildMeta, allowedFirebaseProjects: [...(debugState.buildMeta?.allowedFirebaseProjects || [])], warnings: [...(debugState.buildMeta?.warnings || [])] },
   }
 }
 
@@ -180,4 +193,42 @@ function dispatchIndexMissing (message, path) {
     path: path || '',
   }
   window.dispatchEvent(new CustomEvent('sscaff:index-missing', { detail }))
+}
+
+function resolveBuildMeta () {
+  if (typeof self !== 'undefined' && self.CSSMATE_BUILD_META) return self.CSSMATE_BUILD_META
+  if (typeof window !== 'undefined' && window.CSSMATE_BUILD_META) return window.CSSMATE_BUILD_META
+  return null
+}
+
+export function applyBuildMetadata () {
+  const meta = resolveBuildMeta() || {}
+  const firebaseConfig = typeof window !== 'undefined' ? window.FIREBASE_CONFIG || {} : {}
+  const allowedProjects = Array.isArray(meta.allowedFirebaseProjects) ? meta.allowedFirebaseProjects.filter(Boolean) : []
+  const projectId = firebaseConfig?.projectId || ''
+  const projectAllowed = allowedProjects.length === 0 || (projectId ? allowedProjects.includes(projectId) : true)
+  const warnings = []
+  if (projectId && allowedProjects.length && !projectAllowed) {
+    warnings.push(`Uventet Firebase projectId: ${projectId}`)
+  }
+  setState({
+    buildMeta: {
+      appVersion: meta.appVersion || '',
+      buildTime: meta.buildTime || '',
+      gitSha: meta.gitSha || '',
+      buildId: meta.buildId || '',
+      cacheKey: meta.cacheKey || '',
+      firebaseProjectId: projectId,
+      firebaseProjectAllowed: projectAllowed,
+      allowedFirebaseProjects: allowedProjects,
+      warnings,
+    },
+  })
+  if (!projectAllowed && projectId) {
+    console.warn('[Debug] Firebase projectId er uventet', { projectId, allowedProjects })
+  }
+}
+
+export function markCacheReset () {
+  setState({ lastCacheResetAt: new Date().toISOString() })
 }
