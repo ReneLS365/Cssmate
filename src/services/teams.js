@@ -12,6 +12,7 @@ import {
 } from './team-ids.js'
 
 const DEFAULT_MEMBER_INVITE = 'renelowesorensen@gmail.com'
+const CACHE_FALLBACK_CODES = new Set(['unavailable', 'failed-precondition'])
 
 function ensureAuthUser (authUser) {
   if (!authUser || !authUser.uid) throw new Error('Auth-bruger mangler')
@@ -40,6 +41,24 @@ function getMemberDocRef (sdk, db, teamIdInput, uid) {
   if (!uid) throw new Error('UID påkrævet for medlemsdokument')
   const teamId = formatTeamId(teamIdInput || DEFAULT_TEAM_ID)
   return sdk.doc(db, 'teams', teamId, 'members', uid)
+}
+
+function shouldFallbackToCache (error) {
+  const code = (error && error.code) || ''
+  return CACHE_FALLBACK_CODES.has(code)
+}
+
+export async function getDocServerFirst (sdk, ref) {
+  if (!ref) return null
+  if (typeof sdk.getDocFromServer === 'function') {
+    try {
+      return await sdk.getDocFromServer(ref)
+    } catch (error) {
+      if (!shouldFallbackToCache(error)) throw error
+      console.warn('Server fetch fejlede, bruger cache i stedet', { path: ref.path, code: error?.code })
+    }
+  }
+  return sdk.getDoc(ref)
 }
 
 function normalizeInviteForSelection (invite, normalizedEmailLower) {
@@ -173,7 +192,7 @@ export async function resolveMembership (authUid, preferredTeamId, { userTeamId,
   const db = await getFirestoreDb()
   const sdk = await getFirestoreHelpers()
   const userRef = sdk.doc(db, 'users', authUid)
-  const userSnapshot = await sdk.getDoc(userRef)
+  const userSnapshot = await getDocServerFirst(sdk, userRef)
   const userData = userSnapshot.exists() ? userSnapshot.data() : null
   const cachedTeamId = userData?.teamId ? formatTeamId(userData.teamId) : ''
   const normalizedEmail = normalizeEmail(emailLower || userData?.emailLower || userData?.email || '')
@@ -192,7 +211,7 @@ export async function resolveMembership (authUid, preferredTeamId, { userTeamId,
   for (const teamId of candidates) {
     const memberRef = getMemberDocRef(sdk, db, teamId, authUid)
     lastPath = memberRef?.path || buildMemberDocPath(teamId, authUid)
-    const memberSnapshot = await sdk.getDoc(memberRef)
+    const memberSnapshot = await getDocServerFirst(sdk, memberRef)
     if (!memberSnapshot.exists()) continue
     const data = memberSnapshot.data() || {}
     if (data.uid && data.uid !== authUid) {

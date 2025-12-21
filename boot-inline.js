@@ -150,6 +150,19 @@ function registerServiceWorker() {
     const scope = baseUrl.pathname.endsWith('/') ? baseUrl.pathname : `${baseUrl.pathname}/`;
 
     navigator.serviceWorker.register(swUrl.href, { scope })
+      .then(registration => {
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          if (!newWorker) return;
+          newWorker.addEventListener('statechange', () => {
+            const isInstalled = newWorker.state === 'installed';
+            const hasController = Boolean(navigator.serviceWorker?.controller);
+            if (isInstalled && hasController) {
+              newWorker.postMessage({ type: 'SKIP_WAITING' });
+            }
+          });
+        });
+      })
       .catch(async error => {
         const offline = navigator.onLine === false;
         const transientErrors = new Set(['AbortError', 'NetworkError']);

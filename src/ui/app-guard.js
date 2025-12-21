@@ -1,7 +1,9 @@
 import { onChange as onSessionChange, refreshAccess, requestBootstrapAccess, getState as getSessionState, SESSION_STATUS } from '../auth/session.js'
 import { isAdminEmail } from '../auth/roles.js'
+import { APP_VERSION, GIT_SHA } from '../version.js'
 import { DEFAULT_TEAM_SLUG, formatTeamId, getDisplayTeamId } from '../services/team-ids.js'
 import { migrateMemberDocIfNeeded } from '../services/teams.js'
+import { resetAppState } from '../utils/reset-app.js'
 
 const RETRY_DEBOUNCE_MS = 350
 const migrationAttempts = new Set()
@@ -14,6 +16,8 @@ let uidEl
 let emailEl
 let retryButton
 let bootstrapButton
+let resetButton
+let debugEl
 let tabPanelsEl
 let initialized = false
 let pendingRetry = null
@@ -37,6 +41,10 @@ function ensureElements () {
       <button type="button" id="appGuardRetry">Prøv igen</button>
       <button type="button" id="appGuardBootstrap" data-role="primary">Opret adgang i team</button>
     </div>
+    <div class="app-guard__meta">
+      <button type="button" id="appGuardReset" class="app-guard__reset">Nulstil app</button>
+      <p class="app-guard__debug" id="appGuardDebug"></p>
+    </div>
   `
   const main = document.getElementById('main') || tabPanelsEl?.parentElement || document.body
   if (main && typeof main.insertBefore === 'function') {
@@ -51,8 +59,11 @@ function ensureElements () {
   emailEl = guardEl.querySelector('#appGuardEmail')
   retryButton = guardEl.querySelector('#appGuardRetry')
   bootstrapButton = guardEl.querySelector('#appGuardBootstrap')
+  resetButton = guardEl.querySelector('#appGuardReset')
+  debugEl = guardEl.querySelector('#appGuardDebug')
   retryButton?.addEventListener('click', () => scheduleRetry())
   bootstrapButton?.addEventListener('click', () => triggerBootstrap())
+  resetButton?.addEventListener('click', () => resetAppState({ reload: true }))
 }
 
 function setVisible (visible) {
@@ -135,6 +146,10 @@ function updateGuardContent (state) {
     const showBootstrap = isAdminEmail(userEmail)
     bootstrapButton.hidden = !showBootstrap
     bootstrapButton.disabled = !showBootstrap || membershipStatus === 'loading'
+  }
+  if (debugEl) {
+    const swStatus = (typeof navigator !== 'undefined' && navigator.serviceWorker?.controller) ? 'aktiv' : 'ingen'
+    debugEl.textContent = `Version: ${APP_VERSION} ${GIT_SHA} — SW: ${swStatus} — TeamID: ${teamId || 'ukendt'}`
   }
 }
 

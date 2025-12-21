@@ -20,6 +20,7 @@ import {
   createTeamInvite,
   ensureTeamForAdminIfMissing,
   ensureUserDoc,
+  getDocServerFirst,
   resolveMembership,
   upsertUserTeamRoleCache,
   buildMemberDocPath,
@@ -88,7 +89,7 @@ function getMemberRef(sdk, db, teamId, uid) {
 
 async function ensureTeamDocument(sdk, db, teamId, { allowCreate = false, ownerUid = null } = {}) {
   const ref = getTeamRef(sdk, db, teamId);
-  const snapshot = await sdk.getDoc(ref);
+  const snapshot = await getDocServerFirst(sdk, ref);
   if (snapshot.exists()) return snapshot;
   if (!allowCreate) return null;
   const now = sdk.serverTimestamp();
@@ -135,7 +136,7 @@ async function guardTeamAccess(teamIdInput, user, { allowBootstrap = false } = {
   }
 
   if (!membership) {
-    const memberSnapshot = await sdk.getDoc(getMemberRef(sdk, db, resolvedTeamId, user.uid));
+    const memberSnapshot = await getDocServerFirst(sdk, getMemberRef(sdk, db, resolvedTeamId, user.uid));
     if (memberSnapshot.exists()) {
       membership = { ...(memberSnapshot.data() || {}), uid: user.uid, teamId: resolvedTeamId };
     }
