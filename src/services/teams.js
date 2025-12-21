@@ -4,6 +4,7 @@ import {
   BOOTSTRAP_ADMIN_EMAIL,
   DEFAULT_TEAM_ID,
   DEFAULT_TEAM_SLUG,
+  buildTeamIdVariants,
   formatTeamId,
   getDisplayTeamId,
   isBootstrapAdminEmail,
@@ -13,6 +14,27 @@ import {
 
 const DEFAULT_MEMBER_INVITE = 'renelowesorensen@gmail.com'
 const CACHE_FALLBACK_CODES = new Set(['unavailable', 'failed-precondition'])
+
+let getDbAdapter = getFirestoreDb
+let getSdkAdapter = getFirestoreHelpers
+
+export function setTeamsFirestoreAdapters ({ getDb, getHelpers } = {}) {
+  if (typeof getDb === 'function') getDbAdapter = getDb
+  if (typeof getHelpers === 'function') getSdkAdapter = getHelpers
+}
+
+export function resetTeamsFirestoreAdapters () {
+  getDbAdapter = getFirestoreDb
+  getSdkAdapter = getFirestoreHelpers
+}
+
+async function getDb () {
+  return getDbAdapter()
+}
+
+async function getSdk () {
+  return getSdkAdapter()
+}
 
 function ensureAuthUser (authUser) {
   if (!authUser || !authUser.uid) throw new Error('Auth-bruger mangler')
@@ -37,9 +59,9 @@ export function buildMemberDocPath (teamIdInput, uid) {
   return `teams/${teamId}/members/${uid}`
 }
 
-function getMemberDocRef (sdk, db, teamIdInput, uid) {
+function getMemberDocRef (sdk, db, teamIdInput, uid, { skipFormat = false } = {}) {
   if (!uid) throw new Error('UID påkrævet for medlemsdokument')
-  const teamId = formatTeamId(teamIdInput || DEFAULT_TEAM_ID)
+  const teamId = skipFormat ? (teamIdInput || DEFAULT_TEAM_ID) : formatTeamId(teamIdInput || DEFAULT_TEAM_ID)
   return sdk.doc(db, 'teams', teamId, 'members', uid)
 }
 
@@ -148,8 +170,8 @@ async function ensureTeamDocument (sdk, db, teamId, ownerUid) {
 
 export async function ensureUserDoc (authUser) {
   const user = ensureAuthUser(authUser)
-  const db = await getFirestoreDb()
-  const sdk = await getFirestoreHelpers()
+  const db = await getDb()
+  const sdk = await getSdk()
   const ref = sdk.doc(db, 'users', user.uid)
   const existing = await sdk.getDoc(ref)
   const now = sdk.serverTimestamp()
@@ -172,8 +194,8 @@ export async function ensureUserDoc (authUser) {
 
 export async function upsertUserTeamRoleCache (authUid, teamId, role, extra = {}) {
   if (!authUid) return null
-  const db = await getFirestoreDb()
-  const sdk = await getFirestoreHelpers()
+  const db = await getDb()
+  const sdk = await getSdk()
   const ref = sdk.doc(db, 'users', authUid)
   const now = sdk.serverTimestamp()
   const payload = {
@@ -189,8 +211,8 @@ export async function upsertUserTeamRoleCache (authUid, teamId, role, extra = {}
 
 export async function resolveMembership (authUid, preferredTeamId, { userTeamId, emailLower } = {}) {
   if (!authUid) return { membership: null, path: '', teamId: '' }
-  const db = await getFirestoreDb()
-  const sdk = await getFirestoreHelpers()
+  const db = await getDb()
+  const sdk = await getSdk()
   const userRef = sdk.doc(db, 'users', authUid)
   const userSnapshot = await getDocServerFirst(sdk, userRef)
   const userData = userSnapshot.exists() ? userSnapshot.data() : null
@@ -208,32 +230,44 @@ export async function resolveMembership (authUid, preferredTeamId, { userTeamId,
   addCandidate(DEFAULT_TEAM_ID)
 
   let lastPath = ''
-  for (const teamId of candidates) {
-    const memberRef = getMemberDocRef(sdk, db, teamId, authUid)
-    lastPath = memberRef?.path || buildMemberDocPath(teamId, authUid)
-    const memberSnapshot = await getDocServerFirst(sdk, memberRef)
-    if (!memberSnapshot.exists()) continue
-    const data = memberSnapshot.data() || {}
-    if (data.uid && data.uid !== authUid) {
-      console.warn('[MembershipGuard] Medlemsdoc UID matcher ikke auth.uid', { expectedUid: authUid, docUid: data.uid, path: memberRef.path })
-      continue
+  for (const canonicalTeamId of candidates) {
+    const variants = buildTeamIdVariants(canonicalTeamId)
+    for (const variant of variants) {
+      const memberRef = getMemberDocRef(sdk, db, variant, authUid, { skipFormat: true })
+      lastPath = memberRef?.path || buildMemberDocPath(canonicalTeamId, authUid)
+      const memberSnapshot = await getDocServerFirst(sdk, memberRef)
+      if (!memberSnapshot.exists()) continue
+      const data = memberSnapshot.data() || {}
+      if (data.uid && data.uid !== authUid) {
+        console.warn('[MembershipGuard] Medlemsdoc UID matcher ikke auth.uid', { expectedUid: authUid, docUid: data.uid, path: memberRef.path })
+        continue
+      }
+      const membership = {
+        ...data,
+        uid: authUid,
+        teamId: canonicalTeamId,
+        email: data.email || normalizedEmail,
+        emailLower: normalizeEmail(data.emailLower || data.email || normalizedEmail),
+        role: normalizeRole(data.role),
+        active: data.active !== false,
+      }
+      if (variant !== canonicalTeamId) {
+        const canonicalRef = getMemberDocRef(sdk, db, canonicalTeamId, authUid)
+        const canonicalSnapshot = await getDocServerFirst(sdk, canonicalRef)
+        if (!canonicalSnapshot.exists()) {
+          const mirrorPayload = { ...membership, updatedAt: data.updatedAt || sdk.serverTimestamp() }
+          await sdk.setDoc(canonicalRef, mirrorPayload, { merge: true })
+        }
+        lastPath = canonicalRef?.path || memberRef?.path || lastPath
+      }
+      if (membership.teamId && cachedTeamId !== membership.teamId) {
+        await upsertUserTeamRoleCache(authUid, membership.teamId, membership.role, {
+          emailLower: membership.emailLower || normalizedEmail,
+          displayName: userData?.displayName,
+        })
+      }
+      return { membership, path: memberRef.path || lastPath, teamId: canonicalTeamId }
     }
-    const membership = {
-      ...data,
-      uid: authUid,
-      teamId,
-      email: data.email || normalizedEmail,
-      emailLower: normalizeEmail(data.emailLower || data.email || normalizedEmail),
-      role: normalizeRole(data.role),
-      active: data.active !== false,
-    }
-    if (membership.teamId && cachedTeamId !== membership.teamId) {
-      await upsertUserTeamRoleCache(authUid, membership.teamId, membership.role, {
-        emailLower: membership.emailLower || normalizedEmail,
-        displayName: userData?.displayName,
-      })
-    }
-    return { membership, path: memberRef.path || lastPath, teamId }
   }
 
   return { membership: null, path: lastPath, teamId: candidates[0] || '' }
@@ -241,8 +275,8 @@ export async function resolveMembership (authUid, preferredTeamId, { userTeamId,
 
 export async function findMismatchedMemberDocs (teamIdInput, authUser) {
   if (!authUser?.uid) return []
-  const db = await getFirestoreDb()
-  const sdk = await getFirestoreHelpers()
+  const db = await getDb()
+  const sdk = await getSdk()
   const teamId = formatTeamId(teamIdInput || DEFAULT_TEAM_ID)
   const membersRef = sdk.collection(db, 'teams', teamId, 'members')
   const normalizedEmail = normalizeEmail(authUser.email)
@@ -274,8 +308,8 @@ export async function findMismatchedMemberDocs (teamIdInput, authUser) {
 export async function migrateMemberDocIfNeeded (teamIdInput, authUser) {
   const mismatches = await findMismatchedMemberDocs(teamIdInput, authUser)
   if (!mismatches.length) return { created: false, mismatches }
-  const db = await getFirestoreDb()
-  const sdk = await getFirestoreHelpers()
+  const db = await getDb()
+  const sdk = await getSdk()
   const teamId = formatTeamId(teamIdInput || DEFAULT_TEAM_ID)
   const canonicalRef = getMemberDocRef(sdk, db, teamId, authUser.uid)
   const now = sdk.serverTimestamp()
@@ -306,8 +340,8 @@ export async function migrateMemberDocIfNeeded (teamIdInput, authUser) {
 export async function createTeamInvite (teamIdInput, email, role = 'member', meta = {}) {
   const emailLower = normalizeEmail(email)
   if (!emailLower) throw new Error('Angiv email for invitation.')
-  const db = await getFirestoreDb()
-  const sdk = await getFirestoreHelpers()
+  const db = await getDb()
+  const sdk = await getSdk()
   const teamId = formatTeamId(teamIdInput || DEFAULT_TEAM_ID)
   const invitesRef = sdk.collection(db, 'teamInvites')
   const deterministicId = deterministicInviteId(teamId, emailLower)
@@ -346,8 +380,8 @@ export async function createTeamInvite (teamIdInput, email, role = 'member', met
 export async function consumeInviteIfAny (authUserEmailLower, authUid) {
   const emailLower = normalizeEmail(authUserEmailLower)
   if (!emailLower || !authUid) return null
-  const db = await getFirestoreDb()
-  const sdk = await getFirestoreHelpers()
+  const db = await getDb()
+  const sdk = await getSdk()
   const invitesRef = sdk.collection(db, 'teamInvites')
   const snapshot = await sdk.getDocs(sdk.query(invitesRef, sdk.where('emailLower', '==', emailLower)))
   const invites = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() || {}) }))
@@ -379,8 +413,8 @@ export async function ensureTeamForAdminIfMissing (authUser, preferredTeamId = D
   if (!isBootstrapAdminEmail(user.email)) return null
   const existingMembership = await resolveMembership(user.uid, preferredTeamId, { emailLower: user.email })
   if (existingMembership?.membership?.teamId) return existingMembership.membership
-  const db = await getFirestoreDb()
-  const sdk = await getFirestoreHelpers()
+  const db = await getDb()
+  const sdk = await getSdk()
   const teamId = formatTeamId(preferredTeamId || DEFAULT_TEAM_ID)
   const teamSnapshot = await ensureTeamDocument(sdk, db, teamId, user.uid)
   const memberRef = getMemberDocRef(sdk, db, teamId, user.uid)

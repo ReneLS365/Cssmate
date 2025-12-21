@@ -21,6 +21,14 @@ function formatTeamId (rawTeamId) {
   return normalized
 }
 
+function buildTeamIdVariants (rawTeamId) {
+  const normalized = formatTeamId(rawTeamId)
+  const prefixed = normalized ? `${LEDGER_TEAM_PREFIX}${normalized}` : ''
+  const variants = [normalized]
+  if (prefixed && prefixed !== normalized) variants.push(prefixed)
+  return Array.from(new Set(variants.filter(Boolean)))
+}
+
 function getDisplayTeamId (rawTeamId) {
   const normalized = (rawTeamId || '').toString().trim()
   if (!normalized) return DEFAULT_TEAM_SLUG
@@ -61,6 +69,7 @@ export {
   DEFAULT_TEAM_SLUG,
   LEDGER_TEAM_PREFIX,
   TEAM_STORAGE_KEY,
+  buildTeamIdVariants,
   formatTeamId,
   getDisplayTeamId,
   getStoredTeamId,

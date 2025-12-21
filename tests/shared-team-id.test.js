@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { formatTeamId, getDisplayTeamId, normalizeTeamId } from '../js/shared-ledger.js'
+import { buildTeamIdVariants, formatTeamId, getDisplayTeamId, normalizeTeamId } from '../js/shared-ledger.js'
 import { formatMissingMembershipMessage } from '../js/shared-cases-panel.js'
 
 test('normalizeTeamId trims, lowercases og fjerner ulovlige tegn', () => {
@@ -18,6 +18,12 @@ test('formatTeamId returnerer normaliseret slug uden præfiks', () => {
 test('getDisplayTeamId viser læsbar slug', () => {
   assert.equal(getDisplayTeamId('sscaff-team-hulmose'), 'hulmose')
   assert.equal(getDisplayTeamId('hulmose'), 'hulmose')
+})
+
+test('buildTeamIdVariants inkluderer legacy-id for bagudkompatibilitet', () => {
+  const variants = buildTeamIdVariants('sscaff-team-hulmose')
+  assert.ok(variants.includes('hulmose'))
+  assert.ok(variants.includes('sscaff-team-hulmose'))
 })
 
 test('formatMissingMembershipMessage inkluderer sti til memberDoc', () => {
