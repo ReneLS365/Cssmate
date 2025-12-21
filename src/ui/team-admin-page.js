@@ -10,7 +10,8 @@ import {
   setMemberActive,
 } from '../../js/shared-ledger.js'
 import { normalizeEmail } from '../auth/roles.js'
-import { getState as getSessionState, onChange as onSessionChange } from '../auth/session.js'
+import { getState as getSessionState, onChange as onSessionChange, refreshAccess, requestBootstrapAccess } from '../auth/session.js'
+import { resetAppState } from '../utils/reset-app.js'
 
 let initialized = false
 let teamPanel
@@ -30,8 +31,14 @@ let uidRoleSelect
 let uidSubmitButton
 let refreshButton
 let fixMembershipButton
+let accessActionsEl
+let accessRetryButton
+let accessBootstrapButton
+let accessResetButton
 let lastTeamId = ''
 let loading = false
+let adminLocked = false
+let lastSessionState = null
 
 const MEMBER_EMAIL_FIX = 'renelowesorensen@gmail.com'
 
@@ -51,10 +58,100 @@ function setStatus (message, variant = '') {
 
 function setLoading (isLoading) {
   loading = isLoading
-  const disabled = Boolean(isLoading)
-  ;[inviteSubmitButton, uidSubmitButton, refreshButton, fixMembershipButton].forEach(btn => {
+  const disabled = Boolean(isLoading || adminLocked)
+  ;[
+    inviteSubmitButton,
+    uidSubmitButton,
+    refreshButton,
+    fixMembershipButton,
+    inviteEmailInput,
+    inviteRoleSelect,
+    uidInput,
+    uidRoleSelect,
+  ].forEach(btn => {
     if (btn) btn.disabled = disabled
   })
+}
+
+function ensureAccessActions () {
+  if (accessActionsEl || !statusEl) return
+  accessActionsEl = document.createElement('div')
+  accessActionsEl.className = 'team-access-actions'
+  accessRetryButton = document.createElement('button')
+  accessRetryButton.type = 'button'
+  accessRetryButton.textContent = 'Prøv igen'
+  accessBootstrapButton = document.createElement('button')
+  accessBootstrapButton.type = 'button'
+  accessBootstrapButton.textContent = 'Opret adgang i team'
+  accessBootstrapButton.dataset.role = 'primary'
+  accessResetButton = document.createElement('button')
+  accessResetButton.type = 'button'
+  accessResetButton.textContent = 'Nulstil app'
+  if (typeof accessActionsEl.append === 'function') {
+    accessActionsEl.append(accessRetryButton, accessBootstrapButton, accessResetButton)
+  } else {
+    accessActionsEl.appendChild(accessRetryButton)
+    accessActionsEl.appendChild(accessBootstrapButton)
+    accessActionsEl.appendChild(accessResetButton)
+  }
+  accessActionsEl.hidden = true
+  if (typeof statusEl.insertAdjacentElement === 'function') {
+    statusEl.insertAdjacentElement('afterend', accessActionsEl)
+  } else if (statusEl.parentElement && typeof statusEl.parentElement.appendChild === 'function') {
+    statusEl.parentElement.appendChild(accessActionsEl)
+  } else {
+    accessActionsEl = null
+  }
+}
+
+function updateAccessActions ({ accessStatus, canBootstrapAction, isChecking }) {
+  ensureAccessActions()
+  if (!accessActionsEl) return
+  const show = accessStatus !== 'ok'
+  accessActionsEl.hidden = !show
+  if (!show) return
+  const disabled = Boolean(isChecking || loading)
+  if (accessRetryButton) accessRetryButton.disabled = disabled
+  if (accessBootstrapButton) {
+    accessBootstrapButton.hidden = !canBootstrapAction
+    accessBootstrapButton.disabled = disabled || !canBootstrapAction
+  }
+  if (accessResetButton) {
+    accessResetButton.hidden = false
+    accessResetButton.disabled = disabled
+  }
+}
+
+async function handleAccessRetry () {
+  setStatus('Tjekker adgang…')
+  if (accessRetryButton) accessRetryButton.disabled = true
+  try {
+    await refreshAccess()
+  } catch (error) {
+    console.warn('Access refresh failed', error)
+    setStatus(error?.message || 'Kunne ikke tjekke adgang.', 'error')
+  } finally {
+    if (accessRetryButton) accessRetryButton.disabled = false
+  }
+}
+
+async function handleAccessBootstrap () {
+  setStatus('Opretter team-adgang…')
+  if (accessBootstrapButton) accessBootstrapButton.disabled = true
+  try {
+    await requestBootstrapAccess()
+    await refreshAccess()
+  } catch (error) {
+    console.warn('Bootstrap fra team-tab fejlede', error)
+    setStatus(error?.message || 'Kunne ikke oprette team-adgang.', 'error')
+  } finally {
+    if (accessBootstrapButton) accessBootstrapButton.disabled = false
+  }
+}
+
+function handleAccessReset () {
+  setStatus('Nulstiller app…')
+  resetAppState({ reload: true })
 }
 
 function copyToClipboard (value) {
@@ -268,6 +365,75 @@ async function handleFixMembership () {
   }
 }
 
+function clearTeamLists () {
+  if (membersListEl) membersListEl.textContent = ''
+  if (invitesListEl) invitesListEl.textContent = ''
+}
+
+function toggleAdminControls (enabled) {
+  adminLocked = !enabled
+  setLoading(loading)
+  const adminSections = teamPanel?.querySelectorAll('.team-admin__actions, .team-admin__lists, .btn-group')
+  adminSections?.forEach(section => {
+    if (!section) return
+    section.toggleAttribute('aria-hidden', !enabled)
+    section.classList.toggle('team-admin--locked', !enabled)
+  })
+  if (!enabled) {
+    clearTeamLists()
+  }
+}
+
+function renderAccessState (session) {
+  ensureAccessActions()
+  const accessStatus = session?.accessStatus || 'checking'
+  const membershipStatus = session?.membershipStatus || 'loading'
+  const isChecking = accessStatus === 'checking' || membershipStatus === 'loading'
+  const role = session?.member?.role || session?.role || ''
+  const isAdmin = isAdminRole(role)
+  const canViewMembers = accessStatus === 'ok' && isAdmin
+  const canBootstrapAction = Boolean(session?.bootstrapAvailable)
+  const accessError = session?.accessError || session?.error || null
+  let message = session?.message || ''
+  let variant = ''
+
+  if (accessStatus === 'checking') {
+    message = 'Tjekker team-adgang…'
+  } else if (accessStatus === 'ok') {
+    message = isAdmin
+      ? 'Adgang givet. Team-medlemmer kan indlæses.'
+      : 'Du er medlem, men kan ikke se team-medlemmer. Kontakt admin.'
+    variant = isAdmin ? 'success' : 'info'
+  } else if (accessStatus === 'no-membership') {
+    message = 'Ingen team-adgang. Tilføj dig selv eller kontakt admin.'
+    variant = 'error'
+  } else if (accessStatus === 'denied') {
+    message = 'Din adgang er deaktiveret. Kontakt administrator.'
+    variant = 'error'
+  } else {
+    message = message || accessError?.message || 'Kunne ikke kontrollere team-adgang.'
+    variant = 'error'
+  }
+
+  const parts = [
+    session?.teamId ? `Team: ${session.teamId}` : '',
+    session?.user?.uid ? `UID: ${session.user.uid}` : '',
+    session?.user?.email ? `Email: ${session.user.email}` : '',
+  ].filter(Boolean)
+
+  if (accessError?.code && accessStatus !== 'ok') {
+    parts.push(`Fejlkode: ${accessError.code}`)
+  }
+
+  const detail = parts.length ? ` (${parts.join(' · ')})` : ''
+  setStatus(`${message}${detail}`, variant)
+  if (session?.teamId) {
+    renderTeamInfo({ name: session?.displayTeamId || session.teamId, teamId: session.teamId })
+  }
+  toggleAdminControls(canViewMembers)
+  updateAccessActions({ accessStatus, canBootstrapAction, isChecking })
+}
+
 async function loadTeamData () {
   if (!lastTeamId || loading) return
   setLoading(true)
@@ -296,35 +462,23 @@ async function loadTeamData () {
 }
 
 function updateTabVisibility (session) {
-  const role = session?.member?.role || session?.role || ''
-  const allowed = isAdminRole(role)
   if (!teamTabButton || !teamPanel) return
-  if (allowed) {
-    teamTabButton.hidden = false
-    teamTabButton.removeAttribute('aria-hidden')
-    teamTabButton.removeAttribute('data-tab-disabled')
-    teamPanel.removeAttribute('data-tab-disabled')
-  } else {
-    const wasActive = teamTabButton.classList.contains('tab--active')
-    teamTabButton.hidden = true
-    teamTabButton.setAttribute('aria-hidden', 'true')
-    teamTabButton.setAttribute('data-tab-disabled', 'true')
-    teamPanel.setAttribute('data-tab-disabled', 'true')
-    teamPanel.setAttribute('hidden', '')
-    teamPanel.setAttribute('aria-hidden', 'true')
-    if (wasActive && typeof window.__cssmateSetActiveTab === 'function') {
-      window.__cssmateSetActiveTab('sagsinfo')
-    }
-  }
+  teamTabButton.hidden = false
+  teamTabButton.removeAttribute('aria-hidden')
+  teamTabButton.removeAttribute('data-tab-disabled')
+  teamPanel.removeAttribute('data-tab-disabled')
   if (typeof window.__cssmateRefreshTabs === 'function') {
     window.__cssmateRefreshTabs()
   }
 }
 
 function handleSessionChange (session) {
+  lastSessionState = session
   updateTabVisibility(session)
   const sessionRole = session?.member?.role || session?.role || ''
-  const hasAccess = isAdminRole(sessionRole) && session?.teamId && session?.sessionReady
+  const accessStatus = session?.accessStatus || 'checking'
+  renderAccessState(session)
+  const hasAccess = isAdminRole(sessionRole) && session?.teamId && session?.sessionReady && accessStatus === 'ok'
   if (!hasAccess) {
     lastTeamId = ''
     return
@@ -344,7 +498,16 @@ function bindEvents () {
     uidSubmitButton.addEventListener('click', handleAddByUid)
   }
   if (refreshButton) {
-    refreshButton.addEventListener('click', () => loadTeamData())
+    refreshButton.addEventListener('click', () => {
+      const session = lastSessionState || getSessionState()
+      const role = session?.member?.role || session?.role || ''
+      const accessStatus = session?.accessStatus || 'checking'
+      if (!isAdminRole(role) || accessStatus !== 'ok') {
+        handleAccessRetry()
+        return
+      }
+      loadTeamData()
+    })
   }
   if (teamCopyIdBtn) {
     teamCopyIdBtn.addEventListener('click', () => copyToClipboard(lastTeamId))
@@ -355,6 +518,10 @@ function bindEvents () {
   if (fixMembershipButton) {
     fixMembershipButton.addEventListener('click', handleFixMembership)
   }
+  ensureAccessActions()
+  if (accessRetryButton) accessRetryButton.addEventListener('click', handleAccessRetry)
+  if (accessBootstrapButton) accessBootstrapButton.addEventListener('click', handleAccessBootstrap)
+  if (accessResetButton) accessResetButton.addEventListener('click', handleAccessReset)
 }
 
 export function initTeamAdminPage () {

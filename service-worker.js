@@ -9,7 +9,7 @@ if (versionScriptUrl) {
 importScripts('/js/version.js')
 }
 
-const CACHE_VERSION = 'sscaff-v-20251221163436703' // bumped after team admin UI
+const CACHE_VERSION = 'sscaff-v-20251221190000101' // bumped after team access fixes
 const RESOLVED_CACHE_VERSION = (typeof self !== 'undefined' && self.CSSMATE_BUILD_META?.cacheKey) ? self.CSSMATE_BUILD_META.cacheKey : CACHE_VERSION
 const CACHE_NAME = 'sscaff-' + RESOLVED_CACHE_VERSION
 const PRECACHE_URLS = [
@@ -35,6 +35,7 @@ const PRECACHE_URLS = [
   '/src/ui/app-guard.js',
   '/src/ui/team-admin-page.js',
   '/src/services/team-ids.js',
+  '/src/services/team-access.js',
   '/src/services/teams.js',
   '/src/version.js',
   '/src/utils/reset-app.js',

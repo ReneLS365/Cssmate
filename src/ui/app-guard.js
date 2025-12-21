@@ -67,12 +67,17 @@ function ensureElements () {
   resetButton?.addEventListener('click', () => resetAppState({ reload: true }))
 }
 
-function setVisible (visible) {
+function setVisible (visible, hidePanels = true) {
   ensureElements()
   guardEl.hidden = !visible
   if (tabPanelsEl) {
-    tabPanelsEl.toggleAttribute('hidden', visible)
-    tabPanelsEl.setAttribute('aria-hidden', visible ? 'true' : 'false')
+    if (hidePanels && visible) {
+      tabPanelsEl.setAttribute('hidden', '')
+      tabPanelsEl.setAttribute('aria-hidden', 'true')
+    } else {
+      tabPanelsEl.removeAttribute('hidden')
+      tabPanelsEl.setAttribute('aria-hidden', 'false')
+    }
   }
 }
 
@@ -118,35 +123,46 @@ async function maybeMigrateMemberDoc (state) {
 
 function updateGuardContent (state) {
   const membershipStatus = state?.membershipStatus || 'loading'
+  const accessStatus = state?.accessStatus || (membershipStatus === 'member' ? 'ok' : 'checking')
   const teamId = formatTeamId(state?.teamId || state?.membershipCheckTeamId || DEFAULT_TEAM_SLUG)
   const displayTeam = getDisplayTeamId(teamId)
   const userEmail = state?.user?.email || ''
-  const messageFallback = membershipStatus === 'not_member'
+  const messageFallback = state?.message || (accessStatus === 'no-membership'
     ? `Du er ikke tilføjet til ${displayTeam}. Kontakt admin.`
-    : (state?.message || 'Adgang er midlertidigt låst.')
+    : accessStatus === 'denied'
+      ? 'Din konto er deaktiveret. Kontakt administrator.'
+      : 'Adgang er midlertidigt låst.')
+  const errorCode = state?.accessError?.code || state?.error?.code || ''
 
-  statusEl.textContent = membershipStatus === 'member'
+  statusEl.textContent = accessStatus === 'ok'
     ? 'Adgang givet'
-    : membershipStatus === 'not_member'
+    : accessStatus === 'no-membership'
       ? 'Ingen team-adgang'
-      : 'Tjekker adgang'
+      : accessStatus === 'denied'
+        ? 'Adgang nægtet'
+        : accessStatus === 'error'
+          ? 'Adgangsfejl'
+          : 'Tjekker adgang'
 
-  if (membershipStatus === 'loading') {
+  if (accessStatus === 'checking' || membershipStatus === 'loading') {
     messageEl.textContent = 'Tjekker team-adgang…'
-  } else if (membershipStatus === 'error' && state?.memberActive === false) {
+  } else if (accessStatus === 'denied' || state?.memberActive === false) {
     messageEl.textContent = 'Din konto er deaktiveret. Kontakt administrator.'
   } else {
-    messageEl.textContent = messageFallback
+    const combined = errorCode && accessStatus !== 'ok'
+      ? `${messageFallback} (${errorCode})`
+      : messageFallback
+    messageEl.textContent = combined
   }
 
   teamEl.textContent = displayTeam
   uidEl.textContent = state?.user?.uid || '–'
   emailEl.textContent = userEmail || '–'
-  if (retryButton) retryButton.disabled = membershipStatus === 'loading'
+  if (retryButton) retryButton.disabled = accessStatus === 'checking' || membershipStatus === 'loading'
   if (bootstrapButton) {
     const showBootstrap = isAdminEmail(userEmail)
     bootstrapButton.hidden = !showBootstrap
-    bootstrapButton.disabled = !showBootstrap || membershipStatus === 'loading'
+    bootstrapButton.disabled = !showBootstrap || accessStatus === 'checking' || membershipStatus === 'loading'
   }
   if (debugEl) {
     const swStatus = (typeof navigator !== 'undefined' && navigator.serviceWorker?.controller) ? 'aktiv' : 'ingen'
@@ -164,13 +180,14 @@ function updateView (state) {
   ensureElements()
   const membershipStatus = state.membershipStatus || 'loading'
   const isActiveMember = membershipStatus === 'member' && state.memberActive !== false && state.sessionReady
+  const hidePanels = (state?.accessStatus || membershipStatus) === 'checking' || membershipStatus === 'loading'
 
   if (isActiveMember) {
     setVisible(false)
     return
   }
 
-  setVisible(true)
+  setVisible(true, hidePanels)
   updateGuardContent(state)
   maybeMigrateMemberDoc(state)
 }
