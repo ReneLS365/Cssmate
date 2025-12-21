@@ -41,7 +41,7 @@
     "partykit:deploy": "partykit deploy"
   },
   "dependencies": {
-    "chromium": "^3.0.3"
+    "chromium": "^3.2171.3008"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^3.0.4",
