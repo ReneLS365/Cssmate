@@ -828,6 +828,8 @@ html.auth-locked body{overflow:hidden}
 .app-guard__details dt{color:var(--muted);font-size:.85rem}
 .app-guard__details dd{margin:0;font-weight:600;word-break:break-word}
 .app-guard__actions{display:flex;flex-wrap:wrap;gap:8px}
+.app-guard__meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.app-guard__debug{margin:0;color:var(--muted);font-size:.85rem;line-height:1.4;word-break:break-word}
 
 /* Debug outlines for material rows (kept to visualize rendered layout) */
 .material-row{outline:1px solid red !important}

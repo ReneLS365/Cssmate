@@ -25,6 +25,7 @@ import { applyBuildMetadata, updateCurrentView } from './src/state/debug.js'
 import { initDebugOverlay } from './src/ui/debug-overlay.js'
 import { initTeamAdminPage } from './src/ui/team-admin-page.js'
 import { initAppGuard } from './src/ui/app-guard.js'
+import { resetAppState } from './src/utils/reset-app.js'
 import './boot-inline.js'
 
 if (typeof document !== 'undefined') {
@@ -5411,36 +5412,7 @@ function setupPWAInstallPrompt() {
 }
 
 async function hardResetApp() {
-  if (navigator.serviceWorker) {
-    const regs = await navigator.serviceWorker.getRegistrations();
-    await Promise.all(regs.map(reg => reg.unregister()));
-  }
-
-  if (window.caches) {
-    const names = await caches.keys();
-    await Promise.all(names.map(name => caches.delete(name)));
-  }
-
-  if (window.indexedDB) {
-    const dbs = await indexedDB.databases?.() || [];
-    await Promise.all(dbs.map(db => new Promise(resolve => {
-      if (!db?.name) {
-        resolve();
-        return;
-      }
-      const request = indexedDB.deleteDatabase(db.name);
-      request.onsuccess = request.onerror = request.onblocked = () => resolve();
-    })));
-  }
-
-  try {
-    window.localStorage?.clear();
-  } catch {}
-  try {
-    window.sessionStorage?.clear();
-  } catch {}
-
-  window.location.reload(true);
+  await resetAppState({ reload: true });
 }
 
 
