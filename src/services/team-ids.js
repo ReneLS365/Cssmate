@@ -2,7 +2,7 @@ import { normalizeEmail } from '../auth/roles.js'
 
 const LEDGER_TEAM_PREFIX = 'sscaff-team-'
 const DEFAULT_TEAM_SLUG = 'hulmose'
-const DEFAULT_TEAM_ID = `${LEDGER_TEAM_PREFIX}${DEFAULT_TEAM_SLUG}`
+const DEFAULT_TEAM_ID = DEFAULT_TEAM_SLUG
 const TEAM_STORAGE_KEY = 'sscaff.teamId'
 const BOOTSTRAP_ADMIN_EMAIL = 'mr.lion1995@gmail.com'
 
@@ -18,9 +18,7 @@ function normalizeTeamId (rawTeamId) {
 
 function formatTeamId (rawTeamId) {
   const normalized = normalizeTeamId(rawTeamId)
-  return normalized.startsWith(LEDGER_TEAM_PREFIX)
-    ? normalized
-    : `${LEDGER_TEAM_PREFIX}${normalized}`
+  return normalized
 }
 
 function getDisplayTeamId (rawTeamId) {
