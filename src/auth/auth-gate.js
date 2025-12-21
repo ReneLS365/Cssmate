@@ -160,6 +160,15 @@ function handleAuthChange (state) {
   const hasUser = Boolean(state?.user)
   const message = state?.message || (status === SESSION_STATUS.NO_ACCESS ? 'Ingen adgang til teamet.' : '')
 
+  if (!authReady && !hasUser) {
+    setGateVisible(true)
+    showSection('login')
+    updateProviderButtons()
+    const variant = status === SESSION_STATUS.NO_ACCESS || status === SESSION_STATUS.ERROR ? 'error' : ''
+    setMessage(message || 'Log ind for at fortsætte', variant)
+    return
+  }
+
   if (hasUser && authReady && !requiresVerification) {
     showSection('hidden')
     setGateVisible(false)
@@ -192,10 +201,14 @@ function handleAuthChange (state) {
 }
 
 export function initAuthGate () {
-  if (gate) return {
-    waitForVerifiedAccess: () => waitForAuthReady(),
-    waitForSessionReady: () => waitForAuthReady(),
-    waitForAuthReady: () => waitForAuthReady(),
+  if (gate) {
+    const waitForAuth = () => (authProvider?.ensureAuth ? authProvider.ensureAuth() : waitForAuthReady())
+    return {
+      waitForVerifiedAccess: () => waitForAuth(),
+      waitForSessionReady: () => waitForAuth(),
+      waitForAuthReady: () => waitForAuth(),
+      prefetchAuth: () => authProvider?.prefetchAuth?.(),
+    }
   }
 
   gate = document.getElementById('authGate')
@@ -227,9 +240,15 @@ export function initAuthGate () {
   onSessionChange(handleAuthChange)
   handleAuthChange(getSessionState())
 
+  const waitForAuth = () => {
+    if (authProvider?.ensureAuth) return authProvider.ensureAuth()
+    return waitForAuthReady()
+  }
+
   return {
-    waitForVerifiedAccess: () => waitForAuthReady(),
-    waitForSessionReady: () => waitForAuthReady(),
-    waitForAuthReady: () => waitForAuthReady(),
+    waitForVerifiedAccess: () => waitForAuth(),
+    waitForSessionReady: () => waitForAuth(),
+    waitForAuthReady: () => waitForAuth(),
+    prefetchAuth: () => authProvider?.prefetchAuth?.(),
   }
 }

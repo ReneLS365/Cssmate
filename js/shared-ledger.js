@@ -3,7 +3,6 @@ import { getFirestoreDb, getFirestoreHelpers, toIsoString } from './shared-fires
 import { normalizeEmail } from '../src/auth/roles.js';
 import { updateTeamDebugState } from '../src/state/debug.js';
 import {
-  BOOTSTRAP_ADMIN_EMAIL,
   DEFAULT_TEAM_ID,
   DEFAULT_TEAM_SLUG,
   TEAM_STORAGE_KEY,
@@ -16,15 +15,12 @@ import {
   resolvePreferredTeamId,
 } from '../src/services/team-ids.js';
 import {
-  consumeInviteIfAny,
   createTeamInvite,
-  ensureTeamForAdminIfMissing,
   ensureUserDoc,
-  getDocServerFirst,
-  resolveMembership,
   upsertUserTeamRoleCache,
   buildMemberDocPath,
 } from '../src/services/teams.js';
+import { getTeamAccessWithTimeout, TEAM_ACCESS_STATUS } from '../src/services/team-access.js';
 
 const LEDGER_VERSION = 1;
 const BACKUP_SCHEMA_VERSION = 2;
@@ -87,107 +83,52 @@ function getMemberRef(sdk, db, teamId, uid) {
   return sdk.doc(db, 'teams', teamId, 'members', uid);
 }
 
-async function ensureTeamDocument(sdk, db, teamId, { allowCreate = false, ownerUid = null } = {}) {
-  const ref = getTeamRef(sdk, db, teamId);
-  const snapshot = await getDocServerFirst(sdk, ref);
-  if (snapshot.exists()) return snapshot;
-  if (!allowCreate) return null;
-  const now = sdk.serverTimestamp();
-  const payload = {
-    teamId,
-    name: getDisplayTeamId(teamId),
-    ownerUid: ownerUid || null,
-    createdAt: now,
-    updatedAt: now,
-  };
-  await sdk.setDoc(ref, payload, { merge: true });
-  return sdk.getDoc(ref);
-}
-
 async function guardTeamAccess(teamIdInput, user, { allowBootstrap = false } = {}) {
   if (!user?.uid) throw new PermissionDeniedError('Log ind for at fortsætte.');
   const emailLower = normalizeEmail(user.email);
-  const storedTeamId = normalizeTeamId(getStoredTeamId() || '');
-  const preferredTeam = normalizeTeamId(teamIdInput || storedTeamId || DEFAULT_TEAM_SLUG);
-  const teamId = formatTeamId(preferredTeam);
-  const db = await getFirestoreDb();
-  const sdk = await getFirestoreHelpers();
+  const preferredTeam = normalizeTeamId(teamIdInput || getStoredTeamId() || DEFAULT_TEAM_SLUG);
+  const resolvedTeamId = formatTeamId(preferredTeam);
+  const membershipPath = buildMemberDocPath(resolvedTeamId, user.uid);
   const canBootstrap = allowBootstrap && isBootstrapAdminEmail(emailLower);
-
-  const userDoc = await ensureUserDoc(user);
-  const userTeamId = userDoc?.teamId ? formatTeamId(userDoc.teamId) : '';
-  let resolvedTeamId = userTeamId || teamId;
-
-  const membershipLookup = await resolveMembership(user.uid, resolvedTeamId, { userTeamId, emailLower });
-  let membership = membershipLookup.membership;
-  const expectedMemberPath = buildMemberDocPath(resolvedTeamId, user.uid);
-
-  if (!membership && canBootstrap) {
-    membership = await ensureTeamForAdminIfMissing(user, resolvedTeamId);
-    if (membership) membership.bootstrapCreated = true;
-  }
-
-  if (!membership) {
-    const inviteResult = await consumeInviteIfAny(emailLower, user.uid);
-    if (inviteResult?.membership) {
-      membership = { ...inviteResult.membership, inviteId: inviteResult.inviteId };
-      resolvedTeamId = formatTeamId(inviteResult.teamId || resolvedTeamId);
-    }
-  }
-
-  if (!membership) {
-    const memberSnapshot = await getDocServerFirst(sdk, getMemberRef(sdk, db, resolvedTeamId, user.uid));
-    if (memberSnapshot.exists()) {
-      membership = { ...(memberSnapshot.data() || {}), uid: user.uid, teamId: resolvedTeamId };
-    }
-  }
-
-  if (!membership) {
-    updateTeamDebugState({
-      teamId: resolvedTeamId,
-      member: null,
-      teamResolved: true,
-      membershipStatus: 'not_member',
-      membershipCheckPath: expectedMemberPath,
-    });
-    console.warn('[MembershipGuard] Forventede members-doc id at matche auth.uid', {
-      uid: user.uid,
-      email: emailLower,
-      teamId: resolvedTeamId,
-      expectedPath: expectedMemberPath,
-    });
-    throw new InviteMissingError(resolvedTeamId, emailLower, `Ingen adgang til team ${getDisplayTeamId(resolvedTeamId)}. Kontakt admin.`);
-  }
-
-  if (membership.active === false) {
-    throw new InactiveMemberError(resolvedTeamId, user.uid, `Din adgang til team ${getDisplayTeamId(resolvedTeamId)} er deaktiveret.`);
-  }
-
-  resolvedTeamId = formatTeamId(membership.teamId || resolvedTeamId);
-  membership.teamId = resolvedTeamId;
-  const membershipRole = membership.role === 'owner' ? 'owner' : membership.role === 'admin' ? 'admin' : 'member';
-  const accessRole = membershipRole === 'owner' || membershipRole === 'admin' ? 'admin' : 'member';
-  const normalizedMembership = {
-    ...membership,
-    uid: membership.uid || user.uid,
-    teamId: resolvedTeamId,
-    email: membership.email || emailLower,
-    role: membershipRole,
-    active: membership.active !== false,
-  };
-
-  await ensureTeamDocument(sdk, db, resolvedTeamId, { allowCreate: canBootstrap, ownerUid: accessRole === 'admin' ? user.uid : null });
-  await upsertUserTeamRoleCache(user.uid, resolvedTeamId, normalizedMembership.role, { emailLower, displayName: user.displayName });
-  cacheTeamResolution(user.uid, resolvedTeamId, normalizedMembership);
-  persistTeamId(normalizeTeamId(resolvedTeamId));
+  await ensureUserDoc(user);
+  const access = await getTeamAccessWithTimeout({ teamId: resolvedTeamId, user });
+  const membershipStatus = access.status === TEAM_ACCESS_STATUS.OK
+    ? 'member'
+    : access.status === TEAM_ACCESS_STATUS.NEED_CREATE || access.status === TEAM_ACCESS_STATUS.DENIED
+      ? 'not_member'
+      : 'error';
   updateTeamDebugState({
-    teamId: resolvedTeamId,
-    member: normalizedMembership,
-    teamResolved: true,
-    membershipStatus: normalizedMembership.active === false ? 'error' : 'member',
-    membershipCheckPath: expectedMemberPath,
+    teamId: access.teamId || resolvedTeamId,
+    member: access.memberDoc || null,
+    teamResolved: access.status === TEAM_ACCESS_STATUS.OK,
+    membershipStatus,
+    membershipCheckPath: membershipPath,
   });
-  return { teamId: resolvedTeamId, membership: normalizedMembership, invite: null, role: accessRole };
+  if (access.status === TEAM_ACCESS_STATUS.OK && access.memberDoc) {
+    const normalizedMembership = {
+      ...access.memberDoc,
+      uid: access.memberDoc.uid || user.uid,
+      teamId: access.teamId || resolvedTeamId,
+      email: access.memberDoc.email || normalizeEmail(user.email),
+      emailLower: normalizeEmail(access.memberDoc.emailLower || access.memberDoc.email || user.email),
+      role: access.memberDoc.role === 'admin' ? 'admin' : 'member',
+      active: access.memberDoc.active !== false,
+    };
+    const accessRole = normalizedMembership.role === 'admin' ? 'admin' : 'member';
+    cacheTeamResolution(user.uid, normalizedMembership.teamId, normalizedMembership);
+    persistTeamId(normalizeTeamId(normalizedMembership.teamId));
+    return { teamId: normalizedMembership.teamId, membership: normalizedMembership, invite: null, role: accessRole };
+  }
+  if (access.status === TEAM_ACCESS_STATUS.NEED_CREATE) {
+    const message = canBootstrap
+      ? `Team ${getDisplayTeamId(resolvedTeamId)} findes ikke. Opret det via bootstrap-knappen.`
+      : `Team ${getDisplayTeamId(resolvedTeamId)} findes ikke.`;
+    throw new MembershipMissingError(resolvedTeamId, user.uid, message);
+  }
+  if (access.status === TEAM_ACCESS_STATUS.DENIED || access.status === TEAM_ACCESS_STATUS.NO_ACCESS) {
+    throw new MembershipMissingError(resolvedTeamId, user.uid, `Ingen adgang til team ${getDisplayTeamId(resolvedTeamId)}. Kontakt admin.`);
+  }
+  throw new PermissionDeniedError(access?.error?.message || 'Kunne ikke kontrollere team-adgang.');
 }
 
 async function getTeamDocument(teamId) {
@@ -730,6 +671,21 @@ export async function saveTeamInvite(teamId, invite, actorOverride) {
   return { ...inviteRecord, email: inviteRecord.emailLower || email };
 }
 
+export async function addTeamMemberByEmail(teamId, emailInput, role = 'member') {
+  const { teamId: resolvedTeamId } = await getTeamContext(teamId, { requireAdmin: true });
+  const emailLower = normalizeEmail(emailInput);
+  if (!emailLower) throw new Error('Angiv email.');
+  const db = await getFirestoreDb();
+  const sdk = await getFirestoreHelpers();
+  const usersRef = sdk.collection(db, 'users');
+  const constraints = [sdk.where('emailLower', '==', emailLower)];
+  if (typeof sdk.limit === 'function') constraints.push(sdk.limit(1));
+  const snapshot = await sdk.getDocs(sdk.query(usersRef, ...constraints));
+  const match = snapshot.docs[0];
+  if (!match) throw new Error('Bruger ikke fundet. Bed brugeren logge ind først.');
+  return addTeamMemberByUid(resolvedTeamId, match.id, role);
+}
+
 export async function addTeamMemberByUid(teamId, memberUid, role = 'member') {
   const { teamId: resolvedTeamId, actor } = await getTeamContext(teamId, { requireAdmin: true });
   if (!memberUid) throw new Error('Angiv UID for medlemmet.');
@@ -824,7 +780,6 @@ export {
   getStoredTeamId,
   persistTeamId,
   guardTeamAccess,
-  BOOTSTRAP_ADMIN_EMAIL,
   formatTeamId,
   normalizeTeamId,
   getDisplayTeamId,

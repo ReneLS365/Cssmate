@@ -21,6 +21,8 @@ let verifiedResolve = null
 let verifiedPromise = null
 let verifiedReject = null
 let initialized = false
+let authInitStarted = false
+let authInitPromise = null
 
 function ensureVerifiedPromise () {
   if (verifiedPromise) return verifiedPromise
@@ -31,16 +33,42 @@ function ensureVerifiedPromise () {
   return verifiedPromise
 }
 
+function ensureAuthInit () {
+  if (authInitPromise) return authInitPromise
+  authInitStarted = true
+  authInitPromise = waitForAuthReady().catch(error => {
+    authInitPromise = null
+    throw error
+  })
+  return authInitPromise
+}
+
+function prefetchAuthInit () {
+  if (authInitStarted) return authInitPromise
+  const trigger = () => {
+    try {
+      ensureAuthInit()
+    } catch {}
+  }
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(trigger, { timeout: 2000 })
+  } else {
+    setTimeout(trigger, 500)
+  }
+  return authInitPromise
+}
+
 function normalizeState (context) {
   const state = context || {}
-  const isReady = Boolean(state.isReady)
+  const isReady = authInitStarted ? Boolean(state.isReady) : false
   const isAuthenticated = Boolean(state.isAuthenticated && state.user)
   const isVerified = Boolean(state.isVerified)
   const requiresVerification = Boolean(state.user) && !isVerified
   const error = state.error || null
   const hasError = Boolean(error)
+  const loading = authInitStarted ? !isReady : false
   return {
-    loading: !isReady,
+    loading,
     isReady,
     isAuthenticated,
     isVerified,
@@ -49,7 +77,9 @@ function normalizeState (context) {
     requiresVerification,
     user: state.user || null,
     providers: Array.isArray(state.providers) ? state.providers : [],
-    message: state.message || state.error?.message || '',
+    message: authInitStarted
+      ? (state.message || state.error?.message || '')
+      : 'Log ind for at fortsætte',
   }
 }
 
@@ -77,8 +107,6 @@ function notify () {
 export function initAuthProvider () {
   if (initialized) return getAuthProviderApi()
   initialized = true
-  initSharedAuth()?.catch?.(() => {})
-  waitForAuthReady()?.catch?.(() => {})
   onAuthStateChange((context) => {
     authState = normalizeState(context)
     notify()
@@ -93,14 +121,16 @@ function getAuthProviderApi () {
     onChange,
     waitForVerifiedUser,
     getEnabledProviders,
+    ensureAuth: ensureAuthInit,
+    prefetchAuth: prefetchAuthInit,
     actions: {
-      signInWithGoogle: () => loginWithProvider('google'),
-      signInWithEmail,
-      signUpWithEmail,
+      signInWithGoogle: () => { ensureAuthInit(); return loginWithProvider('google') },
+      signInWithEmail: (...args) => { ensureAuthInit(); return signInWithEmail(...args) },
+      signUpWithEmail: (...args) => { ensureAuthInit(); return signUpWithEmail(...args) },
       signOut: logoutUser,
-      sendPasswordReset,
-      resendVerification: resendEmailVerification,
-      reloadUser: reloadCurrentUser,
+      sendPasswordReset: (...args) => { ensureAuthInit(); return sendPasswordReset(...args) },
+      resendVerification: (...args) => { ensureAuthInit(); return resendEmailVerification(...args) },
+      reloadUser: (...args) => { ensureAuthInit(); return reloadCurrentUser(...args) },
     },
   }
 }
@@ -118,6 +148,7 @@ export function onChange (callback) {
 }
 
 export function waitForVerifiedUser () {
+  ensureAuthInit()?.catch?.(() => {})
   const state = getState()
   if (state.isVerified) return Promise.resolve(state)
   if (state.hasError) {

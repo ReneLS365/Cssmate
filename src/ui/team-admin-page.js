@@ -5,9 +5,9 @@ import {
   listTeamMembers,
   PermissionDeniedError,
   removeTeamMember,
-  saveTeamInvite,
   saveTeamMember,
   setMemberActive,
+  addTeamMemberByEmail,
 } from '../../js/shared-ledger.js'
 import { normalizeEmail } from '../auth/roles.js'
 import { getState as getSessionState, onChange as onSessionChange, refreshAccess, requestBootstrapAccess } from '../auth/session.js'
@@ -299,19 +299,19 @@ async function handleInviteSubmit () {
   if (!inviteEmailInput || !inviteRoleSelect) return
   const email = inviteEmailInput.value || ''
   if (!email.trim()) {
-    setStatus('Angiv email for invitation.', 'error')
+    setStatus('Angiv email for medlemmet.', 'error')
     return
   }
   const role = inviteRoleSelect.value === 'admin' ? 'admin' : 'member'
   setLoading(true)
   try {
-    await saveTeamInvite(lastTeamId, { email, role, active: true })
+    await addTeamMemberByEmail(lastTeamId, email, role)
     inviteEmailInput.value = ''
-    setStatus('Invitation oprettet.', 'success')
+    setStatus('Medlem tilføjet via email.', 'success')
     await loadTeamData()
   } catch (error) {
-    console.warn('Invite create failed', error)
-    setStatus(error?.message || 'Kunne ikke sende invitation', 'error')
+    console.warn('Add member by email failed', error)
+    setStatus(error?.message || 'Kunne ikke tilføje medlem via email', 'error')
   } finally {
     setLoading(false)
   }
@@ -342,7 +342,6 @@ async function handleAddByUid () {
 async function handleFixMembership () {
   setLoading(true)
   try {
-    const invites = await listTeamInvites(lastTeamId)
     const members = await listTeamMembers(lastTeamId)
     const normalizedFixEmail = normalizeEmail(MEMBER_EMAIL_FIX)
     const hasMember = members.some(member => normalizeEmail(member.email || member.emailLower) === normalizedFixEmail)
@@ -350,17 +349,12 @@ async function handleFixMembership () {
       setStatus('Medlem findes allerede.', 'success')
       return
     }
-    const invite = invites.find(entry => normalizeEmail(entry.email || entry.emailLower) === normalizedFixEmail && !entry.usedAt && entry.active !== false)
-    if (invite) {
-      setStatus('Aktiv invitation findes allerede.', 'success')
-      return
-    }
-    await saveTeamInvite(lastTeamId, { email: MEMBER_EMAIL_FIX, role: 'member', active: true })
-    setStatus('Invitation oprettet for renelowesorensen@gmail.com.', 'success')
+    await addTeamMemberByEmail(lastTeamId, MEMBER_EMAIL_FIX, 'member')
+    setStatus('Medlem oprettet for renelowesorensen@gmail.com.', 'success')
     await loadTeamData()
   } catch (error) {
     console.warn('Fix membership failed', error)
-    setStatus(error?.message || 'Kunne ikke oprette fix-invitation', 'error')
+    setStatus(error?.message || 'Kunne ikke oprette medlemmet', 'error')
   } finally {
     setLoading(false)
   }
@@ -400,12 +394,15 @@ function renderAccessState (session) {
 
   if (accessStatus === TEAM_ACCESS_STATUS.CHECKING) {
     message = 'Tjekker team-adgang…'
+  } else if (accessStatus === TEAM_ACCESS_STATUS.SIGNED_OUT) {
+    message = 'Log ind for at administrere teamet.'
+    variant = 'info'
   } else if (accessStatus === TEAM_ACCESS_STATUS.OK) {
     message = isAdmin
       ? 'Adgang givet. Team-medlemmer kan indlæses.'
       : 'Du er medlem, men kan ikke se team-medlemmer. Kontakt admin.'
     variant = isAdmin ? 'success' : 'info'
-  } else if (accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS) {
+  } else if (accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS || accessStatus === TEAM_ACCESS_STATUS.DENIED) {
     message = session?.message || 'Ingen team-adgang. Tilføj dig selv eller kontakt admin.'
     variant = 'error'
   } else if (accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE) {
