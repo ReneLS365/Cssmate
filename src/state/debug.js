@@ -15,6 +15,8 @@ const defaultState = {
   memberRole: '',
   membershipStatus: 'loading',
   membershipCheckPath: '',
+  accessStatus: 'checking',
+  accessError: null,
   sessionReady: false,
   sessionStatus: '',
   currentView: '',
@@ -40,6 +42,7 @@ function getSnapshot () {
   return {
     ...debugState,
     user: { ...debugState.user },
+    accessError: debugState.accessError ? { ...debugState.accessError } : null,
     lastFirestoreError: debugState.lastFirestoreError ? { ...debugState.lastFirestoreError } : null,
     buildMeta: { ...debugState.buildMeta, allowedFirebaseProjects: [...(debugState.buildMeta?.allowedFirebaseProjects || [])], warnings: [...(debugState.buildMeta?.warnings || [])] },
   }
@@ -128,7 +131,7 @@ export function updateAuthDebugState (authContext) {
   })
 }
 
-export function updateTeamDebugState ({ teamId, member, teamResolved, membershipStatus, membershipCheckPath }) {
+export function updateTeamDebugState ({ teamId, member, teamResolved, membershipStatus, membershipCheckPath, accessStatus, accessError }) {
   const memberExists = Boolean(member)
   setState({
     teamId: teamId || debugState.teamId,
@@ -138,6 +141,8 @@ export function updateTeamDebugState ({ teamId, member, teamResolved, membership
     memberRole: member?.role || '',
     membershipStatus: membershipStatus || debugState.membershipStatus,
     membershipCheckPath: membershipCheckPath || debugState.membershipCheckPath,
+    accessStatus: accessStatus || debugState.accessStatus,
+    accessError: accessError || (accessStatus ? null : debugState.accessError),
   })
 }
 
@@ -149,6 +154,8 @@ export function updateSessionDebugState (sessionState) {
     teamResolved: Boolean(sessionState?.teamResolved || (sessionState?.user && status !== 'signingIn')),
     membershipStatus: sessionState?.membershipStatus,
     membershipCheckPath: sessionState?.membershipCheckPath,
+    accessStatus: sessionState?.accessStatus,
+    accessError: sessionState?.accessError,
   })
   setState({
     sessionStatus: status,

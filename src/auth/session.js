@@ -1,21 +1,18 @@
 import { getAuthContext, onAuthStateChange, waitForAuthReady } from '../../js/shared-auth.js'
-import {
-  BOOTSTRAP_ADMIN_EMAIL,
-  DEFAULT_TEAM_SLUG,
-  InviteMissingError,
-  InactiveMemberError,
-  MembershipMissingError,
-  guardTeamAccess,
-  getDisplayTeamId,
-  getStoredTeamId,
-  persistTeamId,
-  formatTeamId,
-  normalizeTeamId,
-  buildMemberDocPath,
-} from '../../js/shared-ledger.js'
 import { normalizeEmail } from './roles.js'
 import { setLastFirestoreError, updateSessionDebugState } from '../state/debug.js'
 import { markUserLoading, resetUserState, setUserLoadedState } from '../state/user-store.js'
+import {
+  BOOTSTRAP_ADMIN_EMAIL,
+  DEFAULT_TEAM_SLUG,
+  formatTeamId,
+  getDisplayTeamId,
+  getStoredTeamId,
+  normalizeTeamId,
+  persistTeamId,
+} from '../services/team-ids.js'
+import { buildMemberDocPath } from '../services/teams.js'
+import { bootstrapTeamMembership, resolveTeamAccessWithTimeout } from '../services/team-access.js'
 
 const SESSION_STATUS = {
   SIGNED_OUT: 'signedOut',
@@ -29,6 +26,7 @@ const SESSION_STATUS = {
 let initialized = false
 let preferredTeamSlug = normalizeTeamId(getStoredTeamId() || DEFAULT_TEAM_SLUG)
 let accessInFlight = null
+let accessRequestId = 0
 const listeners = new Set()
 const waiters = new Set()
 const TEAM_LOCK_KEY = 'sscaff.team.locked'
@@ -102,6 +100,8 @@ function buildState (overrides = {}) {
     membershipStatus: 'loading',
     membershipCheckPath: '',
     membershipCheckTeamId: '',
+    accessStatus: 'checking',
+    accessError: null,
     sessionReady: false,
     canChangeTeam: true,
     teamLocked: teamLockedFlag,
@@ -174,16 +174,47 @@ function canBootstrap (user, teamId) {
     && normalizeTeamId(teamId || preferredTeamSlug) === normalizeTeamId(DEFAULT_TEAM_SLUG)
 }
 
-async function evaluateAccess ({ allowBootstrap = false } = {}) {
+function normalizeMemberDoc (memberDoc, teamId, uid) {
+  if (!memberDoc) return null
+  const normalizedTeamId = formatTeamId(memberDoc.teamId || teamId || preferredTeamSlug)
+  const role = memberDoc.role === 'owner'
+    ? 'owner'
+    : (memberDoc.role === 'admin' ? 'admin' : 'member')
+  return {
+    ...memberDoc,
+    uid: memberDoc.uid || uid || '',
+    teamId: normalizedTeamId,
+    role,
+    active: memberDoc.active !== false,
+  }
+}
+
+function resolveAccessMessage (accessStatus, displayTeamId, accessError, memberDoc) {
+  if (accessStatus === 'ok') return ''
+  if (accessStatus === 'no-membership') return `Du er ikke tilføjet til ${displayTeamId}. Kontakt admin.`
+  if (accessStatus === 'denied' || memberDoc?.active === false) {
+    return 'Din konto er deaktiveret. Kontakt administrator.'
+  }
+  if (accessError?.message) return accessError.message
+  return 'Ingen adgang til teamet.'
+}
+
+async function evaluateAccess () {
   const auth = getAuthContext()
   if (!auth?.isAuthenticated || !auth.user) {
     resetUserState()
-    setState(buildState({ status: SESSION_STATUS.SIGNED_OUT, message: 'Log ind for at fortsætte' }))
+    setState(buildState({
+      status: SESSION_STATUS.SIGNED_OUT,
+      message: 'Log ind for at fortsætte',
+      accessStatus: 'error',
+      accessError: null,
+    }))
     return null
   }
 
   const formattedTeam = formatTeamId(preferredTeamSlug)
-  let displayTeamId = getDisplayTeamId(formattedTeam)
+  const displayTeamId = getDisplayTeamId(formattedTeam)
+  const membershipPath = auth.user?.uid ? buildMemberDocPath(formattedTeam, auth.user.uid) : ''
 
   setState({
     status: SESSION_STATUS.SIGNING_IN,
@@ -196,100 +227,99 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
     memberExists: false,
     memberActive: null,
     membershipStatus: 'loading',
-    membershipCheckPath: buildMemberDocPath(formattedTeam, auth.user.uid || ''),
+    membershipCheckPath: membershipPath,
     membershipCheckTeamId: formattedTeam,
+    accessStatus: 'checking',
+    accessError: null,
   })
   markUserLoading()
 
-  if (accessInFlight) return accessInFlight
+  const requestId = ++accessRequestId
+  const currentUser = auth.user
 
-  accessInFlight = (async () => {
-    const bootstrapEligible = canBootstrap(auth.user, formattedTeam)
-    const bootstrapAlreadyRan = hasBootstrapRun(auth.user.uid)
-    const allowBootstrapAccess = Boolean((allowBootstrap || bootstrapEligible) && !bootstrapAlreadyRan)
-    try {
-      const access = await guardTeamAccess(formattedTeam, auth.user, { allowBootstrap: allowBootstrapAccess })
-      const isAdmin = access.role === 'admin'
-      const membership = access.membership
-      const resolvedTeamId = formatTeamId(access.teamId || formattedTeam)
-      preferredTeamSlug = normalizeTeamId(resolvedTeamId)
-      persistTeamId(preferredTeamSlug)
-      displayTeamId = getDisplayTeamId(resolvedTeamId)
-      teamLockedFlag = !isAdmin
-      persistTeamLock(teamLockedFlag)
+  const applyAccessResult = (accessResult) => {
+    const accessStatus = accessResult?.status || 'error'
+    const resolvedTeamId = formatTeamId(accessResult?.teamId || formattedTeam)
+    const resolvedDisplayTeamId = getDisplayTeamId(resolvedTeamId)
+    const accessError = accessResult?.error || null
+    const member = normalizeMemberDoc(accessResult?.memberDoc, resolvedTeamId, currentUser?.uid)
+    const memberExists = Boolean(member)
+    const memberActive = memberExists ? member.active !== false : null
+    const isOwner = Boolean(accessResult?.isOwner)
+    const isAdmin = Boolean(accessStatus === 'ok' && (accessResult?.isAdmin || member?.role === 'admin' || member?.role === 'owner' || isOwner))
+    const membershipStatus = accessStatus === 'ok'
+      ? 'member'
+      : accessStatus === 'no-membership'
+        ? 'not_member'
+        : 'error'
+    const sessionStatus = membershipStatus === 'member'
+      ? (isAdmin ? SESSION_STATUS.ADMIN : SESSION_STATUS.MEMBER)
+      : (accessStatus === 'no-membership' || accessStatus === 'denied' ? SESSION_STATUS.NO_ACCESS : SESSION_STATUS.ERROR)
+    const message = resolveAccessMessage(accessStatus, resolvedDisplayTeamId, accessError, member)
+    const errorObject = accessStatus === 'ok'
+      ? null
+      : (accessError ? Object.assign(new Error(accessError.message || 'Ingen adgang'), { code: accessError.code }) : null)
+    const memberPath = currentUser?.uid ? buildMemberDocPath(resolvedTeamId, currentUser.uid) : ''
+    if (accessError?.code) {
+      setLastFirestoreError(accessError, memberPath)
+    }
+    teamLockedFlag = !isAdmin
+    persistTeamLock(teamLockedFlag)
+    preferredTeamSlug = normalizeTeamId(resolvedTeamId)
+    persistTeamId(preferredTeamSlug)
+    if (membershipStatus === 'member') {
       setUserLoadedState({
-        uid: auth.user.uid || null,
-        email: auth.user.email || '',
-        displayName: auth.user.displayName || auth.user.name || '',
+        uid: currentUser?.uid || null,
+        email: currentUser?.email || '',
+        displayName: currentUser?.displayName || currentUser?.name || '',
         teamId: resolvedTeamId,
-        role: membership?.role || access.role,
+        role: member?.role || (isAdmin ? 'admin' : 'member'),
       })
-      if (membership?.bootstrapCreated) {
-        markBootstrapRun(auth.user.uid)
-      }
-      const nextMembershipStatus = membership?.active === false ? 'error' : 'member'
-      return setState({
-        status: isAdmin ? SESSION_STATUS.ADMIN : SESSION_STATUS.MEMBER,
-        role: access.role,
-        member: membership,
-        invite: access.invite || null,
-        error: null,
-        message: '',
-        hasAccess: true,
-        teamId: resolvedTeamId,
-        displayTeamId,
-        canChangeTeam: isAdmin,
-        teamLocked: teamLockedFlag,
-        bootstrapAvailable: false,
-        teamResolved: true,
-        memberExists: Boolean(membership),
-        memberActive: membership?.active !== false,
-        membershipStatus: nextMembershipStatus,
-        membershipCheckPath: buildMemberDocPath(resolvedTeamId, auth.user.uid || ''),
-        membershipCheckTeamId: resolvedTeamId,
-      })
-    } catch (error) {
-      const bootstrapAvailable = bootstrapEligible
-      const noAccessError = error instanceof InviteMissingError
-        || error instanceof MembershipMissingError
-        || error instanceof InactiveMemberError
-      const status = noAccessError ? SESSION_STATUS.NO_ACCESS : SESSION_STATUS.ERROR
-      const inactiveMember = error instanceof InactiveMemberError
-      const targetTeamId = formatTeamId(error?.teamId || formattedTeam)
-      const nextDisplayTeamId = getDisplayTeamId(targetTeamId)
-      if (error?.code) {
-        setLastFirestoreError(error, buildMemberDocPath(targetTeamId, auth.user.uid || ''))
-      }
+    } else {
       setUserLoadedState({
-        uid: auth.user.uid || null,
-        email: auth.user.email || '',
-        displayName: auth.user.displayName || auth.user.name || '',
+        uid: currentUser?.uid || null,
+        email: currentUser?.email || '',
+        displayName: currentUser?.displayName || currentUser?.name || '',
         teamId: '',
         role: '',
       })
-      setState({
-        status,
-        role: null,
-        member: null,
-        invite: null,
-        error,
-        message: error?.message || 'Ingen adgang til teamet.',
-        hasAccess: false,
-        teamId: targetTeamId,
-        displayTeamId: nextDisplayTeamId,
-        bootstrapAvailable: bootstrapAvailable && noAccessError && !bootstrapAlreadyRan,
-        teamResolved: true,
-        memberExists: inactiveMember ? true : false,
-        memberActive: inactiveMember ? false : null,
-        membershipStatus: inactiveMember ? 'error' : (noAccessError ? 'not_member' : 'error'),
-        membershipCheckPath: buildMemberDocPath(targetTeamId, auth.user.uid || ''),
-        membershipCheckTeamId: targetTeamId,
-      })
-      throw error
-    } finally {
-      accessInFlight = null
     }
+    const bootstrapAvailable = membershipStatus === 'not_member'
+      && canBootstrap(currentUser, resolvedTeamId)
+      && !hasBootstrapRun(currentUser?.uid)
+    return setState({
+      status: sessionStatus,
+      role: member?.role || (isAdmin ? 'admin' : null),
+      member,
+      invite: null,
+      error: errorObject,
+      message,
+      hasAccess: membershipStatus === 'member',
+      teamId: resolvedTeamId,
+      displayTeamId: resolvedDisplayTeamId,
+      canChangeTeam: isAdmin,
+      teamLocked: teamLockedFlag,
+      bootstrapAvailable,
+      teamResolved: true,
+      memberExists,
+      memberActive,
+      membershipStatus,
+      membershipCheckPath: memberPath,
+      membershipCheckTeamId: resolvedTeamId,
+      accessStatus,
+      accessError,
+    })
+  }
+
+  const runPromise = (async () => {
+    const accessResult = await resolveTeamAccessWithTimeout({ teamId: formattedTeam, user: currentUser })
+    if (requestId !== accessRequestId) return sessionState
+    return applyAccessResult(accessResult)
   })()
+
+  accessInFlight = runPromise.finally(() => {
+    if (accessInFlight === runPromise) accessInFlight = null
+  })
 
   return accessInFlight
 }
@@ -317,6 +347,8 @@ function handleAuthChange (context) {
       membershipStatus: 'loading',
       membershipCheckPath: '',
       membershipCheckTeamId: '',
+      accessStatus: 'checking',
+      accessError: null,
     }))
     return
   }
@@ -335,6 +367,8 @@ function handleAuthChange (context) {
       membershipStatus: 'loading',
       membershipCheckPath: '',
       membershipCheckTeamId: '',
+      accessStatus: 'checking',
+      accessError: null,
     }))
     return
   }
@@ -353,6 +387,8 @@ function handleAuthChange (context) {
     membershipStatus: 'loading',
     membershipCheckPath: buildMemberDocPath(formatTeamId(preferredTeamSlug), context.user?.uid || ''),
     membershipCheckTeamId: formatTeamId(preferredTeamSlug),
+    accessStatus: 'checking',
+    accessError: null,
   })
 
   if (requiresVerification) {
@@ -415,6 +451,8 @@ function setPreferredTeamId (nextTeamId) {
     membershipStatus: 'loading',
     membershipCheckPath: memberPath,
     membershipCheckTeamId: formatted,
+    accessStatus: 'checking',
+    accessError: null,
   })
   if (sessionState.user) {
     evaluateAccess().catch(() => {})
@@ -452,10 +490,13 @@ function waitForAccess ({ requireAdmin = false } = {}) {
 
 async function requestBootstrapAccess () {
   const auth = getAuthContext()
-  if (!canBootstrap(auth?.user, sessionState.teamId)) {
+  const targetTeamId = formatTeamId(sessionState.teamId || preferredTeamSlug)
+  if (!canBootstrap(auth?.user, targetTeamId)) {
     throw new Error('Bootstrap er ikke tilladt for denne bruger.')
   }
-  return evaluateAccess({ allowBootstrap: true })
+  await bootstrapTeamMembership({ teamId: targetTeamId, user: auth.user })
+  markBootstrapRun(auth?.user?.uid)
+  return refreshAccess()
 }
 
 function refreshAccess () {
