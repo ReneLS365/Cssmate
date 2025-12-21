@@ -12,6 +12,7 @@ import {
 import { normalizeEmail } from '../auth/roles.js'
 import { getState as getSessionState, onChange as onSessionChange, refreshAccess, requestBootstrapAccess } from '../auth/session.js'
 import { resetAppState } from '../utils/reset-app.js'
+import { TEAM_ACCESS_STATUS } from '../services/team-access.js'
 
 let initialized = false
 let teamPanel
@@ -386,29 +387,29 @@ function toggleAdminControls (enabled) {
 
 function renderAccessState (session) {
   ensureAccessActions()
-  const accessStatus = session?.accessStatus || 'checking'
+  const accessStatus = session?.accessStatus || TEAM_ACCESS_STATUS.CHECKING
   const membershipStatus = session?.membershipStatus || 'loading'
-  const isChecking = accessStatus === 'checking' || membershipStatus === 'loading'
+  const isChecking = accessStatus === TEAM_ACCESS_STATUS.CHECKING || membershipStatus === 'loading'
   const role = session?.member?.role || session?.role || ''
   const isAdmin = isAdminRole(role)
-  const canViewMembers = accessStatus === 'ok' && isAdmin
+  const canViewMembers = accessStatus === TEAM_ACCESS_STATUS.OK && isAdmin
   const canBootstrapAction = Boolean(session?.bootstrapAvailable)
   const accessError = session?.accessError || session?.error || null
   let message = session?.message || ''
   let variant = ''
 
-  if (accessStatus === 'checking') {
+  if (accessStatus === TEAM_ACCESS_STATUS.CHECKING) {
     message = 'Tjekker team-adgang…'
-  } else if (accessStatus === 'ok') {
+  } else if (accessStatus === TEAM_ACCESS_STATUS.OK) {
     message = isAdmin
       ? 'Adgang givet. Team-medlemmer kan indlæses.'
       : 'Du er medlem, men kan ikke se team-medlemmer. Kontakt admin.'
     variant = isAdmin ? 'success' : 'info'
-  } else if (accessStatus === 'no-membership') {
-    message = 'Ingen team-adgang. Tilføj dig selv eller kontakt admin.'
+  } else if (accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS) {
+    message = session?.message || 'Ingen team-adgang. Tilføj dig selv eller kontakt admin.'
     variant = 'error'
-  } else if (accessStatus === 'denied') {
-    message = 'Din adgang er deaktiveret. Kontakt administrator.'
+  } else if (accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE) {
+    message = session?.message || 'Teamet findes ikke. Opret det eller vælg et andet team.'
     variant = 'error'
   } else {
     message = message || accessError?.message || 'Kunne ikke kontrollere team-adgang.'
@@ -476,9 +477,9 @@ function handleSessionChange (session) {
   lastSessionState = session
   updateTabVisibility(session)
   const sessionRole = session?.member?.role || session?.role || ''
-  const accessStatus = session?.accessStatus || 'checking'
+  const accessStatus = session?.accessStatus || TEAM_ACCESS_STATUS.CHECKING
   renderAccessState(session)
-  const hasAccess = isAdminRole(sessionRole) && session?.teamId && session?.sessionReady && accessStatus === 'ok'
+  const hasAccess = isAdminRole(sessionRole) && session?.teamId && session?.sessionReady && accessStatus === TEAM_ACCESS_STATUS.OK
   if (!hasAccess) {
     lastTeamId = ''
     return
@@ -498,16 +499,16 @@ function bindEvents () {
     uidSubmitButton.addEventListener('click', handleAddByUid)
   }
   if (refreshButton) {
-    refreshButton.addEventListener('click', () => {
-      const session = lastSessionState || getSessionState()
-      const role = session?.member?.role || session?.role || ''
-      const accessStatus = session?.accessStatus || 'checking'
-      if (!isAdminRole(role) || accessStatus !== 'ok') {
-        handleAccessRetry()
-        return
-      }
-      loadTeamData()
-    })
+      refreshButton.addEventListener('click', () => {
+        const session = lastSessionState || getSessionState()
+        const role = session?.member?.role || session?.role || ''
+        const accessStatus = session?.accessStatus || TEAM_ACCESS_STATUS.CHECKING
+        if (!isAdminRole(role) || accessStatus !== TEAM_ACCESS_STATUS.OK) {
+          handleAccessRetry()
+          return
+        }
+        loadTeamData()
+      })
   }
   if (teamCopyIdBtn) {
     teamCopyIdBtn.addEventListener('click', () => copyToClipboard(lastTeamId))

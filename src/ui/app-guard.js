@@ -5,6 +5,7 @@ import { DEFAULT_TEAM_SLUG, formatTeamId, getDisplayTeamId } from '../services/t
 import { migrateMemberDocIfNeeded } from '../services/teams.js'
 import { resetAppState } from '../utils/reset-app.js'
 import { APP_CHECK_REASON, APP_CHECK_STATUS } from '../../js/shared-auth.js'
+import { TEAM_ACCESS_STATUS } from '../services/team-access.js'
 
 const RETRY_DEBOUNCE_MS = 350
 const migrationAttempts = new Set()
@@ -123,33 +124,30 @@ async function maybeMigrateMemberDoc (state) {
 
 function updateGuardContent (state) {
   const membershipStatus = state?.membershipStatus || 'loading'
-  const accessStatus = state?.accessStatus || (membershipStatus === 'member' ? 'ok' : 'checking')
+  const accessStatus = state?.accessStatus || (membershipStatus === 'member' ? TEAM_ACCESS_STATUS.OK : TEAM_ACCESS_STATUS.CHECKING)
   const teamId = formatTeamId(state?.teamId || state?.membershipCheckTeamId || DEFAULT_TEAM_SLUG)
   const displayTeam = getDisplayTeamId(teamId)
   const userEmail = state?.user?.email || ''
-  const messageFallback = state?.message || (accessStatus === 'no-membership'
-    ? `Du er ikke tilføjet til ${displayTeam}. Kontakt admin.`
-    : accessStatus === 'denied'
-      ? 'Din konto er deaktiveret. Kontakt administrator.'
+  const messageFallback = state?.message || (accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS
+    ? `Du er logget ind, men har ikke adgang til ${displayTeam}. Kontakt admin.`
+    : accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE
+      ? 'Teamet findes ikke. Opret det eller vælg et andet team.'
       : 'Adgang er midlertidigt låst.')
   const errorCode = state?.accessError?.code || state?.error?.code || ''
 
-  statusEl.textContent = accessStatus === 'ok'
-    ? 'Adgang givet'
-    : accessStatus === 'no-membership'
-      ? 'Ingen team-adgang'
-      : accessStatus === 'denied'
-        ? 'Adgang nægtet'
-        : accessStatus === 'error'
-          ? 'Adgangsfejl'
-          : 'Tjekker adgang'
+  let statusLabel = 'Tjekker adgang'
+  if (accessStatus === TEAM_ACCESS_STATUS.OK) statusLabel = 'Adgang givet'
+  else if (accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS) statusLabel = 'Ingen team-adgang'
+  else if (accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE) statusLabel = 'Team mangler'
+  else if (accessStatus === TEAM_ACCESS_STATUS.ERROR) statusLabel = 'Adgangsfejl'
+  statusEl.textContent = statusLabel
 
-  if (accessStatus === 'checking' || membershipStatus === 'loading') {
+  if (accessStatus === TEAM_ACCESS_STATUS.CHECKING || membershipStatus === 'loading') {
     messageEl.textContent = 'Tjekker team-adgang…'
-  } else if (accessStatus === 'denied' || state?.memberActive === false) {
+  } else if (state?.memberActive === false) {
     messageEl.textContent = 'Din konto er deaktiveret. Kontakt administrator.'
   } else {
-    const combined = errorCode && accessStatus !== 'ok'
+    const combined = errorCode && accessStatus !== TEAM_ACCESS_STATUS.OK
       ? `${messageFallback} (${errorCode})`
       : messageFallback
     messageEl.textContent = combined
@@ -158,11 +156,11 @@ function updateGuardContent (state) {
   teamEl.textContent = displayTeam
   uidEl.textContent = state?.user?.uid || '–'
   emailEl.textContent = userEmail || '–'
-  if (retryButton) retryButton.disabled = accessStatus === 'checking' || membershipStatus === 'loading'
+  if (retryButton) retryButton.disabled = accessStatus === TEAM_ACCESS_STATUS.CHECKING || membershipStatus === 'loading'
   if (bootstrapButton) {
-    const showBootstrap = isAdminEmail(userEmail)
+    const showBootstrap = Boolean(state?.bootstrapAvailable || isAdminEmail(userEmail))
     bootstrapButton.hidden = !showBootstrap
-    bootstrapButton.disabled = !showBootstrap || accessStatus === 'checking' || membershipStatus === 'loading'
+    bootstrapButton.disabled = !showBootstrap || accessStatus === TEAM_ACCESS_STATUS.CHECKING || membershipStatus === 'loading'
   }
   if (debugEl) {
     const swStatus = (typeof navigator !== 'undefined' && navigator.serviceWorker?.controller) ? 'aktiv' : 'ingen'
