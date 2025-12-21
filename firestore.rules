@@ -10,53 +10,34 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email is string ? request.auth.token.email.lower() : '';
     }
 
-    function isMember(teamId) {
-      if (!isSignedIn()) return false;
-      let member = get(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid));
-      return member.exists() && member.data.active != false;
+    function memberDoc(teamId) {
+      return get(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid));
+    }
+
+    function teamDoc(teamId) {
+      return get(/databases/$(database)/documents/teams/$(teamId));
+    }
+
+    function isActiveMember(teamId) {
+      return isSignedIn() && memberDoc(teamId).exists() && memberDoc(teamId).data.active == true;
     }
 
     function isOwner(teamId) {
-      if (!isSignedIn()) return false;
-      let member = get(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid));
-      return member.exists() && member.data.active != false && member.data.role == 'owner';
+      return isActiveMember(teamId) && memberDoc(teamId).data.role == 'owner';
     }
 
     function isAdmin(teamId) {
-      if (!isSignedIn()) return false;
-      let member = get(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid));
-      return member.exists() && member.data.active != false && (member.data.role == 'admin' || member.data.role == 'owner');
+      return isActiveMember(teamId) && (memberDoc(teamId).data.role == 'admin' || memberDoc(teamId).data.role == 'owner');
     }
 
-    function canManage(teamId) {
-      return isAdmin(teamId) || isOwner(teamId);
-    }
-
-    function isBootstrapAdmin(teamId) {
+    function isTeamOwnerUid(teamId) {
       return isSignedIn()
-        && authEmailLower() == 'mr.lion1995@gmail.com'
-        && teamId == 'hulmose';
+        && teamDoc(teamId).exists()
+        && teamDoc(teamId).data.ownerUid == request.auth.uid;
     }
 
     function teamIdStable(teamId) {
       return !('teamId' in request.resource.data) || request.resource.data.teamId == teamId;
-    }
-
-    function inviteDoc(teamId) {
-      return get(/databases/$(database)/documents/teamInvites/$(teamId + '__' + authEmailLower()));
-    }
-
-    function hasMatchingInvite(teamId) {
-      let invite = inviteDoc(teamId);
-      return invite.exists()
-        && invite.data.emailLower == authEmailLower()
-        && invite.data.active != false
-        && !(invite.data.usedAt is timestamp);
-    }
-
-    function inviteRole(teamId) {
-      let invite = inviteDoc(teamId);
-      return invite.exists() ? invite.data.role : 'member';
     }
 
     function hasAuditActor() {
@@ -67,38 +48,31 @@ service cloud.firestore {
         && request.resource.data.actor.name is string;
     }
 
-    function inviteConsumptionAllowed(invite) {
-      return isSignedIn()
-        && invite.data.emailLower == authEmailLower()
-        && invite.data.teamId is string
-        && request.resource.data.teamId == invite.data.teamId
-        && request.resource.data.emailLower == invite.data.emailLower
-        && request.resource.data.role == invite.data.role
-        && request.resource.data.usedByUid == request.auth.uid
-        && request.resource.data.active == false
-        && request.resource.data.teamId == invite.data.teamId;
-    }
-
     match /teamInvites/{inviteId} {
       allow create: if isSignedIn()
         && request.resource.data.teamId is string
         && request.resource.data.emailLower is string
-        && (canManage(request.resource.data.teamId) || isBootstrapAdmin(request.resource.data.teamId));
+        && (isAdmin(request.resource.data.teamId) || isTeamOwnerUid(request.resource.data.teamId));
 
       allow read: if isSignedIn()
         && (
-          (resource.data.teamId is string && (canManage(resource.data.teamId) || resource.data.emailLower == authEmailLower()))
+          (resource.data.teamId is string && isAdmin(resource.data.teamId))
+          || (resource.data.emailLower is string && resource.data.emailLower == authEmailLower())
         );
 
-      allow update: if resource.data.teamId is string
+      allow update: if isSignedIn()
+        && resource.data.teamId is string
         && request.resource.data.teamId == resource.data.teamId
         && request.resource.data.emailLower == resource.data.emailLower
         && (
-          (canManage(resource.data.teamId))
-          || (inviteConsumptionAllowed(resource) && request.resource.data.usedAt is timestamp)
+          isAdmin(resource.data.teamId)
+          || (
+            request.resource.data.usedByUid == request.auth.uid
+            && request.resource.data.active == false
+          )
         );
 
-      allow delete: if resource.data.teamId is string && canManage(resource.data.teamId);
+      allow delete: if isSignedIn() && resource.data.teamId is string && isAdmin(resource.data.teamId);
     }
 
     match /users/{uid} {
@@ -106,41 +80,50 @@ service cloud.firestore {
     }
 
     match /teams/{teamId} {
-      allow create: if canManage(teamId) || isBootstrapAdmin(teamId);
-      allow read: if isMember(teamId);
-      allow update: if canManage(teamId) || isBootstrapAdmin(teamId);
-      allow delete: if isOwner(teamId);
+      allow create: if isSignedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow read: if isActiveMember(teamId);
+      allow update: if isAdmin(teamId) || isTeamOwnerUid(teamId);
+      allow delete: if isTeamOwnerUid(teamId);
 
       match /members/{uid} {
-        allow read: if isMember(teamId);
-        allow list: if canManage(teamId);
-        allow create: if (
-          (canManage(teamId) && teamIdStable(teamId))
-          || (isSignedIn() && uid == request.auth.uid && hasMatchingInvite(teamId) && request.resource.data.role == inviteRole(teamId) && teamIdStable(teamId))
-          || (isBootstrapAdmin(teamId) && uid == request.auth.uid)
+        allow read: if isAdmin(teamId) || (isActiveMember(teamId) && request.auth.uid == uid);
+        allow list: if isAdmin(teamId);
+        allow create: if teamIdStable(teamId) && (
+          isAdmin(teamId)
+          || (
+            isSignedIn()
+            && uid == request.auth.uid
+            && isTeamOwnerUid(teamId)
+            && request.resource.data.role == 'admin'
+            && request.resource.data.active == true
+          )
         );
-        allow update: if (
-          (canManage(teamId) && teamIdStable(teamId))
+        allow update: if teamIdStable(teamId) && (
+          isAdmin(teamId)
+          || (isSignedIn() && uid == request.auth.uid && resource.data.role == request.resource.data.role)
         );
-        allow delete: if canManage(teamId);
+        allow delete: if isAdmin(teamId);
       }
 
       match /cases/{caseId} {
-        allow read, list: if isMember(teamId);
-        allow create: if isMember(teamId);
-        allow update: if isMember(teamId);
-        allow delete: if isMember(teamId);
+        allow read, list: if isActiveMember(teamId);
+        allow create: if isActiveMember(teamId);
+        allow update, delete: if isAdmin(teamId) || (isActiveMember(teamId) && resource.data.createdByUid == request.auth.uid);
       }
 
       match /audit/{auditId} {
-        allow read: if isMember(teamId);
-        allow create: if isMember(teamId) && hasAuditActor() && request.resource.data.teamId == teamId && request.resource.data.timestamp is timestamp;
+        allow read: if isActiveMember(teamId);
+        allow create: if isActiveMember(teamId) && request.resource.data.teamId == teamId && hasAuditActor();
         allow update, delete: if false;
       }
 
+      match /backups/{backupId} {
+        allow read, write: if isAdmin(teamId) || isTeamOwnerUid(teamId);
+      }
+
       match /{document=**} {
-        allow read: if isMember(teamId);
-        allow write: if canManage(teamId);
+        allow read: if isActiveMember(teamId);
+        allow write: if isAdmin(teamId);
       }
     }
   }

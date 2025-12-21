@@ -12,7 +12,7 @@ import {
   persistTeamId,
 } from '../services/team-ids.js'
 import { buildMemberDocPath } from '../services/teams.js'
-import { bootstrapTeamMembership, resolveTeamAccessWithTimeout } from '../services/team-access.js'
+import { TEAM_ACCESS_STATUS, bootstrapTeamMembership, resolveTeamAccessWithTimeout } from '../services/team-access.js'
 
 const SESSION_STATUS = {
   SIGNED_OUT: 'signedOut',
@@ -100,7 +100,7 @@ function buildState (overrides = {}) {
     membershipStatus: 'loading',
     membershipCheckPath: '',
     membershipCheckTeamId: '',
-    accessStatus: 'checking',
+    accessStatus: TEAM_ACCESS_STATUS.CHECKING,
     accessError: null,
     sessionReady: false,
     canChangeTeam: true,
@@ -190,12 +190,11 @@ function normalizeMemberDoc (memberDoc, teamId, uid) {
 }
 
 function resolveAccessMessage (accessStatus, displayTeamId, accessError, memberDoc) {
-  if (accessStatus === 'ok') return ''
-  if (accessStatus === 'no-membership') return `Du er ikke tilføjet til ${displayTeamId}. Kontakt admin.`
-  if (accessStatus === 'denied' || memberDoc?.active === false) {
-    return 'Din konto er deaktiveret. Kontakt administrator.'
-  }
-  if (accessError?.message) return accessError.message
+  if (accessStatus === TEAM_ACCESS_STATUS.OK) return ''
+  if (accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS) return `Du er logget ind, men har ikke adgang til ${displayTeamId}. Kontakt admin.`
+  if (accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE) return 'Teamet findes ikke. Opret det eller vælg et andet team.'
+  if (accessStatus === TEAM_ACCESS_STATUS.ERROR && accessError?.message) return accessError.message
+  if (memberDoc?.active === false) return 'Din konto er deaktiveret. Kontakt administrator.'
   return 'Ingen adgang til teamet.'
 }
 
@@ -206,7 +205,7 @@ async function evaluateAccess () {
     setState(buildState({
       status: SESSION_STATUS.SIGNED_OUT,
       message: 'Log ind for at fortsætte',
-      accessStatus: 'error',
+      accessStatus: TEAM_ACCESS_STATUS.ERROR,
       accessError: null,
     }))
     return null
@@ -229,7 +228,7 @@ async function evaluateAccess () {
     membershipStatus: 'loading',
     membershipCheckPath: membershipPath,
     membershipCheckTeamId: formattedTeam,
-    accessStatus: 'checking',
+    accessStatus: TEAM_ACCESS_STATUS.CHECKING,
     accessError: null,
   })
   markUserLoading()
@@ -238,25 +237,27 @@ async function evaluateAccess () {
   const currentUser = auth.user
 
   const applyAccessResult = (accessResult) => {
-    const accessStatus = accessResult?.status || 'error'
+    const accessStatus = accessResult?.status || TEAM_ACCESS_STATUS.ERROR
     const resolvedTeamId = formatTeamId(accessResult?.teamId || formattedTeam)
     const resolvedDisplayTeamId = getDisplayTeamId(resolvedTeamId)
     const accessError = accessResult?.error || null
-    const member = normalizeMemberDoc(accessResult?.memberDoc, resolvedTeamId, currentUser?.uid)
+    const member = accessStatus === TEAM_ACCESS_STATUS.OK
+      ? normalizeMemberDoc(accessResult?.memberDoc, resolvedTeamId, currentUser?.uid)
+      : null
     const memberExists = Boolean(member)
     const memberActive = memberExists ? member.active !== false : null
     const isOwner = Boolean(accessResult?.isOwner)
-    const isAdmin = Boolean(accessStatus === 'ok' && (accessResult?.isAdmin || member?.role === 'admin' || member?.role === 'owner' || isOwner))
-    const membershipStatus = accessStatus === 'ok'
+    const isAdmin = Boolean(accessStatus === TEAM_ACCESS_STATUS.OK && (accessResult?.isAdmin || member?.role === 'admin' || member?.role === 'owner' || isOwner))
+    const membershipStatus = accessStatus === TEAM_ACCESS_STATUS.OK
       ? 'member'
-      : accessStatus === 'no-membership'
+      : accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS || accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE
         ? 'not_member'
         : 'error'
     const sessionStatus = membershipStatus === 'member'
       ? (isAdmin ? SESSION_STATUS.ADMIN : SESSION_STATUS.MEMBER)
-      : (accessStatus === 'no-membership' || accessStatus === 'denied' ? SESSION_STATUS.NO_ACCESS : SESSION_STATUS.ERROR)
+      : (accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS || accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE ? SESSION_STATUS.NO_ACCESS : SESSION_STATUS.ERROR)
     const message = resolveAccessMessage(accessStatus, resolvedDisplayTeamId, accessError, member)
-    const errorObject = accessStatus === 'ok'
+    const errorObject = accessStatus === TEAM_ACCESS_STATUS.OK
       ? null
       : (accessError ? Object.assign(new Error(accessError.message || 'Ingen adgang'), { code: accessError.code }) : null)
     const memberPath = currentUser?.uid ? buildMemberDocPath(resolvedTeamId, currentUser.uid) : ''
@@ -347,7 +348,7 @@ function handleAuthChange (context) {
       membershipStatus: 'loading',
       membershipCheckPath: '',
       membershipCheckTeamId: '',
-      accessStatus: 'checking',
+      accessStatus: TEAM_ACCESS_STATUS.CHECKING,
       accessError: null,
     }))
     return
@@ -367,7 +368,7 @@ function handleAuthChange (context) {
       membershipStatus: 'loading',
       membershipCheckPath: '',
       membershipCheckTeamId: '',
-      accessStatus: 'checking',
+      accessStatus: TEAM_ACCESS_STATUS.CHECKING,
       accessError: null,
     }))
     return
@@ -387,7 +388,7 @@ function handleAuthChange (context) {
     membershipStatus: 'loading',
     membershipCheckPath: buildMemberDocPath(formatTeamId(preferredTeamSlug), context.user?.uid || ''),
     membershipCheckTeamId: formatTeamId(preferredTeamSlug),
-    accessStatus: 'checking',
+    accessStatus: TEAM_ACCESS_STATUS.CHECKING,
     accessError: null,
   })
 
@@ -451,7 +452,7 @@ function setPreferredTeamId (nextTeamId) {
     membershipStatus: 'loading',
     membershipCheckPath: memberPath,
     membershipCheckTeamId: formatted,
-    accessStatus: 'checking',
+    accessStatus: TEAM_ACCESS_STATUS.CHECKING,
     accessError: null,
   })
   if (sessionState.user) {

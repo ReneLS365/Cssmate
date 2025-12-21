@@ -4,6 +4,7 @@ import { buildExportModel } from './export-model.js';
 import { downloadBlob } from './utils/downloadBlob.js';
 import { getUserDisplay, logoutUser } from './shared-auth.js';
 import { initAuthSession, onChange as onSessionChange, getState as getSessionState, waitForAccess, setPreferredTeamId, requestBootstrapAccess, SESSION_STATUS } from '../src/auth/session.js';
+import { TEAM_ACCESS_STATUS } from '../src/services/team-access.js';
 
 let sharedCasesPanelInitialized = false;
 let refreshBtn;
@@ -98,10 +99,19 @@ function hideLegacyStatus () {
   });
 }
 
+function getAccessLabel () {
+  const status = sessionState?.accessStatus || TEAM_ACCESS_STATUS.CHECKING;
+  const message = teamError || sessionState?.message || '';
+  if (status === TEAM_ACCESS_STATUS.OK && !message) return 'Adgang: OK';
+  if (status === TEAM_ACCESS_STATUS.CHECKING && !message) return 'Adgang: Tjekker adgang…';
+  const labelMessage = message || (status === TEAM_ACCESS_STATUS.OK ? '' : 'Ingen adgang');
+  return `Adgang: ${labelMessage || 'Ingen adgang'}`;
+}
+
 function renderStatusSummary (primaryMessage = '') {
   if (!statusBox) statusBox = document.getElementById('sharedStatus');
   const teamLabel = displayTeamId || DEFAULT_TEAM_SLUG;
-  const accessLabel = teamError ? `Adgang: ${teamError}` : (teamId ? 'Adgang: OK' : 'Adgang: vælg team');
+  const accessLabel = getAccessLabel();
   const summaryParts = [primaryMessage, `Team: ${teamLabel}`, accessLabel].filter(Boolean);
   if (statusBox) {
     statusBox.textContent = summaryParts.join(' — ');
@@ -176,8 +186,9 @@ function setPanelVisibility(isReady) {
 }
 
 function requireAuth() {
-  const hasAccess = Boolean(sessionState?.sessionReady);
-  if (sessionState?.status === SESSION_STATUS.SIGNING_IN) {
+  const accessStatus = sessionState?.accessStatus || TEAM_ACCESS_STATUS.CHECKING;
+  const hasAccess = Boolean(accessStatus === TEAM_ACCESS_STATUS.OK && sessionState?.sessionReady);
+  if (sessionState?.status === SESSION_STATUS.SIGNING_IN || accessStatus === TEAM_ACCESS_STATUS.CHECKING) {
     renderStatusSummary(sessionState?.message || 'Login initialiseres…');
     setInlineError(sessionState?.message || '');
     setPanelVisibility(false);
@@ -224,13 +235,18 @@ function bindSessionControls(onAuthenticated, onAccessReady) {
     membershipRole = state?.role || '';
     membershipError = null;
     teamError = '';
+    const accessStatus = state?.accessStatus || TEAM_ACCESS_STATUS.CHECKING;
     if (state?.status === SESSION_STATUS.SIGNED_OUT) {
       debugMessagesSeen.clear();
     }
-    if (state?.status === SESSION_STATUS.NO_ACCESS || state?.status === SESSION_STATUS.ERROR) {
-      teamError = state?.message || '';
-      membershipError = new MembershipMissingError(teamId, state?.user?.uid || 'uid', state?.message || '');
-      debugMessagesSeen.clear();
+    if (state?.status === SESSION_STATUS.NO_ACCESS || state?.status === SESSION_STATUS.ERROR || accessStatus !== TEAM_ACCESS_STATUS.OK) {
+      teamError = state?.message || teamError || '';
+      if (state?.user?.uid && accessStatus !== TEAM_ACCESS_STATUS.OK) {
+        membershipError = new MembershipMissingError(teamId, state?.user?.uid || 'uid', state?.message || '');
+      }
+      if (state?.status === SESSION_STATUS.NO_ACCESS || state?.status === SESSION_STATUS.ERROR) {
+        debugMessagesSeen.clear();
+      }
     }
     const hasAccess = Boolean(state?.sessionReady);
     setPanelVisibility(Boolean(state?.sessionReady));
@@ -448,9 +464,7 @@ function setRefreshState(state = 'idle') {
 }
 
 function updateSharedStatus(message) {
-  const summaryMessage = message || (teamError
-    ? `Adgang: ${teamError}`
-    : (!teamId ? 'Adgang: Vælg team for at hente sager' : 'Adgang: OK'));
+  const summaryMessage = message || '';
   setSharedStatus(summaryMessage);
   updateStatusCard();
   updateTeamAccessState();
