@@ -46,7 +46,7 @@
     "@firebase/rules-unit-testing": "^3.0.4",
     "@playwright/test": "^1.57.0",
     "@size-limit/file": "^11.1.4",
-    "express": "^4.18.2",
+    "express": "^4.22.1",
     "firebase-tools": "^13.29.1",
     "html-validate": "^10.4.0",
     "http-server": "^14.1.1",
