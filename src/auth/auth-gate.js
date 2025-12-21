@@ -1,5 +1,6 @@
 import { initAuthProvider } from './auth-provider.js'
-import { initAuthSession, onChange as onSessionChange, getState as getSessionState, waitForAccess, SESSION_STATUS } from './session.js'
+import { waitForAuthReady } from '../../js/shared-auth.js'
+import { initAuthSession, onChange as onSessionChange, getState as getSessionState, SESSION_STATUS } from './session.js'
 
 let gate
 let loadingScreen
@@ -157,28 +158,24 @@ function handleAuthChange (state) {
   const authReady = Boolean(state?.authReady)
   const requiresVerification = Boolean(state?.requiresVerification)
   const hasUser = Boolean(state?.user)
-  const teamResolved = Boolean(state?.teamResolved)
-  const memberExists = Boolean(state?.memberExists)
-  const memberActive = state?.memberActive
-  const hasAccess = Boolean(state?.sessionReady || status === SESSION_STATUS.ADMIN || status === SESSION_STATUS.MEMBER)
   const message = state?.message || (status === SESSION_STATUS.NO_ACCESS ? 'Ingen adgang til teamet.' : '')
 
-  if (hasAccess) {
+  if (hasUser && authReady && !requiresVerification) {
     showSection('hidden')
     setGateVisible(false)
     setMessage('')
     return
   }
 
-  setGateVisible(true)
-
   if (!authReady) {
+    setGateVisible(true)
     showSection('loading')
     setMessage(state?.message || 'Login initialiseres…')
     return
   }
 
   if (!hasUser) {
+    setGateVisible(true)
     showSection('login')
     updateProviderButtons()
     const variant = status === SESSION_STATUS.NO_ACCESS || status === SESSION_STATUS.ERROR ? 'error' : ''
@@ -187,41 +184,18 @@ function handleAuthChange (state) {
   }
 
   if (requiresVerification) {
+    setGateVisible(true)
     showSection('verify')
     setMessage('Bekræft din email før du bruger appen.')
     return
   }
-
-  if (!teamResolved) {
-    showSection('loading')
-    setMessage('Tjekker team-adgang…')
-    return
-  }
-
-  if (!memberExists) {
-    showSection('login')
-    updateProviderButtons()
-    setMessage('Du er ikke tilføjet til et team endnu. Kontakt administrator.', 'error')
-    return
-  }
-
-  if (memberActive === false) {
-    showSection('login')
-    updateProviderButtons()
-    setMessage('Din konto er deaktiveret. Kontakt administrator.', 'error')
-    return
-  }
-
-  showSection('login')
-  updateProviderButtons()
-  const variant = status === SESSION_STATUS.NO_ACCESS || status === SESSION_STATUS.ERROR ? 'error' : ''
-  setMessage(message || 'Log ind for at fortsætte', variant)
 }
 
 export function initAuthGate () {
   if (gate) return {
-    waitForVerifiedAccess: () => authProvider.waitForVerifiedUser(),
-    waitForSessionReady: () => waitForAccess(),
+    waitForVerifiedAccess: () => waitForAuthReady(),
+    waitForSessionReady: () => waitForAuthReady(),
+    waitForAuthReady: () => waitForAuthReady(),
   }
 
   gate = document.getElementById('authGate')
@@ -243,6 +217,7 @@ export function initAuthGate () {
     console.warn('AuthGate markup mangler')
     return {
       waitForVerifiedAccess: () => Promise.resolve(),
+      waitForAuthReady: () => waitForAuthReady(),
     }
   }
 
@@ -253,7 +228,8 @@ export function initAuthGate () {
   handleAuthChange(getSessionState())
 
   return {
-    waitForVerifiedAccess: () => waitForAccess(),
-    waitForSessionReady: () => waitForAccess(),
+    waitForVerifiedAccess: () => waitForAuthReady(),
+    waitForSessionReady: () => waitForAuthReady(),
+    waitForAuthReady: () => waitForAuthReady(),
   }
 }

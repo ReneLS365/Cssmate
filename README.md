@@ -77,6 +77,17 @@ Se også `docs/stage8.md` for den afsluttende QA-checkliste (eksport/round-trip,
 - Admin-kode udleveres af administrator og låser prisfelter og avancerede muligheder op til intern brug.
 - Almindelige brugere bør blive i normal tilstand; admin-mode ændrer ikke beregningslogikken.
 
+## Teamadgang & medlemskab
+
+- Medlemsdoc-id **skal** matche Firebase Auth UID (`teams/{teamId}/members/{uid}`); appen læser kun denne sti og afviser auto-ID.
+- Standardteam vælges i rækkefølge: brugerprofilens `teamId` (hvis sat) → UI/localStorage (`sscaff.teamId`) → fallback `hulmose`.
+- Admin-email (`mr.lion1995@gmail.com`) bootstrappes automatisk én gang pr. session til default-teamet. Normal bruger (`renelowesorensen@gmail.com`) får kun adgang via eksisterende medlemsdoc.
+- Playbook (tilføj bruger til team):
+  1. Slå brugerens UID op i Firebase Auth.
+  2. Opret/merge `teams/<teamId>/members/<uid>` med `role` (`admin`/`member`), `active:true`, `assigned:true`, `email`/`emailLower` og evt. `createdByUid`.
+  3. (Valgfrit) Sæt `users/<uid>.teamId` til samme team for hurtigere lookup ved næste login.
+- Fejlfinding: Hvis AccessDenied/“Du er ikke tilføjet…”, verificér stien ovenfor. Auto-ID dokumenter giver ikke adgang; opret korrekt doc med UID som id og genindlæs.
+
 ## CODEx Autonomous CI Bootstrapper
 
 For fuldautomatisk CI/CD (inkl. Lighthouse, SW-validering, SuperTest og Netlify deploy) leveres scriptet `codex-bootstrap.js` i roden.

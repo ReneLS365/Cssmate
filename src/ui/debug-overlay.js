@@ -42,6 +42,8 @@ function renderOverlay (container, state) {
   lines.push(`memberDoc.exists: ${formatBoolean(state.memberExists)}`)
   lines.push(`member.active: ${state.memberActive === null ? 'null' : formatBoolean(state.memberActive)}`)
   lines.push(`member.role: ${state.memberRole || ''}`)
+  lines.push(`membershipStatus: ${state.membershipStatus || ''}`)
+  lines.push(`memberPath: ${state.membershipCheckPath || ''}`)
 
   lines.push('')
   lines.push('SESSION')

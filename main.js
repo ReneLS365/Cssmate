@@ -24,6 +24,7 @@ import { getAuthIdentity } from './src/auth/auth-provider.js'
 import { updateCurrentView } from './src/state/debug.js'
 import { initDebugOverlay } from './src/ui/debug-overlay.js'
 import { initTeamAdminPage } from './src/ui/team-admin-page.js'
+import { initAppGuard } from './src/ui/app-guard.js'
 import './boot-inline.js'
 
 if (typeof document !== 'undefined') {
@@ -5587,9 +5588,10 @@ async function restoreDraftOnLoad() {
 async function startApp () {
   registerIndexMissingHandler()
   const authGate = initAuthGate()
+  initAppGuard()
   try {
-    const waitForSession = authGate?.waitForSessionReady || authGate?.waitForVerifiedAccess
-    if (waitForSession) await waitForSession()
+    const waitForAuth = authGate?.waitForAuthReady || authGate?.waitForSessionReady || authGate?.waitForVerifiedAccess
+    if (waitForAuth) await waitForAuth()
     await initApp()
     await restoreDraftOnLoad()
   } catch (error) {

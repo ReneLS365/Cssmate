@@ -820,6 +820,14 @@ button{cursor:pointer}
 .team-admin .status-message[data-variant=error]{color:#fda4a4}
 .team-admin .status-message[data-variant=success]{color:#a7f3d0}
 html.auth-locked body{overflow:hidden}
+.app-guard{margin-bottom:var(--gap);gap:8px}
+.app-guard__status{font-weight:700;font-size:1.05rem}
+.app-guard__message{margin:0;color:var(--muted)}
+.app-guard__details{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px;margin:0}
+.app-guard__details div{display:flex;flex-direction:column;gap:2px}
+.app-guard__details dt{color:var(--muted);font-size:.85rem}
+.app-guard__details dd{margin:0;font-weight:600;word-break:break-word}
+.app-guard__actions{display:flex;flex-wrap:wrap;gap:8px}
 
 /* Debug outlines for material rows (kept to visualize rendered layout) */
 .material-row{outline:1px solid red !important}

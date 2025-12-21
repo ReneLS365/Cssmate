@@ -11,6 +11,7 @@ import {
   persistTeamId,
   formatTeamId,
   normalizeTeamId,
+  buildMemberDocPath,
 } from '../../js/shared-ledger.js'
 import { normalizeEmail } from './roles.js'
 import { updateSessionDebugState } from '../state/debug.js'
@@ -32,6 +33,8 @@ const listeners = new Set()
 const waiters = new Set()
 const TEAM_LOCK_KEY = 'sscaff.team.locked'
 let teamLockedFlag = loadTeamLock()
+const BOOTSTRAP_FLAG_PREFIX = 'sscaff.bootstrapDone:'
+const bootstrapMemory = new Set()
 
 function loadTeamLock () {
   if (typeof window === 'undefined') return false
@@ -47,6 +50,29 @@ function persistTeamLock (locked) {
   try {
     if (locked) window.localStorage?.setItem(TEAM_LOCK_KEY, '1')
     else window.localStorage?.removeItem(TEAM_LOCK_KEY)
+  } catch {}
+}
+
+function hasBootstrapRun (uid) {
+  if (!uid) return false
+  if (bootstrapMemory.has(uid)) return true
+  if (typeof window === 'undefined') return false
+  try {
+    const flag = window.localStorage?.getItem(`${BOOTSTRAP_FLAG_PREFIX}${uid}`)
+    if (flag === '1') {
+      bootstrapMemory.add(uid)
+      return true
+    }
+  } catch {}
+  return bootstrapMemory.has(uid)
+}
+
+function markBootstrapRun (uid) {
+  if (!uid) return
+  bootstrapMemory.add(uid)
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage?.setItem(`${BOOTSTRAP_FLAG_PREFIX}${uid}`, '1')
   } catch {}
 }
 
@@ -73,6 +99,9 @@ function buildState (overrides = {}) {
     teamResolved: false,
     memberExists: false,
     memberActive: null,
+    membershipStatus: 'loading',
+    membershipCheckPath: '',
+    membershipCheckTeamId: '',
     sessionReady: false,
     canChangeTeam: true,
     teamLocked: teamLockedFlag,
@@ -91,6 +120,7 @@ function computeSessionReady (state = sessionState) {
     ? state.memberExists
     : Boolean(state?.member)
   const memberActive = state?.memberActive
+  const membershipStatus = state?.membershipStatus
   return Boolean(
     state?.authReady &&
     state?.user &&
@@ -98,7 +128,8 @@ function computeSessionReady (state = sessionState) {
     !state?.requiresVerification &&
     state?.teamResolved &&
     memberExists &&
-    memberActive !== false
+    memberActive !== false &&
+    membershipStatus === 'member'
   )
 }
 
@@ -164,6 +195,9 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
     teamResolved: false,
     memberExists: false,
     memberActive: null,
+    membershipStatus: 'loading',
+    membershipCheckPath: buildMemberDocPath(formattedTeam, auth.user.uid || ''),
+    membershipCheckTeamId: formattedTeam,
   })
   markUserLoading()
 
@@ -171,7 +205,8 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
 
   accessInFlight = (async () => {
     const bootstrapEligible = canBootstrap(auth.user, formattedTeam)
-    const allowBootstrapAccess = Boolean(allowBootstrap || bootstrapEligible)
+    const bootstrapAlreadyRan = hasBootstrapRun(auth.user.uid)
+    const allowBootstrapAccess = Boolean((allowBootstrap || bootstrapEligible) && !bootstrapAlreadyRan)
     try {
       const access = await guardTeamAccess(formattedTeam, auth.user, { allowBootstrap: allowBootstrapAccess })
       const isAdmin = access.role === 'admin'
@@ -189,6 +224,10 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
         teamId: resolvedTeamId,
         role: membership?.role || access.role,
       })
+      if (membership?.bootstrapCreated) {
+        markBootstrapRun(auth.user.uid)
+      }
+      const nextMembershipStatus = membership?.active === false ? 'error' : 'member'
       return setState({
         status: isAdmin ? SESSION_STATUS.ADMIN : SESSION_STATUS.MEMBER,
         role: access.role,
@@ -205,6 +244,9 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
         teamResolved: true,
         memberExists: Boolean(membership),
         memberActive: membership?.active !== false,
+        membershipStatus: nextMembershipStatus,
+        membershipCheckPath: buildMemberDocPath(resolvedTeamId, auth.user.uid || ''),
+        membershipCheckTeamId: resolvedTeamId,
       })
     } catch (error) {
       const bootstrapAvailable = bootstrapEligible
@@ -213,6 +255,8 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
         || error instanceof InactiveMemberError
       const status = noAccessError ? SESSION_STATUS.NO_ACCESS : SESSION_STATUS.ERROR
       const inactiveMember = error instanceof InactiveMemberError
+      const targetTeamId = formatTeamId(error?.teamId || formattedTeam)
+      const nextDisplayTeamId = getDisplayTeamId(targetTeamId)
       setUserLoadedState({
         uid: auth.user.uid || null,
         email: auth.user.email || '',
@@ -228,12 +272,15 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
         error,
         message: error?.message || 'Ingen adgang til teamet.',
         hasAccess: false,
-        teamId: formattedTeam,
-        displayTeamId,
-        bootstrapAvailable: bootstrapAvailable && noAccessError,
+        teamId: targetTeamId,
+        displayTeamId: nextDisplayTeamId,
+        bootstrapAvailable: bootstrapAvailable && noAccessError && !bootstrapAlreadyRan,
         teamResolved: true,
         memberExists: inactiveMember ? true : false,
         memberActive: inactiveMember ? false : null,
+        membershipStatus: inactiveMember ? 'error' : (noAccessError ? 'not_member' : 'error'),
+        membershipCheckPath: buildMemberDocPath(targetTeamId, auth.user.uid || ''),
+        membershipCheckTeamId: targetTeamId,
       })
       throw error
     } finally {
@@ -264,6 +311,9 @@ function handleAuthChange (context) {
       teamResolved: false,
       memberExists: false,
       memberActive: null,
+      membershipStatus: 'loading',
+      membershipCheckPath: '',
+      membershipCheckTeamId: '',
     }))
     return
   }
@@ -279,6 +329,9 @@ function handleAuthChange (context) {
       teamResolved: false,
       memberExists: false,
       memberActive: null,
+      membershipStatus: 'loading',
+      membershipCheckPath: '',
+      membershipCheckTeamId: '',
     }))
     return
   }
@@ -294,6 +347,9 @@ function handleAuthChange (context) {
     teamResolved: false,
     memberExists: false,
     memberActive: null,
+    membershipStatus: 'loading',
+    membershipCheckPath: buildMemberDocPath(formatTeamId(preferredTeamSlug), context.user?.uid || ''),
+    membershipCheckTeamId: formatTeamId(preferredTeamSlug),
   })
 
   if (requiresVerification) {
@@ -344,6 +400,7 @@ function setPreferredTeamId (nextTeamId) {
   }
   preferredTeamSlug = normalized
   persistTeamId(preferredTeamSlug)
+  const memberPath = sessionState.user?.uid ? buildMemberDocPath(formatted, sessionState.user.uid) : ''
   setState({
     teamId: formatted,
     displayTeamId: getDisplayTeamId(formatted),
@@ -352,6 +409,9 @@ function setPreferredTeamId (nextTeamId) {
     memberExists: false,
     memberActive: null,
     status: SESSION_STATUS.SIGNING_IN,
+    membershipStatus: 'loading',
+    membershipCheckPath: memberPath,
+    membershipCheckTeamId: formatted,
   })
   if (sessionState.user) {
     evaluateAccess().catch(() => {})
