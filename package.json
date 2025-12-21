@@ -37,12 +37,10 @@
     "test:lh": "bash scripts/run-lhci.sh",
     "verify:perf": "npm run build && npm run test:lh",
     "verify:deploy": "npm run verify:build-and-tests && npm run verify:perf",
-    "partykit:dev": "partykit dev",
-    "partykit:deploy": "partykit deploy"
+  "partykit:dev": "partykit dev",
+  "partykit:deploy": "partykit deploy"
   },
-  "dependencies": {
-    "chromium": "^3.0.3"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@firebase/rules-unit-testing": "^3.0.4",
     "@playwright/test": "^1.57.0",

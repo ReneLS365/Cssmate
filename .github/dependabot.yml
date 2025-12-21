@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      security:
+        applies-to: "security-updates"
+        patterns:
+          - "*"
+      dev-tooling:
+        applies-to: "version-updates"
+        patterns:
+          - "@firebase/rules-unit-testing"
+          - "@playwright/*"
+          - "@size-limit/*"
+          - "express"
+          - "firebase-tools"
+          - "html-validate"
+          - "http-server"
+          - "jszip"
+          - "lighthouse"
+          - "linkinator"
+          - "partykit"
+          - "pdf-lib"
+          - "size-limit"
+          - "terser"
