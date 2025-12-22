@@ -615,11 +615,18 @@ function setupTabPanelsStability () {
   if (!container) return
 
   const root = document.documentElement
+  const parsePxValue = (value) => {
+    const num = Number.parseFloat(String(value).replace('px', ''))
+    return Number.isFinite(num) ? num : 0
+  }
   const applyHeight = (height) => {
     if (!root || !height) return
     const viewport = typeof window !== 'undefined' ? window.innerHeight || height : height
     const clamped = Math.min(Math.max(height, viewport * 0.55), viewport * 1.2)
-    root.style.setProperty('--tab-panels-min-height', `${Math.round(clamped)}px`)
+    const currentMin = parsePxValue(getComputedStyle(root).getPropertyValue('--tab-panels-min-height'))
+    const nextValue = Math.round(clamped)
+    if (nextValue <= currentMin) return
+    root.style.setProperty('--tab-panels-min-height', `${nextValue}px`)
   }
 
   const measure = () => {
