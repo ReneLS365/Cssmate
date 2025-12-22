@@ -50,6 +50,7 @@
   --materials-grid-mobile:1.4fr minmax(56px,0.8fr) minmax(64px,0.9fr) minmax(64px,0.9fr);
   --header-height:56px;
   --tab-bar-height:52px;
+  --tab-panels-min-height:calc(100svh - var(--header-height) - var(--tab-bar-height) - 24px);
 }
 
 [data-theme="light"]{
@@ -103,7 +104,7 @@ body{font-size:16px;line-height:1.45;font-weight:400;background-color:var(--bg,#
 .app-shell{display:flex;flex-direction:column}
 .app-content{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
 .app-shell{transform:scale(var(--uiScale));transform-origin:top left;width:calc(100%/var(--uiScale))}
-.materials-scroll{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overscroll-behavior:contain;padding-bottom:0!important}
+.materials-scroll{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overscroll-behavior:contain;overflow-y:auto;scrollbar-gutter:stable both-edges;padding-bottom:0!important}
 .materials-scroll>:last-child{margin-bottom:0!important}
 :root.np-open,
 :root.np-open body{
@@ -203,7 +204,7 @@ main{display:block;width:100%}
 .app-root{max-width:540px;margin:0 auto;padding:0 var(--sp-3) calc(1.5rem + env(safe-area-inset-bottom,0));display:flex;flex-direction:column;flex:1 1 auto;min-height:0;width:100%;position:relative}
 html.app-booting .app-root::after{content:"Loader app…";position:fixed;top:10px;right:12px;padding:6px 10px;background:var(--panel);border:1px solid var(--border);border-radius:10px;color:var(--muted);font-size:0.9rem;box-shadow:0 6px 18px rgba(0,0,0,0.08);z-index:1200;opacity:0.95}
 html.app-ready .app-root::after{display:none}
-.tab-panels{flex:1 1 auto;min-height:60vh;overflow-y:auto;padding:clamp(0.5rem,2vw,1rem) 0 clamp(1rem,4vw,1.75rem);width:100%;margin:0 auto}
+.tab-panels{flex:1 1 auto;min-height:var(--tab-panels-min-height,60vh);overflow-y:auto;scrollbar-gutter:stable both-edges;padding:clamp(0.5rem,2vw,1rem) 0 clamp(1rem,4vw,1.75rem);width:100%;margin:0 auto;overflow-anchor:none}
 .tab-panel{min-width:0}
 .tab-panel{color:var(--text)}
 fieldset{border:1px solid var(--border);background:var(--panel);border-radius:var(--r-md);margin:0;padding:var(--pad)}

@@ -18,12 +18,10 @@ import { saveDraft, loadDraft, clearDraft } from './js/storageDraft.js'
 import { appendHistoryEntry, loadHistory as loadHistoryEntries, deleteHistoryEntry, migrateHistory, buildHistoryKey as computeHistoryKey } from './js/storageHistory.js'
 import { normalizeHistoryEntry as baseNormalizeHistoryEntry, normalizeHistoryList, formatDateLabel, normalizeSearchValue } from './js/history-normalizer.js'
 import { downloadBlob } from './js/utils/downloadBlob.js'
-import { initSharedCasesPanel } from './js/shared-cases-panel.js'
 import { initAuthGate } from './src/auth/auth-gate.js'
 import { getAuthIdentity } from './src/auth/auth-provider.js'
 import { applyBuildMetadata, updateCurrentView } from './src/state/debug.js'
 import { initDebugOverlay } from './src/ui/debug-overlay.js'
-import { initTeamAdminPage } from './src/ui/team-admin-page.js'
 import { initAppGuard } from './src/ui/app-guard.js'
 import { resetAppState } from './src/utils/reset-app.js'
 import './boot-inline.js'
@@ -131,6 +129,37 @@ function runWhenIdle (fn) {
     return
   }
   setTimeout(fn, 150)
+}
+
+function ensureSharedCasesPanelLazy () {
+  if (!sharedCasesModulePromise) {
+    sharedCasesModulePromise = import('./js/shared-cases-panel.js')
+  }
+  return sharedCasesModulePromise
+    .then(mod => {
+      mod?.initSharedCasesPanel?.()
+      return mod
+    })
+    .catch(error => {
+      console.warn('Kunne ikke indlæse delte sager panelet', error)
+      throw error
+    })
+}
+
+function ensureTeamAdminPageLazy () {
+  if (!teamAdminModulePromise) {
+    teamAdminModulePromise = import('./src/ui/team-admin-page.js')
+  }
+  return teamAdminModulePromise
+    .then(mod => {
+      mod?.initTeamAdminPage?.()
+      return mod
+    })
+    .catch(error => {
+      console.warn('Kunne ikke indlæse team-admin siden', error)
+      teamAdminModulePromise = null
+      throw error
+    })
 }
 
 async function ensureExportPanelModule () {
@@ -241,6 +270,8 @@ let zipLibLoader = null
 let tabButtons = []
 let tabPanels = []
 let tabsInitialized = false
+let sharedCasesModulePromise = null
+let teamAdminModulePromise = null
 const domCache = new Map()
 let deferredInstallPromptEvent = null
 let historyPersistencePaused = false
@@ -248,6 +279,7 @@ let draftPersistencePaused = false
 let materialsDataPromise = null
 let materialsUiReadyPromise = null
 let materialsWarmupScheduled = false
+let tabPanelHeightLocked = false
 
 function ensureMaterialsDataLoad () {
   if (!materialsDataPromise) {
@@ -576,6 +608,53 @@ function ensureTabCollections() {
   return tabButtons.length && tabPanels.length
 }
 
+function setupTabPanelsStability () {
+  if (typeof document === 'undefined') return
+  if (tabPanelHeightLocked) return
+  const container = document.querySelector('[data-tab-panels]')
+  if (!container) return
+
+  const root = document.documentElement
+  const parsePxValue = (value) => {
+    const num = Number.parseFloat(String(value).replace('px', ''))
+    return Number.isFinite(num) ? num : 0
+  }
+  const applyHeight = (height) => {
+    if (!root || !height) return
+    const viewport = typeof window !== 'undefined' ? window.innerHeight || height : height
+    const clamped = Math.min(Math.max(height, viewport * 0.55), viewport * 1.2)
+    const currentMin = parsePxValue(getComputedStyle(root).getPropertyValue('--tab-panels-min-height'))
+    const nextValue = Math.round(clamped)
+    if (nextValue <= currentMin) return
+    root.style.setProperty('--tab-panels-min-height', `${nextValue}px`)
+  }
+
+  const measure = () => {
+    const active = container.querySelector('.tab-panel.tab-panel--active')
+    const height = (active?.offsetHeight || container.offsetHeight || 0)
+    applyHeight(height || container.clientHeight || 0)
+  }
+
+  measure()
+
+  if (typeof ResizeObserver === 'function') {
+    const observer = new ResizeObserver(entries => {
+      if (tabPanelHeightLocked) return
+      const maxHeight = entries.reduce((max, entry) => Math.max(max, entry?.contentRect?.height || 0), 0)
+      if (maxHeight > 0) applyHeight(maxHeight)
+    })
+    observer.observe(container)
+    setTimeout(() => {
+      tabPanelHeightLocked = true
+      observer.disconnect()
+    }, 1800)
+  } else {
+    setTimeout(() => {
+      tabPanelHeightLocked = true
+    }, 1200)
+  }
+}
+
 if (typeof window !== 'undefined') {
   window.__cssmateRefreshTabs = refreshTabsAndValidate
 }
@@ -672,6 +751,14 @@ function setActiveTab(tabId, { focus = false } = {}) {
     ensureWorkersInitialized();
   }
 
+  if (nextTabId === 'delte-sager') {
+    runWhenIdle(() => ensureSharedCasesPanelLazy().catch(() => {}))
+  }
+
+  if (nextTabId === 'team') {
+    runWhenIdle(() => ensureTeamAdminPageLazy().catch(() => {}))
+  }
+
   if (focus && typeof nextButton.focus === 'function') {
     nextButton.focus();
   }
@@ -703,6 +790,22 @@ function initTabs() {
       const scheduleWarmup = () => warmupMaterialsDataLoad()
       ;['pointerenter', 'touchstart', 'focusin'].forEach(eventName => {
         optaellingButton.addEventListener(eventName, scheduleWarmup, { once: true, passive: true })
+      })
+    }
+
+    const sharedCasesButton = tabButtons.find(button => button.dataset.tabId === 'delte-sager')
+    if (sharedCasesButton) {
+      const warmupSharedCases = () => ensureSharedCasesPanelLazy().catch(() => {})
+      ;['pointerenter', 'touchstart', 'focusin'].forEach(eventName => {
+        sharedCasesButton.addEventListener(eventName, warmupSharedCases, { once: true, passive: true })
+      })
+    }
+
+    const teamButton = tabButtons.find(button => button.dataset.tabId === 'team')
+    if (teamButton) {
+      const warmupTeamAdmin = () => ensureTeamAdminPageLazy().catch(() => {})
+      ;['pointerenter', 'touchstart', 'focusin'].forEach(eventName => {
+        teamButton.addEventListener(eventName, warmupTeamAdmin, { once: true, passive: true })
       })
     }
 
@@ -5429,6 +5532,7 @@ async function initApp() {
   if (appInitialized) return;
   appInitialized = true;
 
+  setupTabPanelsStability();
   initTabs();
   setupUiScaleControls();
 
@@ -5438,14 +5542,14 @@ async function initApp() {
     optaellingContainer.addEventListener('change', handleOptaellingInput);
   }
 
-    runWhenIdle(() => {
-      setupGuideModal();
-      setupAdminControls();
-      setupA9Integration();
-      initTeamAdminPage();
-    });
+  runWhenIdle(() => {
+    setupGuideModal();
+    setupAdminControls();
+    setupA9Integration();
+    ensureTeamAdminPageLazy().catch(() => {});
+  });
 
-    runWhenIdle(() => initSharedCasesPanel());
+  runWhenIdle(() => ensureSharedCasesPanelLazy().catch(() => {}));
 
   document.getElementById('btnBeregnLon')?.addEventListener('click', () => beregnLon());
 
