@@ -1,10 +1,11 @@
-import { onChange as onSessionChange, refreshAccess, requestBootstrapAccess, getState as getSessionState, SESSION_STATUS } from '../auth/session.js'
+import { onChange as onSessionChange, refreshAccess, requestBootstrapAccess, getState as getSessionState, setPreferredTeamId, SESSION_STATUS } from '../auth/session.js'
 import { isAdminEmail } from '../auth/roles.js'
 import { APP_VERSION, GIT_SHA } from '../version.js'
 import { DEFAULT_TEAM_SLUG, formatTeamId, getDisplayTeamId } from '../services/team-ids.js'
 import { migrateMemberDocIfNeeded } from '../services/teams.js'
 import { resetAppState } from '../utils/reset-app.js'
 import { APP_CHECK_REASON, APP_CHECK_STATUS } from '../../js/shared-auth.js'
+import { logoutUser } from '../../js/shared-auth.js'
 import { TEAM_ACCESS_STATUS } from '../services/team-access.js'
 
 const RETRY_DEBOUNCE_MS = 350
@@ -17,8 +18,12 @@ let teamEl
 let uidEl
 let emailEl
 let retryButton
+let switchTeamButton
+let logoutButton
 let bootstrapButton
 let resetButton
+let teamInput
+let teamSaveButton
 let debugEl
 let tabPanelsEl
 let initialized = false
@@ -39,9 +44,18 @@ function ensureElements () {
       <div><dt>UID</dt><dd id="appGuardUid"></dd></div>
       <div><dt>Email</dt><dd id="appGuardEmail"></dd></div>
     </dl>
+    <div class="app-guard__team">
+      <label for="appGuardTeamInput">Team ID</label>
+      <div class="app-guard__team-row">
+        <input type="text" id="appGuardTeamInput" inputmode="text" autocomplete="organization" placeholder="f.eks. hulmose">
+        <button type="button" id="appGuardTeamSave">Gem</button>
+      </div>
+    </div>
     <div class="app-guard__actions">
-      <button type="button" id="appGuardRetry">Prøv igen</button>
+      <button type="button" id="appGuardRetry">Opdater adgang</button>
+      <button type="button" id="appGuardSwitch">Skift team</button>
       <button type="button" id="appGuardBootstrap" data-role="primary">Opret adgang i team</button>
+      <button type="button" id="appGuardLogout">Log ud</button>
     </div>
     <div class="app-guard__meta">
       <button type="button" id="appGuardReset" class="app-guard__reset">Nulstil app</button>
@@ -60,12 +74,38 @@ function ensureElements () {
   uidEl = guardEl.querySelector('#appGuardUid')
   emailEl = guardEl.querySelector('#appGuardEmail')
   retryButton = guardEl.querySelector('#appGuardRetry')
+  switchTeamButton = guardEl.querySelector('#appGuardSwitch')
+  logoutButton = guardEl.querySelector('#appGuardLogout')
   bootstrapButton = guardEl.querySelector('#appGuardBootstrap')
   resetButton = guardEl.querySelector('#appGuardReset')
+  teamInput = guardEl.querySelector('#appGuardTeamInput')
+  teamSaveButton = guardEl.querySelector('#appGuardTeamSave')
   debugEl = guardEl.querySelector('#appGuardDebug')
   retryButton?.addEventListener('click', () => scheduleRetry())
   bootstrapButton?.addEventListener('click', () => triggerBootstrap())
   resetButton?.addEventListener('click', () => resetAppState({ reload: true }))
+  switchTeamButton?.addEventListener('click', () => {
+    setVisible(true, true)
+    if (typeof window !== 'undefined' && typeof window.__cssmateSetActiveTab === 'function') {
+      window.__cssmateSetActiveTab('team', { focus: true })
+    }
+    teamInput?.focus()
+  })
+  logoutButton?.addEventListener('click', () => logoutUser().catch(() => {}))
+  teamSaveButton?.addEventListener('click', async () => {
+    const value = formatTeamId(teamInput?.value || '')
+    if (!value) {
+      messageEl.textContent = 'Angiv et Team ID først.'
+      return
+    }
+    teamSaveButton.disabled = true
+    try {
+      setPreferredTeamId(value)
+      await refreshAccess()
+    } finally {
+      teamSaveButton.disabled = false
+    }
+  })
 }
 
 function setVisible (visible, hidePanels = true) {
@@ -124,25 +164,28 @@ async function maybeMigrateMemberDoc (state) {
 
 function updateGuardContent (state) {
   const membershipStatus = state?.membershipStatus || 'loading'
-  const accessStatus = state?.accessStatus || (membershipStatus === 'member' ? TEAM_ACCESS_STATUS.OK : TEAM_ACCESS_STATUS.CHECKING)
+  const accessStatus = state?.accessStatus || (membershipStatus === 'member' ? TEAM_ACCESS_STATUS.OK : TEAM_ACCESS_STATUS.LOADING)
   const teamId = formatTeamId(state?.teamId || state?.membershipCheckTeamId || DEFAULT_TEAM_SLUG)
   const displayTeam = getDisplayTeamId(teamId)
   const userEmail = state?.user?.email || ''
-  const messageFallback = state?.message || ((accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS || accessStatus === TEAM_ACCESS_STATUS.DENIED)
-    ? `Du er logget ind, men har ikke adgang til ${displayTeam}. Kontakt admin.`
-    : accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE
-      ? 'Teamet findes ikke. Opret det eller vælg et andet team.'
-      : 'Adgang er midlertidigt låst.')
+  const messageFallback = state?.message || (() => {
+    if (accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS) return `Du er logget ind, men har ikke adgang til ${displayTeam}. Kontakt admin.`
+    if (accessStatus === TEAM_ACCESS_STATUS.NO_TEAM) return 'Teamet findes ikke. Opret det eller vælg et andet team.'
+    if (accessStatus === TEAM_ACCESS_STATUS.NO_AUTH) return 'Log ind for at fortsætte.'
+    return 'Adgang er midlertidigt låst.'
+  })()
   const errorCode = state?.accessError?.code || state?.error?.code || ''
+  const isLoading = accessStatus === TEAM_ACCESS_STATUS.LOADING || membershipStatus === 'loading'
 
   let statusLabel = 'Tjekker adgang'
   if (accessStatus === TEAM_ACCESS_STATUS.OK) statusLabel = 'Adgang givet'
-  else if (accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS || accessStatus === TEAM_ACCESS_STATUS.DENIED) statusLabel = 'Ingen team-adgang'
-  else if (accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE) statusLabel = 'Team mangler'
+  else if (accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS) statusLabel = 'Ingen team-adgang'
+  else if (accessStatus === TEAM_ACCESS_STATUS.NO_TEAM) statusLabel = 'Team mangler'
+  else if (accessStatus === TEAM_ACCESS_STATUS.NO_AUTH) statusLabel = 'Log ind for adgang'
   else if (accessStatus === TEAM_ACCESS_STATUS.ERROR) statusLabel = 'Adgangsfejl'
   statusEl.textContent = statusLabel
 
-  if (accessStatus === TEAM_ACCESS_STATUS.CHECKING || membershipStatus === 'loading') {
+  if (isLoading) {
     messageEl.textContent = 'Tjekker team-adgang…'
   } else if (state?.memberActive === false) {
     messageEl.textContent = 'Din konto er deaktiveret. Kontakt administrator.'
@@ -156,11 +199,14 @@ function updateGuardContent (state) {
   teamEl.textContent = displayTeam
   uidEl.textContent = state?.user?.uid || '–'
   emailEl.textContent = userEmail || '–'
-  if (retryButton) retryButton.disabled = accessStatus === TEAM_ACCESS_STATUS.CHECKING || membershipStatus === 'loading'
+  if (teamInput) teamInput.value = displayTeam
+  if (retryButton) retryButton.disabled = isLoading
+  if (teamSaveButton) teamSaveButton.disabled = isLoading
+  if (switchTeamButton) switchTeamButton.disabled = isLoading
   if (bootstrapButton) {
-    const showBootstrap = Boolean(state?.bootstrapAvailable)
+    const showBootstrap = Boolean(state?.bootstrapAvailable && accessStatus === TEAM_ACCESS_STATUS.NO_TEAM)
     bootstrapButton.hidden = !showBootstrap
-    bootstrapButton.disabled = !showBootstrap || accessStatus === TEAM_ACCESS_STATUS.CHECKING || membershipStatus === 'loading'
+    bootstrapButton.disabled = !showBootstrap || isLoading
   }
   if (debugEl) {
     const swStatus = (typeof navigator !== 'undefined' && navigator.serviceWorker?.controller) ? 'aktiv' : 'ingen'
@@ -177,10 +223,11 @@ function updateView (state) {
   }
   ensureElements()
   const membershipStatus = state.membershipStatus || 'loading'
-  const isActiveMember = membershipStatus === 'member' && state.memberActive !== false && state.sessionReady
-  const hidePanels = (state?.accessStatus || membershipStatus) === 'checking' || membershipStatus === 'loading'
+  const accessStatus = state.accessStatus || TEAM_ACCESS_STATUS.LOADING
+  const isReady = Boolean(state.sessionReady && accessStatus === TEAM_ACCESS_STATUS.OK)
+  const hidePanels = !isReady
 
-  if (isActiveMember) {
+  if (isReady) {
     setVisible(false)
     return
   }

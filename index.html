@@ -468,29 +468,6 @@
         <label class="sr-only" for="sharedBackupImport">Importer backup</label>
         <input id="sharedBackupImport" type="file" accept="application/json" disabled>
       </div>
-      <section id="teamAdminPanel" class="team-admin" hidden>
-        <h3>Team administration</h3>
-        <div class="team-admin__invite">
-          <label for="teamInviteEmail">Email</label>
-          <input id="teamInviteEmail" type="email" autocomplete="email" placeholder="bruger@firma.dk">
-          <label for="teamInviteRole">Rolle</label>
-          <select id="teamInviteRole">
-            <option value="member">Medlem</option>
-            <option value="admin">Admin</option>
-          </select>
-          <button id="teamInviteSubmit" type="button">Invitér</button>
-        </div>
-        <div class="team-admin__lists">
-          <div class="team-admin__card">
-            <h4>Medlemmer</h4>
-            <div id="teamMembersList" class="team-admin__list"></div>
-          </div>
-          <div class="team-admin__card">
-            <h4>Invitationer</h4>
-            <div id="teamInvitesList" class="team-admin__list"></div>
-          </div>
-        </div>
-      </section>
       <details id="sharedDebugPanel" class="shared-debug" hidden>
         <summary>Debug-log</summary>
         <pre id="sharedDebugLog" aria-live="polite"></pre>
@@ -536,8 +513,8 @@
   >
     <section class="card team-admin no-print" aria-live="polite">
       <header class="card-header">
-        <h2>Team</h2>
-        <p>Se teaminfo og administrer medlemmer. Kun synlig for admin/owner.</p>
+        <h2>Team administration</h2>
+        <p>Se teaminfo og administrer medlemmer. Medlemmer kan se listen, admin/owner kan redigere.</p>
       </header>
       <div class="team-admin__meta">
         <div>

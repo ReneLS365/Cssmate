@@ -1,5 +1,6 @@
 import { logoutUser } from '../../js/shared-auth.js'
 import { getFirestoreDb, getFirestoreHelpers } from '../../js/shared-firestore.js'
+import { clearTeamAccessCache } from '../services/team-access.js'
 
 function shouldUseBrowserApis () {
   return typeof window !== 'undefined'
@@ -27,12 +28,19 @@ async function clearCaches () {
 
 async function clearIndexedDb () {
   if (!shouldUseBrowserApis() || !window.indexedDB) return
-  if (typeof indexedDB.databases !== 'function') return
+  const knownDbNames = ['csmate_projects', 'firebaseLocalStorageDb']
+  if (typeof indexedDB.databases !== 'function') {
+    knownDbNames.forEach(name => {
+      try { indexedDB.deleteDatabase(name) } catch {}
+    })
+    return
+  }
   try {
     const databases = await indexedDB.databases()
-    await Promise.all(databases.map(db => new Promise(resolve => {
-      if (!db?.name) return resolve()
-      const request = indexedDB.deleteDatabase(db.name)
+    const dbNames = databases.map(db => db?.name).filter(Boolean)
+    const targets = dbNames.length ? dbNames : knownDbNames
+    await Promise.all(targets.map(name => new Promise(resolve => {
+      const request = indexedDB.deleteDatabase(name)
       request.onsuccess = request.onerror = request.onblocked = () => resolve()
     })))
   } catch (error) {
@@ -81,10 +89,10 @@ export async function resetAppState ({ reload = true } = {}) {
   await clearServiceWorkers()
   await clearCaches()
   await clearIndexedDb()
+  clearTeamAccessCache()
   clearStorage()
 
   if (reload) {
     reloadWithCacheBust()
   }
 }
-

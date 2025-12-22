@@ -368,44 +368,51 @@ function clearTeamLists () {
 function toggleAdminControls (enabled) {
   adminLocked = !enabled
   setLoading(loading)
-  const adminSections = teamPanel?.querySelectorAll('.team-admin__actions, .team-admin__lists, .btn-group')
-  adminSections?.forEach(section => {
+  const actionSections = teamPanel?.querySelectorAll('.team-admin__actions, .btn-group')
+  actionSections?.forEach(section => {
     if (!section) return
     section.toggleAttribute('aria-hidden', !enabled)
     section.classList.toggle('team-admin--locked', !enabled)
   })
-  if (!enabled) {
-    clearTeamLists()
-  }
+  const listSections = teamPanel?.querySelectorAll('.team-admin__lists')
+  listSections?.forEach(section => {
+    if (!section) return
+    section.toggleAttribute('aria-hidden', false)
+    section.classList.toggle('team-admin--locked', !enabled)
+  })
 }
 
 function renderAccessState (session) {
   ensureAccessActions()
-  const accessStatus = session?.accessStatus || TEAM_ACCESS_STATUS.CHECKING
+  const accessStatus = session?.accessStatus || TEAM_ACCESS_STATUS.LOADING
   const membershipStatus = session?.membershipStatus || 'loading'
-  const isChecking = accessStatus === TEAM_ACCESS_STATUS.CHECKING || membershipStatus === 'loading'
+  const isChecking = accessStatus === TEAM_ACCESS_STATUS.LOADING || membershipStatus === 'loading'
   const role = session?.member?.role || session?.role || ''
   const isAdmin = isAdminRole(role)
-  const canViewMembers = accessStatus === TEAM_ACCESS_STATUS.OK && isAdmin
-  const canBootstrapAction = Boolean(session?.bootstrapAvailable)
+  const canViewMembers = accessStatus === TEAM_ACCESS_STATUS.OK && session?.sessionReady
+  const canEditMembers = canViewMembers && isAdmin
+  const canBootstrapAction = Boolean(session?.bootstrapAvailable && accessStatus === TEAM_ACCESS_STATUS.NO_TEAM)
   const accessError = session?.accessError || session?.error || null
+  const reason = session?.accessDetail?.reason || ''
   let message = session?.message || ''
   let variant = ''
 
-  if (accessStatus === TEAM_ACCESS_STATUS.CHECKING) {
+  if (isChecking) {
     message = 'Tjekker team-adgang…'
-  } else if (accessStatus === TEAM_ACCESS_STATUS.SIGNED_OUT) {
+  } else if (accessStatus === TEAM_ACCESS_STATUS.NO_AUTH) {
     message = 'Log ind for at administrere teamet.'
     variant = 'info'
   } else if (accessStatus === TEAM_ACCESS_STATUS.OK) {
     message = isAdmin
       ? 'Adgang givet. Team-medlemmer kan indlæses.'
-      : 'Du er medlem, men kan ikke se team-medlemmer. Kontakt admin.'
-    variant = isAdmin ? 'success' : 'info'
-  } else if (accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS || accessStatus === TEAM_ACCESS_STATUS.DENIED) {
-    message = session?.message || 'Ingen team-adgang. Tilføj dig selv eller kontakt admin.'
+      : 'Adgang givet. Medlemslisten er skrivebeskyttet.'
+    variant = 'success'
+  } else if (accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS) {
+    if (reason === 'inactive') message = 'Din konto er deaktiveret. Kontakt administrator.'
+    else if (reason === 'not-assigned') message = 'Du er ikke tildelt teamet. Kontakt admin.'
+    else message = session?.message || 'Ingen team-adgang. Tilføj dig selv eller kontakt admin.'
     variant = 'error'
-  } else if (accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE) {
+  } else if (accessStatus === TEAM_ACCESS_STATUS.NO_TEAM) {
     message = session?.message || 'Teamet findes ikke. Opret det eller vælg et andet team.'
     variant = 'error'
   } else {
@@ -417,6 +424,7 @@ function renderAccessState (session) {
     session?.teamId ? `Team: ${session.teamId}` : '',
     session?.user?.uid ? `UID: ${session.user.uid}` : '',
     session?.user?.email ? `Email: ${session.user.email}` : '',
+    session?.memberAssigned === false ? 'Ikke tildelt' : '',
   ].filter(Boolean)
 
   if (accessError?.code && accessStatus !== 'ok') {
@@ -428,7 +436,7 @@ function renderAccessState (session) {
   if (session?.teamId) {
     renderTeamInfo({ name: session?.displayTeamId || session.teamId, teamId: session.teamId })
   }
-  toggleAdminControls(canViewMembers)
+  toggleAdminControls(canEditMembers)
   updateAccessActions({ accessStatus, canBootstrapAction, isChecking })
 }
 
@@ -437,16 +445,18 @@ async function loadTeamData () {
   setLoading(true)
   try {
     setStatus('Indlæser team…')
+    const session = getSessionState()
+    const sessionRole = session?.member?.role || session?.role || ''
+    const allowInvites = isAdminRole(sessionRole)
     const [team, members, invites] = await Promise.all([
       getTeamDocument(lastTeamId),
       listTeamMembers(lastTeamId),
-      listTeamInvites(lastTeamId),
+      allowInvites ? listTeamInvites(lastTeamId) : Promise.resolve([]),
     ])
     renderTeamInfo(team)
-    const session = getSessionState()
-    const sessionRole = session?.member?.role || session?.role || ''
     renderMembers(members, sessionRole, session?.user?.uid || '')
-    renderInvites(invites.filter(invite => invite.active !== false && !invite.usedAt))
+    const activeInvites = allowInvites ? invites.filter(invite => invite.active !== false && !invite.usedAt) : []
+    renderInvites(activeInvites)
     setStatus('Team opdateret.', 'success')
   } catch (error) {
     console.warn('Load team data failed', error)
@@ -461,10 +471,18 @@ async function loadTeamData () {
 
 function updateTabVisibility (session) {
   if (!teamTabButton || !teamPanel) return
-  teamTabButton.hidden = false
-  teamTabButton.removeAttribute('aria-hidden')
-  teamTabButton.removeAttribute('data-tab-disabled')
-  teamPanel.removeAttribute('data-tab-disabled')
+  const visible = Boolean(session?.sessionReady && session?.accessStatus === TEAM_ACCESS_STATUS.OK)
+  if (visible) {
+    teamTabButton.hidden = false
+    teamTabButton.removeAttribute('aria-hidden')
+    teamTabButton.removeAttribute('data-tab-disabled')
+    teamPanel.removeAttribute('data-tab-disabled')
+  } else {
+    teamTabButton.hidden = true
+    teamTabButton.setAttribute('aria-hidden', 'true')
+    teamTabButton.setAttribute('data-tab-disabled', 'true')
+    teamPanel.setAttribute('data-tab-disabled', 'true')
+  }
   if (typeof window.__cssmateRefreshTabs === 'function') {
     window.__cssmateRefreshTabs()
   }
@@ -474,11 +492,12 @@ function handleSessionChange (session) {
   lastSessionState = session
   updateTabVisibility(session)
   const sessionRole = session?.member?.role || session?.role || ''
-  const accessStatus = session?.accessStatus || TEAM_ACCESS_STATUS.CHECKING
+  const accessStatus = session?.accessStatus || TEAM_ACCESS_STATUS.LOADING
   renderAccessState(session)
-  const hasAccess = isAdminRole(sessionRole) && session?.teamId && session?.sessionReady && accessStatus === TEAM_ACCESS_STATUS.OK
+  const hasAccess = session?.teamId && session?.sessionReady && accessStatus === TEAM_ACCESS_STATUS.OK
   if (!hasAccess) {
     lastTeamId = ''
+    clearTeamLists()
     return
   }
   const nextTeamId = session.teamId
@@ -498,9 +517,8 @@ function bindEvents () {
   if (refreshButton) {
       refreshButton.addEventListener('click', () => {
         const session = lastSessionState || getSessionState()
-        const role = session?.member?.role || session?.role || ''
         const accessStatus = session?.accessStatus || TEAM_ACCESS_STATUS.CHECKING
-        if (!isAdminRole(role) || accessStatus !== TEAM_ACCESS_STATUS.OK) {
+        if (accessStatus !== TEAM_ACCESS_STATUS.OK || !session?.sessionReady) {
           handleAccessRetry()
           return
         }

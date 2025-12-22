@@ -12,6 +12,7 @@ const defaultState = {
   teamResolved: false,
   memberExists: false,
   memberActive: null,
+  memberAssigned: null,
   memberRole: '',
   membershipStatus: 'loading',
   membershipCheckPath: '',
@@ -81,6 +82,7 @@ function deriveSessionReady (state) {
   const teamResolved = Boolean(state?.teamResolved)
   const memberExists = Boolean(state?.memberExists)
   const memberActive = state?.memberActive
+  const memberAssigned = state?.memberAssigned
   const status = state?.sessionStatus || ''
   const membershipStatus = state?.membershipStatus
   const isSignedIn = status === 'signedIn_admin' || status === 'signedIn_member'
@@ -90,6 +92,7 @@ function deriveSessionReady (state) {
     teamResolved &&
     memberExists &&
     memberActive !== false &&
+    memberAssigned !== false &&
     isSignedIn &&
     membershipStatus === 'member'
   )
@@ -131,13 +134,14 @@ export function updateAuthDebugState (authContext) {
   })
 }
 
-export function updateTeamDebugState ({ teamId, member, teamResolved, membershipStatus, membershipCheckPath, accessStatus, accessError }) {
+export function updateTeamDebugState ({ teamId, member, teamResolved, membershipStatus, membershipCheckPath, accessStatus, accessError, memberAssigned }) {
   const memberExists = Boolean(member)
   setState({
     teamId: teamId || debugState.teamId,
     teamResolved: Boolean(teamResolved),
     memberExists,
     memberActive: memberExists ? member?.active !== false : null,
+    memberAssigned: typeof memberAssigned === 'boolean' ? memberAssigned : (memberExists ? member?.assigned !== false : null),
     memberRole: member?.role || '',
     membershipStatus: membershipStatus || debugState.membershipStatus,
     membershipCheckPath: membershipCheckPath || debugState.membershipCheckPath,
@@ -156,6 +160,7 @@ export function updateSessionDebugState (sessionState) {
     membershipCheckPath: sessionState?.membershipCheckPath,
     accessStatus: sessionState?.accessStatus,
     accessError: sessionState?.accessError,
+    memberAssigned: sessionState?.memberAssigned,
   })
   setState({
     sessionStatus: status,
