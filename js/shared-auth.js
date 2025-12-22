@@ -59,6 +59,11 @@ function isLocalhost() {
   return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
 }
 
+function isWebDriver () {
+  if (typeof navigator === 'undefined') return false;
+  return navigator.webdriver === true;
+}
+
 function loadMockUser() {
   if (typeof window === 'undefined') return null;
   try {
@@ -141,6 +146,11 @@ async function ensureAppCheck(app) {
     setAppCheckState('off', 'no_app');
     return Promise.resolve(null);
   }
+  if (isWebDriver()) {
+    setAppCheckState('off', 'webdriver');
+    appCheckInitPromise = Promise.resolve(null);
+    return appCheckInitPromise;
+  }
   if (appCheckStarted && appCheckInitPromise) return appCheckInitPromise;
   if (appCheckInitPromise) return appCheckInitPromise;
 
@@ -183,6 +193,16 @@ async function ensureAppCheck(app) {
   return appCheckInitPromise;
 }
 
+function scheduleAppCheckInit(app) {
+  if (appCheckStarted || appCheckInitPromise) return;
+  const kickoff = () => ensureAppCheck(app).catch(() => {});
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(kickoff, { timeout: 2000 });
+  } else {
+    setTimeout(kickoff, 300);
+  }
+}
+
 export async function getFirebaseAppInstance() {
   const config = getFirebaseConfig();
   if (!config) throw new Error('Firebase konfiguration mangler (VITE_FIREBASE_*)');
@@ -190,9 +210,7 @@ export async function getFirebaseAppInstance() {
   if (!firebaseAppInstance) {
     firebaseAppInstance = sdk.getApps?.().length ? sdk.getApp() : sdk.initializeApp(config);
   }
-  if (!appCheckStarted || !appCheckInitPromise) {
-    await ensureAppCheck(firebaseAppInstance);
-  }
+  scheduleAppCheckInit(firebaseAppInstance);
   return firebaseAppInstance;
 }
 
