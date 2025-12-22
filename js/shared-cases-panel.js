@@ -1,4 +1,4 @@
-import { listSharedGroups, downloadCaseJson, importCasePayload, updateCaseStatus, deleteSharedCase, formatTeamId, exportSharedBackup, importSharedBackup, PermissionDeniedError, normalizeTeamId, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG, saveTeamInvite, listTeamMembers, listTeamInvites, setMemberActive, saveTeamMember } from './shared-ledger.js';
+import { listSharedGroups, downloadCaseJson, importCasePayload, updateCaseStatus, deleteSharedCase, formatTeamId, exportSharedBackup, importSharedBackup, PermissionDeniedError, normalizeTeamId, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG } from './shared-ledger.js';
 import { exportPDFBlob } from './export-pdf.js';
 import { buildExportModel } from './export-model.js';
 import { downloadBlob } from './utils/downloadBlob.js';
@@ -37,12 +37,6 @@ let debugPanel;
 let debugLogOutput;
 let hasDebugEntries = false;
 let debugMessagesSeen = new Set();
-let inviteEmailInput;
-let inviteRoleSelect;
-let inviteSubmitButton;
-let membersList;
-let invitesList;
-let adminPanel;
 
 displayTeamId = DEFAULT_TEAM_SLUG;
 
@@ -131,8 +125,8 @@ function updateStatusCard() {
 }
 
 function isAdminUser () {
-  if (membershipRole === 'admin') return true;
-  return sessionState?.role === 'admin';
+  if (membershipRole === 'admin' || membershipRole === 'owner') return true;
+  return sessionState?.role === 'admin' || sessionState?.role === 'owner';
 }
 
 function handleActionError (error, fallbackMessage, { teamContext } = {}) {
@@ -259,12 +253,6 @@ function bindSessionControls(onAuthenticated, onAccessReady) {
     if (hasAccess && lastStatus !== state.status) {
       bindBackupActions();
       if (typeof onAccessReady === 'function') onAccessReady();
-    }
-
-    if (hasAccess && isAdminUser()) {
-      refreshAdminData();
-    } else if (adminPanel) {
-      adminPanel.hidden = true;
     }
 
     if (hasAccess && typeof onAuthenticated === 'function') {
@@ -570,121 +558,6 @@ function bindBackupActions() {
   backupActionsBound = true;
 }
 
-function renderInvitesList (invites = []) {
-  if (!invitesList) return;
-  invitesList.textContent = '';
-  if (!Array.isArray(invites) || !invites.length) {
-    const empty = document.createElement('p');
-    empty.textContent = 'Ingen aktive invitationer.';
-    invitesList.appendChild(empty);
-    return;
-  }
-  invites.forEach(invite => {
-    const row = document.createElement('div');
-    row.className = 'team-invite-row';
-    row.textContent = `${invite.email || invite.id || ''} · ${invite.role || 'member'} · ${invite.active === false ? 'deaktiveret' : 'aktiv'}`;
-    invitesList.appendChild(row);
-  });
-}
-
-function renderMembersList (members = []) {
-  if (!membersList) return;
-  membersList.textContent = '';
-  if (!Array.isArray(members) || !members.length) {
-    const empty = document.createElement('p');
-    empty.textContent = 'Ingen medlemmer endnu.';
-    membersList.appendChild(empty);
-    return;
-  }
-
-  members.forEach(member => {
-    const row = document.createElement('div');
-    row.className = 'team-member-row';
-    const memberId = member.uid || member.id;
-
-    const emailEl = document.createElement('div');
-    emailEl.className = 'team-member-email';
-    emailEl.textContent = member.email || memberId || 'Ukendt bruger';
-
-    const roleSelect = document.createElement('select');
-    roleSelect.innerHTML = '<option value="member">Medlem</option><option value="admin">Admin</option>';
-    roleSelect.value = member.role === 'admin' ? 'admin' : 'member';
-    roleSelect.addEventListener('change', async () => {
-      roleSelect.disabled = true;
-      try {
-        await saveTeamMember(ensureTeamSelected(), { ...member, uid: memberId, role: roleSelect.value });
-        clearInlineError();
-      } catch (error) {
-        handleActionError(error, 'Kunne ikke opdatere rolle', { teamContext: teamId });
-        roleSelect.value = member.role === 'admin' ? 'admin' : 'member';
-      } finally {
-        roleSelect.disabled = false;
-        refreshAdminData();
-      }
-    });
-
-    const toggleBtn = document.createElement('button');
-    const isActive = member.active !== false;
-    toggleBtn.type = 'button';
-    toggleBtn.textContent = isActive ? 'Deaktivér' : 'Aktivér';
-    toggleBtn.addEventListener('click', async () => {
-      toggleBtn.disabled = true;
-      try {
-        await setMemberActive(ensureTeamSelected(), memberId, !isActive);
-        clearInlineError();
-      } catch (error) {
-        handleActionError(error, 'Kunne ikke opdatere status', { teamContext: teamId });
-      } finally {
-        toggleBtn.disabled = false;
-        refreshAdminData();
-      }
-    });
-
-    row.append(emailEl, roleSelect, toggleBtn);
-    membersList.appendChild(row);
-  });
-}
-
-async function refreshAdminData () {
-  if (!isAdminUser() || !teamId) {
-    if (adminPanel) adminPanel.hidden = true;
-    return;
-  }
-  if (adminPanel) adminPanel.hidden = false;
-  try {
-    const [members, invites] = await Promise.all([
-      listTeamMembers(ensureTeamSelected()),
-      listTeamInvites(ensureTeamSelected()),
-    ]);
-    renderMembersList(members);
-    renderInvitesList(invites);
-    clearInlineError();
-  } catch (error) {
-    handleActionError(error, 'Kunne ikke hente medlemmer/invites', { teamContext: teamId });
-  }
-}
-
-async function handleInviteSubmit () {
-  if (!inviteEmailInput || !inviteRoleSelect) return;
-  const email = inviteEmailInput.value || '';
-  const role = inviteRoleSelect.value || 'member';
-  if (!email.trim()) {
-    setInlineError('Angiv email for invitation.');
-    return;
-  }
-  if (inviteSubmitButton) inviteSubmitButton.disabled = true;
-  try {
-    await saveTeamInvite(ensureTeamSelected(), { email, role, active: true });
-    inviteEmailInput.value = '';
-    clearInlineError();
-    refreshAdminData();
-  } catch (error) {
-    handleActionError(error, 'Kunne ikke sende invitation', { teamContext: teamId });
-  } finally {
-    if (inviteSubmitButton) inviteSubmitButton.disabled = false;
-  }
-}
-
 function updateTeamAccessState () {
   const admin = isAdminUser();
   const loggedIn = Boolean(sessionState?.user);
@@ -737,12 +610,6 @@ export function initSharedCasesPanel() {
   membershipHint = document.getElementById('sharedMembershipHint');
   debugPanel = document.getElementById('sharedDebugPanel');
   debugLogOutput = document.getElementById('sharedDebugLog');
-  adminPanel = document.getElementById('teamAdminPanel');
-  inviteEmailInput = document.getElementById('teamInviteEmail');
-  inviteRoleSelect = document.getElementById('teamInviteRole');
-  inviteSubmitButton = document.getElementById('teamInviteSubmit');
-  membersList = document.getElementById('teamMembersList');
-  invitesList = document.getElementById('teamInvitesList');
   if (uidCopyButton) {
     uidCopyButton.addEventListener('click', async () => {
       if (!sessionState?.user?.uid || !navigator?.clipboard) return;
@@ -756,9 +623,6 @@ export function initSharedCasesPanel() {
   }
   if (bootstrapButton) {
     bootstrapButton.addEventListener('click', handleBootstrapTeam);
-  }
-  if (inviteSubmitButton) {
-    inviteSubmitButton.addEventListener('click', handleInviteSubmit);
   }
   hideLegacyStatus();
   setPanelVisibility(false);

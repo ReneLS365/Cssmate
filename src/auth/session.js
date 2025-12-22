@@ -12,7 +12,7 @@ import {
   persistTeamId,
 } from '../services/team-ids.js'
 import { buildMemberDocPath, ensureUserDoc } from '../services/teams.js'
-import { TEAM_ACCESS_STATUS, createTeamWithMembership, getTeamAccessWithTimeout } from '../services/team-access.js'
+import { TEAM_ACCESS_STATUS, clearTeamAccessCache, createTeamWithMembership, getTeamAccessWithTimeout } from '../services/team-access.js'
 import { teamDebug } from '../utils/team-debug.js'
 
 const SESSION_STATUS = {
@@ -78,8 +78,11 @@ function markBootstrapRun (uid) {
 let sessionState = buildState({
   status: SESSION_STATUS.SIGNED_OUT,
   message: 'Log ind for at fortsætte',
-  accessStatus: TEAM_ACCESS_STATUS.SIGNED_OUT,
+  accessStatus: TEAM_ACCESS_STATUS.NO_AUTH,
   accessError: null,
+  accessDetail: null,
+  memberAssigned: null,
+  membershipStatus: 'idle',
   authReady: false,
 })
 
@@ -96,15 +99,17 @@ function buildState (overrides = {}) {
     invite: null,
     error: null,
     message: '',
+    accessDetail: null,
     requiresVerification: false,
     providers: [],
     teamResolved: false,
     memberExists: false,
     memberActive: null,
+    memberAssigned: null,
     membershipStatus: 'idle',
     membershipCheckPath: '',
     membershipCheckTeamId: '',
-    accessStatus: TEAM_ACCESS_STATUS.SIGNED_OUT,
+    accessStatus: TEAM_ACCESS_STATUS.NO_AUTH,
     accessError: null,
     sessionReady: false,
     canChangeTeam: true,
@@ -124,6 +129,7 @@ function computeSessionReady (state = sessionState) {
     ? state.memberExists
     : Boolean(state?.member)
   const memberActive = state?.memberActive
+  const memberAssigned = state?.memberAssigned
   const membershipStatus = state?.membershipStatus
   return Boolean(
     state?.authReady &&
@@ -133,6 +139,7 @@ function computeSessionReady (state = sessionState) {
     state?.teamResolved &&
     memberExists &&
     memberActive !== false &&
+    memberAssigned !== false &&
     membershipStatus === 'member'
   )
 }
@@ -190,16 +197,20 @@ function normalizeMemberDoc (memberDoc, teamId, uid) {
     teamId: normalizedTeamId,
     role,
     active: memberDoc.active !== false,
+    assigned: memberDoc.assigned === true,
   }
 }
 
-function resolveAccessMessage (accessStatus, displayTeamId, accessError, memberDoc) {
+function resolveAccessMessage (accessStatus, displayTeamId, accessError, memberDoc, accessDetail) {
   if (accessStatus === TEAM_ACCESS_STATUS.OK) return ''
-  if (accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE) return 'Teamet findes ikke. Opret det eller vælg et andet team.'
-  if (accessStatus === TEAM_ACCESS_STATUS.DENIED || accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS) return `Du er logget ind, men har ikke adgang til ${displayTeamId}. Kontakt admin.`
-  if (accessStatus === TEAM_ACCESS_STATUS.SIGNED_OUT) return 'Log ind for at fortsætte.'
+  if (accessStatus === TEAM_ACCESS_STATUS.NO_TEAM || accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE) return 'Teamet findes ikke. Opret det eller vælg et andet team.'
+  if (accessStatus === TEAM_ACCESS_STATUS.NO_AUTH || accessStatus === TEAM_ACCESS_STATUS.SIGNED_OUT) return 'Log ind for at fortsætte.'
+  if (accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS || accessStatus === TEAM_ACCESS_STATUS.DENIED) {
+    if (memberDoc?.active === false || accessDetail?.reason === 'inactive') return 'Din konto er deaktiveret. Kontakt administrator.'
+    if (accessDetail?.reason === 'not-assigned') return 'Du er ikke tildelt dette team. Kontakt admin.'
+    return `Du er logget ind, men har ikke adgang til ${displayTeamId}. Kontakt admin.`
+  }
   if (accessStatus === TEAM_ACCESS_STATUS.ERROR && accessError?.message) return accessError.message
-  if (memberDoc?.active === false) return 'Din konto er deaktiveret. Kontakt administrator.'
   return 'Ingen adgang til teamet.'
 }
 
@@ -210,8 +221,11 @@ async function evaluateAccess () {
     setState(buildState({
       status: SESSION_STATUS.SIGNED_OUT,
       message: 'Log ind for at fortsætte',
-      accessStatus: TEAM_ACCESS_STATUS.SIGNED_OUT,
+      accessStatus: TEAM_ACCESS_STATUS.NO_AUTH,
       accessError: null,
+      accessDetail: null,
+      membershipStatus: 'no_auth',
+      memberAssigned: null,
     }))
     return null
   }
@@ -236,11 +250,13 @@ async function evaluateAccess () {
     teamResolved: false,
     memberExists: false,
     memberActive: null,
+    memberAssigned: null,
     membershipStatus: 'loading',
     membershipCheckPath: membershipPath,
     membershipCheckTeamId: formattedTeam,
     accessStatus: TEAM_ACCESS_STATUS.CHECKING,
     accessError: null,
+    accessDetail: null,
   })
   markUserLoading()
 
@@ -252,27 +268,30 @@ async function evaluateAccess () {
     const resolvedTeamId = formatTeamId(accessResult?.teamId || formattedTeam)
     const resolvedDisplayTeamId = getDisplayTeamId(resolvedTeamId)
     const accessError = accessResult?.error || null
-    const member = accessStatus === TEAM_ACCESS_STATUS.OK
-      ? normalizeMemberDoc(accessResult?.memberDoc, resolvedTeamId, currentUser?.uid)
-      : null
-    const memberExists = Boolean(member)
-    const memberActive = memberExists ? member.active !== false : null
-    const isAdmin = Boolean(accessStatus === TEAM_ACCESS_STATUS.OK && (accessResult?.isAdmin || member?.role === 'admin' || member?.role === 'owner'))
+    const member = normalizeMemberDoc(accessResult?.memberDoc, resolvedTeamId, currentUser?.uid)
+    const owner = Boolean(accessResult?.owner || member?.role === 'owner')
+    const role = owner ? 'owner' : (member?.role || accessResult?.role || '')
+    const memberExists = Boolean(owner || member)
+    const memberActive = memberExists ? (owner ? true : member?.active !== false) : null
+    const memberAssigned = memberExists ? (owner ? true : accessResult?.assigned !== false && member?.assigned !== false) : null
+    const isAdmin = Boolean(owner || role === 'admin')
     const membershipStatus = accessStatus === TEAM_ACCESS_STATUS.OK
       ? 'member'
-      : accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE || accessStatus === TEAM_ACCESS_STATUS.DENIED || accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS
-        ? 'not_member'
-        : accessStatus === TEAM_ACCESS_STATUS.SIGNED_OUT
-          ? 'idle'
-          : 'error'
+      : accessStatus === TEAM_ACCESS_STATUS.NO_TEAM || accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE
+        ? 'no_team'
+        : accessStatus === TEAM_ACCESS_STATUS.NO_AUTH
+          ? 'no_auth'
+          : accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS
+            ? 'not_member'
+            : 'error'
     const sessionStatus = membershipStatus === 'member'
       ? (isAdmin ? SESSION_STATUS.ADMIN : SESSION_STATUS.MEMBER)
-      : (accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE || accessStatus === TEAM_ACCESS_STATUS.DENIED || accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS
-          ? SESSION_STATUS.NO_ACCESS
-          : accessStatus === TEAM_ACCESS_STATUS.SIGNED_OUT
-            ? SESSION_STATUS.SIGNED_OUT
-            : SESSION_STATUS.ERROR)
-    const message = resolveAccessMessage(accessStatus, resolvedDisplayTeamId, accessError, member)
+      : (accessStatus === TEAM_ACCESS_STATUS.NO_AUTH
+          ? SESSION_STATUS.SIGNED_OUT
+          : accessStatus === TEAM_ACCESS_STATUS.ERROR
+            ? SESSION_STATUS.ERROR
+            : SESSION_STATUS.NO_ACCESS)
+    const message = resolveAccessMessage(accessStatus, resolvedDisplayTeamId, accessError, member, accessResult)
     const errorObject = accessStatus === TEAM_ACCESS_STATUS.OK
       ? null
       : (accessError ? Object.assign(new Error(accessError.message || 'Ingen adgang'), { code: accessError.code }) : null)
@@ -280,7 +299,8 @@ async function evaluateAccess () {
     if (accessError?.code) {
       setLastFirestoreError(accessError, memberPath)
     }
-    teamLockedFlag = !isAdmin
+    const lockTeam = accessStatus === TEAM_ACCESS_STATUS.OK ? !isAdmin : false
+    teamLockedFlag = lockTeam
     persistTeamLock(teamLockedFlag)
     preferredTeamSlug = normalizeTeamId(resolvedTeamId)
     persistTeamId(preferredTeamSlug)
@@ -288,10 +308,10 @@ async function evaluateAccess () {
       setUserLoadedState({
         uid: currentUser?.uid || null,
         email: currentUser?.email || '',
-      displayName: currentUser?.displayName || currentUser?.name || '',
-      teamId: resolvedTeamId,
-      role: member?.role || (isAdmin ? 'admin' : 'member'),
-    })
+        displayName: currentUser?.displayName || currentUser?.name || '',
+        teamId: resolvedTeamId,
+        role: role || (isAdmin ? 'admin' : 'member'),
+      })
     } else {
       setUserLoadedState({
         uid: currentUser?.uid || null,
@@ -301,43 +321,46 @@ async function evaluateAccess () {
         role: '',
       })
     }
-    const bootstrapAvailable = accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE
+    const bootstrapAvailable = (accessStatus === TEAM_ACCESS_STATUS.NO_TEAM || accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE)
       && canBootstrap(currentUser, resolvedTeamId)
       && !hasBootstrapRun(currentUser?.uid)
     const nextState = setState({
       status: sessionStatus,
-      role: member?.role || (isAdmin ? 'admin' : null),
+      role: role || (isAdmin ? 'admin' : null),
       member,
       invite: null,
       error: errorObject,
       message,
-      hasAccess: membershipStatus === 'member',
+      hasAccess: membershipStatus === 'member' && memberActive !== false && memberAssigned !== false,
       teamId: resolvedTeamId,
       displayTeamId: resolvedDisplayTeamId,
-      canChangeTeam: isAdmin,
+      canChangeTeam: !lockTeam || isAdmin,
       teamLocked: teamLockedFlag,
       bootstrapAvailable,
       teamResolved: true,
       memberExists,
       memberActive,
+      memberAssigned,
       membershipStatus,
       membershipCheckPath: memberPath,
       membershipCheckTeamId: resolvedTeamId,
       accessStatus,
       accessError,
+      accessDetail: accessResult || null,
     })
     teamDebug('session-access', {
       status: nextState.status,
       accessStatus,
       teamId: resolvedTeamId,
       role: nextState.role,
+      assigned: memberAssigned,
       reason: accessResult?.reason || accessError?.code || 'unknown',
     })
     return nextState
   }
 
   const runPromise = (async () => {
-    const accessResult = await getTeamAccessWithTimeout({ teamId: formattedTeam, user: currentUser })
+    const accessResult = await getTeamAccessWithTimeout({ teamId: formattedTeam, user: currentUser, source: 'session:evaluate' })
     if (requestId !== accessRequestId) return sessionState
     return applyAccessResult(accessResult)
   })()
@@ -369,11 +392,13 @@ function handleAuthChange (context) {
       teamResolved: false,
       memberExists: false,
       memberActive: null,
+      memberAssigned: null,
       membershipStatus: 'idle',
       membershipCheckPath: '',
       membershipCheckTeamId: '',
-      accessStatus: TEAM_ACCESS_STATUS.SIGNED_OUT,
+      accessStatus: TEAM_ACCESS_STATUS.NO_AUTH,
       accessError: null,
+      accessDetail: null,
     }))
     return
   }
@@ -389,11 +414,13 @@ function handleAuthChange (context) {
       teamResolved: false,
       memberExists: false,
       memberActive: null,
+      memberAssigned: null,
       membershipStatus: 'idle',
       membershipCheckPath: '',
       membershipCheckTeamId: '',
-      accessStatus: TEAM_ACCESS_STATUS.SIGNED_OUT,
+      accessStatus: TEAM_ACCESS_STATUS.NO_AUTH,
       accessError: null,
+      accessDetail: null,
     }))
     return
   }
@@ -409,11 +436,13 @@ function handleAuthChange (context) {
     teamResolved: false,
     memberExists: false,
     memberActive: null,
+    memberAssigned: null,
     membershipStatus: 'loading',
     membershipCheckPath: buildMemberDocPath(formatTeamId(preferredTeamSlug), context.user?.uid || ''),
     membershipCheckTeamId: formatTeamId(preferredTeamSlug),
     accessStatus: TEAM_ACCESS_STATUS.CHECKING,
     accessError: null,
+    accessDetail: null,
   })
 
   if (requiresVerification) {
@@ -461,6 +490,7 @@ function setPreferredTeamId (nextTeamId) {
   if (teamLockedFlag && sessionState.role !== 'admin') {
     return sessionState
   }
+  clearTeamAccessCache()
   preferredTeamSlug = normalized
   persistTeamId(preferredTeamSlug)
   const memberPath = sessionState.user?.uid ? buildMemberDocPath(formatted, sessionState.user.uid) : ''
@@ -471,12 +501,15 @@ function setPreferredTeamId (nextTeamId) {
     teamResolved: false,
     memberExists: false,
     memberActive: null,
+    memberAssigned: null,
     status: SESSION_STATUS.SIGNING_IN,
     membershipStatus: 'loading',
     membershipCheckPath: memberPath,
     membershipCheckTeamId: formatted,
-    accessStatus: TEAM_ACCESS_STATUS.CHECKING,
+    accessStatus: TEAM_ACCESS_STATUS.LOADING,
     accessError: null,
+    accessDetail: null,
+    message: 'Tjekker adgang…',
   })
   if (sessionState.user) {
     evaluateAccess().catch(() => {})
@@ -526,6 +559,7 @@ async function requestBootstrapAccess () {
 }
 
 function refreshAccess () {
+  clearTeamAccessCache()
   return evaluateAccess()
 }
 

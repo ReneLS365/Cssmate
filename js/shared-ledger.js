@@ -91,42 +91,59 @@ async function guardTeamAccess(teamIdInput, user, { allowBootstrap = false } = {
   const membershipPath = buildMemberDocPath(resolvedTeamId, user.uid);
   const canBootstrap = allowBootstrap && isBootstrapAdminEmail(emailLower);
   await ensureUserDoc(user);
-  const access = await getTeamAccessWithTimeout({ teamId: resolvedTeamId, user });
+  const access = await getTeamAccessWithTimeout({ teamId: resolvedTeamId, user, source: 'shared-ledger:guard' });
   const membershipStatus = access.status === TEAM_ACCESS_STATUS.OK
     ? 'member'
-    : access.status === TEAM_ACCESS_STATUS.NEED_CREATE || access.status === TEAM_ACCESS_STATUS.DENIED
-      ? 'not_member'
-      : 'error';
+    : access.status === TEAM_ACCESS_STATUS.NO_TEAM || access.status === TEAM_ACCESS_STATUS.NEED_CREATE
+      ? 'missing_team'
+      : access.status === TEAM_ACCESS_STATUS.NO_AUTH
+        ? 'no_auth'
+        : 'not_member';
   updateTeamDebugState({
     teamId: access.teamId || resolvedTeamId,
     member: access.memberDoc || null,
-    teamResolved: access.status === TEAM_ACCESS_STATUS.OK,
+    teamResolved: access.status === TEAM_ACCESS_STATUS.OK || access.status === TEAM_ACCESS_STATUS.NO_ACCESS,
     membershipStatus,
     membershipCheckPath: membershipPath,
+    memberAssigned: typeof access.assigned === 'boolean' ? access.assigned : access?.memberDoc?.assigned,
   });
-  if (access.status === TEAM_ACCESS_STATUS.OK && access.memberDoc) {
-    const normalizedMembership = {
-      ...access.memberDoc,
-      uid: access.memberDoc.uid || user.uid,
+  if (access.status === TEAM_ACCESS_STATUS.OK) {
+    const baseMember = access.memberDoc || {
+      uid: user.uid,
       teamId: access.teamId || resolvedTeamId,
-      email: access.memberDoc.email || normalizeEmail(user.email),
-      emailLower: normalizeEmail(access.memberDoc.emailLower || access.memberDoc.email || user.email),
-      role: access.memberDoc.role === 'admin' ? 'admin' : 'member',
-      active: access.memberDoc.active !== false,
+      email: normalizeEmail(user.email),
+      emailLower: normalizeEmail(user.email),
+      role: access.role || (access.owner ? 'owner' : 'member'),
+      active: access.active !== false,
+      assigned: access.assigned !== false,
     };
-    const accessRole = normalizedMembership.role === 'admin' ? 'admin' : 'member';
+    const normalizedMembership = {
+      ...baseMember,
+      uid: baseMember.uid || user.uid,
+      teamId: access.teamId || resolvedTeamId,
+      email: baseMember.email || normalizeEmail(user.email),
+      emailLower: normalizeEmail(baseMember.emailLower || baseMember.email || user.email),
+      role: baseMember.role === 'owner' ? 'owner' : (baseMember.role === 'admin' ? 'admin' : 'member'),
+      active: baseMember.active !== false,
+      assigned: baseMember.assigned !== false,
+    };
+    const accessRole = normalizedMembership.role === 'admin' || normalizedMembership.role === 'owner' ? normalizedMembership.role : 'member';
     cacheTeamResolution(user.uid, normalizedMembership.teamId, normalizedMembership);
     persistTeamId(normalizeTeamId(normalizedMembership.teamId));
     return { teamId: normalizedMembership.teamId, membership: normalizedMembership, invite: null, role: accessRole };
   }
-  if (access.status === TEAM_ACCESS_STATUS.NEED_CREATE) {
+  if (access.status === TEAM_ACCESS_STATUS.NO_TEAM || access.status === TEAM_ACCESS_STATUS.NEED_CREATE) {
     const message = canBootstrap
       ? `Team ${getDisplayTeamId(resolvedTeamId)} findes ikke. Opret det via bootstrap-knappen.`
       : `Team ${getDisplayTeamId(resolvedTeamId)} findes ikke.`;
     throw new MembershipMissingError(resolvedTeamId, user.uid, message);
   }
-  if (access.status === TEAM_ACCESS_STATUS.DENIED || access.status === TEAM_ACCESS_STATUS.NO_ACCESS) {
-    throw new MembershipMissingError(resolvedTeamId, user.uid, `Ingen adgang til team ${getDisplayTeamId(resolvedTeamId)}. Kontakt admin.`);
+  if (access.status === TEAM_ACCESS_STATUS.NO_ACCESS) {
+    const reason = access?.reason || access?.error?.code || '';
+    const fallback = `Ingen adgang til team ${getDisplayTeamId(resolvedTeamId)}. Kontakt admin.`;
+    if (reason === 'inactive') throw new MembershipMissingError(resolvedTeamId, user.uid, 'Medlemmet er deaktiveret.');
+    if (reason === 'not-assigned') throw new MembershipMissingError(resolvedTeamId, user.uid, 'Du er ikke tildelt dette team. Kontakt admin.');
+    throw new MembershipMissingError(resolvedTeamId, user.uid, fallback);
   }
   throw new PermissionDeniedError(access?.error?.message || 'Kunne ikke kontrollere team-adgang.');
 }
