@@ -4,12 +4,20 @@
 
 import express from 'express';
 import path from 'node:path';
+import rateLimit from 'express-rate-limit';
 
 const PORT = process.env.PORT || process.argv[2] || 4173;
 // Juster DIR hvis der findes en build-mappe. Hvis appen kører direkte fra repo-roden, lad den være som nu.
 const DIR = path.resolve(process.argv[3] || process.cwd());
 
 const app = express();
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // Cache-politik: HTML = no-cache, assets = lang TTL
 app.use((req, res, next) => {
@@ -22,6 +30,7 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use(limiter);
 app.use(express.static(DIR, { extensions: ['html'] }));
 
 app.get('*', (req, res) => {

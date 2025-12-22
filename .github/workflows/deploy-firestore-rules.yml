@@ -1,5 +1,8 @@
 name: Deploy Firestore Rules
 
+permissions:
+  contents: read
+
 on:
   push:
     branches:

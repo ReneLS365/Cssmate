@@ -1,5 +1,8 @@
 name: Nightly build and app flow
 
+permissions:
+  contents: read
+
 on:
   schedule:
     - cron: '0 3 * * *'
