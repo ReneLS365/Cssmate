@@ -471,7 +471,12 @@ async function loadTeamData () {
 
 function updateTabVisibility (session) {
   if (!teamTabButton || !teamPanel) return
-  const visible = Boolean(session?.sessionReady && session?.accessStatus === TEAM_ACCESS_STATUS.OK)
+  // Always show Team tab - handle access state within the page content
+  // This prevents route-level blocking and infinite spinner issues
+  const authReady = session?.authReady !== false
+  const isSignedIn = Boolean(session?.user)
+  // Show tab if user is signed in (regardless of access check status)
+  const visible = authReady && isSignedIn
   if (visible) {
     teamTabButton.hidden = false
     teamTabButton.removeAttribute('aria-hidden')
@@ -568,6 +573,7 @@ export function initTeamAdminPage () {
 
 export function setTeamTabVisibility (visible) {
   if (!teamTabButton || !teamPanel) return
+  // Allow programmatic control but prefer showing tab when user is signed in
   if (visible) {
     teamTabButton.hidden = false
     teamTabButton.removeAttribute('aria-hidden')
