@@ -176,6 +176,51 @@ async function readTeamAccess ({ teamId, user, source = 'resolveTeamAccess' }) {
       }
     }
 
+    // AUTO-REPAIR: if the current user is the team owner but is missing membership doc
+    if (!memberDoc && teamDoc?.ownerUid === user.uid) {
+      try {
+        const email = user.email || ''
+        const now = sdk.serverTimestamp()
+        await sdk.setDoc(memberRef, {
+          uid: user.uid,
+          email,
+          emailLower: (email || '').toLowerCase(),
+          role: 'owner',
+          active: true,
+          assigned: true,
+          teamId: normalizedTeamId,
+          repairedAt: now,
+        }, { merge: true })
+
+        return {
+          ...initial,
+          status: TEAM_ACCESS_STATUS.OK,
+          teamId: normalizedTeamId,
+          teamDoc,
+          memberDoc: {
+            uid: user.uid,
+            email,
+            emailLower: (email || '').toLowerCase(),
+            role: 'owner',
+            active: true,
+            assigned: true,
+            teamId: normalizedTeamId,
+          },
+          role: 'owner',
+          owner: true,
+          member: true,
+          active: true,
+          assigned: true,
+          reason: 'owner-repaired',
+          error: null,
+          raw: { teamDoc, memberDoc: null, repaired: true },
+        }
+      } catch (repairError) {
+        console.warn('Owner membership auto-repair failed', repairError)
+        // Fall through to normal no-access case if repair fails
+      }
+    }
+
     if (!owner && !memberDoc) {
       return {
         ...initial,
