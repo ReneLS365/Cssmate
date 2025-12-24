@@ -376,10 +376,10 @@ async function evaluateAccess () {
       return applyAccessResult(accessResult)
     } finally {
       // GUARANTEE: spinner stops in all outcomes - accessStatus must leave CHECKING state
+      // Do NOT clobber membershipStatus here - applyAccessResult already set it correctly
       if (sessionState.accessStatus === TEAM_ACCESS_STATUS.CHECKING) {
         setState({
           accessStatus: accessResult?.status || TEAM_ACCESS_STATUS.ERROR,
-          membershipStatus: 'error',
           teamResolved: true,
         })
       }
