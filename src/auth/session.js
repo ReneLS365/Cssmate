@@ -360,9 +360,30 @@ async function evaluateAccess () {
   }
 
   const runPromise = (async () => {
-    const accessResult = await getTeamAccessWithTimeout({ teamId: formattedTeam, user: currentUser, source: 'session:evaluate' })
-    if (requestId !== accessRequestId) return sessionState
-    return applyAccessResult(accessResult)
+    let accessResult = null
+    try {
+      accessResult = await getTeamAccessWithTimeout({ teamId: formattedTeam, user: currentUser, source: 'session:evaluate' })
+      if (requestId !== accessRequestId) return sessionState
+      return applyAccessResult(accessResult)
+    } catch (err) {
+      console.error('SESSION ACCESS ERROR', err)
+      accessResult = {
+        status: TEAM_ACCESS_STATUS.ERROR,
+        teamId: formattedTeam,
+        reason: 'exception',
+        error: { code: 'exception', message: err?.message || 'Ukendt fejl' },
+      }
+      return applyAccessResult(accessResult)
+    } finally {
+      // GUARANTEE: spinner stops in all outcomes - accessStatus must leave CHECKING state
+      if (sessionState.accessStatus === TEAM_ACCESS_STATUS.CHECKING) {
+        setState({
+          accessStatus: accessResult?.status || TEAM_ACCESS_STATUS.ERROR,
+          membershipStatus: 'error',
+          teamResolved: true,
+        })
+      }
+    }
   })()
 
   accessInFlight = runPromise.finally(() => {
