@@ -303,13 +303,6 @@ function createRenderer(doc, model, headerFooter, options = {}) {
     return headerY
   }
 
-  const drawTitle = () => {
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(TITLE_FONT)
-    doc.text('Akkordseddel', cursor.x, cursor.toPageY())
-    cursor.moveDown(28)
-  }
-
   const drawCaseInfo = () => {
     drawSectionHeader('Sagsinfo')
     const lines = [
@@ -555,7 +548,6 @@ function createRenderer(doc, model, headerFooter, options = {}) {
   }
 
   const renderDocument = () => {
-    drawTitle()
     drawCaseInfo()
     drawComment()
     drawMaterialTable()
