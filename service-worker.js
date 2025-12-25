@@ -9,7 +9,7 @@ if (versionScriptUrl) {
 importScripts('/js/version.js')
 }
 
-const CACHE_VERSION = 'sscaff-v-20251225135330867' // bumped after team access fixes
+const CACHE_VERSION = 'sscaff-v-20250214154000000' // bumped for always-latest deploy flow
 const RESOLVED_CACHE_VERSION = (typeof self !== 'undefined' && self.CSSMATE_BUILD_META?.cacheKey) ? self.CSSMATE_BUILD_META.cacheKey : CACHE_VERSION
 const CACHE_NAME = 'sscaff-' + RESOLVED_CACHE_VERSION
 const PRECACHE_URLS = [

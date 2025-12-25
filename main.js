@@ -33,6 +33,42 @@ if (typeof document !== 'undefined') {
 initDebugOverlay()
 applyBuildMetadata()
 
+function setupServiceWorkerAutoReload () {
+  if (typeof window === 'undefined') return
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
+
+  const RELOAD_KEY = 'cssmate_sw_reloaded'
+  let hasReloaded = false
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hasReloaded) return
+
+    try {
+      if (window.sessionStorage?.getItem(RELOAD_KEY) === '1') {
+        return
+      }
+      window.sessionStorage?.setItem(RELOAD_KEY, '1')
+    } catch (error) {
+      // Ignore storage errors to avoid blocking reload
+    }
+
+    hasReloaded = true
+    window.location.reload()
+  })
+
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      try {
+        window.sessionStorage?.removeItem(RELOAD_KEY)
+      } catch (error) {
+        // Ignore storage errors to avoid console noise
+      }
+    }, 1000)
+  })
+}
+
+setupServiceWorkerAutoReload()
+
 function getCurrentAppVersion () {
   if (typeof window !== 'undefined' && typeof window.CSSMATE_APP_VERSION === 'string') {
     return window.CSSMATE_APP_VERSION
