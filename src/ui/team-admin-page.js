@@ -7,7 +7,7 @@ import {
   removeTeamMember,
   saveTeamMember,
   setMemberActive,
-  addTeamMemberByEmail,
+  saveTeamInvite,
 } from '../../js/shared-ledger.js'
 import { normalizeEmail } from '../auth/roles.js'
 import { getState as getSessionState, onChange as onSessionChange, refreshAccess, requestBootstrapAccess } from '../auth/session.js'
@@ -179,7 +179,10 @@ function renderInvites (invites = []) {
     const row = document.createElement('div')
     row.className = 'team-invite-row'
     const label = document.createElement('div')
-    const status = invite.usedAt ? 'brugt' : (invite.active === false ? 'deaktiveret' : 'aktiv')
+    // Determine status: pending by default, or accepted if used, or deaktiveret if inactive
+    let status = invite.status || 'pending'
+    if (invite.usedAt) status = 'accepteret'
+    else if (invite.active === false) status = 'deaktiveret'
     label.textContent = `${invite.email || invite.emailLower || ''} · ${invite.role || 'member'} · ${status}`
     const copyBtn = document.createElement('button')
     copyBtn.type = 'button'
@@ -219,6 +222,7 @@ function renderMembers (members = [], sessionRole = '', currentUid = '') {
     membersListEl.appendChild(p)
     return
   }
+  const isAdmin = isAdminRole(sessionRole)
   members
     .slice()
     .sort((a, b) => (a.displayName || a.email || '').localeCompare(b.displayName || b.email || ''))
@@ -234,6 +238,17 @@ function renderMembers (members = [], sessionRole = '', currentUid = '') {
       ].filter(Boolean)
       info.textContent = labelParts.join(' ')
 
+      // For members (non-admins), only show the info and role as text
+      if (!isAdmin) {
+        const roleText = document.createElement('span')
+        roleText.className = 'team-member-role-text'
+        roleText.textContent = member.role === 'owner' ? 'Ejer' : member.role === 'admin' ? 'Admin' : 'Medlem'
+        row.append(info, roleText)
+        membersListEl.appendChild(row)
+        return
+      }
+
+      // For admins, show full controls
       const roleSelect = document.createElement('select')
       roleSelect.innerHTML = '<option value="member">Medlem</option><option value="admin">Admin</option>'
       roleSelect.value = member.role === 'admin' || member.role === 'owner' ? member.role : 'member'
@@ -305,13 +320,16 @@ async function handleInviteSubmit () {
   const role = inviteRoleSelect.value === 'admin' ? 'admin' : 'member'
   setLoading(true)
   try {
-    await addTeamMemberByEmail(lastTeamId, email, role)
+    await saveTeamInvite(lastTeamId, { email, role })
     inviteEmailInput.value = ''
-    setStatus('Medlem tilføjet via email.', 'success')
-    await loadTeamData()
+    setStatus('Invitation sendt.', 'success')
+    // Reload invites list to show the new invite
+    const invites = await listTeamInvites(lastTeamId)
+    const activeInvites = invites.filter(invite => invite.active !== false && !invite.usedAt)
+    renderInvites(activeInvites)
   } catch (error) {
-    console.warn('Add member by email failed', error)
-    setStatus(error?.message || 'Kunne ikke tilføje medlem via email', 'error')
+    console.warn('Send invite failed', error)
+    setStatus(error?.message || 'Kunne ikke sende invitation', 'error')
   } finally {
     setLoading(false)
   }
@@ -368,18 +386,44 @@ function clearTeamLists () {
 function toggleAdminControls (enabled) {
   adminLocked = !enabled
   setLoading(loading)
-  const actionSections = teamPanel?.querySelectorAll('.team-admin__actions, .btn-group')
+
+  // Hide all admin-only actions (invite forms, UID add form)
+  const actionSections = teamPanel?.querySelectorAll('.team-admin__actions')
   actionSections?.forEach(section => {
     if (!section) return
+    section.hidden = !enabled
     section.toggleAttribute('aria-hidden', !enabled)
     section.classList.toggle('team-admin--locked', !enabled)
   })
+
+  // Hide the button group (Opdater, Ret medlemskab) for non-admins
+  const btnGroups = teamPanel?.querySelectorAll('.btn-group')
+  btnGroups?.forEach(section => {
+    if (!section) return
+    section.hidden = !enabled
+    section.toggleAttribute('aria-hidden', !enabled)
+    section.classList.toggle('team-admin--locked', !enabled)
+  })
+
+  // Show member list always, but hide invites card for non-admins
   const listSections = teamPanel?.querySelectorAll('.team-admin__lists')
   listSections?.forEach(section => {
     if (!section) return
     section.toggleAttribute('aria-hidden', false)
     section.classList.toggle('team-admin--locked', !enabled)
   })
+
+  // Hide invites card completely for non-admins
+  const invitesCard = teamPanel?.querySelector('.team-admin__card:has(#teamInvitesListTeamPage)')
+  if (invitesCard) {
+    invitesCard.hidden = !enabled
+  } else {
+    // Fallback: find by sibling of members card
+    const allCards = teamPanel?.querySelectorAll('.team-admin__card')
+    if (allCards && allCards.length > 1) {
+      allCards[1].hidden = !enabled
+    }
+  }
 }
 
 function renderAccessState (session) {

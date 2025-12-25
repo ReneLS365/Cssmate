@@ -483,6 +483,12 @@ function handleAuthChange (context) {
 function initAuthSession () {
   if (initialized) return getSessionApi()
   initialized = true
+
+  // Kick auth init immediately so onAuthStateChange callbacks actually fire
+  void waitForAuthReady().catch((err) => {
+    console.warn('Auth init failed', err)
+  })
+
   preferredTeamSlug = normalizeTeamId(preferredTeamSlug || DEFAULT_TEAM_SLUG)
   persistTeamId(preferredTeamSlug)
   onAuthStateChange(handleAuthChange)
