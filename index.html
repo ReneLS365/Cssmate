@@ -177,7 +177,7 @@
         </label>
       </div>
       <div class="form-actions no-print">
-        <button id="btnOpenGuideModal" type="button">Åbn guide</button>
+
       </div>
     </fieldset>
 
@@ -463,7 +463,7 @@
     </section>
   </section>
 
-  <section
+    <section
     id="panel-team"
     class="sektion tab-panel"
     role="tabpanel"
@@ -504,6 +504,14 @@
         <label class="sr-only" for="sharedBackupImport">Importer backup</label>
         <input id="sharedBackupImport" type="file" accept="application/json" disabled>
       </div>
+    </section>
+
+    <section class="card team-member-overview no-print" id="teamMemberOverview" aria-live="polite" hidden>
+      <header class="card-header">
+        <h2>Medlemmer</h2>
+        <p>Du er medlem af teamet. Listen er skrivebeskyttet.</p>
+      </header>
+      <div id="teamMembersListReadOnly" class="team-admin__list"></div>
     </section>
 
     <section class="card team-admin no-print" aria-live="polite">
@@ -631,25 +639,6 @@
       </div>
     </div>
 
-    <div id="guideModal" class="modal" hidden aria-hidden="true">
-      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="guideModalTitle" tabindex="-1">
-        <button type="button" class="modal-close" aria-label="Luk">×</button>
-        <h2 id="guideModalTitle">Guide til CSMate</h2>
-        <p>
-          Følg disse trin for at genskabe den stabile arbejdsgang:
-        </p>
-        <ol>
-          <li>Udfyld <strong>Sagsinfo</strong> med de grundlæggende oplysninger.</li>
-          <li>Vælg system i <strong>Optælling</strong> og indtast materialer.</li>
-          <li>Udskriv eller eksportér akkordsedlen fra <strong>Løn</strong> fanen.</li>
-          <li>Tilføj medarbejdere under <strong>Løn</strong> og beregn akkord.</li>
-        </ol>
-        <p>
-          Har du brug for yderligere hjælp, kan du kontakte administratoren eller slå op i virksomhedens
-          interne vejledninger.
-        </p>
-      </div>
-    </div>
   </div>
 
     <div id="numpad-overlay" class="numpad-hidden" data-numpad-overlay hidden inert>

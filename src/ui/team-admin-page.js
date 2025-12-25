@@ -17,6 +17,8 @@ import { TEAM_ACCESS_STATUS } from '../services/team-access.js'
 let initialized = false
 let teamPanel
 let teamTabButton
+let teamAdminCard
+let teamMemberOverviewCard
 let teamNameEl
 let teamIdEl
 let teamCopyIdBtn
@@ -24,8 +26,9 @@ let teamCopyNameBtn
 let statusEl
 let invitesListEl
 let membersListEl
-let teamStatusControls
-let teamMetaEl
+let membersReadOnlyListEl
+let teamIdInputContainer
+let sharedAdminActions
 let inviteEmailInput
 let inviteRoleSelect
 let inviteSubmitButton
@@ -53,10 +56,27 @@ function isAdminRole (role) {
   return role === 'admin' || isOwner(role)
 }
 
+function getSessionRole (session) {
+  return session?.member?.role || session?.role || ''
+}
+
+function isAdminSession (session) {
+  return isAdminRole(getSessionRole(session || lastSessionState || getSessionState()))
+}
+
 function setStatus (message, variant = '') {
   if (!statusEl) return
   statusEl.textContent = message || ''
   statusEl.dataset.variant = variant || ''
+}
+
+function setAriaHidden (element, hidden) {
+  if (!element) return
+  if (hidden) {
+    element.setAttribute('aria-hidden', 'true')
+    return
+  }
+  element.removeAttribute('aria-hidden')
 }
 
 function setLoading (isLoading) {
@@ -287,6 +307,7 @@ function renderMembers (members = [], sessionRole = '', currentUid = '') {
       roleSelect.value = member.role === 'admin' || member.role === 'owner' ? member.role : 'member'
       roleSelect.disabled = !canEditMemberRole(sessionRole, member)
       roleSelect.addEventListener('change', async () => {
+        if (!isAdminRole(sessionRole)) return
         roleSelect.disabled = true
         try {
           await saveTeamMember(lastTeamId, { ...member, role: roleSelect.value })
@@ -306,6 +327,7 @@ function renderMembers (members = [], sessionRole = '', currentUid = '') {
       removeBtn.textContent = 'Fjern'
       removeBtn.disabled = !canRemoveMember(sessionRole, currentUid, member)
       removeBtn.addEventListener('click', async () => {
+        if (!isAdminRole(sessionRole)) return
         removeBtn.disabled = true
         try {
           await removeTeamMember(lastTeamId, member.uid || member.id)
@@ -325,6 +347,7 @@ function renderMembers (members = [], sessionRole = '', currentUid = '') {
       toggleBtn.textContent = isActive ? 'Deaktivér' : 'Aktivér'
       toggleBtn.disabled = !isAdminRole(sessionRole) || isOwner(member.role)
       toggleBtn.addEventListener('click', async () => {
+        if (!isAdminRole(sessionRole)) return
         toggleBtn.disabled = true
         try {
           await setMemberActive(lastTeamId, member.uid || member.id, !isActive)
@@ -343,8 +366,46 @@ function renderMembers (members = [], sessionRole = '', currentUid = '') {
     })
 }
 
+function renderReadOnlyMembers (members = []) {
+  if (!membersReadOnlyListEl) return
+  membersReadOnlyListEl.textContent = ''
+  if (!Array.isArray(members) || !members.length) {
+    const p = document.createElement('p')
+    p.textContent = 'Ingen medlemmer endnu.'
+    membersReadOnlyListEl.appendChild(p)
+    return
+  }
+  members
+    .slice()
+    .sort((a, b) => (a.displayName || a.email || '').localeCompare(b.displayName || b.email || ''))
+    .forEach(member => {
+      const row = document.createElement('div')
+      row.className = 'team-member-row'
+      const info = document.createElement('div')
+      info.className = 'team-member-email'
+      const labelParts = [
+        member.displayName || member.email || member.uid || 'Ukendt',
+        member.email && member.displayName ? `(${member.email})` : '',
+        member.uid ? `uid: ${member.uid}` : '',
+      ].filter(Boolean)
+      info.textContent = labelParts.join(' ')
+      const roleText = document.createElement('span')
+      roleText.className = 'team-member-role-text'
+      roleText.textContent = member.role === 'owner' ? 'Ejer' : member.role === 'admin' ? 'Admin' : 'Medlem'
+      row.append(info, roleText)
+      membersReadOnlyListEl.appendChild(row)
+    })
+}
+
+function requireAdminAction () {
+  if (isAdminSession()) return true
+  setStatus('Kun admin kan udføre denne handling.', 'error')
+  return false
+}
+
 async function handleInviteSubmit () {
   if (!inviteEmailInput || !inviteRoleSelect) return
+  if (!requireAdminAction()) return
   const email = inviteEmailInput.value || ''
   if (!email.trim()) {
     setStatus('Angiv email for medlemmet.', 'error')
@@ -370,6 +431,7 @@ async function handleInviteSubmit () {
 
 async function handleAddByUid () {
   if (!uidInput || !uidRoleSelect) return
+  if (!requireAdminAction()) return
   const uid = uidInput.value || ''
   if (!uid.trim()) {
     setStatus('Angiv UID.', 'error')
@@ -391,6 +453,7 @@ async function handleAddByUid () {
 }
 
 async function handleFixMembership () {
+  if (!requireAdminAction()) return
   setLoading(true)
   try {
     const members = await listTeamMembers(lastTeamId)
@@ -414,66 +477,78 @@ async function handleFixMembership () {
 function clearTeamLists () {
   if (membersListEl) membersListEl.textContent = ''
   if (invitesListEl) invitesListEl.textContent = ''
+  if (membersReadOnlyListEl) membersReadOnlyListEl.textContent = ''
 }
 
-function toggleAdminControls (enabled) {
-  adminLocked = !enabled
+function toggleAdminControls (isAdmin) {
+  adminLocked = !isAdmin
   setLoading(loading)
 
-  if (teamStatusControls) {
-    teamStatusControls.hidden = !enabled
-    teamStatusControls.toggleAttribute('aria-hidden', !enabled)
+  if (teamAdminCard) {
+    teamAdminCard.hidden = !isAdmin
+    setAriaHidden(teamAdminCard, !isAdmin)
   }
 
-  if (teamMetaEl) {
-    teamMetaEl.hidden = !enabled
-    teamMetaEl.toggleAttribute('aria-hidden', !enabled)
+  if (teamIdInputContainer) {
+    teamIdInputContainer.hidden = !isAdmin
+    setAriaHidden(teamIdInputContainer, !isAdmin)
+  }
+
+  if (sharedAdminActions) {
+    sharedAdminActions.hidden = !isAdmin
+    setAriaHidden(sharedAdminActions, !isAdmin)
   }
 
   // Hide all admin-only actions (invite forms, UID add form)
   const actionSections = teamPanel?.querySelectorAll('.team-admin__actions')
   actionSections?.forEach(section => {
     if (!section) return
-    section.hidden = !enabled
-    section.toggleAttribute('aria-hidden', !enabled)
-    section.classList.toggle('team-admin--locked', !enabled)
+    section.hidden = !isAdmin
+    setAriaHidden(section, !isAdmin)
+    section.classList.toggle('team-admin--locked', !isAdmin)
   })
 
   const adminOnlyFields = teamPanel?.querySelectorAll('.team-admin__actions button, .team-admin__actions input, .team-admin__actions select, .btn-group button')
   adminOnlyFields?.forEach(field => {
     if (!field) return
-    field.disabled = !enabled
-    field.tabIndex = enabled ? 0 : -1
+    field.disabled = !isAdmin
+    field.tabIndex = isAdmin ? 0 : -1
   })
 
   // Hide the button group (Opdater, Ret medlemskab) for non-admins
   const btnGroups = teamPanel?.querySelectorAll('.btn-group')
   btnGroups?.forEach(section => {
     if (!section) return
-    section.hidden = !enabled
-    section.toggleAttribute('aria-hidden', !enabled)
-    section.classList.toggle('team-admin--locked', !enabled)
+    section.hidden = !isAdmin
+    setAriaHidden(section, !isAdmin)
+    section.classList.toggle('team-admin--locked', !isAdmin)
   })
 
   // Show member list always, but hide invites card for non-admins
   const listSections = teamPanel?.querySelectorAll('.team-admin__lists')
   listSections?.forEach(section => {
     if (!section) return
-    section.toggleAttribute('aria-hidden', false)
-    section.classList.toggle('team-admin--locked', !enabled)
+    setAriaHidden(section, false)
+    section.classList.toggle('team-admin--locked', !isAdmin)
   })
 
   // Hide invites card completely for non-admins
   const invitesCard = teamPanel?.querySelector('.team-admin__card:has(#teamInvitesListTeamPage)')
   if (invitesCard) {
-    invitesCard.hidden = !enabled
+    invitesCard.hidden = !isAdmin
   } else {
     // Fallback: find by sibling of members card
     const allCards = teamPanel?.querySelectorAll('.team-admin__card')
     if (allCards && allCards.length > 1) {
-      allCards[1].hidden = !enabled
+      allCards[1].hidden = !isAdmin
     }
   }
+}
+
+function toggleMemberOverview (visible) {
+  if (!teamMemberOverviewCard) return
+  teamMemberOverviewCard.hidden = !visible
+  setAriaHidden(teamMemberOverviewCard, !visible)
 }
 
 function renderAccessState (session) {
@@ -481,10 +556,11 @@ function renderAccessState (session) {
   const accessStatus = session?.accessStatus || TEAM_ACCESS_STATUS.LOADING
   const membershipStatus = session?.membershipStatus || 'loading'
   const isChecking = accessStatus === TEAM_ACCESS_STATUS.LOADING || membershipStatus === 'loading'
-  const role = session?.member?.role || session?.role || ''
+  const role = getSessionRole(session)
   const isAdmin = isAdminRole(role)
   const canViewMembers = accessStatus === TEAM_ACCESS_STATUS.OK && session?.sessionReady
   const canEditMembers = canViewMembers && isAdmin
+  const canShowAdmin = canEditMembers
   const canBootstrapAction = Boolean(session?.bootstrapAvailable && accessStatus === TEAM_ACCESS_STATUS.NO_TEAM)
   const accessError = session?.accessError || session?.error || null
   const reason = session?.accessDetail?.reason || ''
@@ -530,7 +606,8 @@ function renderAccessState (session) {
   if (session?.teamId) {
     renderTeamInfo({ name: session?.displayTeamId || session.teamId, teamId: session.teamId })
   }
-  toggleAdminControls(canEditMembers)
+  toggleAdminControls(canShowAdmin)
+  toggleMemberOverview(canViewMembers && !isAdmin)
   updateAccessActions({ accessStatus, canBootstrapAction, isChecking })
 }
 
@@ -540,7 +617,7 @@ async function loadTeamData () {
   try {
     setStatus('Indlæser team…')
     const session = getSessionState()
-    const sessionRole = session?.member?.role || session?.role || ''
+    const sessionRole = getSessionRole(session)
     const allowInvites = isAdminRole(sessionRole)
     const [team, members, invites] = await Promise.all([
       getTeamDocument(lastTeamId),
@@ -549,6 +626,7 @@ async function loadTeamData () {
     ])
     renderTeamInfo(team)
     renderMembers(members, sessionRole, session?.user?.uid || '')
+    renderReadOnlyMembers(members)
     const activeInvites = allowInvites ? invites.filter(invite => invite.active !== false && !invite.usedAt) : []
     renderInvites(activeInvites)
     setStatus('Team opdateret.', 'success')
@@ -590,7 +668,6 @@ function updateTabVisibility (session) {
 function handleSessionChange (session) {
   lastSessionState = session
   updateTabVisibility(session)
-  const sessionRole = session?.member?.role || session?.role || ''
   const accessStatus = session?.accessStatus || TEAM_ACCESS_STATUS.LOADING
   renderAccessState(session)
   const hasAccess = session?.teamId && session?.sessionReady && accessStatus === TEAM_ACCESS_STATUS.OK
@@ -644,8 +721,10 @@ export function initTeamAdminPage () {
   initialized = true
   teamPanel = document.getElementById('panel-team')
   teamTabButton = document.getElementById('tab-team')
-  teamStatusControls = teamPanel?.querySelector('.team-status-controls') || null
-  teamMetaEl = teamPanel?.querySelector('.team-admin__meta') || null
+  teamAdminCard = teamPanel?.querySelector('.team-admin') || null
+  teamMemberOverviewCard = document.getElementById('teamMemberOverview')
+  teamIdInputContainer = document.getElementById('teamIdInputContainer')
+  sharedAdminActions = teamPanel?.querySelector('.shared-admin-actions') || null
   teamNameEl = document.getElementById('teamName')
   teamIdEl = document.getElementById('teamId')
   teamCopyIdBtn = document.getElementById('teamCopyId')
@@ -653,6 +732,7 @@ export function initTeamAdminPage () {
   statusEl = document.getElementById('teamAdminStatus')
   invitesListEl = document.getElementById('teamInvitesListTeamPage')
   membersListEl = document.getElementById('teamMembersListTeamPage')
+  membersReadOnlyListEl = document.getElementById('teamMembersListReadOnly')
   inviteEmailInput = document.getElementById('teamInviteEmailTeamPage')
   inviteRoleSelect = document.getElementById('teamInviteRoleTeamPage')
   inviteSubmitButton = document.getElementById('teamInviteSubmitTeamPage')

@@ -433,89 +433,6 @@ function updateSlaebFormulaInfo(text) {
   infoEl.textContent = value ? `Formel (A9): ${value}` : '';
 }
 
-let guideModalLastFocus = null;
-let guideModalEscapeHandler = null;
-
-function getGuideModalElement() {
-  return document.getElementById('guideModal');
-}
-
-function attachGuideModalEscapeHandler() {
-  if (guideModalEscapeHandler || typeof document === 'undefined') return;
-  guideModalEscapeHandler = event => {
-    if (event.key === 'Escape' && isGuideModalOpen()) {
-      event.preventDefault();
-      closeGuideModal();
-    }
-  };
-  document.addEventListener('keydown', guideModalEscapeHandler);
-}
-
-function detachGuideModalEscapeHandler() {
-  if (!guideModalEscapeHandler || typeof document === 'undefined') return;
-  document.removeEventListener('keydown', guideModalEscapeHandler);
-  guideModalEscapeHandler = null;
-}
-
-// Åbn hjælpeguiden og flyt fokus til dialogen
-function openGuideModal() {
-  const modal = getGuideModalElement();
-  if (!modal) return;
-  guideModalLastFocus = document.activeElement instanceof HTMLElement
-    ? document.activeElement
-    : null;
-  modal.removeAttribute('hidden');
-  modal.dataset.open = 'true';
-  modal.classList.add('open');
-  modal.setAttribute('aria-hidden', 'false');
-  const content = modal.querySelector('.modal-content');
-  if (content && typeof content.focus === 'function') {
-    content.focus();
-  }
-  attachGuideModalEscapeHandler();
-}
-
-// Luk hjælpeguiden og returnér fokus til tidligere element
-function closeGuideModal() {
-  const modal = getGuideModalElement();
-  if (!modal) return;
-  modal.classList.remove('open');
-  modal.removeAttribute('data-open');
-  modal.setAttribute('aria-hidden', 'true');
-  modal.setAttribute('hidden', '');
-  detachGuideModalEscapeHandler();
-  const previous = guideModalLastFocus;
-  guideModalLastFocus = null;
-  if (previous && document.contains(previous) && typeof previous.focus === 'function') {
-    previous.focus();
-  }
-}
-
-function isGuideModalOpen() {
-  const modal = getGuideModalElement();
-  return Boolean(modal && modal.dataset.open === 'true');
-}
-
-function setupGuideModal() {
-  const modal = getGuideModalElement();
-  if (!modal) return;
-
-  const closeBtn = modal.querySelector('.modal-close');
-  if (closeBtn) {
-    closeBtn.addEventListener('click', () => closeGuideModal());
-  }
-
-  modal.addEventListener('click', event => {
-    if (event.target === modal) {
-      closeGuideModal();
-    }
-  });
-
-  document.getElementById('btnOpenGuideModal')?.addEventListener('click', () => {
-    openGuideModal();
-  });
-}
-
 function setupAdminControls() {
   const hardResetButton = document.getElementById('btnHardResetApp');
   if (!hardResetButton) return;
@@ -757,6 +674,10 @@ function setActiveTab(tabId, { focus = false } = {}) {
 
   if (nextTabId === 'team') {
     runWhenIdle(() => ensureTeamAdminPageLazy().catch(() => {}))
+  }
+
+  if (nextTabId === 'historik') {
+    runWhenIdle(() => populateRecentCases())
   }
 
   if (focus && typeof nextButton.focus === 'function') {
@@ -5543,7 +5464,6 @@ async function initApp() {
   }
 
   runWhenIdle(() => {
-    setupGuideModal();
     setupAdminControls();
     setupA9Integration();
     ensureTeamAdminPageLazy().catch(() => {});

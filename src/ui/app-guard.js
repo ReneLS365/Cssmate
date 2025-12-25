@@ -106,6 +106,13 @@ function ensureElements () {
   })
 }
 
+function isTeamTabActive () {
+  const panel = mountEl?.closest?.('[data-tab-panel="team"]') || document.getElementById('panel-team')
+  if (!panel) return false
+  if (panel.hasAttribute('hidden') || panel.getAttribute('aria-hidden') === 'true') return false
+  return panel.classList.contains('tab-panel--active') || !panel.hasAttribute('hidden')
+}
+
 function setVisible (visible) {
   ensureElements()
   if (!guardEl) return
@@ -214,6 +221,10 @@ function updateView (state) {
   }
   ensureElements()
   if (!guardEl) return // Guard not mounted (no teamGuardMount element)
+  if (!isTeamTabActive()) {
+    setVisible(false)
+    return
+  }
 
   const membershipStatus = state.membershipStatus || 'loading'
   const accessStatus = state.accessStatus || TEAM_ACCESS_STATUS.LOADING
