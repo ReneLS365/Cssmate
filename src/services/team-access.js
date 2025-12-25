@@ -2,7 +2,7 @@ import { getFirestoreDb, getFirestoreHelpers } from '../../js/shared-firestore.j
 import { formatTeamId, normalizeTeamId } from './team-ids.js'
 import { isTeamDebugEnabled, teamDebug } from '../utils/team-debug.js'
 
-const TEAM_ACCESS_TIMEOUT_MS = 10000
+const TEAM_ACCESS_TIMEOUT_MS = 8000
 const TEAM_ACCESS_CACHE_MS = 30000
 
 const STATUS_VALUES = {
@@ -326,8 +326,16 @@ export async function resolveTeamAccess ({ teamId, user, timeoutMs = TEAM_ACCESS
     return cached
   }
 
+  let timeoutId
+  let timeoutTriggered = false
   const timeoutPromise = new Promise((resolve) => {
-    const timer = setTimeout(() => {
+    timeoutId = setTimeout(() => {
+      timeoutTriggered = true
+      console.warn('[TeamAccess] timeout', {
+        teamId: formatTeamId(teamId),
+        uid: user?.uid || '',
+        phase: source,
+      })
       resolve({
         ...baseResult({ teamId, user, source }),
         status: TEAM_ACCESS_STATUS.ERROR,
@@ -335,13 +343,17 @@ export async function resolveTeamAccess ({ teamId, user, timeoutMs = TEAM_ACCESS
         error: { code: 'deadline-exceeded', message: 'Timeout while checking team access' },
       })
     }, timeoutMs)
-    timer.unref?.()
+    timeoutId?.unref?.()
   })
 
   const access = await Promise.race([
     readTeamAccess({ teamId, user, source }),
     timeoutPromise,
-  ])
+  ]).finally(() => {
+    if (timeoutId && !timeoutTriggered) {
+      clearTimeout(timeoutId)
+    }
+  })
 
   if (allowCache && access.status !== TEAM_ACCESS_STATUS.ERROR) {
     writeCache(access.teamId, access.uid, access)

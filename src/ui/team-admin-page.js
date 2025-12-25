@@ -24,6 +24,8 @@ let teamCopyNameBtn
 let statusEl
 let invitesListEl
 let membersListEl
+let teamStatusControls
+let teamMetaEl
 let inviteEmailInput
 let inviteRoleSelect
 let inviteSubmitButton
@@ -166,6 +168,33 @@ function renderTeamInfo (team) {
   if (teamIdEl) teamIdEl.textContent = team.teamId || ''
 }
 
+function formatInviteCreatedAt (value) {
+  if (!value) return '-'
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toLocaleDateString('da-DK')
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value)
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleDateString('da-DK')
+    }
+    return String(value)
+  }
+  if (typeof value.toDate === 'function') {
+    const parsed = value.toDate()
+    if (parsed instanceof Date && !Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleDateString('da-DK')
+    }
+  }
+  if (typeof value.seconds === 'number') {
+    const parsed = new Date(value.seconds * 1000)
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleDateString('da-DK')
+    }
+  }
+  return '-'
+}
+
 function renderInvites (invites = []) {
   if (!invitesListEl) return
   invitesListEl.textContent = ''
@@ -175,7 +204,8 @@ function renderInvites (invites = []) {
     invitesListEl.appendChild(p)
     return
   }
-  invites.forEach(invite => {
+  invites.forEach(inviteItem => {
+    const invite = inviteItem || {}
     const row = document.createElement('div')
     row.className = 'team-invite-row'
     const label = document.createElement('div')
@@ -183,7 +213,10 @@ function renderInvites (invites = []) {
     let status = invite.status || 'pending'
     if (invite.usedAt) status = 'accepteret'
     else if (invite.active === false) status = 'deaktiveret'
-    label.textContent = `${invite.email || invite.emailLower || ''} · ${invite.role || 'member'} · ${status}`
+    const email = invite.email || invite.emailLower || '–'
+    const role = invite.role || 'member'
+    const createdAtLabel = formatInviteCreatedAt(invite.createdAt || invite.addedAt)
+    label.textContent = `${email} · ${role} · ${status} · Oprettet: ${createdAtLabel}`
     const copyBtn = document.createElement('button')
     copyBtn.type = 'button'
     copyBtn.textContent = 'Kopiér invite-id'
@@ -387,6 +420,16 @@ function toggleAdminControls (enabled) {
   adminLocked = !enabled
   setLoading(loading)
 
+  if (teamStatusControls) {
+    teamStatusControls.hidden = !enabled
+    teamStatusControls.toggleAttribute('aria-hidden', !enabled)
+  }
+
+  if (teamMetaEl) {
+    teamMetaEl.hidden = !enabled
+    teamMetaEl.toggleAttribute('aria-hidden', !enabled)
+  }
+
   // Hide all admin-only actions (invite forms, UID add form)
   const actionSections = teamPanel?.querySelectorAll('.team-admin__actions')
   actionSections?.forEach(section => {
@@ -394,6 +437,13 @@ function toggleAdminControls (enabled) {
     section.hidden = !enabled
     section.toggleAttribute('aria-hidden', !enabled)
     section.classList.toggle('team-admin--locked', !enabled)
+  })
+
+  const adminOnlyFields = teamPanel?.querySelectorAll('.team-admin__actions button, .team-admin__actions input, .team-admin__actions select, .btn-group button')
+  adminOnlyFields?.forEach(field => {
+    if (!field) return
+    field.disabled = !enabled
+    field.tabIndex = enabled ? 0 : -1
   })
 
   // Hide the button group (Opdater, Ret medlemskab) for non-admins
@@ -594,6 +644,8 @@ export function initTeamAdminPage () {
   initialized = true
   teamPanel = document.getElementById('panel-team')
   teamTabButton = document.getElementById('tab-team')
+  teamStatusControls = teamPanel?.querySelector('.team-status-controls') || null
+  teamMetaEl = teamPanel?.querySelector('.team-admin__meta') || null
   teamNameEl = document.getElementById('teamName')
   teamIdEl = document.getElementById('teamId')
   teamCopyIdBtn = document.getElementById('teamCopyId')
