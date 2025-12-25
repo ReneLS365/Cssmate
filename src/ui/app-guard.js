@@ -25,13 +25,16 @@ let resetButton
 let teamInput
 let teamSaveButton
 let debugEl
-let tabPanelsEl
+let mountEl
 let initialized = false
 let pendingRetry = null
 
 function ensureElements () {
   if (guardEl) return
-  tabPanelsEl = document.querySelector('[data-tab-panels]')
+  // Mount guard only in the Team tab's dedicated mount point
+  mountEl = document.getElementById('teamGuardMount')
+  if (!mountEl) return
+
   guardEl = document.createElement('section')
   guardEl.id = 'appAccessGuard'
   guardEl.className = 'card app-guard'
@@ -62,12 +65,7 @@ function ensureElements () {
       <p class="app-guard__debug" id="appGuardDebug"></p>
     </div>
   `
-  const main = document.getElementById('main') || tabPanelsEl?.parentElement || document.body
-  if (main && typeof main.insertBefore === 'function') {
-    main.insertBefore(guardEl, tabPanelsEl || main.firstChild)
-  } else if (document.body && typeof document.body.appendChild === 'function') {
-    document.body.appendChild(guardEl)
-  }
+  mountEl.appendChild(guardEl)
   statusEl = guardEl.querySelector('#appGuardStatus')
   messageEl = guardEl.querySelector('#appGuardMessage')
   teamEl = guardEl.querySelector('#appGuardTeam')
@@ -85,7 +83,7 @@ function ensureElements () {
   bootstrapButton?.addEventListener('click', () => triggerBootstrap())
   resetButton?.addEventListener('click', () => resetAppState({ reload: true }))
   switchTeamButton?.addEventListener('click', () => {
-    setVisible(true, true)
+    setVisible(true)
     if (typeof window !== 'undefined' && typeof window.__cssmateSetActiveTab === 'function') {
       window.__cssmateSetActiveTab('team', { focus: true })
     }
@@ -108,18 +106,11 @@ function ensureElements () {
   })
 }
 
-function setVisible (visible, hidePanels = true) {
+function setVisible (visible) {
   ensureElements()
+  if (!guardEl) return
   guardEl.hidden = !visible
-  if (tabPanelsEl) {
-    if (hidePanels && visible) {
-      tabPanelsEl.setAttribute('hidden', '')
-      tabPanelsEl.setAttribute('aria-hidden', 'true')
-    } else {
-      tabPanelsEl.removeAttribute('hidden')
-      tabPanelsEl.setAttribute('aria-hidden', 'false')
-    }
-  }
+  // Note: We no longer hide/show tab panels globally - guard is now scoped to Team tab only
 }
 
 function scheduleRetry () {
@@ -222,17 +213,19 @@ function updateView (state) {
     return
   }
   ensureElements()
+  if (!guardEl) return // Guard not mounted (no teamGuardMount element)
+
   const membershipStatus = state.membershipStatus || 'loading'
   const accessStatus = state.accessStatus || TEAM_ACCESS_STATUS.LOADING
   const isReady = Boolean(state.sessionReady && accessStatus === TEAM_ACCESS_STATUS.OK)
-  const hidePanels = !isReady
 
   if (isReady) {
     setVisible(false)
     return
   }
 
-  setVisible(true, hidePanels)
+  // Show guard in Team tab only, but don't block other tabs
+  setVisible(true)
   updateGuardContent(state)
   maybeMigrateMemberDoc(state)
 }

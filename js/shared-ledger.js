@@ -650,7 +650,7 @@ export async function deactivateTeamMember(teamId, memberId) {
 }
 
 export async function listTeamMembers(teamId) {
-  const { teamId: resolvedTeamId } = await getTeamContext(teamId, { requireAdmin: true });
+  const { teamId: resolvedTeamId } = await getTeamContext(teamId);
   const db = await getFirestoreDb();
   const sdk = await getFirestoreHelpers();
   const snapshot = await sdk.getDocs(sdk.collection(db, 'teams', resolvedTeamId, 'members'));
