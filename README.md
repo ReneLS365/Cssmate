@@ -39,6 +39,22 @@ CSMate er en letvægtsudgave af den oprindelige Cssmate-applikation, målrettet 
 
 Åbn `http://localhost:4174/debug/material-row-debug.html` under udvikling for at se den rå markup fra optællingsfanens materialerække med identisk styling som appen bruger.
 
+## Performance-profilering (numpad/input)
+
+Kort guide til at finde langsomme tastetryk og render-pukler:
+
+1. Åbn appen lokalt (fx `npm run dev:mat-debug` eller statisk server).
+2. Åbn Chrome DevTools → Performance.
+3. Start profiling og spam numpad i ca. 10 sekunder på **Optælling** og **Løn**.
+4. Notér long tasks (>50ms), top call stacks og render counts for numpad/rows.
+5. Gem screenshots/metrics i `docs/stop-task-report.md` ved performance-arbejde.
+
+## CSP & sikkerheds-headers
+
+- CSP og sikkerheds-headers håndteres i `netlify.toml` under `[[headers]]`.
+- CSP skal være i enforcement mode og tillade Firebase (gstatic + googleapis) samt `esm.sh` til importmap.
+- Når CSP strammes, verificér login + Firestore og at der ikke er CSP-violations i konsollen.
+
 ## Firebase App Check (reCAPTCHA v3)
 
 - Netlify miljøvariabler: `VITE_APP_CHECK_ENABLED=true` og `VITE_FIREBASE_RECAPTCHA_V3_SITE_KEY=<din_site_key>` (indsæt din egen nøgle i Netlify UI).
