@@ -108,6 +108,27 @@ function getFirebaseConfig() {
   return null;
 }
 
+async function loadFirebaseConfigFromFunction() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const response = await fetch('/.netlify/functions/firebase-config', { cache: 'no-store' });
+    if (!response.ok) {
+      console.warn('Kunne ikke hente Firebase konfiguration.');
+      return null;
+    }
+    const config = await response.json();
+    if (!config || typeof config !== 'object') {
+      console.warn('Ugyldigt svar fra Firebase config endpoint.');
+      return null;
+    }
+    window.FIREBASE_CONFIG = config;
+    return config;
+  } catch (error) {
+    console.warn('Kunne ikke hente Firebase konfiguration.', error);
+    return null;
+  }
+}
+
 async function loadFirebaseSdk() {
   if (authModule) return authModule;
   const [{ initializeApp, getApp, getApps }, auth] = await Promise.all([
@@ -204,7 +225,10 @@ function scheduleAppCheckInit(app) {
 }
 
 export async function getFirebaseAppInstance() {
-  const config = getFirebaseConfig();
+  let config = getFirebaseConfig();
+  if (!config || !config.apiKey) {
+    config = await loadFirebaseConfigFromFunction();
+  }
   if (!config) throw new Error('Firebase konfiguration mangler (VITE_FIREBASE_*)');
   const sdk = await loadFirebaseSdk();
   if (!firebaseAppInstance) {
@@ -237,8 +261,13 @@ function setAuthState({ user, error }) {
 export async function initSharedAuth() {
   if (initPromise) return initPromise;
   initPromise = (async () => {
-    const config = getFirebaseConfig();
-    if (!config) {
+    let config = getFirebaseConfig();
+    if (!config || !config.apiKey) {
+      if (!isLocalhost()) {
+        config = await loadFirebaseConfigFromFunction();
+      }
+    }
+    if (!config || !config.apiKey) {
       if (isLocalhost()) {
         useMockAuth = true;
         mockUser = loadMockUser();
