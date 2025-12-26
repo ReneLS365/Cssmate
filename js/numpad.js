@@ -21,6 +21,7 @@ const NUMPAD_ACTIVE_CLASS = 'numpad-target-active'
 const NUMPAD_COMMIT_READY_CLASS = 'numpad-commit--ready'
 const NUMPAD_COMMITTED_CLASS = 'numpad-committed'
 let initialFieldValue = ''
+let displayUpdateFrame = null
 
 function isNumpadOpen () {
   return Boolean(overlay && !overlay.classList.contains('numpad-hidden'))
@@ -248,6 +249,10 @@ function hideNumpad ({ commit = false } = {}) {
   overlay.classList.add('numpad-hidden')
   overlay.setAttribute('aria-hidden', 'true')
   overlay.setAttribute('inert', '')
+  if (displayUpdateFrame) {
+    cancelAnimationFrame(displayUpdateFrame)
+    displayUpdateFrame = null
+  }
   if (overlayHideTimer) {
     clearTimeout(overlayHideTimer)
   }
@@ -365,7 +370,7 @@ function handleKey (key) {
       }
       break
   }
-  updateDisplays()
+  scheduleDisplayUpdate()
 }
 
 function handleOperatorInput (op) {
@@ -409,6 +414,18 @@ function updateDisplays () {
   displayExpr.textContent = expression
   displayCurrent.textContent = formatNumber(currentValue)
   updateCommitButtonState()
+}
+
+function scheduleDisplayUpdate () {
+  if (displayUpdateFrame) return
+  if (typeof requestAnimationFrame !== 'function') {
+    updateDisplays()
+    return
+  }
+  displayUpdateFrame = requestAnimationFrame(() => {
+    displayUpdateFrame = null
+    updateDisplays()
+  })
 }
 
 function updateCommitButtonState () {
