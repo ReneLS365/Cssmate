@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "@fireproof/core": "https://esm.sh/@fireproof/core@0.24.0",
+    "@fireproof/partykit": "https://esm.sh/@fireproof/partykit@0.19.118"
+  }
+}
