@@ -48,6 +48,11 @@ async function clearIndexedDb () {
   }
 }
 
+async function clearOfflineCaches () {
+  await clearServiceWorkers()
+  await clearCaches()
+}
+
 async function clearFirestorePersistence () {
   try {
     const db = await getFirestoreDb()
@@ -86,11 +91,23 @@ export async function resetAppState ({ reload = true } = {}) {
   }
 
   await clearFirestorePersistence()
-  await clearServiceWorkers()
-  await clearCaches()
+  await clearOfflineCaches()
   await clearIndexedDb()
   clearTeamAccessCache()
   clearStorage()
+
+  if (reload) {
+    reloadWithCacheBust()
+  }
+}
+
+export async function resetOfflineCache ({ reload = true, clearIndexedDb: shouldClearIndexedDb = false } = {}) {
+  if (!shouldUseBrowserApis()) return
+
+  await clearOfflineCaches()
+  if (shouldClearIndexedDb) {
+    await clearIndexedDb()
+  }
 
   if (reload) {
     reloadWithCacheBust()

@@ -10,15 +10,29 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid));
     }
 
+    function hasMemberDoc(teamId) {
+      return exists(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid));
+    }
+
+    function isOwner(teamId) {
+      return isSignedIn()
+        && get(/databases/$(database)/documents/teams/$(teamId)).data.ownerUid == request.auth.uid;
+    }
+
     function isMember(teamId) {
       return isSignedIn()
-        && exists(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid))
-        && !(memberDoc(teamId).data.disabled == true);
+        && (
+          isOwner(teamId)
+          || (hasMemberDoc(teamId) && !(memberDoc(teamId).data.disabled == true))
+        );
     }
 
     function isAdmin(teamId) {
-      return isMember(teamId)
-        && (memberDoc(teamId).data.role == 'admin' || memberDoc(teamId).data.role == 'owner');
+      return isSignedIn()
+        && (
+          isOwner(teamId)
+          || (hasMemberDoc(teamId) && (memberDoc(teamId).data.role == 'admin' || memberDoc(teamId).data.role == 'owner'))
+        );
     }
 
     match /users/{uid} {
@@ -39,7 +53,10 @@ service cloud.firestore {
           isAdmin(teamId)
           || (
             request.auth.uid == uid
-            && !exists(/databases/$(database)/documents/teams/$(teamId))
+            && (
+              isOwner(teamId)
+              || !exists(/databases/$(database)/documents/teams/$(teamId))
+            )
           )
         );
         allow update: if isAdmin(teamId);
