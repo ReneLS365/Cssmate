@@ -9,7 +9,6 @@ import { setupNumpad } from './js/numpad.js'
 import { exportMeta, setSlaebFormulaText } from './js/export-meta.js'
 import { buildAkkordData as buildSharedAkkordData } from './js/akkord-data.js'
 import { buildExportModel as buildSharedExportModel } from './js/export-model.js'
-import { convertMontageToDemontage } from './js/akkord-converter.js'
 import { createVirtualMaterialsList } from './src/modules/materialsvirtuallist.js'
 import { initClickGuard } from './src/ui/guards/clickguard.js'
 import { setAdminOk, restoreAdminState, isAdminUnlocked } from './src/state/admin.js'
@@ -23,7 +22,7 @@ import { getAuthIdentity } from './src/auth/auth-provider.js'
 import { applyBuildMetadata, updateCurrentView } from './src/state/debug.js'
 import { initDebugOverlay } from './src/ui/debug-overlay.js'
 import { initAppGuard } from './src/ui/app-guard.js'
-import { resetAppState } from './src/utils/reset-app.js'
+import { resetAppState, resetOfflineCache } from './src/utils/reset-app.js'
 import './boot-inline.js'
 
 if (typeof document !== 'undefined') {
@@ -5288,18 +5287,38 @@ function setupServiceWorkerMessaging() {
   if (!('serviceWorker' in navigator)) return;
   if (navigator.webdriver) return;
   let hasReloaded = false;
+  const RELOAD_KEY = 'cssmate_sw_reloaded';
+
+  const markReloaded = () => {
+    if (hasReloaded) return true;
+    try {
+      if (window.sessionStorage?.getItem(RELOAD_KEY) === '1') {
+        hasReloaded = true;
+        return true;
+      }
+      window.sessionStorage?.setItem(RELOAD_KEY, '1');
+    } catch (error) {
+      // ignore
+    }
+    hasReloaded = true;
+    return false;
+  };
+
+  const triggerReload = () => {
+    if (markReloaded()) return;
+    console.info('Ny version registreret – genindlæser appen.');
+    window.location.reload();
+  };
 
   navigator.serviceWorker.addEventListener('message', event => {
     const messageType = event.data?.type;
     if (messageType === 'CSMATE_UPDATED' || messageType === 'SSCaff_NEW_VERSION') {
-      window.location.reload();
+      triggerReload();
     }
   });
 
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (hasReloaded) return;
-    hasReloaded = true;
-    window.location.reload();
+    triggerReload();
   });
 }
 
@@ -5475,6 +5494,22 @@ async function hardResetApp() {
   await resetAppState({ reload: true });
 }
 
+function setupOfflineCacheReset() {
+  const button = document.getElementById('btnResetOfflineCache');
+  if (!button) return;
+  button.addEventListener('click', async () => {
+    const shouldClearDb = typeof window !== 'undefined'
+      ? window.confirm('Slet også lokalt lagrede data (IndexedDB)?\nDette fjerner offline-data og kræver ny login.')
+      : false;
+    button.disabled = true;
+    try {
+      await resetOfflineCache({ reload: true, clearIndexedDb: shouldClearDb });
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
 
 // --- Initialization ---
 let appInitialized = false;
@@ -5571,6 +5606,7 @@ async function initApp() {
     setupNumpad();
     setupMobileKeyboardDismissal();
     setupLazyExportPanelTriggers();
+    setupOfflineCacheReset();
   });
   runWhenIdle(() => {
     setupServiceWorkerMessaging();

@@ -151,6 +151,15 @@ function registerServiceWorker() {
 
     navigator.serviceWorker.register(swUrl.href, { scope })
       .then(registration => {
+        const tryActivateWaiting = () => {
+          const hasController = Boolean(navigator.serviceWorker?.controller);
+          if (registration.waiting && hasController) {
+            registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+          }
+        };
+
+        tryActivateWaiting();
+
         registration.addEventListener('updatefound', () => {
           const newWorker = registration.installing;
           if (!newWorker) return;
