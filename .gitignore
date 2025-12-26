@@ -5,3 +5,6 @@ playwright-report/
 test-results/
 playwright/.cache/
 .lighthouseci/
+
+# Generated Firebase config (contains env-injected values)
+js/firebase-env.js

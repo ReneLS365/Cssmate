@@ -7,7 +7,6 @@ const optional = ['VITE_FIREBASE_STORAGE_BUCKET', 'VITE_FIREBASE_MESSAGING_SENDE
 const appCheckEnvKey = 'VITE_FIREBASE_RECAPTCHA_V3_SITE_KEY'
 const deprecatedAppCheckEnvKey = 'VITE_FIREBASE_APP_CHECK_SITE_KEY'
 const appCheckEnabledEnvKey = 'VITE_APP_CHECK_ENABLED'
-const appCheckFallbackKey = '6LfFeS8sAAAAAH9hsS136zJ6YOQkpRZKniSIIYYI'
 const adminEmailsEnvKey = 'VITE_ADMIN_EMAILS'
 const defaultAdminEmails = ['mr.lion1995@gmail.com']
 
@@ -18,7 +17,7 @@ if (missing.length) {
 }
 
 if (!process.env[appCheckEnvKey]) {
-  console.warn('[firebase-env] Missing environment variable VITE_FIREBASE_RECAPTCHA_V3_SITE_KEY, using fallback (reCAPTCHA v3).')
+  console.warn('[firebase-env] Missing environment variable VITE_FIREBASE_RECAPTCHA_V3_SITE_KEY. App Check will be disabled unless the key is set.')
 }
 
 const keyMap = {
@@ -43,7 +42,7 @@ const providers = (process.env.VITE_FIREBASE_AUTH_PROVIDERS || 'google')
   .map((entry) => entry.trim())
   .filter(Boolean)
 
-const appCheckSiteKey = process.env[appCheckEnvKey] || process.env[deprecatedAppCheckEnvKey] || appCheckFallbackKey
+const appCheckSiteKey = process.env[appCheckEnvKey] || process.env[deprecatedAppCheckEnvKey] || ''
 const appCheckEnabledRaw = process.env[appCheckEnabledEnvKey]
 const appCheckEnabled = typeof appCheckEnabledRaw === 'string' ? appCheckEnabledRaw : 'true'
 const adminEmails = (process.env[adminEmailsEnvKey] || '')
