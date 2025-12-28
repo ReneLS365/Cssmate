@@ -1,0 +1,45 @@
+name: lighthouse
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Start preview server
+        run: npm run preview &
+
+      - name: Wait for preview
+        run: |
+          node -e "const http=require('http');const url='http://127.0.0.1:4173';const timeout=60000;const start=Date.now();(function check(){http.get(url,res=>{res.resume();console.log('Preview ready');}).on('error',()=>{if(Date.now()-start>timeout){console.error('Preview not ready');process.exit(1);}setTimeout(check,1000);});})();"
+
+      - name: Run Lighthouse (mobile)
+        run: npm run lh:mobile
+
+      - name: Enforce Lighthouse thresholds
+        run: node tools/check-lighthouse-perfect.mjs
+
+      - name: Upload Lighthouse report
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-mobile
+          path: reports/lighthouse/mobile.json
