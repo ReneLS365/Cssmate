@@ -6,6 +6,10 @@ on:
       - main
   pull_request:
 
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   lighthouse:
     runs-on: ubuntu-latest
@@ -26,11 +30,13 @@ jobs:
         run: npm run build
 
       - name: Start preview server
-        run: npm run preview &
+        run: |
+          nohup npm run preview -- --host 127.0.0.1 --port 4173 > preview.log 2>&1 &
+          sleep 1
+          cat preview.log || true
 
       - name: Wait for preview
-        run: |
-          node -e "const http=require('http');const url='http://127.0.0.1:4173';const timeout=60000;const start=Date.now();(function check(){http.get(url,res=>{res.resume();console.log('Preview ready');}).on('error',()=>{if(Date.now()-start>timeout){console.error('Preview not ready');process.exit(1);}setTimeout(check,1000);});})();"
+        run: node tools/wait-for-url.mjs http://127.0.0.1:4173 120000
 
       - name: Run Lighthouse (mobile)
         run: npm run lh:mobile
