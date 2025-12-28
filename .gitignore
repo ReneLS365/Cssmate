@@ -8,3 +8,6 @@ playwright/.cache/
 
 # Generated Firebase config (contains env-injected values)
 js/firebase-env.js
+
+# Local Netlify folder
+.netlify
