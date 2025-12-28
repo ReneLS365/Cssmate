@@ -33,8 +33,14 @@ const listeners = new Set()
 const waiters = new Set()
 const TEAM_LOCK_KEY = 'sscaff.team.locked'
 let teamLockedFlag = loadTeamLock()
-const BOOTSTRAP_FLAG_PREFIX = 'sscaff.bootstrapDone:'
-const bootstrapMemory = new Set()
+const bootstrapRunsByUid = new Set()
+let lastAuthUid = null
+const defaultDeps = {
+  guardTeamAccess,
+  getAuthContext,
+}
+let guardTeamAccessFn = defaultDeps.guardTeamAccess
+let getAuthContextFn = defaultDeps.getAuthContext
 
 function loadTeamLock () {
   if (typeof window === 'undefined') return false
@@ -50,29 +56,6 @@ function persistTeamLock (locked) {
   try {
     if (locked) window.localStorage?.setItem(TEAM_LOCK_KEY, '1')
     else window.localStorage?.removeItem(TEAM_LOCK_KEY)
-  } catch {}
-}
-
-function hasBootstrapRun (uid) {
-  if (!uid) return false
-  if (bootstrapMemory.has(uid)) return true
-  if (typeof window === 'undefined') return false
-  try {
-    const flag = window.sessionStorage?.getItem(`${BOOTSTRAP_FLAG_PREFIX}${uid}`)
-    if (flag === '1') {
-      bootstrapMemory.add(uid)
-      return true
-    }
-  } catch {}
-  return bootstrapMemory.has(uid)
-}
-
-function markBootstrapRun (uid) {
-  if (!uid) return
-  bootstrapMemory.add(uid)
-  if (typeof window === 'undefined') return
-  try {
-    window.sessionStorage?.setItem(`${BOOTSTRAP_FLAG_PREFIX}${uid}`, '1')
   } catch {}
 }
 
@@ -174,8 +157,16 @@ function canBootstrap (user, teamId) {
     && normalizeTeamId(teamId || preferredTeamSlug) === normalizeTeamId(DEFAULT_TEAM_SLUG)
 }
 
+function markBootstrapRun (uid) {
+  if (uid) bootstrapRunsByUid.add(uid)
+}
+
+function clearBootstrapRun (uid) {
+  if (uid) bootstrapRunsByUid.delete(uid)
+}
+
 async function evaluateAccess ({ allowBootstrap = false } = {}) {
-  const auth = getAuthContext()
+  const auth = getAuthContextFn()
   if (!auth?.isAuthenticated || !auth.user) {
     resetUserState()
     setState(buildState({ status: SESSION_STATUS.SIGNED_OUT, message: 'Log ind for at fortsætte' }))
@@ -205,10 +196,14 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
 
   accessInFlight = (async () => {
     const bootstrapEligible = canBootstrap(auth.user, formattedTeam)
-    const bootstrapAlreadyRan = hasBootstrapRun(auth.user.uid)
-    const allowBootstrapAccess = Boolean((allowBootstrap || bootstrapEligible) && !bootstrapAlreadyRan)
+    const currentUid = auth.user.uid || ''
+    const bootstrapAlreadyRun = currentUid ? bootstrapRunsByUid.has(currentUid) : false
+    const allowBootstrapAccess = Boolean((allowBootstrap || bootstrapEligible) && !bootstrapAlreadyRun)
+    if (allowBootstrapAccess && bootstrapEligible) {
+      markBootstrapRun(currentUid)
+    }
     try {
-      const access = await guardTeamAccess(formattedTeam, auth.user, { allowBootstrap: allowBootstrapAccess })
+      const access = await guardTeamAccessFn(formattedTeam, auth.user, { allowBootstrap: allowBootstrapAccess })
       const isAdmin = access.role === 'admin'
       const membership = access.membership
       const resolvedTeamId = formatTeamId(access.teamId || formattedTeam)
@@ -224,9 +219,6 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
         teamId: resolvedTeamId,
         role: membership?.role || access.role,
       })
-      if (membership?.bootstrapCreated) {
-        markBootstrapRun(auth.user.uid)
-      }
       const nextMembershipStatus = membership?.active === false ? 'error' : 'member'
       return setState({
         status: isAdmin ? SESSION_STATUS.ADMIN : SESSION_STATUS.MEMBER,
@@ -274,7 +266,7 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
         hasAccess: false,
         teamId: targetTeamId,
         displayTeamId: nextDisplayTeamId,
-        bootstrapAvailable: bootstrapAvailable && noAccessError && !bootstrapAlreadyRan,
+        bootstrapAvailable: bootstrapAvailable && noAccessError,
         teamResolved: true,
         memberExists: inactiveMember ? true : false,
         memberActive: inactiveMember ? false : null,
@@ -319,6 +311,8 @@ function handleAuthChange (context) {
   }
 
   if (!context.isAuthenticated) {
+    clearBootstrapRun(lastAuthUid)
+    lastAuthUid = null
     resetUserState()
     setState(buildState({
       status: SESSION_STATUS.SIGNED_OUT,
@@ -337,6 +331,7 @@ function handleAuthChange (context) {
   }
 
   const requiresVerification = Boolean(context.requiresVerification && usesPassword)
+  lastAuthUid = context.user?.uid || null
   const baseState = setState({
     authReady: true,
     user: context.user,
@@ -471,6 +466,16 @@ function getSessionApi () {
   }
 }
 
+function __setSessionDepsForTest (overrides = {}) {
+  if (overrides.reset) {
+    guardTeamAccessFn = defaultDeps.guardTeamAccess
+    getAuthContextFn = defaultDeps.getAuthContext
+    return
+  }
+  if (overrides.guardTeamAccess) guardTeamAccessFn = overrides.guardTeamAccess
+  if (overrides.getAuthContext) getAuthContextFn = overrides.getAuthContext
+}
+
 export {
   initAuthSession,
   getState,
@@ -481,4 +486,5 @@ export {
   requestBootstrapAccess,
   refreshAccess,
   SESSION_STATUS,
+  __setSessionDepsForTest,
 }
