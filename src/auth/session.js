@@ -35,6 +35,7 @@ const TEAM_LOCK_KEY = 'sscaff.team.locked'
 let teamLockedFlag = loadTeamLock()
 const BOOTSTRAP_FLAG_PREFIX = 'sscaff.bootstrapDone:'
 const bootstrapMemory = new Set()
+let lastBootstrapUid = null
 
 function loadTeamLock () {
   if (typeof window === 'undefined') return false
@@ -73,6 +74,15 @@ function markBootstrapRun (uid) {
   if (typeof window === 'undefined') return
   try {
     window.sessionStorage?.setItem(`${BOOTSTRAP_FLAG_PREFIX}${uid}`, '1')
+  } catch {}
+}
+
+function clearBootstrapRun (uid) {
+  if (!uid) return
+  bootstrapMemory.delete(uid)
+  if (typeof window === 'undefined') return
+  try {
+    window.sessionStorage?.removeItem(`${BOOTSTRAP_FLAG_PREFIX}${uid}`)
   } catch {}
 }
 
@@ -319,6 +329,8 @@ function handleAuthChange (context) {
   }
 
   if (!context.isAuthenticated) {
+    clearBootstrapRun(lastBootstrapUid)
+    lastBootstrapUid = null
     resetUserState()
     setState(buildState({
       status: SESSION_STATUS.SIGNED_OUT,
@@ -334,6 +346,10 @@ function handleAuthChange (context) {
       membershipCheckTeamId: '',
     }))
     return
+  }
+
+  if (context?.user?.uid && context.user.uid !== lastBootstrapUid) {
+    lastBootstrapUid = context.user.uid
   }
 
   const requiresVerification = Boolean(context.requiresVerification && usesPassword)
