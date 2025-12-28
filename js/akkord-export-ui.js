@@ -39,7 +39,7 @@ function downloadBlob(blob, fileName) {
   if (!a) return;
   a.href = url;
   a.download = typeof fileName === 'string' && fileName.trim() ? fileName : 'download';
-  a.rel = 'noopener';
+  a.rel = 'noopener noreferrer';
   if (document.body?.appendChild) {
     document.body.appendChild(a);
   }

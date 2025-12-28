@@ -139,6 +139,10 @@ function registerServiceWorker() {
   }
 
   const searchParams = new URLSearchParams(window.location.search || '');
+  if (window.CSSMATE_IS_CI === true) {
+    console.info('Service worker registration skipped in CI');
+    return;
+  }
   if (searchParams.has('no-sw')) {
     console.info('Service worker registration skipped via no-sw flag');
     return;

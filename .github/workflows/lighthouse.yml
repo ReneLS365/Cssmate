@@ -1,0 +1,51 @@
+name: lighthouse
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Start preview server
+        run: |
+          nohup npm run preview -- --host 127.0.0.1 --port 4173 > preview.log 2>&1 &
+          sleep 1
+          cat preview.log || true
+
+      - name: Wait for preview
+        run: node tools/wait-for-url.mjs http://127.0.0.1:4173 120000
+
+      - name: Run Lighthouse (mobile)
+        run: npm run lh:mobile
+
+      - name: Enforce Lighthouse thresholds
+        run: node tools/check-lighthouse-perfect.mjs
+
+      - name: Upload Lighthouse report
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-mobile
+          path: reports/lighthouse/mobile.json

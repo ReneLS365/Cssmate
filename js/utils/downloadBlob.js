@@ -6,7 +6,7 @@ export function downloadBlob(blob, filename) {
   if (!link || typeof link.style === 'undefined') return;
   link.href = url;
   link.download = safeName;
-  link.rel = 'noopener';
+  link.rel = 'noopener noreferrer';
   link.style.display = 'none';
 
   const root = document.body || document.documentElement;
