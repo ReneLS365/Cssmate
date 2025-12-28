@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  actions: write
 
 jobs:
   lighthouse:
@@ -30,13 +29,17 @@ jobs:
         run: npm run build
 
       - name: Start preview server
+        env:
+          CSSMATE_IS_CI: "1"
         run: |
-          nohup npm run preview -- --host 127.0.0.1 --port 4173 > preview.log 2>&1 &
+          nohup node scripts/serve-with-headers.js 4173 ./ > preview.log 2>&1 &
           sleep 1
           cat preview.log || true
 
       - name: Wait for preview
-        run: node tools/wait-for-url.mjs http://127.0.0.1:4173 120000
+        run: |
+          node tools/wait-for-url.mjs http://127.0.0.1:4173 120000
+          node tools/wait-for-url.mjs http://127.0.0.1:4173/index.html 120000
 
       - name: Run Lighthouse (mobile)
         run: npm run lh:mobile

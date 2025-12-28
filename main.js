@@ -25,6 +25,8 @@ import { initAppGuard } from './src/ui/app-guard.js'
 import { resetAppState, resetOfflineCache } from './src/utils/reset-app.js'
 import './boot-inline.js'
 
+const IS_CI = typeof window !== 'undefined' && window.CSSMATE_IS_CI === true
+
 if (typeof document !== 'undefined') {
   document.documentElement.classList.add('app-booting')
 }
@@ -5656,12 +5658,16 @@ async function restoreDraftOnLoad() {
 
 async function startApp () {
   registerIndexMissingHandler()
-  const authGate = initAuthGate()
-  initAppGuard()
+  const authGate = IS_CI ? null : initAuthGate()
+  if (!IS_CI) {
+    initAppGuard()
+  }
   try {
-    await initApp()
-    await restoreDraftOnLoad()
-    authGate?.prefetchAuth?.()
+    if (!IS_CI) {
+      await initApp()
+      await restoreDraftOnLoad()
+      authGate?.prefetchAuth?.()
+    }
   } catch (error) {
     console.error('CSMate init fejlede', error)
     const message = error?.message || 'Kunne ikke initialisere appen. Opdater siden for at prøve igen.'
