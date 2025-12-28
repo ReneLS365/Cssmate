@@ -45,8 +45,6 @@ export function initMaterialsScrollLock (root = document) {
     }
   }
 
-  const canScroll = () => container.scrollHeight > container.clientHeight
-
   const handleTouchStart = () => {
     const max = Math.max(0, container.scrollHeight - container.clientHeight)
     if (container.scrollTop <= 0 && max > 0) {
@@ -56,34 +54,18 @@ export function initMaterialsScrollLock (root = document) {
     }
   }
 
-  const handleTouchMove = event => {
-    if (!canScroll()) return
-    const atTop = container.scrollTop <= 0
-    const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight
-    if (atTop || atBottom) {
-      event.preventDefault()
-    }
-  }
-
-  const handleWheel = event => {
-    if (!canScroll()) return
-    const delta = Math.sign(event.deltaY)
-    if (delta === 0) return
-    const atTop = container.scrollTop <= 0
-    const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight
-    if ((delta < 0 && atTop) || (delta > 0 && atBottom)) {
-      event.preventDefault()
-      event.stopPropagation()
-    }
-  }
-
   const handleResize = () => {
     lockWithinBounds()
   }
 
+  if (!container.style.overscrollBehavior) {
+    container.style.overscrollBehavior = 'contain'
+  }
+  if (!container.style.touchAction) {
+    container.style.touchAction = 'pan-y'
+  }
+
   container.addEventListener('touchstart', handleTouchStart, { passive: true })
-  container.addEventListener('touchmove', handleTouchMove, { passive: false })
-  container.addEventListener('wheel', handleWheel, { passive: false })
   window.addEventListener('resize', handleResize)
 
   initializedContainers.add(container)

@@ -45,7 +45,8 @@ function injectCiFlag (html) {
 }
 
 function safeResolve (filePath) {
-  const resolved = path.resolve(DIR, filePath);
+  const normalized = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+  const resolved = path.resolve(DIR, normalized);
   return resolved.startsWith(DIR) ? resolved : null;
 }
 

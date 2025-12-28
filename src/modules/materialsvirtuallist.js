@@ -133,7 +133,7 @@ export function createVirtualMaterialsList ({
     container.innerHTML = ''
   }
 
-  container.addEventListener('scroll', onScroll)
+  container.addEventListener('scroll', onScroll, { passive: true })
 
   setItems(state.items)
 
