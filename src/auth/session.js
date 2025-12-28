@@ -33,6 +33,8 @@ const listeners = new Set()
 const waiters = new Set()
 const TEAM_LOCK_KEY = 'sscaff.team.locked'
 let teamLockedFlag = loadTeamLock()
+const bootstrapRunsByUid = new Set()
+let lastAuthUid = null
 const defaultDeps = {
   guardTeamAccess,
   getAuthContext,
@@ -155,6 +157,14 @@ function canBootstrap (user, teamId) {
     && normalizeTeamId(teamId || preferredTeamSlug) === normalizeTeamId(DEFAULT_TEAM_SLUG)
 }
 
+function markBootstrapRun (uid) {
+  if (uid) bootstrapRunsByUid.add(uid)
+}
+
+function clearBootstrapRun (uid) {
+  if (uid) bootstrapRunsByUid.delete(uid)
+}
+
 async function evaluateAccess ({ allowBootstrap = false } = {}) {
   const auth = getAuthContextFn()
   if (!auth?.isAuthenticated || !auth.user) {
@@ -186,7 +196,12 @@ async function evaluateAccess ({ allowBootstrap = false } = {}) {
 
   accessInFlight = (async () => {
     const bootstrapEligible = canBootstrap(auth.user, formattedTeam)
-    const allowBootstrapAccess = Boolean(allowBootstrap || bootstrapEligible)
+    const currentUid = auth.user.uid || ''
+    const bootstrapAlreadyRun = currentUid ? bootstrapRunsByUid.has(currentUid) : false
+    const allowBootstrapAccess = Boolean((allowBootstrap || bootstrapEligible) && !bootstrapAlreadyRun)
+    if (allowBootstrapAccess && bootstrapEligible) {
+      markBootstrapRun(currentUid)
+    }
     try {
       const access = await guardTeamAccessFn(formattedTeam, auth.user, { allowBootstrap: allowBootstrapAccess })
       const isAdmin = access.role === 'admin'
@@ -296,6 +311,8 @@ function handleAuthChange (context) {
   }
 
   if (!context.isAuthenticated) {
+    clearBootstrapRun(lastAuthUid)
+    lastAuthUid = null
     resetUserState()
     setState(buildState({
       status: SESSION_STATUS.SIGNED_OUT,
@@ -314,6 +331,7 @@ function handleAuthChange (context) {
   }
 
   const requiresVerification = Boolean(context.requiresVerification && usesPassword)
+  lastAuthUid = context.user?.uid || null
   const baseState = setState({
     authReady: true,
     user: context.user,
