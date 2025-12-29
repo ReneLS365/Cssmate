@@ -409,6 +409,7 @@ let materialsDataPromise = null
 let materialsUiReadyPromise = null
 let materialsWarmupScheduled = false
 let tabPanelHeightLocked = false
+let a9IntegrationInitialized = false
 
 function ensureMaterialsDataLoad () {
   if (!materialsDataPromise) {
@@ -790,6 +791,10 @@ function setActiveTab(tabId, { focus = false } = {}) {
 
   if (nextTabId === 'lon') {
     ensureWorkersInitialized();
+    if (!a9IntegrationInitialized) {
+      a9IntegrationInitialized = true;
+      setupA9Integration();
+    }
   }
 
   if (nextTabId === 'delte-sager') {
@@ -5638,7 +5643,6 @@ async function initApp() {
 
   runWhenIdle(() => {
     setupAdminControls();
-    setupA9Integration();
     ensureTeamAdminPageLazy().catch(() => {});
   });
 
