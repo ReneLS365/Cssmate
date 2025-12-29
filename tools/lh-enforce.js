@@ -24,7 +24,8 @@ try {
   process.exit(1);
 }
 
-const performanceMin = Number(process.env.CSSMATE_LH_PERF_MIN ?? 0.9);
+const performanceMinPercent = Number(process.env.CSSMATE_LH_PERF_MIN ?? 90);
+const performanceMin = performanceMinPercent / 100;
 const thresholds = {
   performance: { min: performanceMin },
   accessibility: { min: 0.95 },
