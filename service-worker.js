@@ -9,7 +9,7 @@ if (versionScriptUrl) {
 importScripts('/js/version.js')
 }
 
-const CACHE_VERSION = 'sscaff-v-20251229174452930' // bumped for always-latest deploy flow
+const CACHE_VERSION = 'sscaff-v-20251229194511241' // bumped for always-latest deploy flow
 const RESOLVED_CACHE_VERSION = (typeof self !== 'undefined' && self.CSSMATE_BUILD_META?.cacheKey) ? self.CSSMATE_BUILD_META.cacheKey : CACHE_VERSION
 const CACHE_NAME = 'sscaff-' + RESOLVED_CACHE_VERSION
 const PRECACHE_URLS = [
@@ -17,6 +17,7 @@ const PRECACHE_URLS = [
   '/index.html',
   '/main.js',
   '/main.min.js',
+  '/app-main.js',
   '/js/firebase-env.js',
   '/js/importmap.json',
   '/boot-inline.js',
