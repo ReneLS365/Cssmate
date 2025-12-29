@@ -209,11 +209,11 @@ async function initAuthGateLazy () {
 function warmupAuthProvider () {
   return ensureAuthProviderModule()
     .then(mod => {
-      cachedAuthIdentity = mod?.getAuthIdentity?.() || cachedAuthIdentity
+      cachedAuthIdentity = mod?.getAuthIdentity?.() ?? null
       if (!authProviderSubscribed && typeof mod?.onChange === 'function') {
         authProviderSubscribed = true
         mod.onChange(() => {
-          cachedAuthIdentity = mod?.getAuthIdentity?.() || cachedAuthIdentity
+          cachedAuthIdentity = mod?.getAuthIdentity?.() ?? null
         })
       }
       return mod
