@@ -278,6 +278,7 @@ export async function initSharedAuth() {
       return null;
     }
     try {
+      warnIfUnauthorizedHost(config);
       const app = await getFirebaseAppInstance();
       const sdk = await loadFirebaseSdk();
       authInstance = sdk.getAuth(app);
@@ -290,7 +291,7 @@ export async function initSharedAuth() {
       try {
         await sdk.getRedirectResult(authInstance);
       } catch (error) {
-        console.warn('Redirect login mislykkedes', error);
+        logAuthError('redirectResult', error);
       }
       setAuthState({ user: authInstance.currentUser, error: null });
       return authInstance;
@@ -376,6 +377,58 @@ function shouldFallbackToRedirect(error) {
   return code.includes('popup') || code === 'auth/cancelled-popup-request' || code === 'auth/popup-closed-by-user';
 }
 
+function shouldPreferRedirect() {
+  if (typeof window === 'undefined') return false;
+  const coarsePointer = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+  const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+  const isMobileAgent = /android|iphone|ipad|ipod/i.test(userAgent);
+  return coarsePointer || isMobileAgent;
+}
+
+function buildAuthHint(error) {
+  const code = error?.code || '';
+  if (code.includes('popup')) {
+    return 'Popup blev blokeret. Prøv igen eller brug redirect-login.';
+  }
+  if (code === 'auth/unauthorized-domain') {
+    return 'Domænet er ikke godkendt i Firebase Auth.';
+  }
+  if (code === 'auth/internal-error') {
+    return 'Der opstod en intern login-fejl. Prøv igen.';
+  }
+  return 'Tjek netværk og prøv igen.';
+}
+
+function logAuthError(context, error) {
+  if (!error) return;
+  console.warn('Auth fejl', {
+    context,
+    code: error?.code || '',
+    message: error?.message || '',
+    customData: error?.customData || null,
+    origin: typeof window !== 'undefined' ? window.location?.origin : '',
+  });
+}
+
+function normalizeHost(host) {
+  if (!host || typeof host !== 'string') return '';
+  return host.replace(/^https?:\/\//, '').trim();
+}
+
+function warnIfUnauthorizedHost(config) {
+  if (typeof window === 'undefined') return;
+  const authDomain = normalizeHost(config?.authDomain);
+  const currentHost = normalizeHost(window.location?.host || '');
+  const extra = readEnvValue('VITE_FIREBASE_AUTH_ALLOWED_HOSTS') || (typeof window !== 'undefined' ? window.FIREBASE_AUTH_ALLOWED_HOSTS : '');
+  const allowlist = new Set([authDomain, currentHost].filter(Boolean));
+  if (typeof extra === 'string' && extra.trim()) {
+    extra.split(',').map(entry => normalizeHost(entry)).filter(Boolean).forEach(entry => allowlist.add(entry));
+  }
+  if (currentHost && authDomain && !allowlist.has(currentHost)) {
+    console.warn('Firebase Auth domæne mismatch', { authDomain, currentHost, allowlist: Array.from(allowlist) });
+  }
+}
+
 export async function loginWithProvider(providerId) {
   await initSharedAuth();
   if (useMockAuth) {
@@ -396,15 +449,22 @@ export async function loginWithProvider(providerId) {
   const provider = getProvider(providerId);
   provider.setCustomParameters?.({ prompt: 'select_account' });
   try {
+    if (shouldPreferRedirect()) {
+      await authModule.signInWithRedirect(authInstance, provider);
+      return;
+    }
     await authModule.signInWithPopup(authInstance, provider);
   } catch (error) {
-    console.warn('Popup login fejlede, prøver redirect', error);
+    logAuthError('loginWithProvider', error);
     if (shouldFallbackToRedirect(error)) {
       await authModule.signInWithRedirect(authInstance, provider);
       return;
     }
     setAuthState({ user: null, error });
-    throw error;
+    const loginError = new Error(buildAuthHint(error));
+    loginError.code = error?.code;
+    loginError.original = error;
+    throw loginError;
   }
 }
 

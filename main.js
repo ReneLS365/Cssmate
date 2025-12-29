@@ -21,7 +21,15 @@ import { applyBuildMetadata, isDebugOverlayEnabled, updateCurrentView } from './
 import { resetAppState, resetOfflineCache } from './src/utils/reset-app.js'
 import './boot-inline.js'
 
-const IS_CI = typeof window !== 'undefined' && window.CSSMATE_IS_CI === true
+function readCiFlag () {
+  if (typeof document !== 'undefined') {
+    const meta = document.querySelector('meta[name="cssmate-is-ci"]')
+    if (meta?.getAttribute('content') === '1') return true
+  }
+  return typeof window !== 'undefined' && window.CSSMATE_IS_CI === true
+}
+
+const IS_CI = readCiFlag()
 
 if (typeof document !== 'undefined') {
   document.documentElement.classList.add('app-booting')

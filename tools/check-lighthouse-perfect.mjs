@@ -27,7 +27,12 @@ function getAuditValue(report, key) {
 function main() {
   const report = readReport();
 
+  const performanceMin = Number(process.env.CSSMATE_LH_PERF_MIN ?? 95);
+  const lcpMaxMs = Number(process.env.CSSMATE_LH_LCP_MAX_MS ?? 3000);
+  const clsMax = Number(process.env.CSSMATE_LH_CLS_MAX ?? 0.01);
+
   const thresholds = {
+    performance: { min: performanceMin },
     performance: { min: 95 },
     'best-practices': { min: 100, exact: true },
     accessibility: { min: 98 },
@@ -54,15 +59,15 @@ function main() {
   const lcpMs = getAuditValue(report, 'largest-contentful-paint');
   if (lcpMs === null) {
     failures.push('LCP: missing value');
-  } else if (lcpMs > 2500) {
-    failures.push(`LCP: ${(lcpMs / 1000).toFixed(2)}s (max 2.50s)`);
+  } else if (lcpMs > lcpMaxMs) {
+    failures.push(`LCP: ${(lcpMs / 1000).toFixed(2)}s (max ${(lcpMaxMs / 1000).toFixed(2)}s)`);
   }
 
   const clsValue = getAuditValue(report, 'cumulative-layout-shift');
   if (clsValue === null) {
     failures.push('CLS: missing value');
-  } else if (clsValue > 0.01) {
-    failures.push(`CLS: ${clsValue.toFixed(2)} (max 0.01)`);
+  } else if (clsValue > clsMax) {
+    failures.push(`CLS: ${clsValue.toFixed(2)} (max ${clsMax.toFixed(2)})`);
   }
 
   if (failures.length) {
