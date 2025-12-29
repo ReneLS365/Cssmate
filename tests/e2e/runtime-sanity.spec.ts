@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test'
+import { createConsoleCollector } from './helpers/console-collector'
 
-test('runtime sanity check', async ({ page }) => {
+test('runtime sanity check', async ({ page }, testInfo) => {
+  const collector = createConsoleCollector(page)
   const pageErrors: string[] = []
   const consoleErrors: string[] = []
   const responseErrors: string[] = []
@@ -28,10 +30,14 @@ test('runtime sanity check', async ({ page }) => {
     }
   })
 
-  await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await page.waitForLoadState('networkidle')
+  try {
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    await page.waitForLoadState('networkidle')
 
-  expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([])
-  expect(consoleErrors, `Console errors: ${consoleErrors.join(' | ')}`).toEqual([])
-  expect(responseErrors, `Critical response errors: ${responseErrors.join(' | ')}`).toEqual([])
+    expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([])
+    expect(consoleErrors, `Console errors: ${consoleErrors.join(' | ')}`).toEqual([])
+    expect(responseErrors, `Critical response errors: ${responseErrors.join(' | ')}`).toEqual([])
+  } finally {
+    await collector.attachIfFailed(testInfo)
+  }
 })

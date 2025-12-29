@@ -2,6 +2,7 @@ import { getAuthContext, onAuthStateChange, waitForAuthReady } from '../../js/sh
 import { normalizeEmail } from './roles.js'
 import { setLastFirestoreError, updateSessionDebugState } from '../state/debug.js'
 import { markUserLoading, resetUserState, setUserLoadedState } from '../state/user-store.js'
+import { resolveMembershipStatus, resolveSessionStatus, SESSION_STATUS } from './access-state.js'
 import {
   BOOTSTRAP_ADMIN_EMAIL,
   DEFAULT_TEAM_SLUG,
@@ -14,15 +15,6 @@ import {
 import { buildMemberDocPath, ensureUserDoc } from '../services/teams.js'
 import { TEAM_ACCESS_STATUS, clearTeamAccessCache, createTeamWithMembership, getTeamAccessWithTimeout } from '../services/team-access.js'
 import { teamDebug } from '../utils/team-debug.js'
-
-const SESSION_STATUS = {
-  SIGNED_OUT: 'signedOut',
-  SIGNING_IN: 'signingIn',
-  NO_ACCESS: 'signedIn_noAccess',
-  MEMBER: 'signedIn_member',
-  ADMIN: 'signedIn_admin',
-  ERROR: 'error',
-}
 
 let initialized = false
 let preferredTeamSlug = normalizeTeamId(getStoredTeamId() || DEFAULT_TEAM_SLUG)
@@ -210,7 +202,11 @@ function resolveAccessMessage (accessStatus, displayTeamId, accessError, memberD
     if (accessDetail?.reason === 'not-assigned') return 'Du er ikke tildelt dette team. Kontakt admin.'
     return `Du er logget ind, men har ikke adgang til ${displayTeamId}. Kontakt admin.`
   }
-  if (accessStatus === TEAM_ACCESS_STATUS.ERROR && accessError?.message) return accessError.message
+  if (accessStatus === TEAM_ACCESS_STATUS.ERROR) {
+    if (accessError?.code === 'offline') return 'Du er offline. Tjek netværket og prøv igen.'
+    if (accessError?.code === 'deadline-exceeded' || accessError?.code === 'timeout') return 'Adgangstjek tog for lang tid. Prøv igen.'
+    if (accessError?.message) return accessError.message
+  }
   return 'Ingen adgang til teamet.'
 }
 
@@ -275,22 +271,8 @@ async function evaluateAccess () {
     const memberActive = memberExists ? (owner ? true : member?.active !== false) : null
     const memberAssigned = memberExists ? (owner ? true : accessResult?.assigned !== false && member?.assigned !== false) : null
     const isAdmin = Boolean(owner || role === 'admin')
-    const membershipStatus = accessStatus === TEAM_ACCESS_STATUS.OK
-      ? 'member'
-      : accessStatus === TEAM_ACCESS_STATUS.NO_TEAM || accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE
-        ? 'no_team'
-        : accessStatus === TEAM_ACCESS_STATUS.NO_AUTH
-          ? 'no_auth'
-          : accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS
-            ? 'not_member'
-            : 'error'
-    const sessionStatus = membershipStatus === 'member'
-      ? (isAdmin ? SESSION_STATUS.ADMIN : SESSION_STATUS.MEMBER)
-      : (accessStatus === TEAM_ACCESS_STATUS.NO_AUTH
-          ? SESSION_STATUS.SIGNED_OUT
-          : accessStatus === TEAM_ACCESS_STATUS.ERROR
-            ? SESSION_STATUS.ERROR
-            : SESSION_STATUS.NO_ACCESS)
+    const membershipStatus = resolveMembershipStatus(accessStatus)
+    const sessionStatus = resolveSessionStatus(accessStatus, isAdmin, membershipStatus)
     const message = resolveAccessMessage(accessStatus, resolvedDisplayTeamId, accessError, member, accessResult)
     const errorObject = accessStatus === TEAM_ACCESS_STATUS.OK
       ? null
@@ -366,7 +348,7 @@ async function evaluateAccess () {
       if (requestId !== accessRequestId) return sessionState
       return applyAccessResult(accessResult)
     } catch (err) {
-      console.error('SESSION ACCESS ERROR', err)
+      console.warn('SESSION ACCESS ERROR', err)
       accessResult = {
         status: TEAM_ACCESS_STATUS.ERROR,
         teamId: formattedTeam,

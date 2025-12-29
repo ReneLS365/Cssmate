@@ -39,3 +39,11 @@ if (typeof document !== 'undefined') {
     scheduleBootstrap();
   }
 }
+
+export async function applyImportedAkkordData(...args) {
+  const mod = await import('./app-main.js');
+  if (typeof mod?.applyImportedAkkordData !== 'function') {
+    throw new Error('applyImportedAkkordData er ikke tilgængelig');
+  }
+  return mod.applyImportedAkkordData(...args);
+}

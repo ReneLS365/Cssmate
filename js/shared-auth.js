@@ -1,10 +1,20 @@
 import { getAdminEmails, isAdminEmail, normalizeEmail } from '../src/auth/roles.js';
+import {
+  fetchFirebaseConfig,
+  getFirebaseConfigSummary,
+  getFirebaseEnvKeyMap,
+  readWindowFirebaseConfig,
+  sanitizeFirebaseConfig,
+  validateFirebaseConfig,
+} from '../src/config/firebase.js';
 
 const DEFAULT_PROVIDER = 'custom';
 const DEFAULT_ENABLED_PROVIDERS = ['google', 'microsoft'];
 export const FIREBASE_SDK_VERSION = '10.12.2';
 const MOCK_AUTH_STORAGE_KEY = 'cssmate:mockAuthUser';
 const DEFAULT_APP_CHECK_ENABLED = true;
+const AUTH_INIT_TIMEOUT_MS = 15000;
+const AUTH_ACTION_TIMEOUT_MS = 15000;
 
 let authInstance = null;
 let authModule = null;
@@ -24,7 +34,9 @@ let firebaseAppInstance = null;
 let initSequence = 0;
 export let APP_CHECK_STATUS = 'off';
 export let APP_CHECK_REASON = '';
-const APP_CHECK_FALLBACK_SITE_KEY = '6LfFeS8sAAAAAH9hsS136zJ6YOQkpRZKniSIIYYI';
+let firebaseConfigSnapshot = null;
+let firebaseConfigStatus = { isValid: false, missingKeys: [], placeholderKeys: [] };
+let lastAuthErrorCode = '';
 
 function setAppCheckState(status, reason = '') {
   APP_CHECK_STATUS = status;
@@ -43,15 +55,19 @@ function readEnvValue(name) {
   return undefined;
 }
 
+function resolveBooleanFlag(value, defaultValue = false) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    return value.trim().toLowerCase() === 'true';
+  }
+  return defaultValue;
+}
+
 function resolveAppCheckEnabledFlag() {
   const envValue = readEnvValue('VITE_APP_CHECK_ENABLED');
   const windowValue = typeof window !== 'undefined' ? window.FIREBASE_APP_CHECK_ENABLED : undefined;
   const rawValue = typeof envValue !== 'undefined' ? envValue : windowValue;
-  if (typeof rawValue === 'boolean') return rawValue;
-  if (typeof rawValue === 'string') {
-    return rawValue.trim().toLowerCase() === 'true';
-  }
-  return DEFAULT_APP_CHECK_ENABLED;
+  return resolveBooleanFlag(rawValue, DEFAULT_APP_CHECK_ENABLED);
 }
 
 function isLocalhost() {
@@ -63,6 +79,14 @@ function isLocalhost() {
 function isWebDriver () {
   if (typeof navigator === 'undefined') return false;
   return navigator.webdriver === true;
+}
+
+function isE2eTestMode() {
+  const envValue = readEnvValue('VITE_E2E_TEST_MODE');
+  const windowValue = typeof window !== 'undefined' ? window.CSSMATE_E2E_TEST_MODE : undefined;
+  const rawValue = typeof envValue !== 'undefined' ? envValue : windowValue;
+  if (!resolveBooleanFlag(rawValue, false)) return false;
+  return isLocalhost() || isWebDriver() || isDevBuild();
 }
 
 function loadMockUser() {
@@ -101,33 +125,18 @@ function ensureMockUserVerified() {
 }
 
 function getFirebaseConfig() {
-  if (typeof window === 'undefined') return null;
-  const config = window.FIREBASE_CONFIG;
-  if (config && typeof config === 'object' && Object.keys(config).length > 0) {
-    return config;
-  }
-  return null;
+  const config = readWindowFirebaseConfig();
+  if (!config) return null;
+  return sanitizeFirebaseConfig(config);
 }
 
 async function loadFirebaseConfigFromFunction() {
-  if (typeof window === 'undefined') return null;
-  try {
-    const response = await fetch('/.netlify/functions/firebase-config', { cache: 'no-store' });
-    if (!response.ok) {
-      console.warn('Kunne ikke hente Firebase konfiguration.');
-      return null;
-    }
-    const config = await response.json();
-    if (!config || typeof config !== 'object') {
-      console.warn('Ugyldigt svar fra Firebase config endpoint.');
-      return null;
-    }
+  const config = await fetchFirebaseConfig({ timeoutMs: 8000 });
+  if (!config) return null;
+  if (typeof window !== 'undefined') {
     window.FIREBASE_CONFIG = config;
-    return config;
-  } catch (error) {
-    console.warn('Kunne ikke hente Firebase konfiguration.', error);
-    return null;
   }
+  return sanitizeFirebaseConfig(config);
 }
 
 async function loadFirebaseSdk() {
@@ -155,8 +164,7 @@ function getAppCheckSiteKey() {
   ].filter(Boolean);
   const siteKey = candidates.find(value => typeof value === 'string' && value.trim());
   if (siteKey) return siteKey.trim();
-  console.warn('App Check site key mangler, bruger fallback (reCAPTCHA v3).');
-  return APP_CHECK_FALLBACK_SITE_KEY;
+  return '';
 }
 
 function isDevBuild() {
@@ -227,10 +235,18 @@ function scheduleAppCheckInit(app) {
 
 export async function getFirebaseAppInstance() {
   let config = getFirebaseConfig();
-  if (!config || !config.apiKey) {
+  if (!config) {
     config = await loadFirebaseConfigFromFunction();
   }
-  if (!config) throw new Error('Firebase konfiguration mangler (VITE_FIREBASE_*)');
+  const validation = validateFirebaseConfig(config);
+  firebaseConfigStatus = validation;
+  firebaseConfigSnapshot = config;
+  if (!validation.isValid) {
+    const missing = [...validation.missingKeys, ...validation.placeholderKeys].filter(Boolean);
+    const error = new Error(`Firebase konfiguration mangler: ${missing.join(', ')}`);
+    error.code = 'missing-config';
+    throw error;
+  }
   const sdk = await loadFirebaseSdk();
   if (!firebaseAppInstance) {
     firebaseAppInstance = sdk.getApps?.().length ? sdk.getApp() : sdk.initializeApp(config);
@@ -255,8 +271,55 @@ function setAuthState({ user, error }) {
   currentUser = user ? normalizeUser(user) : null;
   providerData = (user && user.providerData) ? user.providerData : (currentUser?.providerData || []);
   authError = error || null;
+  lastAuthErrorCode = error?.code || lastAuthErrorCode || '';
   authReady = true;
   notify();
+}
+
+function withTimeout(promise, timeoutMs, context) {
+  if (!timeoutMs) return promise;
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const err = new Error('Login timeout. Prøv igen.');
+      err.code = 'timeout';
+      err.context = context;
+      reject(err);
+    }, timeoutMs);
+    timeoutId?.unref?.();
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+}
+
+function logDevDiagnostics(label, payload) {
+  if (!isDevBuild()) return;
+  try {
+    console.info(`[Auth] ${label}`, payload);
+  } catch {}
+}
+
+function reportFirebaseConfigStatus(config) {
+  const validation = validateFirebaseConfig(config);
+  firebaseConfigStatus = validation;
+  firebaseConfigSnapshot = config;
+  if (!validation.isValid) {
+    logDevDiagnostics('config-missing', {
+      missingKeys: validation.missingKeys,
+      placeholderKeys: validation.placeholderKeys,
+    });
+  }
+  return validation;
+}
+
+function logAuthEvent(action, detail = {}) {
+  if (!isDevBuild()) return;
+  const safeDetail = { ...detail };
+  if (safeDetail.error && typeof safeDetail.error === 'object') {
+    safeDetail.error = { code: safeDetail.error.code || '', message: safeDetail.error.message || '' };
+  }
+  logDevDiagnostics(action, safeDetail);
 }
 
 export async function initSharedAuth() {
@@ -274,25 +337,57 @@ export async function initSharedAuth() {
     initPromise = null;
   }, 15000);
   initPromise = (async () => {
-    try {
-      let config = getFirebaseConfig();
-      if (!config || !config.apiKey) {
-        if (!isLocalhost()) {
-          config = await loadFirebaseConfigFromFunction();
-        }
+    const authInitTimer = setTimeout(() => {
+      if (!authReady) {
+        const timeoutError = new Error('Login tager for lang tid. Prøv igen.');
+        timeoutError.code = 'auth-timeout';
+        setAuthState({ user: null, error: timeoutError });
       }
-      if (!config || !config.apiKey) {
-        if (isLocalhost()) {
-          useMockAuth = true;
-          mockUser = loadMockUser();
-          setAuthStateIfCurrent({ user: mockUser, error: null });
-          return null;
+    }, AUTH_INIT_TIMEOUT_MS);
+    authInitTimer?.unref?.();
+    let config = getFirebaseConfig();
+    if (!config) {
+      if (!isLocalhost()) {
+        config = await loadFirebaseConfigFromFunction();
+      }
+    }
+    const validation = reportFirebaseConfigStatus(config);
+    const envKeyMap = getFirebaseEnvKeyMap();
+    const envPresence = Object.fromEntries(
+      Object.entries(envKeyMap).map(([configKey, envKey]) => [envKey, Boolean(config?.[configKey])])
+    );
+    logDevDiagnostics('env-presence', envPresence);
+    logAuthEvent('auth-strategy', { preferred: shouldPreferRedirect() ? 'redirect' : 'popup' });
+    if (!validation.isValid) {
+      if (isLocalhost() || isE2eTestMode()) {
+        useMockAuth = true;
+        mockUser = loadMockUser();
+        if (!mockUser && isE2eTestMode()) {
+          mockUser = {
+            uid: `mock-e2e-${Date.now()}`,
+            email: 'e2e@example.com',
+            displayName: 'E2E Testbruger',
+            providerId: DEFAULT_PROVIDER,
+            providerIds: [DEFAULT_PROVIDER],
+            emailVerified: true,
+          };
+          persistMockUser(mockUser);
         }
-        setAuthStateIfCurrent({ user: null, error: new Error('Firebase konfiguration mangler (VITE_FIREBASE_*)') });
+        setAuthState({ user: mockUser, error: null });
+        clearTimeout(authInitTimer);
         return null;
       }
+      const missing = [...validation.missingKeys, ...validation.placeholderKeys].filter(Boolean);
+      const error = new Error(`Firebase konfiguration mangler: ${missing.join(', ')}`);
+      error.code = 'missing-config';
+      setAuthState({ user: null, error });
+      clearTimeout(authInitTimer);
+      return null;
+    }
+    try {
       warnIfUnauthorizedHost(config);
-      const app = await getFirebaseAppInstance();
+      logAuthEvent('config-ok', getFirebaseConfigSummary(config));
+      const app = await withTimeout(getFirebaseAppInstance(), AUTH_INIT_TIMEOUT_MS, 'firebase-init');
       const sdk = await loadFirebaseSdk();
       authInstance = sdk.getAuth(app);
       try {
@@ -302,15 +397,16 @@ export async function initSharedAuth() {
       }
       sdk.onAuthStateChanged(authInstance, (user) => setAuthStateIfCurrent({ user, error: null }));
       try {
-        await sdk.getRedirectResult(authInstance);
+        await withTimeout(sdk.getRedirectResult(authInstance), AUTH_ACTION_TIMEOUT_MS, 'redirect-result');
       } catch (error) {
         logAuthError('redirectResult', error);
       }
-      setAuthStateIfCurrent({ user: authInstance.currentUser, error: null });
+      setAuthState({ user: authInstance.currentUser, error: null });
+      logAuthEvent('init-success', { hasUser: Boolean(authInstance.currentUser) });
       return authInstance;
     } catch (error) {
-      console.error('Auth init fejlede', error);
-      setAuthStateIfCurrent({ user: null, error });
+      logAuthError('init', error);
+      setAuthState({ user: null, error });
       return null;
     } finally {
       clearTimeout(authInitTimer);
@@ -341,6 +437,7 @@ export async function waitForAuthReady() {
 
 function getProvider(providerId) {
   if (!authModule || !authInstance) throw new Error('Auth ikke klar');
+  logAuthEvent('provider-init', { providerId });
   switch (providerId) {
     case 'google':
       return new authModule.GoogleAuthProvider();
@@ -416,11 +513,11 @@ function buildAuthHint(error) {
 
 function logAuthError(context, error) {
   if (!error) return;
+  lastAuthErrorCode = error?.code || lastAuthErrorCode || '';
   console.warn('Auth fejl', {
     context,
     code: error?.code || '',
     message: error?.message || '',
-    customData: error?.customData || null,
     origin: typeof window !== 'undefined' ? window.location?.origin : '',
   });
 }
@@ -465,13 +562,16 @@ export async function loginWithProvider(providerId) {
   provider.setCustomParameters?.({ prompt: 'select_account' });
   try {
     if (shouldPreferRedirect()) {
+      logAuthEvent('login-redirect', { providerId });
       await authModule.signInWithRedirect(authInstance, provider);
       return;
     }
-    await authModule.signInWithPopup(authInstance, provider);
+    logAuthEvent('login-popup', { providerId });
+    await withTimeout(authModule.signInWithPopup(authInstance, provider), AUTH_ACTION_TIMEOUT_MS, 'login-popup');
   } catch (error) {
     logAuthError('loginWithProvider', error);
     if (shouldFallbackToRedirect(error)) {
+      logAuthEvent('login-fallback-redirect', { providerId, code: error?.code || '' });
       await authModule.signInWithRedirect(authInstance, provider);
       return;
     }
@@ -493,7 +593,7 @@ export async function logoutUser() {
   }
   if (!authModule || !authInstance) return;
   try {
-    await authModule.signOut(authInstance);
+    await withTimeout(authModule.signOut(authInstance), AUTH_ACTION_TIMEOUT_MS, 'logout');
     setAuthState({ user: null, error: null });
   } catch (error) {
     console.warn('Logout fejlede', error);
@@ -547,9 +647,13 @@ export async function signUpWithEmail(email, password) {
     return mockUser;
   }
   if (!authModule || !authInstance) throw new Error('Login er ikke konfigureret.');
-  const credential = await authModule.createUserWithEmailAndPassword(authInstance, cleanEmail, password);
+  const credential = await withTimeout(
+    authModule.createUserWithEmailAndPassword(authInstance, cleanEmail, password),
+    AUTH_ACTION_TIMEOUT_MS,
+    'signup-email'
+  );
   if (credential?.user) {
-    await authModule.sendEmailVerification(credential.user);
+    await withTimeout(authModule.sendEmailVerification(credential.user), AUTH_ACTION_TIMEOUT_MS, 'verify-email');
     setAuthState({ user: credential.user, error: null });
   }
   return credential?.user || null;
@@ -567,7 +671,11 @@ export async function signInWithEmail(email, password) {
     return mockUser;
   }
   if (!authModule || !authInstance) throw new Error('Login er ikke konfigureret.');
-  const credential = await authModule.signInWithEmailAndPassword(authInstance, cleanEmail, password);
+  const credential = await withTimeout(
+    authModule.signInWithEmailAndPassword(authInstance, cleanEmail, password),
+    AUTH_ACTION_TIMEOUT_MS,
+    'login-email'
+  );
   setAuthState({ user: credential?.user, error: null });
   return credential?.user || null;
 }
@@ -580,7 +688,7 @@ export async function sendPasswordReset(email) {
     return true;
   }
   if (!authModule || !authInstance) throw new Error('Login er ikke konfigureret.');
-  await authModule.sendPasswordResetEmail(authInstance, cleanEmail);
+  await withTimeout(authModule.sendPasswordResetEmail(authInstance, cleanEmail), AUTH_ACTION_TIMEOUT_MS, 'reset-password');
   return true;
 }
 
@@ -592,7 +700,7 @@ export async function resendEmailVerification() {
   }
   if (!authModule || !authInstance) throw new Error('Login er ikke konfigureret.');
   if (!authInstance.currentUser) throw new Error('Ingen bruger er logget ind.');
-  await authModule.sendEmailVerification(authInstance.currentUser);
+  await withTimeout(authModule.sendEmailVerification(authInstance.currentUser), AUTH_ACTION_TIMEOUT_MS, 'verify-resend');
   return true;
 }
 
@@ -604,9 +712,36 @@ export async function reloadCurrentUser() {
   }
   if (!authModule || !authInstance) throw new Error('Login er ikke konfigureret.');
   if (!authInstance.currentUser) throw new Error('Ingen bruger er logget ind.');
-  await authModule.reload(authInstance.currentUser);
+  await withTimeout(authModule.reload(authInstance.currentUser), AUTH_ACTION_TIMEOUT_MS, 'reload-user');
   setAuthState({ user: authInstance.currentUser, error: null });
   return authInstance.currentUser;
+}
+
+export function isMockAuthEnabled() {
+  return useMockAuth || false;
+}
+
+export function getAuthDiagnostics() {
+  const configSummary = getFirebaseConfigSummary(firebaseConfigSnapshot || {});
+  return {
+    authReady,
+    isAuthenticated: Boolean(currentUser),
+    user: currentUser,
+    projectId: configSummary.projectId,
+    authDomain: configSummary.authDomain,
+    appCheckStatus: APP_CHECK_STATUS,
+    appCheckReason: APP_CHECK_REASON,
+    lastAuthErrorCode: lastAuthErrorCode || authError?.code || '',
+    configStatus: { ...firebaseConfigStatus },
+  };
+}
+
+export function getFirebaseConfigStatus() {
+  return { ...firebaseConfigStatus };
+}
+
+export function getFirebaseConfigSnapshot() {
+  return firebaseConfigSnapshot ? { ...firebaseConfigSnapshot } : null;
 }
 
 export function userIsAdmin(user) {

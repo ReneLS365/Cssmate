@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { createConsoleCollector } from './helpers/console-collector'
 
 async function ensureLoggedIn (page) {
   const gate = page.locator('#authGate')
@@ -39,7 +40,8 @@ test.describe('Draft persistence', () => {
     await resetClientState(page)
   })
 
-  test('autosaves sagsinfo and restores after reload', async ({ page }) => {
+  test('autosaves sagsinfo and restores after reload', async ({ page }, testInfo) => {
+    const collector = createConsoleCollector(page)
     const draft = {
       sagsnummer: '9001',
       navn: 'Autosave demo',
@@ -47,17 +49,22 @@ test.describe('Draft persistence', () => {
       kunde: 'Testkunde'
     }
 
-    await fillSagsinfo(page, draft)
+    try {
+      await fillSagsinfo(page, draft)
 
-    await expect.poll(() => page.evaluate(() => localStorage.getItem('csmate:draftJob:v1')))
-      .not.toBeNull()
+      await expect.poll(() => page.evaluate(() => localStorage.getItem('csmate:draftJob:v1')))
+        .not.toBeNull()
 
-    await page.reload()
-    await expect(page.locator('#actionHint')).toContainText('Kladde gendannet', { timeout: 15000 })
-    await expectSagsinfoValues(page, draft)
+      await page.reload()
+      await expect(page.locator('#actionHint')).toContainText('Kladde gendannet', { timeout: 15000 })
+      await expectSagsinfoValues(page, draft)
+    } finally {
+      await collector.attachIfFailed(testInfo)
+    }
   })
 
-  test('"Ny sag" clears current draft and fields', async ({ page }) => {
+  test('"Ny sag" clears current draft and fields', async ({ page }, testInfo) => {
+    const collector = createConsoleCollector(page)
     const draft = {
       sagsnummer: '1200',
       navn: 'Nulstil demo',
@@ -65,22 +72,26 @@ test.describe('Draft persistence', () => {
       kunde: 'Demo kunde'
     }
 
-    await fillSagsinfo(page, draft)
+    try {
+      await fillSagsinfo(page, draft)
 
-    await expect.poll(() => page.evaluate(() => localStorage.getItem('csmate:draftJob:v1')))
-      .not.toBeNull()
+      await expect.poll(() => page.evaluate(() => localStorage.getItem('csmate:draftJob:v1')))
+        .not.toBeNull()
 
-    const newCaseButton = page.getByRole('button', { name: 'Ny sag' })
-    page.once('dialog', dialog => dialog.accept())
-    await newCaseButton.click()
+      const newCaseButton = page.getByRole('button', { name: 'Ny sag' })
+      page.once('dialog', dialog => dialog.accept())
+      await newCaseButton.click()
 
-    await expect(page.locator('#actionHint')).toContainText('Ny sag klar', { timeout: 15000 })
-    await expectSagsinfoValues(page, { sagsnummer: '', navn: '', adresse: '', kunde: '' })
-    await expect.poll(() => page.evaluate(() => localStorage.getItem('csmate:draftJob:v1')))
-      .toBeNull()
+      await expect(page.locator('#actionHint')).toContainText('Ny sag klar', { timeout: 15000 })
+      await expectSagsinfoValues(page, { sagsnummer: '', navn: '', adresse: '', kunde: '' })
+      await expect.poll(() => page.evaluate(() => localStorage.getItem('csmate:draftJob:v1')))
+        .toBeNull()
 
-    await page.reload()
-    await expect(page.locator('#actionHint')).not.toContainText('Kladde gendannet', { timeout: 15000 })
-    await expectSagsinfoValues(page, { sagsnummer: '', navn: '', adresse: '', kunde: '' })
+      await page.reload()
+      await expect(page.locator('#actionHint')).not.toContainText('Kladde gendannet', { timeout: 15000 })
+      await expectSagsinfoValues(page, { sagsnummer: '', navn: '', adresse: '', kunde: '' })
+    } finally {
+      await collector.attachIfFailed(testInfo)
+    }
   })
 })
