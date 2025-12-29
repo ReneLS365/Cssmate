@@ -35,19 +35,27 @@ function matchHeadersForPath(requestPath) {
     requestPath = `/${requestPath}`;
   }
 
-  const exactMatch = HEADER_RULES.find(rule => rule.path === requestPath);
-  if (exactMatch) return exactMatch.values;
-
-  const wildcardRules = HEADER_RULES
-    .filter(rule => rule.path.endsWith('/*'))
-    .sort((a, b) => b.path.length - a.path.length);
-
-  for (const rule of wildcardRules) {
+  const matchingRules = HEADER_RULES.filter(rule => {
+    if (rule.path === requestPath) return true;
+    if (!rule.path.endsWith('/*')) return false;
     const prefix = rule.path.slice(0, -1);
-    if (requestPath.startsWith(prefix)) return rule.values;
-  }
+    return requestPath.startsWith(prefix);
+  });
 
-  return null;
+  if (!matchingRules.length) return null;
+
+  const mergedHeaders = {};
+  matchingRules
+    .map(rule => ({
+      values: rule.values,
+      specificity: rule.path.endsWith('/*') ? rule.path.length : rule.path.length + 10000,
+    }))
+    .sort((a, b) => a.specificity - b.specificity)
+    .forEach(rule => {
+      Object.assign(mergedHeaders, rule.values);
+    });
+
+  return mergedHeaders;
 }
 
 // Cache-politik: HTML = no-cache, assets = lang TTL + Netlify headers
@@ -57,14 +65,19 @@ app.use((req, res, next) => {
     for (const [key, value] of Object.entries(headerValues)) {
       res.setHeader(key, value);
     }
-  for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
-    res.setHeader(key, value);
   }
-  if (req.path === '/' || req.path.endsWith('.html')) {
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-  } else {
-    // 1 år, ok til fingerprintede filer
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+    if (!res.hasHeader(key)) {
+      res.setHeader(key, value);
+    }
+  }
+  if (!res.hasHeader('Cache-Control')) {
+    if (req.path === '/' || req.path.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    } else {
+      // 1 år, ok til fingerprintede filer
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
   }
   next();
 });
