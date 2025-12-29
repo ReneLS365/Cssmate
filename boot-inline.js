@@ -86,7 +86,7 @@ function updateMaterialLine(row) {
   }
 }
 
-function initMaterialRowEnhancements() {
+export function initMaterialRowEnhancements() {
   const container = document.getElementById('optaellingContainer');
   if (!container) return;
 
@@ -133,7 +133,7 @@ function initMaterialRowEnhancements() {
   });
 }
 
-function registerServiceWorker() {
+export function registerServiceWorker() {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     return;
   }
@@ -141,6 +141,10 @@ function registerServiceWorker() {
   const searchParams = new URLSearchParams(window.location.search || '');
   if (window.CSSMATE_IS_CI === true) {
     console.info('Service worker registration skipped in CI');
+    return;
+  }
+  if (searchParams.get('lh') === '1') {
+    console.info('Service worker registration skipped for Lighthouse');
     return;
   }
   if (searchParams.has('no-sw')) {
@@ -196,15 +200,18 @@ function registerServiceWorker() {
   });
 }
 
-if (typeof window !== 'undefined') {
+export function exposeBootHelpers() {
+  if (typeof window === 'undefined') {
+    return;
+  }
   window.parseQty = parseQty;
   window.formatQtyDK = formatQtyDK;
   window.round2 = round2;
   window.updateMaterialLine = row => updateMaterialLine(row);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+export function initBootInline() {
+  exposeBootHelpers();
   initMaterialRowEnhancements();
-});
-
-registerServiceWorker();
+  registerServiceWorker();
+}
