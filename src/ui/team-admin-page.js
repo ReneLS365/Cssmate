@@ -9,8 +9,12 @@ import {
   setMemberActive,
   saveTeamInvite,
 } from '../../js/shared-ledger.js'
+import { getAuthDiagnostics } from '../../js/shared-auth.js'
+import { checkFirestoreConnection } from '../../js/shared-firestore.js'
+import { assertAdmin } from '../auth/admin.js'
 import { normalizeEmail } from '../auth/roles.js'
 import { getState as getSessionState, onChange as onSessionChange, refreshAccess, requestBootstrapAccess } from '../auth/session.js'
+import { getDebugState } from '../state/debug.js'
 import { resetAppState } from '../utils/reset-app.js'
 import { TEAM_ACCESS_STATUS } from '../services/team-access.js'
 
@@ -29,6 +33,9 @@ let membersListEl
 let membersReadOnlyListEl
 let teamIdInputContainer
 let sharedAdminActions
+let diagnosticsCard
+let diagnosticsList
+let diagnosticsWarning
 let inviteEmailInput
 let inviteRoleSelect
 let inviteSubmitButton
@@ -45,6 +52,7 @@ let lastTeamId = ''
 let loading = false
 let adminLocked = false
 let lastSessionState = null
+let diagnosticsToken = 0
 
 const MEMBER_EMAIL_FIX = 'renelowesorensen@gmail.com'
 
@@ -58,10 +66,6 @@ function isAdminRole (role) {
 
 function getSessionRole (session) {
   return session?.member?.role || session?.role || ''
-}
-
-function isAdminSession (session) {
-  return isAdminRole(getSessionRole(session || lastSessionState || getSessionState()))
 }
 
 function setStatus (message, variant = '') {
@@ -398,9 +402,13 @@ function renderReadOnlyMembers (members = []) {
 }
 
 function requireAdminAction () {
-  if (isAdminSession()) return true
-  setStatus('Kun admin kan udføre denne handling.', 'error')
-  return false
+  try {
+    assertAdmin(getSessionState(), 'Denne handling')
+    return true
+  } catch (error) {
+    setStatus(error?.message || 'Kun admin kan udføre denne handling.', 'error')
+    return false
+  }
 }
 
 async function handleInviteSubmit () {
@@ -478,6 +486,64 @@ function clearTeamLists () {
   if (membersListEl) membersListEl.textContent = ''
   if (invitesListEl) invitesListEl.textContent = ''
   if (membersReadOnlyListEl) membersReadOnlyListEl.textContent = ''
+}
+
+function renderDiagnosticsRows (rows) {
+  if (!diagnosticsList) return
+  diagnosticsList.textContent = ''
+  rows.forEach(text => {
+    const li = document.createElement('li')
+    li.textContent = text
+    diagnosticsList.appendChild(li)
+  })
+}
+
+async function refreshDiagnostics (session) {
+  if (!diagnosticsCard || !diagnosticsList) return
+  const adminVisible = isAdminRole(getSessionRole(session))
+  diagnosticsCard.hidden = !adminVisible
+  setAriaHidden(diagnosticsCard, !adminVisible)
+  if (!adminVisible) return
+
+  const token = ++diagnosticsToken
+  renderDiagnosticsRows(['Indlæser diagnostic...'])
+  if (diagnosticsWarning) diagnosticsWarning.textContent = ''
+  const authDiagnostics = getAuthDiagnostics()
+  const firestore = await checkFirestoreConnection({ timeoutMs: 5000 })
+  if (token !== diagnosticsToken) return
+
+  const debugState = getDebugState()
+  const lastFirestoreCode = debugState?.lastFirestoreError?.code || ''
+  const firestoreStatus = firestore.ok ? 'ja' : `nej (${firestore.error?.code || 'fejl'})`
+  const appCheckLabel = authDiagnostics.appCheckReason
+    ? `${authDiagnostics.appCheckStatus} (${authDiagnostics.appCheckReason})`
+    : authDiagnostics.appCheckStatus
+
+  renderDiagnosticsRows([
+    `Auth klar: ${authDiagnostics.authReady ? 'ja' : 'nej'}`,
+    `Logget ind: ${authDiagnostics.isAuthenticated ? 'ja' : 'nej'}`,
+    `Firebase projectId: ${authDiagnostics.projectId || '–'}`,
+    `Firebase authDomain: ${authDiagnostics.authDomain || '–'}`,
+    `App Check: ${appCheckLabel || 'ukendt'}`,
+    `Firestore reachable: ${firestoreStatus}`,
+    `Sidste auth-fejlkode: ${authDiagnostics.lastAuthErrorCode || '–'}`,
+    `Sidste Firestore-fejl: ${lastFirestoreCode || '–'}`,
+  ])
+
+  if (diagnosticsWarning) {
+    if (authDiagnostics.appCheckStatus !== 'on' && authDiagnostics.appCheckStatus !== 'off') {
+      diagnosticsWarning.textContent = 'App Check fejler. Tjek site key og Firebase App Check-indstillinger.'
+      diagnosticsWarning.dataset.variant = 'warning'
+      return
+    }
+    if (authDiagnostics.appCheckStatus === 'off' && authDiagnostics.appCheckReason === 'missing_site_key') {
+      diagnosticsWarning.textContent = 'App Check er slået fra, fordi site key mangler. Admin bør tilføje key.'
+      diagnosticsWarning.dataset.variant = 'warning'
+    } else {
+      diagnosticsWarning.textContent = ''
+      diagnosticsWarning.dataset.variant = ''
+    }
+  }
 }
 
 function toggleAdminControls (isAdmin) {
@@ -670,6 +736,9 @@ function handleSessionChange (session) {
   updateTabVisibility(session)
   const accessStatus = session?.accessStatus || TEAM_ACCESS_STATUS.LOADING
   renderAccessState(session)
+  refreshDiagnostics(session).catch(error => {
+    console.warn('Diagnostics refresh failed', error)
+  })
   const hasAccess = session?.teamId && session?.sessionReady && accessStatus === TEAM_ACCESS_STATUS.OK
   if (!hasAccess) {
     lastTeamId = ''
@@ -733,6 +802,9 @@ export function initTeamAdminPage () {
   invitesListEl = document.getElementById('teamInvitesListTeamPage')
   membersListEl = document.getElementById('teamMembersListTeamPage')
   membersReadOnlyListEl = document.getElementById('teamMembersListReadOnly')
+  diagnosticsCard = document.getElementById('teamDiagnostics')
+  diagnosticsList = document.getElementById('teamDiagnosticsList')
+  diagnosticsWarning = document.getElementById('teamDiagnosticsWarning')
   inviteEmailInput = document.getElementById('teamInviteEmailTeamPage')
   inviteRoleSelect = document.getElementById('teamInviteRoleTeamPage')
   inviteSubmitButton = document.getElementById('teamInviteSubmitTeamPage')
