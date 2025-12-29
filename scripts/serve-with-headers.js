@@ -11,6 +11,13 @@ const PORT = process.env.PORT || process.argv[2] || 4173;
 // Juster DIR hvis der findes en build-mappe. Hvis appen kører direkte fra repo-roden, lad den være som nu.
 const DIR = path.resolve(process.argv[3] || process.cwd());
 const IS_CI = process.env.CSSMATE_IS_CI === '1';
+const CSP_HEADER = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; img-src 'self' data: blob: https:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://esm.sh https://www.gstatic.com https://apis.google.com https://www.google.com/recaptcha/ https://www.recaptcha.net/recaptcha/; connect-src 'self' https://www.googleapis.com https://*.googleapis.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebaseinstallations.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://www.gstatic.com https://www.google.com/recaptcha/ https://www.recaptcha.net/recaptcha/; frame-src 'self' https://accounts.google.com https://*.firebaseapp.com https://*.web.app https://www.google.com/recaptcha/ https://www.recaptcha.net/recaptcha/; worker-src 'self' blob:; manifest-src 'self'; upgrade-insecure-requests";
+const SECURITY_HEADERS = {
+  'Content-Security-Policy': CSP_HEADER,
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Permissions-Policy': 'geolocation=(), microphone=(), camera=()',
+};
 
 const app = express();
 
@@ -23,6 +30,9 @@ const limiter = rateLimit({
 
 // Cache-politik: HTML = no-cache, assets = lang TTL
 app.use((req, res, next) => {
+  for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+    res.setHeader(key, value);
+  }
   if (req.path === '/' || req.path.endsWith('.html')) {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   } else {

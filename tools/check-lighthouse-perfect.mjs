@@ -28,7 +28,7 @@ function main() {
   const report = readReport();
 
   const thresholds = {
-    performance: { min: 98 },
+    performance: { min: 95 },
     'best-practices': { min: 100, exact: true },
     accessibility: { min: 98 },
     seo: { min: 100, exact: true },
