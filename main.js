@@ -6,6 +6,8 @@ function runWhenIdle(fn) {
   setTimeout(fn, 150);
 }
 
+let bootstrapPromise = null;
+
 function scheduleBootstrap() {
   if (typeof document !== 'undefined') {
     document.documentElement.classList.add('app-booting');
@@ -13,9 +15,11 @@ function scheduleBootstrap() {
 
   const start = () => {
     runWhenIdle(() => {
-      import('./app-main.js')
+      if (bootstrapPromise) return;
+      bootstrapPromise = import('./app-main.js')
         .then(mod => mod?.bootstrapApp?.())
         .catch(error => {
+          bootstrapPromise = null;
           console.warn('Kunne ikke starte Cssmate', error);
         });
     });

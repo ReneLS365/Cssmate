@@ -152,7 +152,7 @@ export function registerServiceWorker() {
     return;
   }
 
-  window.addEventListener('load', () => {
+  const startRegistration = () => {
     const baseUrl = new URL('.', window.location.href);
     const swUrl = new URL('service-worker.js', baseUrl);
     const scope = baseUrl.pathname.endsWith('/') ? baseUrl.pathname : `${baseUrl.pathname}/`;
@@ -197,7 +197,13 @@ export function registerServiceWorker() {
           window.location.replace(nextUrl.toString());
         }
       });
-  });
+  };
+
+  if (document.readyState === 'complete') {
+    startRegistration();
+  } else {
+    window.addEventListener('load', startRegistration, { once: true });
+  }
 }
 
 export function exposeBootHelpers() {
