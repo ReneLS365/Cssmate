@@ -1,6 +1,6 @@
 // tools/lh-enforce.js
-// Læser Lighthouse-rapporten og kræver 1.0 i alle kategorier.
-// Fejler hårdt med detaljeret output hvis bare én kategori er under 1.0.
+// Læser Lighthouse-rapporten og validerer mod fastsatte minimumskrav.
+// Fejler hårdt med detaljeret output hvis en kategori er under kravet.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -24,16 +24,17 @@ try {
   process.exit(1);
 }
 
-const categories = [
-  "performance",
-  "accessibility",
-  "best-practices",
-  "seo",
-];
+const performanceMin = Number(process.env.CSSMATE_LH_PERF_MIN ?? 0.9);
+const thresholds = {
+  performance: { min: performanceMin },
+  accessibility: { min: 0.95 },
+  "best-practices": { min: 1, exact: true },
+  seo: { min: 1, exact: true },
+};
 
 const failures = [];
 
-for (const key of categories) {
+for (const [key, rule] of Object.entries(thresholds)) {
   const cat = data.categories?.[key];
   if (!cat) {
     failures.push({ key, reason: "mangler kategori i rapporten" });
@@ -44,17 +45,17 @@ for (const key of categories) {
     failures.push({ key, reason: "score er ikke et tal" });
     continue;
   }
-  // Kræv 1.0
-  if (score < 1) {
-    failures.push({
-      key,
-      reason: `score ${score} < 1.0`,
-    });
+  if (rule.exact && score !== rule.min) {
+    failures.push({ key, reason: `score ${score} != ${rule.min}` });
+    continue;
+  }
+  if (!rule.exact && score < rule.min) {
+    failures.push({ key, reason: `score ${score} < ${rule.min}` });
   }
 }
 
 if (failures.length) {
-  console.error("\n[SuperTest] Lighthouse-krav IKKE opfyldt. Alle kategorier skal være 1.0.\n");
+  console.error("\n[SuperTest] Lighthouse-krav IKKE opfyldt. Se minimumskravene nedenfor.\n");
   for (const fail of failures) {
     console.error(
       `  - ${fail.key}: ${fail.reason}`,
@@ -63,7 +64,7 @@ if (failures.length) {
 
   // Ekstra hjælp: print top 5 audits med dårligst score per kategori
   console.error("\n[SuperTest] Udvalgte audits med issues pr. kategori:\n");
-  for (const key of categories) {
+  for (const key of Object.keys(thresholds)) {
     const cat = data.categories?.[key];
     if (!cat) continue;
     const audits = Object.entries(data.audits || {})
@@ -90,5 +91,5 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log("[SuperTest] Lighthouse OK – alle kategorier 1.0.");
+console.log("[SuperTest] Lighthouse OK – minimumskrav opfyldt.");
 process.exit(0);

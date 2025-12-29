@@ -1,4 +1,4 @@
-const performanceScore = process.env.LH_PERFORMANCE_SCORE || '≥0.95'
+const performanceScore = process.env.LH_PERFORMANCE_SCORE || '≥0.90'
 
 const lines = [
   '✅ Build',

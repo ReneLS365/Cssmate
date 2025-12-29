@@ -21,6 +21,7 @@ let appCheckInitPromise = null;
 let appCheckStarted = false;
 let appCheckModule = null;
 let firebaseAppInstance = null;
+let initSequence = 0;
 export let APP_CHECK_STATUS = 'off';
 export let APP_CHECK_REASON = '';
 const APP_CHECK_FALLBACK_SITE_KEY = '6LfFeS8sAAAAAH9hsS136zJ6YOQkpRZKniSIIYYI';
@@ -260,24 +261,36 @@ function setAuthState({ user, error }) {
 
 export async function initSharedAuth() {
   if (initPromise) return initPromise;
+  const initId = ++initSequence;
+  const setAuthStateIfCurrent = (payload) => {
+    if (initId !== initSequence) return;
+    setAuthState(payload);
+  };
+  const authInitTimer = setTimeout(() => {
+    if (authReady || initId !== initSequence) return;
+    const timeoutError = new Error('Login tager for lang tid. Prøv igen.');
+    timeoutError.code = 'auth-timeout';
+    setAuthStateIfCurrent({ user: null, error: timeoutError });
+    initPromise = null;
+  }, 15000);
   initPromise = (async () => {
-    let config = getFirebaseConfig();
-    if (!config || !config.apiKey) {
-      if (!isLocalhost()) {
-        config = await loadFirebaseConfigFromFunction();
+    try {
+      let config = getFirebaseConfig();
+      if (!config || !config.apiKey) {
+        if (!isLocalhost()) {
+          config = await loadFirebaseConfigFromFunction();
+        }
       }
-    }
-    if (!config || !config.apiKey) {
-      if (isLocalhost()) {
-        useMockAuth = true;
-        mockUser = loadMockUser();
-        setAuthState({ user: mockUser, error: null });
+      if (!config || !config.apiKey) {
+        if (isLocalhost()) {
+          useMockAuth = true;
+          mockUser = loadMockUser();
+          setAuthStateIfCurrent({ user: mockUser, error: null });
+          return null;
+        }
+        setAuthStateIfCurrent({ user: null, error: new Error('Firebase konfiguration mangler (VITE_FIREBASE_*)') });
         return null;
       }
-      setAuthState({ user: null, error: new Error('Firebase konfiguration mangler (VITE_FIREBASE_*)') });
-      return null;
-    }
-    try {
       warnIfUnauthorizedHost(config);
       const app = await getFirebaseAppInstance();
       const sdk = await loadFirebaseSdk();
@@ -287,18 +300,20 @@ export async function initSharedAuth() {
       } catch (error) {
         console.warn('Kunne ikke sætte persistence', error);
       }
-      sdk.onAuthStateChanged(authInstance, (user) => setAuthState({ user, error: null }));
+      sdk.onAuthStateChanged(authInstance, (user) => setAuthStateIfCurrent({ user, error: null }));
       try {
         await sdk.getRedirectResult(authInstance);
       } catch (error) {
         logAuthError('redirectResult', error);
       }
-      setAuthState({ user: authInstance.currentUser, error: null });
+      setAuthStateIfCurrent({ user: authInstance.currentUser, error: null });
       return authInstance;
     } catch (error) {
       console.error('Auth init fejlede', error);
-      setAuthState({ user: null, error });
+      setAuthStateIfCurrent({ user: null, error });
       return null;
+    } finally {
+      clearTimeout(authInitTimer);
     }
   })();
   return initPromise;
