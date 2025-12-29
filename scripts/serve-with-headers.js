@@ -6,11 +6,13 @@ import express from 'express';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import rateLimit from 'express-rate-limit';
+import { loadNetlifyHeaders } from '../tools/generate-headers.mjs';
 
 const PORT = process.env.PORT || process.argv[2] || 4173;
 // Juster DIR hvis der findes en build-mappe. Hvis appen kører direkte fra repo-roden, lad den være som nu.
 const DIR = path.resolve(process.argv[3] || process.cwd());
 const IS_CI = process.env.CSSMATE_IS_CI === '1';
+const HEADER_RULES = loadNetlifyHeaders();
 
 const app = express();
 
@@ -21,8 +23,34 @@ const limiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Cache-politik: HTML = no-cache, assets = lang TTL
+function matchHeadersForPath(requestPath) {
+  if (!requestPath.startsWith('/')) {
+    requestPath = `/${requestPath}`;
+  }
+
+  const exactMatch = HEADER_RULES.find(rule => rule.path === requestPath);
+  if (exactMatch) return exactMatch.values;
+
+  const wildcardRules = HEADER_RULES
+    .filter(rule => rule.path.endsWith('/*'))
+    .sort((a, b) => b.path.length - a.path.length);
+
+  for (const rule of wildcardRules) {
+    const prefix = rule.path.slice(0, -1);
+    if (requestPath.startsWith(prefix)) return rule.values;
+  }
+
+  return null;
+}
+
+// Cache-politik: HTML = no-cache, assets = lang TTL + Netlify headers
 app.use((req, res, next) => {
+  const headerValues = matchHeadersForPath(req.path);
+  if (headerValues) {
+    for (const [key, value] of Object.entries(headerValues)) {
+      res.setHeader(key, value);
+    }
+  }
   if (req.path === '/' || req.path.endsWith('.html')) {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   } else {
@@ -36,8 +64,8 @@ app.use(limiter);
 
 function injectCiFlag (html) {
   if (!IS_CI) return html;
-  if (html.includes('window.CSSMATE_IS_CI')) return html;
-  const snippet = '<script>window.CSSMATE_IS_CI = true;</script>';
+  if (html.includes('name="cssmate-is-ci"')) return html;
+  const snippet = '<meta name="cssmate-is-ci" content="1">';
   if (html.includes('</head>')) {
     return html.replace('</head>', `${snippet}\n</head>`);
   }
