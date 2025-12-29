@@ -17,11 +17,7 @@ import { saveDraft, loadDraft, clearDraft } from './js/storageDraft.js'
 import { appendHistoryEntry, loadHistory as loadHistoryEntries, deleteHistoryEntry, migrateHistory, buildHistoryKey as computeHistoryKey } from './js/storageHistory.js'
 import { normalizeHistoryEntry as baseNormalizeHistoryEntry, normalizeHistoryList, formatDateLabel, normalizeSearchValue } from './js/history-normalizer.js'
 import { downloadBlob } from './js/utils/downloadBlob.js'
-import { initAuthGate } from './src/auth/auth-gate.js'
-import { getAuthIdentity } from './src/auth/auth-provider.js'
-import { applyBuildMetadata, updateCurrentView } from './src/state/debug.js'
-import { initDebugOverlay } from './src/ui/debug-overlay.js'
-import { initAppGuard } from './src/ui/app-guard.js'
+import { applyBuildMetadata, isDebugOverlayEnabled, updateCurrentView } from './src/state/debug.js'
 import { resetAppState, resetOfflineCache } from './src/utils/reset-app.js'
 import './boot-inline.js'
 
@@ -31,7 +27,6 @@ if (typeof document !== 'undefined') {
   document.documentElement.classList.add('app-booting')
 }
 
-initDebugOverlay()
 applyBuildMetadata()
 
 function setupServiceWorkerAutoReload () {
@@ -167,6 +162,93 @@ function runWhenIdle (fn) {
   }
   setTimeout(fn, 150)
 }
+
+let authGateModulePromise = null
+let authProviderModulePromise = null
+let appGuardModulePromise = null
+let debugOverlayModulePromise = null
+let authProviderSubscribed = false
+let cachedAuthIdentity = null
+
+function ensureAuthGateModule () {
+  if (!authGateModulePromise) {
+    authGateModulePromise = import('./src/auth/auth-gate.js')
+  }
+  return authGateModulePromise
+}
+
+function ensureAuthProviderModule () {
+  if (!authProviderModulePromise) {
+    authProviderModulePromise = import('./src/auth/auth-provider.js')
+  }
+  return authProviderModulePromise
+}
+
+function ensureAppGuardModule () {
+  if (!appGuardModulePromise) {
+    appGuardModulePromise = import('./src/ui/app-guard.js')
+  }
+  return appGuardModulePromise
+}
+
+function ensureDebugOverlayModule () {
+  if (!debugOverlayModulePromise) {
+    debugOverlayModulePromise = import('./src/ui/debug-overlay.js')
+  }
+  return debugOverlayModulePromise
+}
+
+async function initAuthGateLazy () {
+  const mod = await ensureAuthGateModule()
+  return mod?.initAuthGate?.()
+}
+
+function warmupAuthProvider () {
+  return ensureAuthProviderModule()
+    .then(mod => {
+      cachedAuthIdentity = mod?.getAuthIdentity?.() || cachedAuthIdentity
+      if (!authProviderSubscribed && typeof mod?.onChange === 'function') {
+        authProviderSubscribed = true
+        mod.onChange(() => {
+          cachedAuthIdentity = mod?.getAuthIdentity?.() || cachedAuthIdentity
+        })
+      }
+      return mod
+    })
+    .catch(error => {
+      console.warn('Kunne ikke indlæse auth-modulet', error)
+      authProviderModulePromise = null
+      throw error
+    })
+}
+
+function getCachedAuthIdentity () {
+  if (!authProviderModulePromise) {
+    runWhenIdle(() => {
+      warmupAuthProvider().catch(() => {})
+    })
+  }
+  return cachedAuthIdentity
+}
+
+function initDebugOverlayLazy () {
+  if (!isDebugOverlayEnabled()) return
+  runWhenIdle(() => {
+    ensureDebugOverlayModule()
+      .then(mod => mod?.initDebugOverlay?.())
+      .catch(error => console.warn('Kunne ikke indlæse debug overlay', error))
+  })
+}
+
+function initAppGuardLazy () {
+  runWhenIdle(() => {
+    ensureAppGuardModule()
+      .then(mod => mod?.initAppGuard?.())
+      .catch(error => console.warn('Kunne ikke indlæse app-guard', error))
+  })
+}
+
+initDebugOverlayLazy()
 
 function ensureSharedCasesPanelLazy () {
   if (!sharedCasesModulePromise) {
@@ -2843,7 +2925,7 @@ function collectProjectSnapshot(exportInfo) {
 function buildHistoryEntryFromSnapshot(snapshot, exportInfo = {}) {
   if (!snapshot || typeof snapshot !== 'object') return null;
   const info = deriveSagsinfoFromEntry({ data: snapshot, payload: exportInfo.jobPayload });
-  const createdBy = getAuthIdentity();
+  const createdBy = getCachedAuthIdentity();
   const meta = { ...info };
   if (createdBy?.uid) {
     meta.createdByUid = createdBy.uid;
@@ -5658,15 +5740,23 @@ async function restoreDraftOnLoad() {
 
 async function startApp () {
   registerIndexMissingHandler()
-  const authGate = IS_CI ? null : initAuthGate()
+  let authGate = null
   if (!IS_CI) {
-    initAppGuard()
+    try {
+      authGate = await initAuthGateLazy()
+    } catch (error) {
+      console.warn('Kunne ikke indlæse auth-gate', error)
+    }
+    initAppGuardLazy()
   }
   try {
     if (!IS_CI) {
       await initApp()
       await restoreDraftOnLoad()
       authGate?.prefetchAuth?.()
+      runWhenIdle(() => {
+        warmupAuthProvider().catch(() => {})
+      })
     }
   } catch (error) {
     console.error('CSMate init fejlede', error)
