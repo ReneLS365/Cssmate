@@ -9,7 +9,7 @@ if (versionScriptUrl) {
 importScripts('/js/version.js')
 }
 
-const CACHE_VERSION = 'sscaff-v-20251226135352001' // bumped for always-latest deploy flow
+const CACHE_VERSION = 'sscaff-v-20251226135352002' // bumped for always-latest deploy flow
 const RESOLVED_CACHE_VERSION = (typeof self !== 'undefined' && self.CSSMATE_BUILD_META?.cacheKey) ? self.CSSMATE_BUILD_META.cacheKey : CACHE_VERSION
 const CACHE_NAME = 'sscaff-' + RESOLVED_CACHE_VERSION
 const PRECACHE_URLS = [
@@ -27,9 +27,11 @@ const PRECACHE_URLS = [
   '/css/pwa.css',
   '/src/styles/fixes.css',
   '/src/auth/roles.js',
+  '/src/auth/bootstrap.js',
   '/src/auth/auth-gate.js',
   '/src/auth/auth-provider.js',
   '/src/auth/session.js',
+  '/src/debug/tools.js',
   '/src/state/debug.js',
   '/src/state/user-store.js',
   '/src/ui/debug-overlay.js',

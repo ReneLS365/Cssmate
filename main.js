@@ -167,6 +167,7 @@ let authGateModulePromise = null
 let authProviderModulePromise = null
 let appGuardModulePromise = null
 let debugOverlayModulePromise = null
+let authBootstrapModulePromise = null
 let authProviderSubscribed = false
 let cachedAuthIdentity = null
 
@@ -193,9 +194,16 @@ function ensureAppGuardModule () {
 
 function ensureDebugOverlayModule () {
   if (!debugOverlayModulePromise) {
-    debugOverlayModulePromise = import('./src/ui/debug-overlay.js')
+    debugOverlayModulePromise = import('./src/debug/tools.js')
   }
   return debugOverlayModulePromise
+}
+
+function ensureAuthBootstrapModule () {
+  if (!authBootstrapModulePromise) {
+    authBootstrapModulePromise = import('./src/auth/bootstrap.js')
+  }
+  return authBootstrapModulePromise
 }
 
 async function initAuthGateLazy () {
@@ -235,7 +243,7 @@ function initDebugOverlayLazy () {
   if (!isDebugOverlayEnabled()) return
   runWhenIdle(() => {
     ensureDebugOverlayModule()
-      .then(mod => mod?.initDebugOverlay?.())
+      .then(mod => mod?.initDebugTools?.())
       .catch(error => console.warn('Kunne ikke indlæse debug overlay', error))
   })
 }
@@ -247,8 +255,6 @@ function initAppGuardLazy () {
       .catch(error => console.warn('Kunne ikke indlæse app-guard', error))
   })
 }
-
-initDebugOverlayLazy()
 
 function ensureSharedCasesPanelLazy () {
   if (!sharedCasesModulePromise) {
@@ -336,7 +342,10 @@ function setupLazyExportPanelTriggers () {
   }
 
   ;['pointerenter', 'touchstart', 'focusin'].forEach(eventName => {
-    exportPanel.addEventListener(eventName, warmup, { once: true })
+    exportPanel.addEventListener(eventName, warmup, {
+      once: true,
+      passive: eventName === 'touchstart',
+    })
   })
 
   if ('IntersectionObserver' in window) {
@@ -5597,6 +5606,17 @@ function setupOfflineCacheReset() {
 
 // --- Initialization ---
 let appInitialized = false;
+let bootstrapStarted = false;
+
+function showAuthGateShell () {
+  if (typeof document === 'undefined') return
+  const gate = document.getElementById('authGate')
+  if (!gate) return
+  if (!gate.hasAttribute('hidden')) return
+  gate.removeAttribute('hidden')
+  gate.setAttribute('data-locked', 'true')
+  document.documentElement.classList.add('auth-locked')
+}
 
 function markAppReady () {
   if (typeof document === 'undefined') return
@@ -5738,25 +5758,37 @@ async function restoreDraftOnLoad() {
   }
 }
 
-async function startApp () {
+function scheduleAuthBootstrap () {
+  if (IS_CI) return
+  runWhenIdle(() => {
+    ensureAuthBootstrapModule()
+      .then(mod => mod?.initAuth?.())
+      .catch(error => {
+        console.warn('Auth bootstrap fejlede', error)
+      })
+  })
+}
+
+async function bootstrapApp () {
+  if (bootstrapStarted) return
+  bootstrapStarted = true
   registerIndexMissingHandler()
-  let authGate = null
+  initDebugOverlayLazy()
+  scheduleAuthBootstrap()
+
+  let authGatePromise = null
   if (!IS_CI) {
-    try {
-      authGate = await initAuthGateLazy()
-    } catch (error) {
+    showAuthGateShell()
+    authGatePromise = initAuthGateLazy().catch(error => {
       console.warn('Kunne ikke indlæse auth-gate', error)
-    }
+      return null
+    })
     initAppGuardLazy()
   }
   try {
     if (!IS_CI) {
       await initApp()
       await restoreDraftOnLoad()
-      authGate?.prefetchAuth?.()
-      runWhenIdle(() => {
-        warmupAuthProvider().catch(() => {})
-      })
     }
   } catch (error) {
     console.error('CSMate init fejlede', error)
@@ -5765,10 +5797,19 @@ async function startApp () {
   } finally {
     markAppReady()
   }
+
+  if (authGatePromise) {
+    authGatePromise
+      .then(authGate => authGate?.prefetchAuth?.())
+      .catch(() => {})
+  }
+  runWhenIdle(() => {
+    warmupAuthProvider().catch(() => {})
+  })
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', startApp, { once: true });
+  document.addEventListener('DOMContentLoaded', bootstrapApp, { once: true });
 } else {
-  startApp();
+  bootstrapApp();
 }

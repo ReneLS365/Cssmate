@@ -113,7 +113,9 @@ export function isDebugOverlayEnabled () {
   const devFlag = Boolean(typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV)
   if (typeof window === 'undefined') return devFlag
   try {
-    return devFlag || window.localStorage?.getItem(DEBUG_STORAGE_KEY) === '1'
+    const legacyFlag = window.localStorage?.getItem(DEBUG_STORAGE_KEY) === '1'
+    const debugFlag = window.localStorage?.getItem('debug') === '1'
+    return devFlag || legacyFlag || debugFlag
   } catch {
     return devFlag
   }
