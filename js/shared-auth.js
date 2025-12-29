@@ -31,6 +31,7 @@ let appCheckInitPromise = null;
 let appCheckStarted = false;
 let appCheckModule = null;
 let firebaseAppInstance = null;
+let initSequence = 0;
 export let APP_CHECK_STATUS = 'off';
 export let APP_CHECK_REASON = '';
 let firebaseConfigSnapshot = null;
@@ -323,6 +324,18 @@ function logAuthEvent(action, detail = {}) {
 
 export async function initSharedAuth() {
   if (initPromise) return initPromise;
+  const initId = ++initSequence;
+  const setAuthStateIfCurrent = (payload) => {
+    if (initId !== initSequence) return;
+    setAuthState(payload);
+  };
+  const authInitTimer = setTimeout(() => {
+    if (authReady || initId !== initSequence) return;
+    const timeoutError = new Error('Login tager for lang tid. Prøv igen.');
+    timeoutError.code = 'auth-timeout';
+    setAuthStateIfCurrent({ user: null, error: timeoutError });
+    initPromise = null;
+  }, 15000);
   initPromise = (async () => {
     const authInitTimer = setTimeout(() => {
       if (!authReady) {
@@ -382,7 +395,7 @@ export async function initSharedAuth() {
       } catch (error) {
         console.warn('Kunne ikke sætte persistence', error);
       }
-      sdk.onAuthStateChanged(authInstance, (user) => setAuthState({ user, error: null }));
+      sdk.onAuthStateChanged(authInstance, (user) => setAuthStateIfCurrent({ user, error: null }));
       try {
         await withTimeout(sdk.getRedirectResult(authInstance), AUTH_ACTION_TIMEOUT_MS, 'redirect-result');
       } catch (error) {
