@@ -61,18 +61,22 @@ export async function getDocServerFirst (sdk, ref) {
   return sdk.getDoc(ref)
 }
 
-function normalizeInviteForSelection (invite, normalizedEmailLower) {
-  const inviteEmailLower = normalizeEmail(invite.emailLower || invite.email)
-  const targetEmail = inviteEmailLower || normalizedEmailLower
+export function normalizeInviteRecord (invite, fallbackEmailLower = '') {
+  if (!invite || typeof invite !== 'object') return null
+  if (typeof invite.teamId !== 'string' || !invite.teamId.trim()) return null
+  const inviteEmailLower = normalizeEmail(invite.emailLower || invite.email || fallbackEmailLower)
+  if (!inviteEmailLower) return null
   const teamId = formatTeamId(invite.teamId || DEFAULT_TEAM_ID)
-  const deterministicId = deterministicInviteId(teamId, targetEmail)
+  if (!teamId) return null
+  const deterministicId = deterministicInviteId(teamId, inviteEmailLower)
   const id = invite.id || invite.inviteId || deterministicId
+  if (!id) return null
   return {
     ...invite,
     id,
     inviteId: invite.inviteId || id,
     teamId,
-    emailLower: targetEmail,
+    emailLower: inviteEmailLower,
     role: normalizeRole(invite.role),
     active: invite.active !== false,
   }
@@ -97,7 +101,8 @@ export function selectDeterministicInvite (invites, emailLowerInput) {
   const normalizedEmailLower = normalizeEmail(emailLowerInput)
   if (!normalizedEmailLower) return null
   const normalizedInvites = (invites || [])
-    .map(invite => normalizeInviteForSelection(invite, normalizedEmailLower))
+    .map(invite => normalizeInviteRecord(invite, normalizedEmailLower))
+    .filter(Boolean)
     .filter(invite => invite.emailLower === normalizedEmailLower && invite.active !== false && !invite.usedAt)
 
   if (!normalizedInvites.length) return null
@@ -124,6 +129,7 @@ function buildMemberPayload ({ sdk, authUser, teamId, role = 'member', existing 
     displayName: authUser.displayName || authUser.name || '',
     role: normalizeRole(role),
     active: true,
+    assigned: true,
     createdAt,
     addedAt,
     updatedAt: now,
@@ -358,20 +364,35 @@ export async function consumeInviteIfAny (authUserEmailLower, authUid) {
   const inviteId = primaryInvite.inviteId || primaryInvite.id
   const inviteDocIds = selection.inviteIds.length ? selection.inviteIds : [inviteId]
   const memberRef = getMemberDocRef(sdk, db, teamId, authUid)
-  const memberSnapshot = await sdk.getDoc(memberRef)
-  const memberPayload = buildMemberPayload({
-    sdk,
-    authUser: { uid: authUid, email: emailLower, displayName: primaryInvite.displayName || '' },
-    teamId,
-    role: normalizeRole(primaryInvite.role),
-    existing: memberSnapshot.exists() ? memberSnapshot.data() : null,
+  const result = await sdk.runTransaction(db, async (tx) => {
+    const primaryRef = sdk.doc(db, 'teamInvites', inviteId)
+    const [memberSnapshot, primarySnapshot] = await Promise.all([
+      tx.get(memberRef),
+      tx.get(primaryRef),
+    ])
+    const primaryData = primarySnapshot.exists() ? { id: primarySnapshot.id, ...(primarySnapshot.data() || {}) } : null
+    const normalizedPrimary = normalizeInviteRecord(primaryData, emailLower)
+    if (!normalizedPrimary || normalizedPrimary.active === false || normalizedPrimary.usedAt) {
+      throw Object.assign(new Error('Invitationen er ikke aktiv længere.'), { code: 'invite-inactive' })
+    }
+    const memberPayload = buildMemberPayload({
+      sdk,
+      authUser: { uid: authUid, email: emailLower, displayName: normalizedPrimary.displayName || '' },
+      teamId,
+      role: normalizeRole(normalizedPrimary.role),
+      existing: memberSnapshot.exists() ? memberSnapshot.data() : null,
+    })
+    memberPayload.inviteId = inviteId
+    tx.set(memberRef, memberPayload, { merge: true })
+    const usedPayload = { usedAt: sdk.serverTimestamp(), usedByUid: authUid, active: false, updatedAt: sdk.serverTimestamp() }
+    inviteDocIds.forEach(id => {
+      const ref = sdk.doc(db, 'teamInvites', id)
+      tx.set(ref, usedPayload, { merge: true })
+    })
+    return { memberPayload, inviteId }
   })
-  memberPayload.inviteId = inviteId
-  await sdk.setDoc(memberRef, memberPayload, { merge: true })
-  await upsertUserTeamRoleCache(authUid, teamId, memberPayload.role, { emailLower })
-  const usedPayload = { usedAt: sdk.serverTimestamp(), usedByUid: authUid, active: false, updatedAt: sdk.serverTimestamp() }
-  await Promise.all(inviteDocIds.map(id => sdk.setDoc(sdk.doc(db, 'teamInvites', id), usedPayload, { merge: true })))
-  return { teamId, role: memberPayload.role, inviteId, membership: { ...memberPayload, inviteId } }
+  await upsertUserTeamRoleCache(authUid, teamId, result.memberPayload.role, { emailLower })
+  return { teamId, role: result.memberPayload.role, inviteId: result.inviteId, membership: { ...result.memberPayload, inviteId: result.inviteId } }
 }
 
 export async function ensureTeamForAdminIfMissing (authUser, preferredTeamId = DEFAULT_TEAM_ID) {

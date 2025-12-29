@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import path from 'node:path'
 import fs from 'node:fs/promises'
+import { createConsoleCollector } from './helpers/console-collector'
 
 const ARTIFACT_ROOT = path.resolve('release-artifacts/v2025.12.10')
 const SCENARIO_DIRS = {
@@ -254,58 +255,73 @@ async function createCombinedJob(page) {
   await populateLon(page)
 }
 
-test('basic job: export/import generates artifacts', async ({ page }) => {
-  await page.goto('/')
-  await ensureLoggedIn(page)
-  await createBasicJob(page)
+test('basic job: export/import generates artifacts', async ({ page }, testInfo) => {
+  const collector = createConsoleCollector(page)
+  try {
+    await page.goto('/')
+    await ensureLoggedIn(page)
+    await createBasicJob(page)
 
-  const { jsonPath } = await exportPdfAndJson(page, 'basic', 'basic')
+    const { jsonPath } = await exportPdfAndJson(page, 'basic', 'basic')
 
-  await page.goto('/')
-  await ensureLoggedIn(page)
-  await importJson(page, jsonPath, { navn: 'Basisjob', kunde: 'Basis kunde' })
+    await page.goto('/')
+    await ensureLoggedIn(page)
+    await importJson(page, jsonPath, { navn: 'Basisjob', kunde: 'Basis kunde' })
 
-  await expect(page.getByLabel('Navn/opgave')).toHaveValue('Basisjob')
-  await expect(page.getByLabel('Kunde')).toHaveValue('Basis kunde')
+    await expect(page.getByLabel('Navn/opgave')).toHaveValue('Basisjob')
+    await expect(page.getByLabel('Kunde')).toHaveValue('Basis kunde')
 
-  await warmUpExportPanel(page)
-  const second = await exportPdfAndJson(page, 'basic', 'basic-roundtrip')
+    await warmUpExportPanel(page)
+    const second = await exportPdfAndJson(page, 'basic', 'basic-roundtrip')
 
-  const original = JSON.parse(await fs.readFile(jsonPath, 'utf8'))
-  const roundtrip = JSON.parse(await fs.readFile(second.jsonPath, 'utf8'))
+    const original = JSON.parse(await fs.readFile(jsonPath, 'utf8'))
+    const roundtrip = JSON.parse(await fs.readFile(second.jsonPath, 'utf8'))
 
-  expect(scrubVolatileFields(original)).toEqual(scrubVolatileFields(roundtrip))
+    expect(scrubVolatileFields(original)).toEqual(scrubVolatileFields(roundtrip))
+  } finally {
+    await collector.attachIfFailed(testInfo)
+  }
 })
 
-test('multi-system job exports and imports with artifacts', async ({ page }) => {
-  await page.goto('/')
-  await ensureLoggedIn(page)
-  await createMultiSystemJob(page)
+test('multi-system job exports and imports with artifacts', async ({ page }, testInfo) => {
+  const collector = createConsoleCollector(page)
+  try {
+    await page.goto('/')
+    await ensureLoggedIn(page)
+    await createMultiSystemJob(page)
 
-  const { jsonPath } = await exportPdfAndJson(page, 'multi', 'multi')
+    const { jsonPath } = await exportPdfAndJson(page, 'multi', 'multi')
 
-  await page.goto('/')
-  await ensureLoggedIn(page)
-  await importJson(page, jsonPath, { navn: 'Multisystem', kunde: 'Flere systemer' })
+    await page.goto('/')
+    await ensureLoggedIn(page)
+    await importJson(page, jsonPath, { navn: 'Multisystem', kunde: 'Flere systemer' })
 
-  await expect(page.getByLabel('Navn/opgave')).toHaveValue('Multisystem')
-  await expect(page.getByLabel('Kunde')).toHaveValue('Flere systemer')
+    await expect(page.getByLabel('Navn/opgave')).toHaveValue('Multisystem')
+    await expect(page.getByLabel('Kunde')).toHaveValue('Flere systemer')
 
-  const systemCheckboxes = page.locator('#listSelectors input[type="checkbox"]:checked')
-  await expect(systemCheckboxes).toHaveCount(3)
+    const systemCheckboxes = page.locator('#listSelectors input[type=\"checkbox\"]:checked')
+    await expect(systemCheckboxes).toHaveCount(3)
+  } finally {
+    await collector.attachIfFailed(testInfo)
+  }
 })
 
-test('combined lists job exports and imports with artifacts', async ({ page }) => {
-  await page.goto('/')
-  await ensureLoggedIn(page)
-  await createCombinedJob(page)
+test('combined lists job exports and imports with artifacts', async ({ page }, testInfo) => {
+  const collector = createConsoleCollector(page)
+  try {
+    await page.goto('/')
+    await ensureLoggedIn(page)
+    await createCombinedJob(page)
 
-  const { jsonPath } = await exportPdfAndJson(page, 'combined', 'combined')
+    const { jsonPath } = await exportPdfAndJson(page, 'combined', 'combined')
 
-  await page.goto('/')
-  await ensureLoggedIn(page)
-  await importJson(page, jsonPath, { navn: 'Kombineret liste', kunde: 'Kombineret kunde' })
+    await page.goto('/')
+    await ensureLoggedIn(page)
+    await importJson(page, jsonPath, { navn: 'Kombineret liste', kunde: 'Kombineret kunde' })
 
-  await expect(page.getByLabel('Navn/opgave')).toHaveValue('Kombineret liste')
-  await expect(page.locator('#jobType')).toHaveValue('demontage')
+    await expect(page.getByLabel('Navn/opgave')).toHaveValue('Kombineret liste')
+    await expect(page.locator('#jobType')).toHaveValue('demontage')
+  } finally {
+    await collector.attachIfFailed(testInfo)
+  }
 })

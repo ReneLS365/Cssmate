@@ -1,4 +1,4 @@
-import { FIREBASE_SDK_VERSION, getFirebaseAppInstance } from './shared-auth.js';
+import { FIREBASE_SDK_VERSION, getFirebaseAppInstance, getFirebaseConfigStatus, isMockAuthEnabled } from './shared-auth.js';
 import { setLastFirestoreError } from '../src/state/debug.js';
 
 let firestoreModule = null;
@@ -12,6 +12,12 @@ async function loadFirestoreSdk() {
 
 export async function getFirestoreDb() {
   if (firestoreDb) return firestoreDb;
+  const configStatus = getFirebaseConfigStatus();
+  if (isMockAuthEnabled() && !configStatus?.isValid) {
+    const error = new Error('Firestore er ikke tilgængelig i mock login.');
+    error.code = 'mock-auth';
+    throw error;
+  }
   const app = await getFirebaseAppInstance();
   const sdk = await loadFirestoreSdk();
   firestoreDb = sdk.getFirestore(app);
@@ -35,6 +41,26 @@ export function toIsoString(value) {
   }
   if (typeof value === 'number') return new Date(value).toISOString();
   return value;
+}
+
+export async function checkFirestoreConnection({ timeoutMs = 6000 } = {}) {
+  let timeoutId;
+  try {
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        const err = new Error('Firestore timeout');
+        err.code = 'timeout';
+        reject(err);
+      }, timeoutMs);
+      timeoutId?.unref?.();
+    });
+    await Promise.race([getFirestoreDb(), timeoutPromise]);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error };
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 }
 
 function inferPath(args = []) {

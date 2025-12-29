@@ -1,4 +1,5 @@
 import { getFirestoreDb, getFirestoreHelpers } from '../../js/shared-firestore.js'
+import { isMockAuthEnabled } from '../../js/shared-auth.js'
 import { formatTeamId, normalizeTeamId } from './team-ids.js'
 import { isTeamDebugEnabled, teamDebug } from '../utils/team-debug.js'
 
@@ -76,10 +77,19 @@ function baseResult ({ teamId, user, source = 'resolveTeamAccess' }) {
 }
 
 function mapError (error) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return { code: 'offline', message: 'Du er offline. Tjek netværket og prøv igen.' }
+  }
   const code = error?.code || 'error'
   const message = error?.message || 'Ukendt fejl'
   if (code === 'permission-denied') {
     return { code, message: 'Firestore permission denied (tjek rules/AppCheck).' }
+  }
+  if (code === 'unavailable') {
+    return { code, message: 'Firestore er utilgængelig. Tjek netværk eller App Check.' }
+  }
+  if (code === 'missing-config') {
+    return { code, message: 'Firestore er ikke konfigureret.' }
   }
   if (message.toLowerCase().includes('app check')) {
     return { code: 'app-check', message: 'AppCheck fejl — tjek site key / debug token.' }
@@ -129,6 +139,30 @@ async function readTeamAccess ({ teamId, user, source = 'resolveTeamAccess' }) {
   const initial = baseResult({ teamId, user, source })
   if (!user?.uid) {
     return { ...initial, status: TEAM_ACCESS_STATUS.NO_AUTH, reason: 'no-auth' }
+  }
+  if (isMockAuthEnabled()) {
+    const normalizedTeamId = formatTeamId(teamId)
+    return {
+      ...initial,
+      status: TEAM_ACCESS_STATUS.OK,
+      teamId: normalizedTeamId,
+      role: 'admin',
+      owner: false,
+      member: true,
+      active: true,
+      assigned: true,
+      memberDoc: {
+        uid: user.uid,
+        email: user.email || '',
+        emailLower: (user.email || '').toLowerCase(),
+        role: 'admin',
+        active: true,
+        assigned: true,
+        teamId: normalizedTeamId,
+      },
+      reason: 'mock-auth',
+      error: null,
+    }
   }
   const normalizedTeamId = formatTeamId(teamId)
   if (!normalizedTeamId) {

@@ -28,18 +28,22 @@ function main() {
   const report = readReport();
 
   const performanceMin = Number(process.env.CSSMATE_LH_PERF_MIN ?? 95);
+  const performanceTarget = 100;
   const lcpMaxMs = Number(process.env.CSSMATE_LH_LCP_MAX_MS ?? 3000);
   const clsMax = Number(process.env.CSSMATE_LH_CLS_MAX ?? 0.01);
 
   const thresholds = {
     performance: { min: performanceMin },
-    performance: { min: 95 },
     'best-practices': { min: 100, exact: true },
     accessibility: { min: 98 },
     seo: { min: 100, exact: true },
   };
 
   const failures = [];
+  const perfScore = getCategoryScore(report, 'performance');
+  if (perfScore !== null) {
+    console.log(`Lighthouse perf: ${formatScore(perfScore)} (min ${performanceMin}, target ${performanceTarget})`);
+  }
 
   for (const [key, rule] of Object.entries(thresholds)) {
     const score = getCategoryScore(report, key);

@@ -191,7 +191,7 @@ export function setLastFirestoreError (error, path = '') {
     },
   })
   if (code === 'failed-precondition' && message?.toLowerCase?.()?.includes('index')) {
-    console.error(message)
+    console.warn(message)
     dispatchIndexMissing(message, normalizedPath)
   }
 }
