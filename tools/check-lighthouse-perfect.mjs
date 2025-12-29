@@ -33,6 +33,7 @@ function main() {
 
   const thresholds = {
     performance: { min: performanceMin },
+    performance: { min: 95 },
     'best-practices': { min: 100, exact: true },
     accessibility: { min: 98 },
     seo: { min: 100, exact: true },
