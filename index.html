@@ -2,7 +2,7 @@
 <html lang="da">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' https://www.gstatic.com https://www.googleapis.com https://cdn.jsdelivr.net https://www.google.com https://www.recaptcha.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://www.google.com; font-src 'self' data:; frame-src https://accounts.google.com https://*.firebaseapp.com https://www.google.com https://www.recaptcha.net;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; object-src 'none'; base-uri 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data: https:; script-src 'self' 'unsafe-inline' https://www.gstatic.com; connect-src 'self' https://*.googleapis.com https://www.gstatic.com; frame-ancestors 'self'; upgrade-insecure-requests;">
   <!-- force build -->
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="description" content="CSMate – stilladsoptælling, akkord og PWA til byggepladsen.">
@@ -13,6 +13,8 @@
 
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://www.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>
   <script type="importmap" src="/js/importmap.json"></script>
   <script src="/js/firebase-env.js" defer></script>
   <script src="/js/version.js" defer></script>
