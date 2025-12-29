@@ -200,20 +200,17 @@ function ensureDebugOverlayModule () {
 
 async function initAuthGateLazy () {
   const mod = await ensureAuthGateModule()
-  if (!IS_CI) {
-    warmupAuthProvider().catch(() => {})
-  }
   return mod?.initAuthGate?.()
 }
 
 function warmupAuthProvider () {
   return ensureAuthProviderModule()
     .then(mod => {
-      cachedAuthIdentity = mod?.getAuthIdentity?.() ?? null
+      cachedAuthIdentity = mod?.getAuthIdentity?.() || cachedAuthIdentity
       if (!authProviderSubscribed && typeof mod?.onChange === 'function') {
         authProviderSubscribed = true
         mod.onChange(() => {
-          cachedAuthIdentity = mod?.getAuthIdentity?.() ?? null
+          cachedAuthIdentity = mod?.getAuthIdentity?.() || cachedAuthIdentity
         })
       }
       return mod
@@ -226,9 +223,6 @@ function warmupAuthProvider () {
 }
 
 function getCachedAuthIdentity () {
-  if (IS_CI) {
-    return null
-  }
   if (!authProviderModulePromise) {
     runWhenIdle(() => {
       warmupAuthProvider().catch(() => {})
