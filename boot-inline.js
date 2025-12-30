@@ -138,6 +138,17 @@ export function registerServiceWorker() {
     return;
   }
 
+  if (typeof window !== 'undefined') {
+    try {
+      if (String(import.meta?.env?.VITE_LIGHTHOUSE || '') === '1') {
+        console.info('Service worker registration skipped in Lighthouse mode');
+        return;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   const searchParams = new URLSearchParams(window.location.search || '');
   if (window.CSSMATE_IS_CI === true) {
     console.info('Service worker registration skipped in CI');

@@ -28,6 +28,7 @@ jobs:
       - name: Build
         env:
           CSSMATE_SKIP_FIREBASE_ENV_CHECK: "1"
+          VITE_LIGHTHOUSE: "1"
         run: npm run build
 
       - name: Start preview server

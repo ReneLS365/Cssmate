@@ -5,7 +5,8 @@ import {
   readWindowFirebaseConfig,
   sanitizeFirebaseConfig,
   validateFirebaseConfig,
-} from '../src/config/firebase.js';
+} from '../src/config/firebase-utils.js';
+import { isLighthouseMode } from '../src/config/lighthouse-mode.js';
 
 const DEFAULT_PROVIDER = 'custom';
 const DEFAULT_ENABLED_PROVIDERS = ['google', 'microsoft'];
@@ -421,6 +422,13 @@ function logAuthEvent(action, detail = {}) {
 }
 
 export async function initSharedAuth() {
+  if (isLighthouseMode()) {
+    if (!initPromise) {
+      setAuthState({ user: null, error: null });
+      initPromise = Promise.resolve(null);
+    }
+    return initPromise;
+  }
   if (initPromise) return initPromise;
   const initId = ++initSequence;
   const setAuthStateIfCurrent = (payload) => {

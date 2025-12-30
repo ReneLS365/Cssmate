@@ -20,6 +20,7 @@ import { downloadBlob } from './js/utils/downloadBlob.js'
 import { applyBuildMetadata, isDebugOverlayEnabled, updateCurrentView } from './src/state/debug.js'
 import { resetAppState, resetOfflineCache } from './src/utils/reset-app.js'
 import { initBootInline } from './boot-inline.js'
+import { isLighthouseMode } from './src/config/lighthouse-mode.js'
 
 function readCiFlag () {
   if (typeof document !== 'undefined') {
@@ -30,6 +31,7 @@ function readCiFlag () {
 }
 
 let IS_CI = false
+let IS_LIGHTHOUSE = false
 
 function setupServiceWorkerAutoReload () {
   if (typeof window === 'undefined') return
@@ -5761,7 +5763,7 @@ async function restoreDraftOnLoad() {
 }
 
 function scheduleAuthBootstrap () {
-  if (IS_CI) return
+  if (IS_CI || IS_LIGHTHOUSE) return
   runWhenIdle(() => {
     ensureAuthBootstrapModule()
       .then(mod => mod?.initAuth?.())
@@ -5775,6 +5777,7 @@ function configureBootstrap () {
   if (bootstrapConfigured) return
   bootstrapConfigured = true
   IS_CI = readCiFlag()
+  IS_LIGHTHOUSE = isLighthouseMode()
   applyBuildMetadata()
   setupServiceWorkerAutoReload()
   setupVersionCheck()
@@ -5800,7 +5803,7 @@ export async function bootstrapApp () {
   scheduleAuthBootstrap()
 
   let authGatePromise = null
-  if (!IS_CI) {
+  if (!IS_CI && !IS_LIGHTHOUSE) {
     showAuthGateShell()
     authGatePromise = initAuthGateLazy().catch(error => {
       console.warn('Kunne ikke indlæse auth-gate', error)

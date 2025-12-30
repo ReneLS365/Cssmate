@@ -1,5 +1,6 @@
 import { getAuthContext, onAuthStateChange, waitForAuthReady } from '../../js/shared-auth.js'
 import { normalizeEmail } from './roles.js'
+import { isLighthouseMode } from '../config/lighthouse-mode.js'
 import { setLastFirestoreError, updateSessionDebugState } from '../state/debug.js'
 import { markUserLoading, resetUserState, setUserLoadedState } from '../state/user-store.js'
 import { resolveMembershipStatus, resolveSessionStatus, SESSION_STATUS } from './access-state.js'
@@ -464,6 +465,23 @@ function handleAuthChange (context) {
 
 function initAuthSession () {
   if (initialized) return getSessionApi()
+  if (isLighthouseMode()) {
+    initialized = true
+    setState({
+      status: SESSION_STATUS.ADMIN,
+      authReady: true,
+      hasAccess: true,
+      role: 'admin',
+      user: { uid: 'lighthouse', email: 'lighthouse@local' },
+      teamResolved: true,
+      memberExists: true,
+      memberActive: true,
+      membershipStatus: 'member',
+      accessStatus: TEAM_ACCESS_STATUS.OK,
+      message: '',
+    })
+    return getSessionApi()
+  }
   initialized = true
 
   // Kick auth init immediately so onAuthStateChange callbacks actually fire
