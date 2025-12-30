@@ -83,12 +83,13 @@ const preflight = async () => {
   const npmVersion = await runCmd('npm', ['-v'], process.env);
   console.log(npmVersion.log.trim());
 
+  const envChromePath = process.env.CHROME_PATH?.trim() || process.env.CHROME_BIN?.trim();
   const chromePathResult = await runCmd(
     'bash',
     ['-lc', 'command -v google-chrome-stable || command -v google-chrome || command -v chromium || command -v chromium-browser || true'],
     process.env,
   );
-  const chromePath = chromePathResult.log.trim();
+  const chromePath = envChromePath || chromePathResult.log.trim();
   console.log('Chrome path:', chromePath || '(not found)');
 
   if (chromePath) {
@@ -109,7 +110,7 @@ await fs.mkdir(DIR, { recursive: true });
 
 const CHROME_PATH = await preflight();
 if (!CHROME_PATH) {
-  console.error('Chrome not found on PATH. Lighthouse cannot run.');
+  console.error('Chrome not found via CHROME_PATH/CHROME_BIN or PATH. Lighthouse cannot run.');
   process.exit(1);
 }
 
