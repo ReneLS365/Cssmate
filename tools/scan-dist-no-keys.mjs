@@ -19,5 +19,10 @@ function walk(dir) {
   }
 }
 
+if (!fs.existsSync(DIST)) {
+  console.log('ℹ️ dist directory not found, skipping scan')
+  process.exit(0)
+}
+
 walk(DIST)
 console.log('✅ dist clean')
