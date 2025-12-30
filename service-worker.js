@@ -9,7 +9,7 @@ if (versionScriptUrl) {
 importScripts('/js/version.js')
 }
 
-const CACHE_VERSION = 'sscaff-v-20251229223142191' // bumped for always-latest deploy flow
+const CACHE_VERSION = 'sscaff-v-20251230104502191' // bumped for always-latest deploy flow
 const RESOLVED_CACHE_VERSION = (typeof self !== 'undefined' && self.CSSMATE_BUILD_META?.cacheKey) ? self.CSSMATE_BUILD_META.cacheKey : CACHE_VERSION
 const CACHE_NAME = 'sscaff-' + RESOLVED_CACHE_VERSION
 const PRECACHE_URLS = [
@@ -26,6 +26,8 @@ const PRECACHE_URLS = [
   '/css/numpad.css',
   '/css/pwa.css',
   '/src/styles/fixes.css',
+  '/src/config/firebase-config.js',
+  '/src/config/firebase-utils.js',
   '/src/debug/tools.js',
   '/src/state/debug.js',
   '/src/state/user-store.js',
@@ -127,14 +129,39 @@ self.addEventListener('fetch', event => {
   if (request.method !== 'GET') return
 
   const url = new URL(request.url)
-  if (url.origin !== self.location.origin) return
+  const bypassRemoteOrigins = [
+    'https://identitytoolkit.googleapis.com',
+    'https://securetoken.googleapis.com',
+    'https://accounts.google.com',
+    'https://www.googleapis.com',
+    'https://firestore.googleapis.com',
+    'https://www.gstatic.com',
+  ]
+  if (url.origin !== self.location.origin) {
+    if (bypassRemoteOrigins.includes(url.origin)) {
+      event.respondWith(fetch(request))
+    }
+    return
+  }
 
   if (request.mode === 'navigate') {
     event.respondWith(handleNavigation(request))
     return
   }
 
-  const bypass = url.pathname.includes('/auth') || url.pathname.includes('firebase')
+  const bypassPaths = [
+    '/.netlify/functions/firebase-config',
+    '/api/firebase-config',
+    '/config.json',
+    '/js/firebase-env.js',
+    '/js/shared-auth.js',
+  ]
+  const bypass =
+    bypassPaths.includes(url.pathname) ||
+    url.pathname.startsWith('/__/auth') ||
+    url.pathname.includes('/auth') ||
+    url.pathname.includes('firebase') ||
+    url.pathname.includes('firebase-config')
   if (bypass) {
     event.respondWith(fetch(request))
     return

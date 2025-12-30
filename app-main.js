@@ -171,6 +171,7 @@ let authProviderModulePromise = null
 let appGuardModulePromise = null
 let debugOverlayModulePromise = null
 let authBootstrapModulePromise = null
+let authDiagnosticsModulePromise = null
 let authProviderSubscribed = false
 let cachedAuthIdentity = null
 
@@ -207,6 +208,21 @@ function ensureAuthBootstrapModule () {
     authBootstrapModulePromise = import('./src/auth/bootstrap.js')
   }
   return authBootstrapModulePromise
+}
+
+function shouldShowAuthDiagnostics () {
+  if (typeof window === 'undefined') return false
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('diag') === '1' || params.get('diag') === 'auth') return true
+  const path = window.location.pathname || ''
+  return path.startsWith('/diag/auth') || path.startsWith('/diag')
+}
+
+function ensureAuthDiagnosticsModule () {
+  if (!authDiagnosticsModulePromise) {
+    authDiagnosticsModulePromise = import('./src/ui/auth-diagnostics.js')
+  }
+  return authDiagnosticsModulePromise
 }
 
 async function initAuthGateLazy () {
@@ -249,6 +265,13 @@ function initDebugOverlayLazy () {
       .then(mod => mod?.initDebugTools?.())
       .catch(error => console.warn('Kunne ikke indlæse debug overlay', error))
   })
+}
+
+function initAuthDiagnosticsLazy () {
+  if (!shouldShowAuthDiagnostics()) return
+  ensureAuthDiagnosticsModule()
+    .then(mod => mod?.initAuthDiagnostics?.())
+    .catch(error => console.warn('Kunne ikke indlæse auth diagnostics', error))
 }
 
 function initAppGuardLazy () {
@@ -5800,6 +5823,7 @@ export async function bootstrapApp () {
   configureBootstrap()
   registerIndexMissingHandler()
   initDebugOverlayLazy()
+  initAuthDiagnosticsLazy()
   scheduleAuthBootstrap()
 
   let authGatePromise = null

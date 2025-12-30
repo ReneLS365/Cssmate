@@ -9,11 +9,34 @@ const envKeys = {
 };
 
 const REQUIRED_KEYS = ['apiKey', 'authDomain', 'projectId', 'appId'];
+const API_KEY_MIN_LENGTH = 20;
+
+const PLACEHOLDER_PATTERNS = [
+  /\*{3,}/,
+  /changeme/i,
+  /replace/i,
+  /your[_-]?/i,
+  /^undefined$/i,
+  /^null$/i,
+];
 
 function readEnv(key) {
   const value = process.env[key];
   if (typeof value === 'string') return value.trim();
   return value || '';
+}
+
+function isPlaceholder(value) {
+  if (typeof value !== 'string') return false;
+  return PLACEHOLDER_PATTERNS.some(pattern => pattern.test(value));
+}
+
+function isInvalidApiKey(value) {
+  if (typeof value !== 'string') return true;
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  if (trimmed.length < API_KEY_MIN_LENGTH) return true;
+  return isPlaceholder(trimmed);
 }
 
 export async function handler() {
@@ -22,7 +45,8 @@ export async function handler() {
   );
 
   const missing = REQUIRED_KEYS.filter((key) => !config[key]);
-  if (missing.length) {
+  const apiKeyInvalid = isInvalidApiKey(config.apiKey);
+  if (missing.length || apiKeyInvalid) {
     return {
       statusCode: 500,
       headers: {
@@ -31,6 +55,7 @@ export async function handler() {
       body: JSON.stringify({
         error: 'Missing Firebase configuration on server.',
         missingKeys: missing,
+        apiKeyInvalid,
       }),
     };
   }
@@ -39,7 +64,7 @@ export async function handler() {
     statusCode: 200,
     headers: {
       'Content-Type': 'application/json',
-      'Cache-Control': 'public, max-age=300',
+      'Cache-Control': 'no-store',
     },
     body: JSON.stringify(config),
   };

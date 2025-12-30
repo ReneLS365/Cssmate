@@ -1,19 +1,20 @@
 import { getAdminEmails, isAdminEmail, normalizeEmail } from '../src/auth/roles.js';
 import {
-  getFirebaseConfigSummary,
-  getFirebaseEnvKeyMap,
-  readWindowFirebaseConfig,
-  sanitizeFirebaseConfig,
-  validateFirebaseConfig,
-} from '../src/config/firebase-utils.js';
+  getFirebaseConfigSource,
+  getFirebaseConfigStatus as readFirebaseConfigStatus,
+  getFirebaseConfigSummarySnapshot,
+  getFirebaseConfigSnapshot as readFirebaseConfigSnapshot,
+  getFirebaseEnvPresence,
+  loadFirebaseConfig,
+  reportFirebaseConfigStatus,
+} from '../src/config/firebase-config.js';
+import { getFirebaseConfigSummary } from '../src/config/firebase-utils.js';
 import { isLighthouseMode } from '../src/config/lighthouse-mode.js';
 
 const DEFAULT_PROVIDER = 'custom';
 const DEFAULT_ENABLED_PROVIDERS = ['google', 'microsoft'];
 export const FIREBASE_SDK_VERSION = '10.12.2';
 const MOCK_AUTH_STORAGE_KEY = 'cssmate:mockAuthUser';
-const FIREBASE_CONFIG_CACHE_KEY = 'cssmate:firebaseConfig';
-const FIREBASE_CONFIG_ENDPOINT = '/.netlify/functions/firebase-config';
 const DEFAULT_APP_CHECK_ENABLED = true;
 const AUTH_INIT_TIMEOUT_MS = 15000;
 const AUTH_ACTION_TIMEOUT_MS = 15000;
@@ -36,11 +37,10 @@ let firebaseAppInstance = null;
 let initSequence = 0;
 export let APP_CHECK_STATUS = 'off';
 export let APP_CHECK_REASON = '';
-let firebaseConfigSnapshot = null;
-let firebaseConfigStatus = { isValid: false, missingKeys: [], placeholderKeys: [] };
 let lastAuthErrorCode = '';
 let configWarningLogged = false;
-let firebaseConfigPromise = null;
+let lastAuthMode = '';
+let appCheckDebugEnabled = false;
 
 function setAppCheckState(status, reason = '') {
   APP_CHECK_STATUS = status;
@@ -72,6 +72,13 @@ function resolveAppCheckEnabledFlag() {
   const windowValue = typeof window !== 'undefined' ? window.FIREBASE_APP_CHECK_ENABLED : undefined;
   const rawValue = typeof envValue !== 'undefined' ? envValue : windowValue;
   return resolveBooleanFlag(rawValue, DEFAULT_APP_CHECK_ENABLED);
+}
+
+function resolveAppCheckDebugFlag() {
+  const envValue = readEnvValue('VITE_APPCHECK_DEBUG');
+  const windowValue = typeof window !== 'undefined' ? window.FIREBASE_APPCHECK_DEBUG : undefined;
+  const rawValue = typeof envValue !== 'undefined' ? envValue : windowValue;
+  return resolveBooleanFlag(rawValue, false);
 }
 
 function isLocalhost() {
@@ -128,95 +135,6 @@ function ensureMockUserVerified() {
   persistMockUser(mockUser);
 }
 
-function getFirebaseConfig() {
-  const windowConfig = readWindowFirebaseConfig();
-  if (windowConfig) return sanitizeFirebaseConfig(windowConfig);
-  return readCachedFirebaseConfig();
-}
-
-function readCachedFirebaseConfig() {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.sessionStorage?.getItem(FIREBASE_CONFIG_CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return sanitizeFirebaseConfig(parsed);
-  } catch (error) {
-    console.warn('Kunne ikke læse Firebase config cache', error);
-    return null;
-  }
-}
-
-function cacheFirebaseConfig(config) {
-  if (typeof window === 'undefined' || !config) return;
-  try {
-    window.sessionStorage?.setItem(FIREBASE_CONFIG_CACHE_KEY, JSON.stringify(config));
-  } catch (error) {
-    console.warn('Kunne ikke gemme Firebase config cache', error);
-  }
-}
-
-async function fetchFirebaseConfig() {
-  const controller = typeof AbortController === 'function' ? new AbortController() : null;
-  const timeoutId = setTimeout(() => controller?.abort(), 8000);
-  let response;
-  try {
-    response = await fetch(FIREBASE_CONFIG_ENDPOINT, {
-      headers: { Accept: 'application/json' },
-      signal: controller?.signal,
-    });
-  } catch (error) {
-    error.code = error?.name === 'AbortError' ? 'config-timeout' : 'config-fetch';
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-  if (!response?.ok) {
-    const error = new Error(`Firebase config endpoint fejlede (${response?.status || 'ukendt status'}).`);
-    error.code = 'config-response';
-    throw error;
-  }
-  const data = await response.json();
-  return sanitizeFirebaseConfig(data);
-}
-
-function buildOfflineConfigError() {
-  const error = new Error('Du er offline. Kan ikke hente login-konfiguration.');
-  error.code = 'offline-config';
-  return error;
-}
-
-async function loadFirebaseConfig() {
-  if (firebaseConfigPromise) return firebaseConfigPromise;
-  firebaseConfigPromise = (async () => {
-    const cached = getFirebaseConfig();
-    try {
-      const fetched = await fetchFirebaseConfig();
-      if (fetched) {
-        cacheFirebaseConfig(fetched);
-        if (typeof window !== 'undefined') {
-          window.FIREBASE_CONFIG = fetched;
-        }
-        return fetched;
-      }
-    } catch (error) {
-      if (cached) return cached;
-      if (error?.code === 'config-fetch' || error?.code === 'config-timeout') {
-        throw buildOfflineConfigError();
-      }
-      throw error;
-    }
-    if (cached) return cached;
-    throw buildOfflineConfigError();
-  })();
-  try {
-    return await firebaseConfigPromise;
-  } catch (error) {
-    firebaseConfigPromise = null;
-    throw error;
-  }
-}
-
 async function loadFirebaseSdk() {
   if (authModule) return authModule;
   const [{ initializeApp, getApp, getApps }, auth] = await Promise.all([
@@ -266,12 +184,14 @@ async function ensureAppCheck(app) {
   const siteKey = getAppCheckSiteKey();
   if (!enabled) {
     setAppCheckState('off', 'disabled');
+    appCheckDebugEnabled = false;
     appCheckInitPromise = Promise.resolve(null);
     return appCheckInitPromise;
   }
   if (!siteKey) {
     console.warn('App Check deaktiveret: mangler reCAPTCHA v3 site key.');
     setAppCheckState('off', 'missing_site_key');
+    appCheckDebugEnabled = false;
     appCheckInitPromise = Promise.resolve(null);
     return appCheckInitPromise;
   }
@@ -279,7 +199,9 @@ async function ensureAppCheck(app) {
   appCheckInitPromise = (async () => {
     try {
       const sdk = await loadAppCheckSdk();
-      if (isDevBuild() && typeof self !== 'undefined') {
+      const shouldEnableDebug = resolveAppCheckDebugFlag() || isDevBuild();
+      appCheckDebugEnabled = shouldEnableDebug;
+      if (shouldEnableDebug && typeof self !== 'undefined') {
         try {
           self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
         } catch (error) {
@@ -313,9 +235,7 @@ function scheduleAppCheckInit(app) {
 
 export async function getFirebaseAppInstance() {
   let config = await loadFirebaseConfig();
-  const validation = validateFirebaseConfig(config);
-  firebaseConfigStatus = validation;
-  firebaseConfigSnapshot = config;
+  const validation = reportFirebaseConfigStatus(config);
   if (!validation.isValid) {
     const error = buildConfigError(validation);
     logConfigDiagnostics(validation);
@@ -390,26 +310,14 @@ function logConfigDiagnostics(validation) {
 
 function buildConfigError(validation) {
   const missing = [...(validation?.missingKeys || []), ...(validation?.placeholderKeys || [])].filter(Boolean);
-  const error = new Error(
-    'Firebase config mangler. Bed admin om at sætte Netlify miljøvariabler. Se konsollen for detaljer.'
-  );
+  const apiKeyMissing = missing.includes('VITE_FIREBASE_API_KEY');
+  const message = apiKeyMissing
+    ? 'Firebase API key misconfigured in Netlify env: VITE_FIREBASE_API_KEY'
+    : `Firebase config mangler i Netlify env: ${missing.join(', ') || 'ukendt'}`;
+  const error = new Error(message);
   error.code = 'missing-config';
   error.missingKeys = missing;
   return error;
-}
-
-function reportFirebaseConfigStatus(config) {
-  const validation = validateFirebaseConfig(config);
-  firebaseConfigStatus = validation;
-  firebaseConfigSnapshot = config;
-  if (!validation.isValid) {
-    logDevDiagnostics('config-missing', {
-      missingKeys: validation.missingKeys,
-      placeholderKeys: validation.placeholderKeys,
-    });
-    logConfigDiagnostics(validation);
-  }
-  return validation;
 }
 
 function logAuthEvent(action, detail = {}) {
@@ -456,17 +364,14 @@ export async function initSharedAuth() {
     try {
       config = await loadFirebaseConfig();
     } catch (error) {
-      const cached = getFirebaseConfig();
-      const fallback = cached || null;
       offlineConfigError = error?.code === 'offline-config' ? error : null;
-      config = fallback;
+      config = readFirebaseConfigSnapshot();
     }
     const validation = reportFirebaseConfigStatus(config);
-    const envKeyMap = getFirebaseEnvKeyMap();
-    const envPresence = Object.fromEntries(
-      Object.entries(envKeyMap).map(([configKey, envKey]) => [envKey, Boolean(config?.[configKey])])
-    );
-    logDevDiagnostics('env-presence', envPresence);
+    if (!validation.isValid) {
+      logConfigDiagnostics(validation);
+    }
+    logDevDiagnostics('env-presence', getFirebaseEnvPresence());
     logAuthEvent('auth-strategy', { preferred: shouldPreferRedirect() ? 'redirect' : 'popup' });
     if (!validation.isValid) {
       if (isLocalhost() || isE2eTestMode()) {
@@ -607,11 +512,23 @@ function shouldPreferRedirect() {
 
 function buildAuthHint(error) {
   const code = error?.code || '';
+  if (code === 'auth/popup-blocked') {
+    return 'Popup blev blokeret. Tillad popups eller brug redirect-login.';
+  }
+  if (code === 'auth/popup-closed-by-user') {
+    return 'Popup blev lukket. Prøv igen eller brug redirect-login.';
+  }
   if (code.includes('popup')) {
     return 'Popup blev blokeret. Prøv igen eller brug redirect-login.';
   }
   if (code === 'auth/unauthorized-domain') {
     return 'Domænet er ikke godkendt i Firebase Auth.';
+  }
+  if (code === 'auth/operation-not-allowed') {
+    return 'Login-udbyderen er ikke aktiveret i Firebase Auth.';
+  }
+  if (code === 'auth/api-key-expired' || code === 'auth/invalid-api-key') {
+    return 'Appen bruger en dårlig eller forældet API-nøgle. Tjek Netlify env + SW cache.';
   }
   if (code === 'auth/internal-error') {
     return 'Der opstod en intern login-fejl. Prøv igen.';
@@ -651,8 +568,9 @@ function warnIfUnauthorizedHost(config) {
 
 export async function loginWithProvider(providerId) {
   await initSharedAuth();
-  if (!firebaseConfigStatus.isValid) {
-    const error = buildConfigError(firebaseConfigStatus);
+  const configStatus = readFirebaseConfigStatus();
+  if (!configStatus.isValid) {
+    const error = buildConfigError(configStatus);
     setAuthState({ user: null, error });
     throw error;
   }
@@ -675,15 +593,18 @@ export async function loginWithProvider(providerId) {
   provider.setCustomParameters?.({ prompt: 'select_account' });
   try {
     if (shouldPreferRedirect()) {
+      lastAuthMode = 'redirect';
       logAuthEvent('login-redirect', { providerId });
       await authModule.signInWithRedirect(authInstance, provider);
       return;
     }
+    lastAuthMode = 'popup';
     logAuthEvent('login-popup', { providerId });
     await withTimeout(authModule.signInWithPopup(authInstance, provider), AUTH_ACTION_TIMEOUT_MS, 'login-popup');
   } catch (error) {
     logAuthError('loginWithProvider', error);
     if (shouldFallbackToRedirect(error)) {
+      lastAuthMode = 'redirect-fallback';
       logAuthEvent('login-fallback-redirect', { providerId, code: error?.code || '' });
       await authModule.signInWithRedirect(authInstance, provider);
       return;
@@ -835,26 +756,32 @@ export function isMockAuthEnabled() {
 }
 
 export function getAuthDiagnostics() {
-  const configSummary = getFirebaseConfigSummary(firebaseConfigSnapshot || {});
+  const configSummary = getFirebaseConfigSummarySnapshot();
+  const configStatus = readFirebaseConfigStatus();
   return {
     authReady,
     isAuthenticated: Boolean(currentUser),
     user: currentUser,
     projectId: configSummary.projectId,
     authDomain: configSummary.authDomain,
+    apiKeyMasked: configSummary.apiKeyMasked,
     appCheckStatus: APP_CHECK_STATUS,
     appCheckReason: APP_CHECK_REASON,
+    appCheckDebug: appCheckDebugEnabled,
     lastAuthErrorCode: lastAuthErrorCode || authError?.code || '',
-    configStatus: { ...firebaseConfigStatus },
+    configStatus: { ...configStatus },
+    configSource: getFirebaseConfigSource(),
+    preferredAuthMode: shouldPreferRedirect() ? 'redirect' : 'popup',
+    lastAuthMode: lastAuthMode || '',
   };
 }
 
 export function getFirebaseConfigStatus() {
-  return { ...firebaseConfigStatus };
+  return { ...readFirebaseConfigStatus() };
 }
 
 export function getFirebaseConfigSnapshot() {
-  return firebaseConfigSnapshot ? { ...firebaseConfigSnapshot } : null;
+  return readFirebaseConfigSnapshot();
 }
 
 export function userIsAdmin(user) {

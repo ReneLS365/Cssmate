@@ -10,12 +10,15 @@ const CONFIG_KEY_MAP = {
 
 const REQUIRED_KEYS = ['apiKey', 'authDomain', 'projectId', 'appId']
 const OPTIONAL_KEYS = ['storageBucket', 'messagingSenderId', 'measurementId']
+const API_KEY_MIN_LENGTH = 20
 
 const PLACEHOLDER_PATTERNS = [
   /\*{3,}/,
   /changeme/i,
   /replace/i,
   /your[_-]?/i,
+  /^undefined$/i,
+  /^null$/i,
 ]
 
 function isPlainObject(value) {
@@ -25,6 +28,12 @@ function isPlainObject(value) {
 function isPlaceholderValue(value) {
   if (typeof value !== 'string') return false
   return PLACEHOLDER_PATTERNS.some(pattern => pattern.test(value))
+}
+
+function isTooShortApiKey(value) {
+  if (typeof value !== 'string') return false
+  const trimmed = value.trim()
+  return trimmed.length > 0 && trimmed.length < API_KEY_MIN_LENGTH
 }
 
 function normalizeConfigValue(value) {
@@ -58,6 +67,10 @@ export function validateFirebaseConfig(config) {
       missingKeys.push(CONFIG_KEY_MAP[key] || key)
       return
     }
+    if (key === 'apiKey' && isTooShortApiKey(String(value))) {
+      placeholderKeys.push(CONFIG_KEY_MAP[key] || key)
+      return
+    }
     if (isPlaceholderValue(String(value))) {
       placeholderKeys.push(CONFIG_KEY_MAP[key] || key)
     }
@@ -69,11 +82,19 @@ export function validateFirebaseConfig(config) {
   }
 }
 
+export function maskFirebaseApiKey(apiKey) {
+  if (typeof apiKey !== 'string' || !apiKey.trim()) return ''
+  const trimmed = apiKey.trim()
+  if (trimmed.length <= 10) return `${trimmed.slice(0, 2)}...${trimmed.slice(-2)}`
+  return `${trimmed.slice(0, 6)}...${trimmed.slice(-4)}`
+}
+
 export function getFirebaseConfigSummary(config) {
   const safeConfig = config || {}
   return {
     projectId: safeConfig.projectId || '',
     authDomain: safeConfig.authDomain || '',
+    apiKeyMasked: maskFirebaseApiKey(safeConfig.apiKey || ''),
   }
 }
 
