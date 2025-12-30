@@ -1,6 +1,5 @@
 import { getAdminEmails, isAdminEmail, normalizeEmail } from '../src/auth/roles.js';
 import {
-  fetchFirebaseConfig,
   getFirebaseConfigSummary,
   getFirebaseEnvKeyMap,
   readWindowFirebaseConfig,
@@ -37,6 +36,7 @@ export let APP_CHECK_REASON = '';
 let firebaseConfigSnapshot = null;
 let firebaseConfigStatus = { isValid: false, missingKeys: [], placeholderKeys: [] };
 let lastAuthErrorCode = '';
+let configWarningLogged = false;
 
 function setAppCheckState(status, reason = '') {
   APP_CHECK_STATUS = status;
@@ -127,15 +127,6 @@ function ensureMockUserVerified() {
 function getFirebaseConfig() {
   const config = readWindowFirebaseConfig();
   if (!config) return null;
-  return sanitizeFirebaseConfig(config);
-}
-
-async function loadFirebaseConfigFromFunction() {
-  const config = await fetchFirebaseConfig({ timeoutMs: 8000 });
-  if (!config) return null;
-  if (typeof window !== 'undefined') {
-    window.FIREBASE_CONFIG = config;
-  }
   return sanitizeFirebaseConfig(config);
 }
 
@@ -235,16 +226,12 @@ function scheduleAppCheckInit(app) {
 
 export async function getFirebaseAppInstance() {
   let config = getFirebaseConfig();
-  if (!config) {
-    config = await loadFirebaseConfigFromFunction();
-  }
   const validation = validateFirebaseConfig(config);
   firebaseConfigStatus = validation;
   firebaseConfigSnapshot = config;
   if (!validation.isValid) {
-    const missing = [...validation.missingKeys, ...validation.placeholderKeys].filter(Boolean);
-    const error = new Error(`Firebase konfiguration mangler: ${missing.join(', ')}`);
-    error.code = 'missing-config';
+    const error = buildConfigError(validation);
+    logConfigDiagnostics(validation);
     throw error;
   }
   const sdk = await loadFirebaseSdk();
@@ -300,6 +287,30 @@ function logDevDiagnostics(label, payload) {
   } catch {}
 }
 
+function logConfigDiagnostics(validation) {
+  if (configWarningLogged) return;
+  if (validation?.isValid) return;
+  configWarningLogged = true;
+  const missing = validation?.missingKeys || [];
+  const placeholders = validation?.placeholderKeys || [];
+  const hostname = typeof window !== 'undefined' ? window.location?.hostname || '' : '';
+  console.warn('Firebase konfiguration mangler eller er placeholder.', {
+    missingKeys: missing,
+    placeholderKeys: placeholders,
+    hostname,
+  });
+}
+
+function buildConfigError(validation) {
+  const missing = [...(validation?.missingKeys || []), ...(validation?.placeholderKeys || [])].filter(Boolean);
+  const error = new Error(
+    'Firebase config mangler. Bed admin om at sætte Netlify miljøvariabler. Se konsollen for detaljer.'
+  );
+  error.code = 'missing-config';
+  error.missingKeys = missing;
+  return error;
+}
+
 function reportFirebaseConfigStatus(config) {
   const validation = validateFirebaseConfig(config);
   firebaseConfigStatus = validation;
@@ -309,6 +320,7 @@ function reportFirebaseConfigStatus(config) {
       missingKeys: validation.missingKeys,
       placeholderKeys: validation.placeholderKeys,
     });
+    logConfigDiagnostics(validation);
   }
   return validation;
 }
@@ -346,11 +358,6 @@ export async function initSharedAuth() {
     }, AUTH_INIT_TIMEOUT_MS);
     authInitTimer?.unref?.();
     let config = getFirebaseConfig();
-    if (!config) {
-      if (!isLocalhost()) {
-        config = await loadFirebaseConfigFromFunction();
-      }
-    }
     const validation = reportFirebaseConfigStatus(config);
     const envKeyMap = getFirebaseEnvKeyMap();
     const envPresence = Object.fromEntries(
@@ -377,9 +384,7 @@ export async function initSharedAuth() {
         clearTimeout(authInitTimer);
         return null;
       }
-      const missing = [...validation.missingKeys, ...validation.placeholderKeys].filter(Boolean);
-      const error = new Error(`Firebase konfiguration mangler: ${missing.join(', ')}`);
-      error.code = 'missing-config';
+      const error = buildConfigError(validation);
       setAuthState({ user: null, error });
       clearTimeout(authInitTimer);
       return null;
@@ -543,6 +548,11 @@ function warnIfUnauthorizedHost(config) {
 
 export async function loginWithProvider(providerId) {
   await initSharedAuth();
+  if (!firebaseConfigStatus.isValid) {
+    const error = buildConfigError(firebaseConfigStatus);
+    setAuthState({ user: null, error });
+    throw error;
+  }
   if (useMockAuth) {
     const mock = {
       uid: `mock-${providerId || 'user'}`,

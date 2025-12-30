@@ -10,10 +10,11 @@
 - `VITE_FIREBASE_MEASUREMENT_ID` (valgfri)
 - `VITE_FIREBASE_AUTH_PROVIDERS` (komma-separeret, fx `google,microsoft`)
 
-Kør `npm run build` (eller `npm run build:firebase-env`) så `js/firebase-env.js` bliver skrevet med værdierne.
+Kør `npm run build` så `js/firebase-env.js` bliver skrevet med værdierne (build fejler, hvis miljøvariabler mangler eller er placeholders).
 
 ## Firebase Auth – tilladte domæner
 - `sscaff.netlify.app`
+- `*.netlify.app` (deploy previews)
 - `localhost` og `127.0.0.1` til lokale tests
 - Evt. ekstra custom domæner, hvis de peger på samme frontend
 
