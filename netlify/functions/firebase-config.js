@@ -8,6 +8,8 @@ const envKeys = {
   measurementId: 'VITE_FIREBASE_MEASUREMENT_ID',
 };
 
+const REQUIRED_KEYS = ['apiKey', 'authDomain', 'projectId', 'appId'];
+
 function readEnv(key) {
   const value = process.env[key];
   if (typeof value === 'string') return value.trim();
@@ -19,11 +21,25 @@ export async function handler() {
     Object.entries(envKeys).map(([targetKey, envKey]) => [targetKey, readEnv(envKey)])
   );
 
+  const missing = REQUIRED_KEYS.filter((key) => !config[key]);
+  if (missing.length) {
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        error: 'Missing Firebase configuration on server.',
+        missingKeys: missing,
+      }),
+    };
+  }
+
   return {
     statusCode: 200,
     headers: {
       'Content-Type': 'application/json',
-      'Cache-Control': 'no-store',
+      'Cache-Control': 'public, max-age=300',
     },
     body: JSON.stringify(config),
   };

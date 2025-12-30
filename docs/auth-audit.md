@@ -20,10 +20,10 @@
   - Debug overlay: `src/ui/debug-overlay.js`
 - **Server/config**
   - Netlify config endpoint: `netlify/functions/firebase-config.js`
-  - Build-time config generation: `scripts/generate-firebase-config.js`
+  - Build-time public env generation (non-secret): `scripts/generate-firebase-config.js`
 
 ## Data flow (happy path)
-1. **Config**: `js/shared-auth.js` reads `window.FIREBASE_CONFIG` or fetches `/.netlify/functions/firebase-config`.
+1. **Config**: `js/shared-auth.js` fetches `/.netlify/functions/firebase-config` and caches in `sessionStorage` (falls back to cache for offline).
 2. **Validation**: `src/config/firebase.js` validates required keys and rejects placeholders.
 3. **Auth init**: Firebase Auth is initialized, persistence is set, and `getRedirectResult()` runs once.
 4. **App Check**: Deferred init (idle) in `js/shared-auth.js` if enabled and a site key exists.

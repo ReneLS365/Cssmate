@@ -11,6 +11,8 @@ const DEFAULT_PROVIDER = 'custom';
 const DEFAULT_ENABLED_PROVIDERS = ['google', 'microsoft'];
 export const FIREBASE_SDK_VERSION = '10.12.2';
 const MOCK_AUTH_STORAGE_KEY = 'cssmate:mockAuthUser';
+const FIREBASE_CONFIG_CACHE_KEY = 'cssmate:firebaseConfig';
+const FIREBASE_CONFIG_ENDPOINT = '/.netlify/functions/firebase-config';
 const DEFAULT_APP_CHECK_ENABLED = true;
 const AUTH_INIT_TIMEOUT_MS = 15000;
 const AUTH_ACTION_TIMEOUT_MS = 15000;
@@ -37,6 +39,7 @@ let firebaseConfigSnapshot = null;
 let firebaseConfigStatus = { isValid: false, missingKeys: [], placeholderKeys: [] };
 let lastAuthErrorCode = '';
 let configWarningLogged = false;
+let firebaseConfigPromise = null;
 
 function setAppCheckState(status, reason = '') {
   APP_CHECK_STATUS = status;
@@ -125,9 +128,92 @@ function ensureMockUserVerified() {
 }
 
 function getFirebaseConfig() {
-  const config = readWindowFirebaseConfig();
-  if (!config) return null;
-  return sanitizeFirebaseConfig(config);
+  const windowConfig = readWindowFirebaseConfig();
+  if (windowConfig) return sanitizeFirebaseConfig(windowConfig);
+  return readCachedFirebaseConfig();
+}
+
+function readCachedFirebaseConfig() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage?.getItem(FIREBASE_CONFIG_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return sanitizeFirebaseConfig(parsed);
+  } catch (error) {
+    console.warn('Kunne ikke læse Firebase config cache', error);
+    return null;
+  }
+}
+
+function cacheFirebaseConfig(config) {
+  if (typeof window === 'undefined' || !config) return;
+  try {
+    window.sessionStorage?.setItem(FIREBASE_CONFIG_CACHE_KEY, JSON.stringify(config));
+  } catch (error) {
+    console.warn('Kunne ikke gemme Firebase config cache', error);
+  }
+}
+
+async function fetchFirebaseConfig() {
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  const timeoutId = setTimeout(() => controller?.abort(), 8000);
+  let response;
+  try {
+    response = await fetch(FIREBASE_CONFIG_ENDPOINT, {
+      headers: { Accept: 'application/json' },
+      signal: controller?.signal,
+    });
+  } catch (error) {
+    error.code = error?.name === 'AbortError' ? 'config-timeout' : 'config-fetch';
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+  if (!response?.ok) {
+    const error = new Error(`Firebase config endpoint fejlede (${response?.status || 'ukendt status'}).`);
+    error.code = 'config-response';
+    throw error;
+  }
+  const data = await response.json();
+  return sanitizeFirebaseConfig(data);
+}
+
+function buildOfflineConfigError() {
+  const error = new Error('Du er offline. Kan ikke hente login-konfiguration.');
+  error.code = 'offline-config';
+  return error;
+}
+
+async function loadFirebaseConfig() {
+  if (firebaseConfigPromise) return firebaseConfigPromise;
+  firebaseConfigPromise = (async () => {
+    const cached = getFirebaseConfig();
+    try {
+      const fetched = await fetchFirebaseConfig();
+      if (fetched) {
+        cacheFirebaseConfig(fetched);
+        if (typeof window !== 'undefined') {
+          window.FIREBASE_CONFIG = fetched;
+        }
+        return fetched;
+      }
+    } catch (error) {
+      if (cached) return cached;
+      if (error?.code === 'config-fetch' || error?.code === 'config-timeout') {
+        throw buildOfflineConfigError();
+      }
+      throw error;
+    }
+    if (cached) return cached;
+    throw buildOfflineConfigError();
+  })();
+  try {
+    return await firebaseConfigPromise;
+  } catch (error) {
+    firebaseConfigPromise = null;
+    throw error;
+  }
 }
 
 async function loadFirebaseSdk() {
@@ -225,7 +311,7 @@ function scheduleAppCheckInit(app) {
 }
 
 export async function getFirebaseAppInstance() {
-  let config = getFirebaseConfig();
+  let config = await loadFirebaseConfig();
   const validation = validateFirebaseConfig(config);
   firebaseConfigStatus = validation;
   firebaseConfigSnapshot = config;
@@ -357,7 +443,16 @@ export async function initSharedAuth() {
       }
     }, AUTH_INIT_TIMEOUT_MS);
     authInitTimer?.unref?.();
-    let config = getFirebaseConfig();
+    let config = null;
+    let offlineConfigError = null;
+    try {
+      config = await loadFirebaseConfig();
+    } catch (error) {
+      const cached = getFirebaseConfig();
+      const fallback = cached || null;
+      offlineConfigError = error?.code === 'offline-config' ? error : null;
+      config = fallback;
+    }
     const validation = reportFirebaseConfigStatus(config);
     const envKeyMap = getFirebaseEnvKeyMap();
     const envPresence = Object.fromEntries(
@@ -384,7 +479,7 @@ export async function initSharedAuth() {
         clearTimeout(authInitTimer);
         return null;
       }
-      const error = buildConfigError(validation);
+      const error = offlineConfigError || buildConfigError(validation);
       setAuthState({ user: null, error });
       clearTimeout(authInitTimer);
       return null;

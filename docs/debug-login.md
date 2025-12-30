@@ -26,7 +26,7 @@ Brug denne guide når login eller Firestore-adgang fejler. Debug-overlayet kan t
 
 ## Hurtig fejlsøgning
 
-1. **authReady = false** – Firebase config mangler eller Auth er ikke initialiseret. Tjek `FIREBASE_CONFIG` i siden.
+1. **authReady = false** – Firebase config mangler eller Auth er ikke initialiseret. Tjek at `/.netlify/functions/firebase-config` svarer og at sessionStorage har `cssmate:firebaseConfig`.
 2. **user = null** – brug global login-skærm (AuthGate). Ingen login-knapper i “Delte sager”.
 3. **requiresVerification/password** – password-bruger skal bekræftes; brug “Send verifikationsmail igen” + “Jeg har verificeret”.
 4. **teamResolved = false** – vent på team-opslag. Standardteam er `hulmose`; check localStorage `sscaff.teamId`.
