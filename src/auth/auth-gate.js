@@ -1,6 +1,7 @@
 import { initAuthProvider } from './auth-provider.js'
 import { waitForAuthReady } from '../../js/shared-auth.js'
 import { initAuthSession, onChange as onSessionChange, getState as getSessionState, SESSION_STATUS } from './session.js'
+import { isLighthouseMode } from '../config/lighthouse-mode.js'
 
 let gate
 let loadingScreen
@@ -201,6 +202,20 @@ function handleAuthChange (state) {
 }
 
 export function initAuthGate () {
+  if (isLighthouseMode()) {
+    gate = document.getElementById('authGate')
+    if (gate) {
+      gate.setAttribute('hidden', '')
+    }
+    document.documentElement.classList.remove('auth-locked')
+    document.body?.classList?.remove('auth-overlay-open')
+    return {
+      waitForVerifiedAccess: () => Promise.resolve(),
+      waitForSessionReady: () => Promise.resolve(),
+      waitForAuthReady: () => Promise.resolve(),
+      prefetchAuth: () => Promise.resolve(),
+    }
+  }
   if (gate) {
     const waitForAuth = () => (authProvider?.ensureAuth ? authProvider.ensureAuth() : waitForAuthReady())
     return {
