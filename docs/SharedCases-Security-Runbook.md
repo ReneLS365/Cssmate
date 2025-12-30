@@ -3,7 +3,7 @@
 Denne runbook beskriver, hvordan "Delt sager" drives sikkert med privat adgang, lang tids retention og backup/restore.
 
 ## Adgang & roller
-- **Login:** Konfigurer Firebase Auth med multi-provider (Google og Microsoft som minimum, evt. Apple/Facebook). Kør build med Netlify/CI miljøvariabler `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` (+ evt. `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_MEASUREMENT_ID`). `scripts/generate-firebase-config.js` skriver værdierne til `js/firebase-env.js`, og `VITE_FIREBASE_AUTH_PROVIDERS` (komma-separeret) styrer knapperne i UI. Brugerne logger ind via “Log ind med Google/Microsoft”-knapperne i UI, og navnet/e-mail vises i statusfeltet.
+- **Login:** Konfigurer Firebase Auth med multi-provider (Google og Microsoft som minimum, evt. Apple/Facebook). Sæt Netlify/CI miljøvariabler `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` (+ evt. `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_MEASUREMENT_ID`). `scripts/generate-firebase-config.js` skriver kun ikke-hemmelige indstillinger til `js/firebase-env.js`, mens selve config hentes runtime via `/.netlify/functions/firebase-config`. `VITE_FIREBASE_AUTH_PROVIDERS` (komma-separeret) styrer knapperne i UI. Brugerne logger ind via “Log ind med Google/Microsoft”-knapperne i UI, og navnet/e-mail vises i statusfeltet.
 - **Default team:** Hvis intet andet er angivet, bruges team `Hulmose`. Sæt `window.TEAM_ID` eller brug feltet i UI for at skifte.
 - **Roller:**
   - `member`: kan læse/opdatere egne sager.
@@ -33,7 +33,7 @@ Denne runbook beskriver, hvordan "Delt sager" drives sikkert med privat adgang, 
 ## Multi-provider opsætning
 1. Opret Firebase-projekt og aktivér Auth.
 2. Slå Google- og Microsoft-udbydere til (Apple/Facebook kan aktiveres efter behov) og kontrollér at popup eller redirect er tilladt.
-3. Sæt Netlify/CI miljøvariablerne `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` (+ evt. bucket/messaging/measurement) og kør build så `js/firebase-env.js` genereres. Justér valgfrit `VITE_FIREBASE_AUTH_PROVIDERS` (fx `google,microsoft,apple`) for at styre hvilke knapper der vises.
+3. Sæt Netlify/CI miljøvariablerne `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` (+ evt. bucket/messaging/measurement) og kør build så `js/firebase-env.js` genereres med **ikke-hemmelige** indstillinger. Justér valgfrit `VITE_FIREBASE_AUTH_PROVIDERS` (fx `google,microsoft,apple`) for at styre hvilke knapper der vises.
 4. (Valgfrit) Tilføj admin-e-mails i `window.SHARED_ADMIN_EMAILS = ['leder@example.com']`.
 
 ## Drift & fejlhåndtering
