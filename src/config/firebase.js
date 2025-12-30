@@ -69,30 +69,6 @@ export function validateFirebaseConfig(config) {
   }
 }
 
-export async function fetchFirebaseConfig({ timeoutMs = 8000 } = {}) {
-  if (typeof window === 'undefined' || typeof fetch !== 'function') return null
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null
-  let timeoutId
-  if (controller && timeoutMs) {
-    timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-    timeoutId?.unref?.()
-  }
-  try {
-    const response = await fetch('/.netlify/functions/firebase-config', {
-      cache: 'no-store',
-      signal: controller?.signal,
-    })
-    if (!response.ok) return null
-    const config = await response.json()
-    if (!isPlainObject(config)) return null
-    return config
-  } catch {
-    return null
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId)
-  }
-}
-
 export function getFirebaseConfigSummary(config) {
   const safeConfig = config || {}
   return {
