@@ -55,9 +55,11 @@ jobs:
           CSSMATE_LH_PERF_TARGET: "100"
         run: node tools/check-lighthouse-perfect.mjs
 
-      - name: Upload Lighthouse reports
+      - name: Upload Lighthouse artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: lighthouse-reports
-          path: reports/lighthouse
+          name: lighthouse-artifacts
+          path: |
+            reports/lighthouse
+            preview.log
