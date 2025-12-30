@@ -1,4 +1,4 @@
-import { getFirebaseEnvKeyMap, sanitizeFirebaseConfig, validateFirebaseConfig } from '../src/config/firebase.js';
+import { getFirebaseEnvKeyMap, sanitizeFirebaseConfig, validateFirebaseConfig } from '../src/config/firebase-utils.js';
 
 export function buildFirebaseConfigFromEnv(env = process.env) {
   const envMap = getFirebaseEnvKeyMap();

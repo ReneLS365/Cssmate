@@ -5,7 +5,7 @@ import {
   readWindowFirebaseConfig,
   sanitizeFirebaseConfig,
   validateFirebaseConfig,
-} from '../src/config/firebase.js';
+} from '../src/config/firebase-utils.js';
 
 const DEFAULT_PROVIDER = 'custom';
 const DEFAULT_ENABLED_PROVIDERS = ['google', 'microsoft'];

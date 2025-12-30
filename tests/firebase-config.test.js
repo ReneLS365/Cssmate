@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { sanitizeFirebaseConfig, validateFirebaseConfig } from '../src/config/firebase.js'
+import { sanitizeFirebaseConfig, validateFirebaseConfig } from '../src/config/firebase-utils.js'
 
 test('validateFirebaseConfig flags missing required keys', () => {
   const result = validateFirebaseConfig({ projectId: 'demo' })

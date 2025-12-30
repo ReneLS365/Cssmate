@@ -9,7 +9,7 @@ if (versionScriptUrl) {
 importScripts('/js/version.js')
 }
 
-const CACHE_VERSION = 'sscaff-v-20251229215112125' // bumped for always-latest deploy flow
+const CACHE_VERSION = 'sscaff-v-20251229223142191' // bumped for always-latest deploy flow
 const RESOLVED_CACHE_VERSION = (typeof self !== 'undefined' && self.CSSMATE_BUILD_META?.cacheKey) ? self.CSSMATE_BUILD_META.cacheKey : CACHE_VERSION
 const CACHE_NAME = 'sscaff-' + RESOLVED_CACHE_VERSION
 const PRECACHE_URLS = [
@@ -18,7 +18,6 @@ const PRECACHE_URLS = [
   '/main.js',
   '/main.min.js',
   '/app-main.js',
-  '/js/firebase-env.js',
   '/js/importmap.json',
   '/boot-inline.js',
   '/style.css',
@@ -27,14 +26,6 @@ const PRECACHE_URLS = [
   '/css/numpad.css',
   '/css/pwa.css',
   '/src/styles/fixes.css',
-  '/src/auth/roles.js',
-  '/src/auth/access-state.js',
-  '/src/auth/admin.js',
-  '/src/auth/bootstrap.js',
-  '/src/auth/auth-gate.js',
-  '/src/auth/auth-provider.js',
-  '/src/auth/session.js',
-  '/src/config/firebase.js',
   '/src/debug/tools.js',
   '/src/state/debug.js',
   '/src/state/user-store.js',
@@ -49,8 +40,6 @@ const PRECACHE_URLS = [
   '/js/akkord-export.js',
   '/js/akkord-export-ui.js',
   '/js/shared-ledger.js',
-  '/js/shared-firestore.js',
-  '/js/shared-auth.js',
   '/js/shared-cases-panel.js',
   '/js/storageDraft.js',
   '/js/storageHistory.js',
@@ -142,6 +131,12 @@ self.addEventListener('fetch', event => {
 
   if (request.mode === 'navigate') {
     event.respondWith(handleNavigation(request))
+    return
+  }
+
+  const bypass = url.pathname.includes('/auth') || url.pathname.includes('firebase')
+  if (bypass) {
+    event.respondWith(fetch(request))
     return
   }
 
