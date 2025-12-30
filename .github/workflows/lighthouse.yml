@@ -46,21 +46,20 @@ jobs:
           curl -sS http://127.0.0.1:4173 > /dev/null
           curl -sS http://127.0.0.1:4173 > /dev/null
 
-      - name: Run Lighthouse (mobile)
-        run: |
-          for run in 1 2 3; do
-            LH_OUTPUT_PATH=./reports/lighthouse/mobile-run${run}.json npm run lh:mobile
-          done
-          cp ./reports/lighthouse/mobile-run2.json ./reports/lighthouse/mobile.json
+      - name: Run Lighthouse (mobile 3x, retry-safe)
+        run: node tools/run-lh-mobile-3x.mjs
 
       - name: Enforce Lighthouse thresholds
         env:
-          CSSMATE_LH_PERF_MIN: "90"
+          CSSMATE_LH_PERF_MIN: "95"
           CSSMATE_LH_PERF_TARGET: "100"
         run: node tools/check-lighthouse-perfect.mjs
 
-      - name: Upload Lighthouse report
+      - name: Upload Lighthouse artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: lighthouse-mobile
-          path: reports/lighthouse/mobile*.json
+          name: lighthouse-artifacts
+          path: |
+            reports/lighthouse
+            preview.log

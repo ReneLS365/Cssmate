@@ -164,6 +164,9 @@ function main() {
   if (perfScores.length) {
     const perfList = formatMetricList(perfScores, value => formatScore(value));
     console.log(`Lighthouse perf runs: ${perfList} (median ${formatScore(perfMedian)}, min ${performanceMin}, target ${performanceTarget})`);
+    if (perfMedian !== null && perfMedian < performanceTarget) {
+      console.warn(`⚠️ Lighthouse performance below preferred target (${formatScore(perfMedian)} < ${performanceTarget}).`);
+    }
   }
 
   if (lcpValues.length) {
