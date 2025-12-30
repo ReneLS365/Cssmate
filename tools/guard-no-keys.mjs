@@ -4,6 +4,7 @@ import { join } from 'node:path';
 const ROOT = process.cwd();
 const DIST_DIR = join(ROOT, 'dist');
 const IGNORE_DIRS = new Set(['node_modules', '.git', '.netlify', 'playwright-report', 'test-results']);
+const IGNORE_FILES = new Set([join(ROOT, 'tools', 'guard-no-keys.mjs')]);
 const PATTERNS = [
   { label: 'Firebase API key', regex: /AIza/ },
   { label: 'Private key', regex: /-----BEGIN PRIVATE KEY-----/ },
@@ -30,6 +31,7 @@ async function walk(dir, { includeDist = false } = {}) {
 async function scanFiles(files, label) {
   const findings = [];
   for (const file of files) {
+    if (IGNORE_FILES.has(file)) continue;
     let contents;
     try {
       contents = await readFile(file, 'utf8');
