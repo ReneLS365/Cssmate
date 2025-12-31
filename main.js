@@ -8,10 +8,54 @@ function runWhenIdle(fn) {
 
 let bootstrapPromise = null;
 
+function shouldMountDiagnostics() {
+  if (typeof window === 'undefined') return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('diag') === '1') return true;
+    return window.location.pathname.startsWith('/diag') || window.location.pathname.startsWith('/_diag');
+  } catch (_) {
+    return false;
+  }
+}
+
+function shouldResetApp() {
+  if (typeof window === 'undefined') return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('reset') === '1';
+  } catch (_) {
+    return false;
+  }
+}
+
+function bootstrapDiagnostics() {
+  if (typeof window === 'undefined') return;
+  const wantsReset = shouldResetApp();
+  const wantsDiag = shouldMountDiagnostics();
+  if (!wantsReset && !wantsDiag) return;
+
+  import('./src/ui/auth-diagnostics.js')
+    .then(mod => {
+      if (wantsReset && typeof mod?.startResetFlow === 'function') {
+        mod.startResetFlow();
+        return;
+      }
+      if (wantsDiag && typeof mod?.mountDiagnostics === 'function') {
+        mod.mountDiagnostics({ forceVisible: true, allowSwReset: true });
+      }
+    })
+    .catch(error => {
+      console.warn('Kunne ikke starte auth diagnostics', error);
+    });
+}
+
 function scheduleBootstrap() {
   if (typeof document !== 'undefined') {
     document.documentElement.classList.add('app-booting');
   }
+
+  bootstrapDiagnostics();
 
   const start = () => {
     runWhenIdle(() => {

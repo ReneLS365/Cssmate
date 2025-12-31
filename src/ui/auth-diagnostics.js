@@ -8,9 +8,11 @@ import {
 } from '../config/firebase-config.js'
 import { maskFirebaseApiKey } from '../config/firebase-utils.js'
 import { markCacheReset } from '../state/debug.js'
-import { hardRepairClient } from '../utils/reset-app.js'
+import { resetApp } from '../utils/reset-app.js'
 
 const PANEL_ID = 'authDiagnosticsPanel'
+const RESET_PANEL_ID = 'authDiagnosticsReset'
+let resetFlowStarted = false
 
 export function isDiagnosticsEnabled() {
   try {
@@ -26,6 +28,16 @@ export function isDiagnosticsEnabled() {
     }
   } catch (_) {}
   return false
+}
+
+function isResetRequested() {
+  try {
+    if (typeof window === 'undefined') return false
+    const params = new URLSearchParams(window.location.search)
+    return params.get('reset') === '1'
+  } catch (_) {
+    return false
+  }
 }
 
 function formatBoolean(value) {
@@ -112,7 +124,7 @@ function createPanel() {
 
   const resetButton = document.createElement('button')
   resetButton.type = 'button'
-  resetButton.textContent = 'Repair'
+  resetButton.textContent = 'Reset SW + caches'
 
   const signInButton = document.createElement('button')
   signInButton.type = 'button'
@@ -131,6 +143,29 @@ function createPanel() {
   panel.resetButton = resetButton
   panel.signInButton = signInButton
   panel.bannerEl = banner
+  return panel
+}
+
+function createResetPanel() {
+  const panel = document.createElement('section')
+  panel.id = RESET_PANEL_ID
+  panel.className = 'auth-diagnostics-panel'
+  panel.setAttribute('aria-live', 'polite')
+
+  const header = document.createElement('header')
+  header.className = 'auth-diagnostics-panel__header'
+  const title = document.createElement('h2')
+  title.textContent = 'Resetting…'
+  const subtitle = document.createElement('p')
+  subtitle.className = 'auth-diagnostics-panel__hint'
+  subtitle.textContent = 'Rydder service worker, cache og lokal data.'
+  header.append(title, subtitle)
+
+  const output = document.createElement('pre')
+  output.className = 'auth-diagnostics-panel__output'
+  output.textContent = 'Resetting…'
+
+  panel.append(header, output)
   return panel
 }
 
@@ -232,7 +267,7 @@ async function handleReset(panel) {
     markCacheReset()
   } catch {}
   if (panel?.outputEl) panel.outputEl.textContent = 'Caches ryddet. Genindlæser…'
-  await hardRepairClient()
+  await resetApp()
 }
 
 async function runSignInTest(panel) {
@@ -300,4 +335,24 @@ export function mountDiagnostics({ forceVisible = false, allowSwReset = false } 
 
 export function initAuthDiagnostics() {
   return mountDiagnostics({ forceVisible: false, allowSwReset: true })
+}
+
+export function mountResetScreen() {
+  if (typeof document === 'undefined') return null
+  if (document.getElementById(RESET_PANEL_ID)) return document.getElementById(RESET_PANEL_ID)
+  if (!document.body) return null
+  const panel = createResetPanel()
+  document.body.appendChild(panel)
+  return panel
+}
+
+export function startResetFlow() {
+  if (!isResetRequested()) return null
+  if (resetFlowStarted) return document.getElementById(RESET_PANEL_ID)
+  resetFlowStarted = true
+  mountResetScreen()
+  setTimeout(() => {
+    resetApp()
+  }, 0)
+  return document.getElementById(RESET_PANEL_ID)
 }

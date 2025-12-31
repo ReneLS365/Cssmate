@@ -23,6 +23,7 @@ let verifiedReject = null
 let initialized = false
 let authInitStarted = false
 let authInitPromise = null
+const AUTH_INIT_TIMEOUT_MS = 8000
 
 function ensureVerifiedPromise () {
   if (verifiedPromise) return verifiedPromise
@@ -33,10 +34,30 @@ function ensureVerifiedPromise () {
   return verifiedPromise
 }
 
+function withInitTimeout(promise) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const error = new Error('Init timeout. Try Reset app.')
+      error.code = 'init-timeout'
+      reject(error)
+    }, AUTH_INIT_TIMEOUT_MS)
+    timer?.unref?.()
+    promise
+      .then(result => {
+        clearTimeout(timer)
+        resolve(result)
+      })
+      .catch(error => {
+        clearTimeout(timer)
+        reject(error)
+      })
+  })
+}
+
 function ensureAuthInit () {
   if (authInitPromise) return authInitPromise
   authInitStarted = true
-  authInitPromise = waitForAuthReady().catch(error => {
+  authInitPromise = withInitTimeout(waitForAuthReady()).catch(error => {
     authInitPromise = null
     throw error
   })
@@ -47,7 +68,7 @@ function prefetchAuthInit () {
   if (authInitStarted) return authInitPromise
   const trigger = () => {
     try {
-      ensureAuthInit()
+      ensureAuthInit()?.catch?.(() => {})
     } catch {}
   }
   if (typeof requestIdleCallback === 'function') {
@@ -124,13 +145,13 @@ function getAuthProviderApi () {
     ensureAuth: ensureAuthInit,
     prefetchAuth: prefetchAuthInit,
     actions: {
-      signInWithGoogle: () => { ensureAuthInit(); return loginWithProvider('google') },
-      signInWithEmail: (...args) => { ensureAuthInit(); return signInWithEmail(...args) },
-      signUpWithEmail: (...args) => { ensureAuthInit(); return signUpWithEmail(...args) },
+      signInWithGoogle: () => ensureAuthInit().then(() => loginWithProvider('google')),
+      signInWithEmail: (...args) => ensureAuthInit().then(() => signInWithEmail(...args)),
+      signUpWithEmail: (...args) => ensureAuthInit().then(() => signUpWithEmail(...args)),
       signOut: logoutUser,
-      sendPasswordReset: (...args) => { ensureAuthInit(); return sendPasswordReset(...args) },
-      resendVerification: (...args) => { ensureAuthInit(); return resendEmailVerification(...args) },
-      reloadUser: (...args) => { ensureAuthInit(); return reloadCurrentUser(...args) },
+      sendPasswordReset: (...args) => ensureAuthInit().then(() => sendPasswordReset(...args)),
+      resendVerification: (...args) => ensureAuthInit().then(() => resendEmailVerification(...args)),
+      reloadUser: (...args) => ensureAuthInit().then(() => reloadCurrentUser(...args)),
     },
   }
 }

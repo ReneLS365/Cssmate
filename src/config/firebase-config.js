@@ -55,20 +55,19 @@ function cfgVersion(cfg) {
 }
 
 function updateCfgVersionAndAutoRepair(cfg) {
-  if (typeof window === 'undefined' || !window.sessionStorage) return false
+  if (typeof window === 'undefined') return false
+  const storage = window.localStorage || window.sessionStorage
+  if (!storage) return false
   try {
-    try {
-      window.localStorage?.removeItem(FIREBASE_CFG_VERSION_KEY)
-    } catch {}
-    const prev = window.sessionStorage.getItem(FIREBASE_CFG_VERSION_KEY)
+    const prev = storage.getItem(FIREBASE_CFG_VERSION_KEY)
     const next = cfgVersion(cfg)
     if (prev && next && prev !== next) {
       clearFirebaseConfigCache()
-      window.sessionStorage.setItem(FIREBASE_CFG_VERSION_KEY, next)
+      storage.setItem(FIREBASE_CFG_VERSION_KEY, next)
       window.location?.replace?.(`${window.location.pathname}?reloaded=1`)
       return true
     }
-    if (next) window.sessionStorage.setItem(FIREBASE_CFG_VERSION_KEY, next)
+    if (next) storage.setItem(FIREBASE_CFG_VERSION_KEY, next)
   } catch (error) {
     console.warn('Kunne ikke gemme Firebase config version', error)
   }
