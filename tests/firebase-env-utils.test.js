@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { validateFirebaseEnv } from '../tools/firebase-env-utils.mjs';
+import { makeFakeApiKey } from './helpers/fakeApiKey.js';
 
 test('validateFirebaseEnv flags missing env vars', () => {
   const { status } = validateFirebaseEnv({});
@@ -25,7 +26,7 @@ test('validateFirebaseEnv flags placeholder env vars', () => {
 
 test('validateFirebaseEnv passes trimmed values', () => {
   const { status } = validateFirebaseEnv({
-    VITE_FIREBASE_API_KEY: ' key ',
+    VITE_FIREBASE_API_KEY: `${makeFakeApiKey()} `,
     VITE_FIREBASE_AUTH_DOMAIN: 'auth.example.com',
     VITE_FIREBASE_PROJECT_ID: ' proj ',
     VITE_FIREBASE_APP_ID: 'app',

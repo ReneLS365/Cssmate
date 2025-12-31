@@ -22,6 +22,17 @@ test('validateFirebaseConfig flags placeholder values', () => {
   assert.ok(result.placeholderKeys.length >= 2)
 })
 
+test('validateFirebaseConfig flags short apiKey values', () => {
+  const result = validateFirebaseConfig({
+    apiKey: 'short-key',
+    authDomain: 'auth.example.com',
+    projectId: 'project',
+    appId: 'app',
+  })
+  assert.equal(result.isValid, false)
+  assert.ok(result.placeholderKeys.includes('VITE_FIREBASE_API_KEY'))
+})
+
 test('sanitizeFirebaseConfig trims and drops empty values', () => {
   const config = sanitizeFirebaseConfig({
     apiKey: ' key ',

@@ -6,6 +6,9 @@ export const GIT_SHA = "dev";
 export const BUILD_ID = "2025.13.0+dev";
 export const CACHE_KEY = "2025.13.0-dev-2025-12-29T21-51-10.730Z";
 export const ALLOWED_FIREBASE_PROJECTS = [];
+export const BUILD_CONTEXT = "";
+export const DEPLOY_URL = "";
+export const SITE_URL = "";
 
 export function getBuildMetadata () {
   return {
@@ -15,5 +18,8 @@ export function getBuildMetadata () {
     buildId: BUILD_ID,
     cacheKey: CACHE_KEY,
     allowedFirebaseProjects: ALLOWED_FIREBASE_PROJECTS,
+    buildContext: BUILD_CONTEXT,
+    deployUrl: DEPLOY_URL,
+    siteUrl: SITE_URL,
   };
 }
