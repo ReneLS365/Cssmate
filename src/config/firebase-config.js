@@ -7,7 +7,7 @@ import {
 
 const FIREBASE_CONFIG_CACHE_KEY = 'cssmate:firebaseConfig'
 const FIREBASE_CONFIG_ENDPOINT = '/.netlify/functions/firebase-config'
-const FIREBASE_API_KEY_FP_KEY = 'cssmate:lastApiKeyFp'
+const FIREBASE_CFG_VERSION_KEY = 'cssmate:firebaseCfgVersion'
 const FETCH_TIMEOUT_MS = 8000
 
 let firebaseConfigSnapshot = null
@@ -37,10 +37,6 @@ function cacheFirebaseConfig(config) {
   }
 }
 
-function fp(k) {
-  return k ? `${k.slice(0, 6)}…${k.slice(-4)}` : 'none'
-}
-
 function getFirebaseConfigRequestUrl() {
   const timestamp = Date.now()
   if (typeof window !== 'undefined' && window.location?.origin) {
@@ -51,23 +47,29 @@ function getFirebaseConfigRequestUrl() {
   return `${FIREBASE_CONFIG_ENDPOINT}?t=${timestamp}`
 }
 
-function updateApiKeyFingerprint(config) {
-  if (typeof window === 'undefined') return
-  const apiKey = typeof config?.apiKey === 'string' ? config.apiKey : ''
-  const nextFp = fp(apiKey)
-  if (!window.localStorage) return
+function cfgVersion(cfg) {
+  const projectId = cfg?.projectId || ''
+  const appId = cfg?.appId || ''
+  const authDomain = cfg?.authDomain || ''
+  return `${projectId}|${appId}|${authDomain}`
+}
+
+function updateCfgVersionAndAutoRepair(cfg) {
+  if (typeof window === 'undefined' || !window.localStorage) return false
   try {
-    const previousFp = window.localStorage.getItem(FIREBASE_API_KEY_FP_KEY)
-    if (previousFp && previousFp !== nextFp) {
+    const prev = window.localStorage.getItem(FIREBASE_CFG_VERSION_KEY)
+    const next = cfgVersion(cfg)
+    if (prev && next && prev !== next) {
       clearFirebaseConfigCache()
-      window.localStorage.setItem(FIREBASE_API_KEY_FP_KEY, nextFp)
+      window.localStorage.setItem(FIREBASE_CFG_VERSION_KEY, next)
       window.location?.replace?.(`${window.location.pathname}?reloaded=1`)
-      return
+      return true
     }
-    window.localStorage.setItem(FIREBASE_API_KEY_FP_KEY, nextFp)
+    if (next) window.localStorage.setItem(FIREBASE_CFG_VERSION_KEY, next)
   } catch (error) {
-    console.warn('Kunne ikke opdatere Firebase API key fingeraftryk', error)
+    console.warn('Kunne ikke gemme Firebase config version', error)
   }
+  return false
 }
 
 async function fetchFirebaseConfig() {
@@ -116,7 +118,8 @@ export async function loadFirebaseConfig() {
     try {
       const fetched = await fetchFirebaseConfig()
       if (fetched) {
-        updateApiKeyFingerprint(fetched)
+        const repaired = updateCfgVersionAndAutoRepair(fetched)
+        if (repaired) return
         cacheFirebaseConfig(fetched)
         if (typeof window !== 'undefined') {
           window.FIREBASE_CONFIG = fetched

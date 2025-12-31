@@ -78,8 +78,10 @@ export function validateFirebaseConfig(config) {
 export function maskFirebaseApiKey(apiKey) {
   if (typeof apiKey !== 'string' || !apiKey.trim()) return ''
   const trimmed = apiKey.trim()
-  if (trimmed.length <= 10) return `${trimmed.slice(0, 2)}...${trimmed.slice(-2)}`
-  return `${trimmed.slice(0, 6)}...${trimmed.slice(-4)}`
+  if (trimmed.length <= 10) {
+    return `${trimmed.substring(0, 2)}...${trimmed.substring(trimmed.length - 2)}`
+  }
+  return `${trimmed.substring(0, 6)}...${trimmed.substring(trimmed.length - 4)}`
 }
 
 export function getFirebaseConfigSummary(config) {

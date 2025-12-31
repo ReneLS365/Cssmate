@@ -14,6 +14,7 @@ function createStorage() {
     removeItem: key => {
       store.delete(key)
     },
+    keys: () => Array.from(store.keys()),
   }
 }
 
@@ -100,6 +101,11 @@ test('loadFirebaseConfig uses no-store fetch with cache buster', async () => {
     const parsed = new URL(url)
     assert.equal(parsed.pathname, '/.netlify/functions/firebase-config')
     assert.ok(parsed.searchParams.has('t'))
+    const storedVersion = localStorage.getItem('cssmate:firebaseCfgVersion')
+    assert.equal(storedVersion, 'demo|app-id|demo.firebaseapp.com')
+    const storedKeys = Array.from(localStorage.keys())
+    const apiKeyStored = storedKeys.some(key => key.toLowerCase().includes('apikey'))
+    assert.equal(apiKeyStored, false)
   } finally {
     clearFirebaseConfigCache()
     globalThis.window = originalWindow
