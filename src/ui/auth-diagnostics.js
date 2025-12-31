@@ -11,12 +11,20 @@ import { markCacheReset } from '../state/debug.js'
 
 const PANEL_ID = 'authDiagnosticsPanel'
 
-function isDiagnosticsEnabled() {
-  if (typeof window === 'undefined') return false
-  const params = new URLSearchParams(window.location.search)
-  if (params.get('diag') === '1' || params.get('diag') === 'auth') return true
-  const path = window.location.pathname || ''
-  return path.startsWith('/diag/auth') || path.startsWith('/diag')
+export function isDiagnosticsEnabled() {
+  try {
+    if (typeof window === 'undefined') return false
+    const params = new URLSearchParams(window.location.search)
+    if (
+      params.get('diag') === '1' ||
+      params.get('debug') === '1' ||
+      window.location.pathname.startsWith('/diag') ||
+      window.location.pathname.startsWith('/_diag')
+    ) {
+      return true
+    }
+  } catch (_) {}
+  return false
 }
 
 function formatBoolean(value) {
@@ -64,6 +72,7 @@ function sanitizeError(error) {
 function createRow(label, value) {
   const row = document.createElement('li')
   row.className = 'auth-diagnostics-panel__row'
+  row.dataset.label = label
   const labelEl = document.createElement('span')
   labelEl.className = 'auth-diagnostics-panel__label'
   labelEl.textContent = label
@@ -86,7 +95,7 @@ function createPanel() {
   title.textContent = 'Auth diagnostics'
   const subtitle = document.createElement('p')
   subtitle.className = 'auth-diagnostics-panel__hint'
-  subtitle.textContent = 'Kun aktiv ved ?diag=1 eller /diag/auth.'
+  subtitle.textContent = 'Aktiv ved ?diag=1, ?debug=1, /diag eller /_diag.'
   header.append(title, subtitle)
 
   const list = document.createElement('ul')
@@ -124,6 +133,34 @@ function createPanel() {
   return panel
 }
 
+async function countCacheEntries() {
+  if (typeof caches === 'undefined' || typeof caches.keys !== 'function') return null
+  try {
+    const cacheKeys = await caches.keys()
+    let total = 0
+    for (const cacheKey of cacheKeys) {
+      const cache = await caches.open(cacheKey)
+      const entries = await cache.keys()
+      total += entries.length
+    }
+    return total
+  } catch (error) {
+    console.warn('Cache optælling fejlede', error)
+    return null
+  }
+}
+
+async function updateCacheEntryRow(panel) {
+  const list = panel?.listEl
+  if (!list) return
+  const row = list.querySelector('li[data-label="Cache entries"]')
+  if (!row) return
+  const valueEl = row.querySelector('.auth-diagnostics-panel__value')
+  if (!valueEl) return
+  const total = await countCacheEntries()
+  valueEl.textContent = typeof total === 'number' ? String(total) : '–'
+}
+
 function renderPanel(panel) {
   const list = panel?.listEl
   if (!list) return
@@ -150,6 +187,7 @@ function renderPanel(panel) {
     ['Build ID', safeString(buildMeta.buildId || buildMeta.appVersion || window.CSSMATE_APP_VERSION || '')],
     ['Build context', safeString(buildMeta.buildContext || buildMeta.deployContext || '')],
     ['Deploy URL', safeString(buildMeta.deployUrl || buildMeta.siteUrl || '')],
+    ['SW active', controller ? 'yes' : 'no'],
     ['SW controller', controller ? `yes (${controller.state || 'unknown'})` : 'no'],
     ['Firebase source', auth.configSource || getFirebaseConfigSource()],
     ['Firebase projectId', safeString(configSummary.projectId || '')],
@@ -158,10 +196,12 @@ function renderPanel(panel) {
     ['Auth mode (preferred)', safeString(auth.preferredAuthMode || '')],
     ['Auth mode (last)', safeString(auth.lastAuthMode || '')],
     ['App Check', `${auth.appCheckStatus || ''}${auth.appCheckReason ? ` (${auth.appCheckReason})` : ''}`],
+    ['App Check enabled', formatBoolean(auth.appCheckStatus === 'on')],
     ['App Check debug', formatBoolean(Boolean(auth.appCheckDebug))],
     ['Config valid', formatBoolean(Boolean(configStatus.isValid))],
     ['Missing keys', (configStatus.missingKeys || []).join(', ') || '–'],
     ['Placeholder keys', (configStatus.placeholderKeys || []).join(', ') || '–'],
+    ['Cache entries', '…'],
   ]
 
   rows.forEach(([label, value]) => list.appendChild(createRow(label, value)))
@@ -181,38 +221,44 @@ function renderPanel(panel) {
   if (panel?.signInButton) {
     panel.signInButton.disabled = apiKeyInvalid
   }
+
+  updateCacheEntryRow(panel)
 }
 
-async function resetServiceWorker(panel) {
+export async function resetServiceWorkerAndCaches() {
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations()
+      for (const reg of regs) {
+        await reg.unregister()
+      }
+    }
+
+    if ('caches' in window) {
+      const keys = await caches.keys()
+      for (const key of keys) {
+        await caches.delete(key)
+      }
+    }
+  } catch (error) {
+    console.warn('SW reset failed', error)
+  } finally {
+    location.reload()
+  }
+}
+
+async function handleReset(panel) {
   if (panel?.outputEl) panel.outputEl.textContent = 'Rydder caches…'
   try {
     markCacheReset()
   } catch {}
-  try {
-    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-      const regs = await navigator.serviceWorker.getRegistrations()
-      await Promise.all(regs.map(reg => reg.unregister()))
-    }
-  } catch (error) {
-    console.warn('SW unregister fejlede', error)
-  }
-  try {
-    if (typeof caches !== 'undefined' && caches.keys) {
-      const keys = await caches.keys()
-      await Promise.all(keys.map(key => caches.delete(key)))
-    }
-  } catch (error) {
-    console.warn('Cache clear fejlede', error)
-  }
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
       window.localStorage.removeItem('cssmate_app_version')
     }
   } catch {}
   if (panel?.outputEl) panel.outputEl.textContent = 'Caches ryddet. Genindlæser…'
-  if (typeof window !== 'undefined') {
-    window.location.reload(true)
-  }
+  await resetServiceWorkerAndCaches()
 }
 
 async function runSignInTest(panel) {
@@ -236,13 +282,19 @@ async function runSignInTest(panel) {
   }
 }
 
-export function initAuthDiagnostics() {
-  if (!isDiagnosticsEnabled()) return
-  if (typeof document === 'undefined') return
-  if (document.getElementById(PANEL_ID)) return
+export function mountDiagnostics({ forceVisible = false, allowSwReset = false } = {}) {
+  if (typeof document === 'undefined') return null
+  if (!forceVisible && !isDiagnosticsEnabled()) return null
+  if (document.getElementById(PANEL_ID)) return document.getElementById(PANEL_ID)
+  if (!document.body) return null
 
   const panel = createPanel()
   document.body.appendChild(panel)
+
+  if (!allowSwReset && panel.resetButton) {
+    panel.resetButton.disabled = true
+    panel.resetButton.setAttribute('aria-disabled', 'true')
+  }
 
   renderPanel(panel)
 
@@ -259,11 +311,19 @@ export function initAuthDiagnostics() {
 
   panel.resetButton?.addEventListener('click', event => {
     event.preventDefault()
-    resetServiceWorker(panel)
+    if (allowSwReset) {
+      handleReset(panel)
+    }
   })
 
   panel.signInButton?.addEventListener('click', event => {
     event.preventDefault()
     runSignInTest(panel)
   })
+
+  return panel
+}
+
+export function initAuthDiagnostics() {
+  return mountDiagnostics({ forceVisible: false, allowSwReset: true })
 }

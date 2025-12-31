@@ -9,6 +9,8 @@ export const ALLOWED_FIREBASE_PROJECTS = [];
 export const BUILD_CONTEXT = "";
 export const DEPLOY_URL = "";
 export const SITE_URL = "";
+export const FIREBASE_PROJECT_ID = "";
+export const FIREBASE_APP_ID = "";
 
 export function getBuildMetadata () {
   return {
@@ -21,5 +23,7 @@ export function getBuildMetadata () {
     buildContext: BUILD_CONTEXT,
     deployUrl: DEPLOY_URL,
     siteUrl: SITE_URL,
+    firebaseProjectId: FIREBASE_PROJECT_ID,
+    firebaseAppId: FIREBASE_APP_ID,
   };
 }
