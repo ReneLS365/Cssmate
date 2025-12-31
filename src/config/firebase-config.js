@@ -1,7 +1,6 @@
 import {
   getFirebaseConfigSummary,
   getFirebaseEnvKeyMap,
-  readWindowFirebaseConfig,
   sanitizeFirebaseConfig,
   validateFirebaseConfig,
 } from './firebase-utils.js'
@@ -78,9 +77,8 @@ export function reportFirebaseConfigStatus(config) {
 export async function loadFirebaseConfig() {
   if (firebaseConfigPromise) return firebaseConfigPromise
   firebaseConfigPromise = (async () => {
-    const windowConfig = readWindowFirebaseConfig()
-    const cached = windowConfig ? sanitizeFirebaseConfig(windowConfig) : readCachedFirebaseConfig()
-    const cachedSource = windowConfig ? 'window' : cached ? 'session-cache' : 'none'
+    const cached = readCachedFirebaseConfig()
+    const cachedSource = cached ? 'session-cache' : 'none'
     try {
       const fetched = await fetchFirebaseConfig()
       if (fetched) {

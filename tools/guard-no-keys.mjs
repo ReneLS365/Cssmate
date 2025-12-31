@@ -7,6 +7,9 @@ const IGNORE_DIRS = new Set(['node_modules', '.git', '.netlify', 'playwright-rep
 const IGNORE_FILES = new Set([join(ROOT, 'tools', 'guard-no-keys.mjs')]);
 const PATTERNS = [
   { label: 'Firebase API key', regex: /AIza/ },
+  { label: 'Firebase apiKey literal', regex: /apiKey\s*:\s*["']AIza/ },
+  { label: 'Firebase API key fallback', regex: /VITE_FIREBASE_API_KEY\s*\|\|/ },
+  { label: 'Firebase initializeApp inline config', regex: /initializeApp\s*\(\s*\{/ },
   { label: 'Private key', regex: /-----BEGIN PRIVATE KEY-----/ },
 ];
 

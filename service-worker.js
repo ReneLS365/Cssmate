@@ -9,15 +9,11 @@ if (versionScriptUrl) {
 importScripts('/js/version.js')
 }
 
-const BASE_CACHE_VERSION = '20251230104502191' // bumped for always-latest deploy flow
-const RESOLVED_CACHE_VERSION = (typeof self !== 'undefined' && self.CSSMATE_BUILD_META?.cacheKey) ? self.CSSMATE_BUILD_META.cacheKey : BASE_CACHE_VERSION
-const FIREBASE_CACHE_SALT_RAW = (typeof self !== 'undefined' && self.CSSMATE_BUILD_META?.firebaseAppId)
-  ? self.CSSMATE_BUILD_META.firebaseAppId
-  : (typeof self !== 'undefined' && self.CSSMATE_BUILD_META?.firebaseProjectId)
-      ? self.CSSMATE_BUILD_META.firebaseProjectId
-      : 'default'
-const FIREBASE_CACHE_SALT = String(FIREBASE_CACHE_SALT_RAW).replace(/[^a-zA-Z0-9._-]/g, '-')
-const CACHE_NAME = `sscaff-v${RESOLVED_CACHE_VERSION}-${FIREBASE_CACHE_SALT}`
+const BUILD_META = (typeof self !== 'undefined' && self.CSSMATE_BUILD_META) ? self.CSSMATE_BUILD_META : {}
+const APP_VERSION = BUILD_META.appVersion || 'dev'
+const FIREBASE_APP_ID = BUILD_META.firebaseAppId || BUILD_META.firebaseProjectId || 'default'
+const CACHE_VERSION = `sscaff-${APP_VERSION}-${String(FIREBASE_APP_ID).replace(/[^a-zA-Z0-9._-]/g, '-')}`
+const CACHE_NAME = CACHE_VERSION
 const PRECACHE_URLS = [
   '/',
   '/index.html',
@@ -33,6 +29,8 @@ const PRECACHE_URLS = [
   '/css/pwa.css',
   '/src/styles/fixes.css',
   '/src/config/firebase-config.js',
+  '/src/config/firebase-init.js',
+  '/src/config/firebase-sdk.js',
   '/src/config/firebase-utils.js',
   '/src/debug/tools.js',
   '/src/state/debug.js',

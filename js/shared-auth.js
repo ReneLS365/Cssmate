@@ -9,11 +9,13 @@ import {
   reportFirebaseConfigStatus,
 } from '../src/config/firebase-config.js';
 import { getFirebaseConfigSummary } from '../src/config/firebase-utils.js';
+import { getFirebaseApp } from '../src/config/firebase-init.js';
 import { isLighthouseMode } from '../src/config/lighthouse-mode.js';
+import { FIREBASE_SDK_VERSION as FIREBASE_SDK_VERSION_VALUE } from '../src/config/firebase-sdk.js';
 
 const DEFAULT_PROVIDER = 'custom';
 const DEFAULT_ENABLED_PROVIDERS = ['google', 'microsoft'];
-export const FIREBASE_SDK_VERSION = '10.12.2';
+export const FIREBASE_SDK_VERSION = FIREBASE_SDK_VERSION_VALUE;
 const MOCK_AUTH_STORAGE_KEY = 'cssmate:mockAuthUser';
 const DEFAULT_APP_CHECK_ENABLED = true;
 const AUTH_INIT_TIMEOUT_MS = 15000;
@@ -137,11 +139,8 @@ function ensureMockUserVerified() {
 
 async function loadFirebaseSdk() {
   if (authModule) return authModule;
-  const [{ initializeApp, getApp, getApps }, auth] = await Promise.all([
-    import(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-app.js`),
-    import(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-auth.js`),
-  ]);
-  authModule = { initializeApp, getApp, getApps, ...auth };
+  const auth = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-auth.js`);
+  authModule = { ...auth };
   return authModule;
 }
 
@@ -234,16 +233,15 @@ function scheduleAppCheckInit(app) {
 }
 
 export async function getFirebaseAppInstance() {
-  let config = await loadFirebaseConfig();
+  const config = await loadFirebaseConfig();
   const validation = reportFirebaseConfigStatus(config);
   if (!validation.isValid) {
     const error = buildConfigError(validation);
     logConfigDiagnostics(validation);
     throw error;
   }
-  const sdk = await loadFirebaseSdk();
   if (!firebaseAppInstance) {
-    firebaseAppInstance = sdk.getApps?.().length ? sdk.getApp() : sdk.initializeApp(config);
+    firebaseAppInstance = await getFirebaseApp();
   }
   scheduleAppCheckInit(firebaseAppInstance);
   return firebaseAppInstance;
