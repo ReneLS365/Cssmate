@@ -100,9 +100,12 @@ async function fetchFirebaseConfig() {
   return sanitizeFirebaseConfig(data)
 }
 
-function buildOfflineConfigError(code = 'offline-config') {
+function buildOfflineConfigError(reason = 'offline-config') {
   const error = new Error('Du er offline. Kan ikke hente login-konfiguration.')
-  error.code = code
+  error.code = 'offline-config'
+  if (reason && reason !== 'offline-config') {
+    error.offlineReason = reason
+  }
   return error
 }
 
