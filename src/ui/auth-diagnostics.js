@@ -226,25 +226,21 @@ function renderPanel(panel) {
 }
 
 export async function resetServiceWorkerAndCaches() {
-  try {
-    if ('serviceWorker' in navigator) {
-      const regs = await navigator.serviceWorker.getRegistrations()
-      for (const reg of regs) {
-        await reg.unregister()
-      }
+  if ('serviceWorker' in navigator) {
+    const regs = await navigator.serviceWorker.getRegistrations()
+    for (const reg of regs) {
+      await reg.unregister()
     }
-
-    if ('caches' in window) {
-      const keys = await caches.keys()
-      for (const key of keys) {
-        await caches.delete(key)
-      }
-    }
-  } catch (error) {
-    console.warn('SW reset failed', error)
-  } finally {
-    location.reload()
   }
+
+  if ('caches' in window) {
+    const keys = await caches.keys()
+    for (const key of keys) {
+      await caches.delete(key)
+    }
+  }
+
+  location.reload()
 }
 
 async function handleReset(panel) {

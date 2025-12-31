@@ -41,13 +41,6 @@ function normalizeConfigValue(value) {
   return value
 }
 
-export function readWindowFirebaseConfig() {
-  if (typeof window === 'undefined') return null
-  const config = window.FIREBASE_CONFIG
-  if (!isPlainObject(config)) return null
-  return config
-}
-
 export function sanitizeFirebaseConfig(config) {
   if (!isPlainObject(config)) return null
   const next = {}
