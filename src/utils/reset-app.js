@@ -1,5 +1,6 @@
 import { logoutUser } from '../../js/shared-auth.js'
 import { getFirestoreDb, getFirestoreHelpers } from '../../js/shared-firestore.js'
+import { clearFirebaseConfigCache } from '../config/firebase-config.js'
 import { clearTeamAccessCache } from '../services/team-access.js'
 
 function shouldUseBrowserApis () {
@@ -51,6 +52,16 @@ async function clearIndexedDb () {
 async function clearOfflineCaches () {
   await clearServiceWorkers()
   await clearCaches()
+}
+
+export async function resetServiceWorkerAndCaches () {
+  if (!shouldUseBrowserApis()) return
+  try {
+    clearFirebaseConfigCache()
+  } catch {}
+  await clearServiceWorkers()
+  await clearCaches()
+  window.location?.reload()
 }
 
 async function clearFirestorePersistence () {

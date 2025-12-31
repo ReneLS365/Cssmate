@@ -412,6 +412,7 @@ function handleAuthChange (context) {
     setState(buildState({
       status: SESSION_STATUS.SIGNED_OUT,
       message: context?.message || 'Log ind for at fortsætte',
+      error: context?.error || null,
       providers,
       authReady: true,
       user: null,

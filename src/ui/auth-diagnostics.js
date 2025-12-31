@@ -8,6 +8,7 @@ import {
 } from '../config/firebase-config.js'
 import { maskFirebaseApiKey } from '../config/firebase-utils.js'
 import { markCacheReset } from '../state/debug.js'
+import { resetServiceWorkerAndCaches } from '../utils/reset-app.js'
 
 const PANEL_ID = 'authDiagnosticsPanel'
 
@@ -223,24 +224,6 @@ function renderPanel(panel) {
   }
 
   updateCacheEntryRow(panel)
-}
-
-export async function resetServiceWorkerAndCaches() {
-  if ('serviceWorker' in navigator) {
-    const regs = await navigator.serviceWorker.getRegistrations()
-    for (const reg of regs) {
-      await reg.unregister()
-    }
-  }
-
-  if ('caches' in window) {
-    const keys = await caches.keys()
-    for (const key of keys) {
-      await caches.delete(key)
-    }
-  }
-
-  location.reload()
 }
 
 async function handleReset(panel) {

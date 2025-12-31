@@ -5,12 +5,15 @@ const ROOT = process.cwd();
 const DIST_DIR = join(ROOT, 'dist');
 const IGNORE_DIRS = new Set(['node_modules', '.git', '.netlify', 'playwright-report', 'test-results']);
 const IGNORE_FILES = new Set([join(ROOT, 'tools', 'guard-no-keys.mjs')]);
+const ALLOWLIST_DIRS = [join(ROOT, 'tests'), join(ROOT, 'tools')];
 const PATTERNS = [
   { label: 'Firebase API key', regex: /AIza/ },
   { label: 'Firebase apiKey literal', regex: /apiKey\s*:\s*["']AIza/ },
   { label: 'Firebase API key fallback', regex: /VITE_FIREBASE_API_KEY\s*\|\|/ },
   { label: 'Firebase initializeApp inline config', regex: /initializeApp\s*\(\s*\{/ },
   { label: 'Private key', regex: /-----BEGIN PRIVATE KEY-----/ },
+  { label: 'apiKey stored in localStorage', regex: /localStorage\.(setItem|getItem)\([^)]*apiKey/i, allowlist: true },
+  { label: 'apiKey stored in sessionStorage', regex: /sessionStorage\.(setItem|getItem)\([^)]*apiKey/i, allowlist: true },
 ];
 
 async function walk(dir, { includeDist = false } = {}) {
@@ -31,6 +34,10 @@ async function walk(dir, { includeDist = false } = {}) {
   return files;
 }
 
+function isAllowlisted(file) {
+  return ALLOWLIST_DIRS.some(dir => file.startsWith(dir + '/'));
+}
+
 async function scanFiles(files, label) {
   const findings = [];
   for (const file of files) {
@@ -41,9 +48,19 @@ async function scanFiles(files, label) {
     } catch {
       continue;
     }
+    const allowlisted = isAllowlisted(file);
+    if (allowlisted) {
+      continue;
+    }
     for (const pattern of PATTERNS) {
       if (pattern.regex.test(contents)) {
         findings.push({ file, match: pattern.label, scope: label });
+      }
+    }
+    if (/apiKey/i.test(contents)) {
+      const slicePattern = /slice\(\s*0\s*,\s*6\s*\).*slice\(\s*-\s*4\s*\)/is;
+      if (slicePattern.test(contents)) {
+        findings.push({ file, match: 'apiKey-derived fingerprint', scope: label });
       }
     }
   }

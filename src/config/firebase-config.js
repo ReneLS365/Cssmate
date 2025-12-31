@@ -7,6 +7,7 @@ import {
 
 const FIREBASE_CONFIG_CACHE_KEY = 'cssmate:firebaseConfig'
 const FIREBASE_CONFIG_ENDPOINT = '/.netlify/functions/firebase-config'
+const FIREBASE_CFG_VERSION_KEY = 'cssmate:firebaseCfgVersion'
 const FETCH_TIMEOUT_MS = 8000
 
 let firebaseConfigSnapshot = null
@@ -36,12 +37,47 @@ function cacheFirebaseConfig(config) {
   }
 }
 
+function getFirebaseConfigRequestUrl() {
+  const timestamp = Date.now()
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    const url = new URL(FIREBASE_CONFIG_ENDPOINT, window.location.origin)
+    url.searchParams.set('t', String(timestamp))
+    return url.toString()
+  }
+  return `${FIREBASE_CONFIG_ENDPOINT}?t=${timestamp}`
+}
+
+function cfgVersion(cfg) {
+  const projectId = cfg?.projectId || ''
+  const appId = cfg?.appId || ''
+  const authDomain = cfg?.authDomain || ''
+  return `${projectId}|${appId}|${authDomain}`
+}
+
+function updateCfgVersionAndAutoRepair(cfg) {
+  if (typeof window === 'undefined' || !window.localStorage) return false
+  try {
+    const prev = window.localStorage.getItem(FIREBASE_CFG_VERSION_KEY)
+    const next = cfgVersion(cfg)
+    if (prev && next && prev !== next) {
+      clearFirebaseConfigCache()
+      window.localStorage.setItem(FIREBASE_CFG_VERSION_KEY, next)
+      window.location?.replace?.(`${window.location.pathname}?reloaded=1`)
+      return true
+    }
+    if (next) window.localStorage.setItem(FIREBASE_CFG_VERSION_KEY, next)
+  } catch (error) {
+    console.warn('Kunne ikke gemme Firebase config version', error)
+  }
+  return false
+}
+
 async function fetchFirebaseConfig() {
   const controller = typeof AbortController === 'function' ? new AbortController() : null
   const timeoutId = setTimeout(() => controller?.abort(), FETCH_TIMEOUT_MS)
   let response
   try {
-    response = await fetch(FIREBASE_CONFIG_ENDPOINT, {
+    response = await fetch(getFirebaseConfigRequestUrl(), {
       headers: { Accept: 'application/json' },
       cache: 'no-store',
       signal: controller?.signal,
@@ -82,6 +118,8 @@ export async function loadFirebaseConfig() {
     try {
       const fetched = await fetchFirebaseConfig()
       if (fetched) {
+        const repaired = updateCfgVersionAndAutoRepair(fetched)
+        if (repaired) return
         cacheFirebaseConfig(fetched)
         if (typeof window !== 'undefined') {
           window.FIREBASE_CONFIG = fetched
@@ -145,5 +183,8 @@ export function clearFirebaseConfigCache() {
   if (typeof window === 'undefined') return
   try {
     window.sessionStorage?.removeItem(FIREBASE_CONFIG_CACHE_KEY)
+  } catch {}
+  try {
+    delete window.FIREBASE_CONFIG
   } catch {}
 }

@@ -1,7 +1,8 @@
 import { initAuthProvider } from './auth-provider.js'
-import { waitForAuthReady } from '../../js/shared-auth.js'
+import { getAuthDiagnostics, waitForAuthReady } from '../../js/shared-auth.js'
 import { initAuthSession, onChange as onSessionChange, getState as getSessionState, SESSION_STATUS } from './session.js'
 import { isLighthouseMode } from '../config/lighthouse-mode.js'
+import { resetServiceWorkerAndCaches } from '../utils/reset-app.js'
 
 let gate
 let loadingScreen
@@ -17,13 +18,30 @@ let forgotButton
 let resendButton
 let verifiedButton
 let logoutButton
+let repairButton
 let authProvider
 let isSubmitting = false
 
-function setMessage (text, variant = '') {
+function shouldShowRepair (message, errorCode, variant) {
+  if (variant !== 'error') return false
+  const combined = `${message || ''} ${errorCode || ''}`.toLowerCase()
+  return combined.includes('auth/api-key-expired') || combined.includes('auth/invalid-api-key')
+}
+
+function setRepairVisible (visible) {
+  if (!repairButton) return
+  if (visible) {
+    repairButton.removeAttribute('hidden')
+  } else {
+    repairButton.setAttribute('hidden', '')
+  }
+}
+
+function setMessage (text, variant = '', errorCode = '') {
   if (!messageEl) return
   messageEl.textContent = text || ''
   messageEl.dataset.variant = variant || ''
+  setRepairVisible(shouldShowRepair(text, errorCode, variant))
 }
 
 function showSection (section) {
@@ -68,6 +86,7 @@ function disableForm (disabled) {
     resendButton,
     verifiedButton,
     logoutButton,
+    repairButton,
   ].forEach((btn) => {
     if (btn) btn.disabled = disabled
   })
@@ -84,7 +103,7 @@ async function handleAuthAction (fn, successMessage) {
     if (successMessage) setMessage(successMessage, 'success')
   } catch (error) {
     console.warn('Auth action fejlede', error)
-    setMessage(error?.message || 'Kunne ikke udføre handlingen', 'error')
+    setMessage(error?.message || 'Kunne ikke udføre handlingen', 'error', error?.code || '')
   } finally {
     disableForm(false)
   }
@@ -160,13 +179,15 @@ function handleAuthChange (state) {
   const requiresVerification = Boolean(state?.requiresVerification)
   const hasUser = Boolean(state?.user)
   const message = state?.message || (status === SESSION_STATUS.NO_ACCESS ? 'Ingen adgang til teamet.' : '')
+  const authErrorCode = state?.error?.code || getAuthDiagnostics()?.lastAuthErrorCode || ''
+  const hasAuthError = Boolean(state?.error)
 
   if (!authReady && !hasUser) {
     setGateVisible(true)
     showSection('login')
     updateProviderButtons()
-    const variant = status === SESSION_STATUS.NO_ACCESS || status === SESSION_STATUS.ERROR ? 'error' : ''
-    setMessage(message || 'Log ind for at fortsætte', variant)
+    const variant = status === SESSION_STATUS.NO_ACCESS || status === SESSION_STATUS.ERROR || hasAuthError ? 'error' : ''
+    setMessage(message || 'Log ind for at fortsætte', variant, authErrorCode)
     return
   }
 
@@ -180,7 +201,7 @@ function handleAuthChange (state) {
   if (!authReady) {
     setGateVisible(true)
     showSection('loading')
-    setMessage(state?.message || 'Login initialiseres…')
+    setMessage(state?.message || 'Login initialiseres…', '', authErrorCode)
     return
   }
 
@@ -188,15 +209,15 @@ function handleAuthChange (state) {
     setGateVisible(true)
     showSection('login')
     updateProviderButtons()
-    const variant = status === SESSION_STATUS.NO_ACCESS || status === SESSION_STATUS.ERROR ? 'error' : ''
-    setMessage(message || 'Log ind for at fortsætte', variant)
+    const variant = status === SESSION_STATUS.NO_ACCESS || status === SESSION_STATUS.ERROR || hasAuthError ? 'error' : ''
+    setMessage(message || 'Log ind for at fortsætte', variant, authErrorCode)
     return
   }
 
   if (requiresVerification) {
     setGateVisible(true)
     showSection('verify')
-    setMessage('Bekræft din email før du bruger appen.')
+    setMessage('Bekræft din email før du bruger appen.', '', authErrorCode)
     return
   }
 }
@@ -240,6 +261,7 @@ export function initAuthGate () {
   resendButton = document.getElementById('authResend')
   verifiedButton = document.getElementById('authVerified')
   logoutButton = document.getElementById('authLogout')
+  repairButton = document.getElementById('authRepair')
 
   if (!gate || typeof gate.setAttribute !== 'function') {
     console.warn('AuthGate markup mangler')
@@ -251,6 +273,12 @@ export function initAuthGate () {
 
   authProvider = initAuthProvider()
   bindLoginHandlers()
+  if (repairButton) {
+    repairButton.addEventListener('click', () => {
+      if (isSubmitting) return
+      resetServiceWorkerAndCaches()
+    })
+  }
   initAuthSession()
   onSessionChange(handleAuthChange)
   handleAuthChange(getSessionState())

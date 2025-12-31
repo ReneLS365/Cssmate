@@ -802,6 +802,7 @@ button{cursor:pointer}
 .auth-message{margin:4px 0 0;font-size:.9rem;color:var(--muted);min-height:18px}
 .auth-message[data-variant=error]{color:#fca5a5}
 .auth-message[data-variant=success]{color:#a7f3d0}
+.auth-repair{width:100%;margin-top:6px;padding:10px 12px;border-radius:10px;font-weight:600}
 .auth-diagnostics-panel{position:fixed;inset:16px;z-index:1400;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px;overflow:auto;box-shadow:var(--shadow-strong)}
 .auth-diagnostics-panel__header{display:flex;flex-direction:column;gap:4px}
 .auth-diagnostics-panel__header h2{margin:0;font-size:1.2rem}
