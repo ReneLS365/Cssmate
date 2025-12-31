@@ -1,7 +1,21 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { clearFirebaseConfigCache, loadFirebaseConfig } from '../src/config/firebase-config.js'
 import { sanitizeFirebaseConfig, validateFirebaseConfig } from '../src/config/firebase-utils.js'
+
+function createStorage() {
+  const store = new Map()
+  return {
+    getItem: key => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => {
+      store.set(key, String(value))
+    },
+    removeItem: key => {
+      store.delete(key)
+    },
+  }
+}
 
 test('validateFirebaseConfig flags missing required keys', () => {
   const result = validateFirebaseConfig({ projectId: 'demo' })
@@ -45,4 +59,53 @@ test('sanitizeFirebaseConfig trims and drops empty values', () => {
   assert.equal(config.projectId, 'proj')
   assert.equal(config.appId, 'app')
   assert.equal(config.authDomain, undefined)
+})
+
+test('loadFirebaseConfig uses no-store fetch with cache buster', async () => {
+  const originalWindow = globalThis.window
+  const originalFetch = globalThis.fetch
+  const originalSessionStorage = globalThis.sessionStorage
+  const originalLocalStorage = globalThis.localStorage
+
+  const sessionStorage = createStorage()
+  const localStorage = createStorage()
+  const calls = []
+
+  globalThis.window = {
+    location: { origin: 'https://example.com', pathname: '/index.html', search: '' },
+    sessionStorage,
+    localStorage,
+  }
+  globalThis.sessionStorage = sessionStorage
+  globalThis.localStorage = localStorage
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, options })
+    return {
+      ok: true,
+      json: async () => ({
+        apiKey: 'AIzaSyTestKey1234567890',
+        authDomain: 'demo.firebaseapp.com',
+        projectId: 'demo',
+        appId: 'app-id',
+      }),
+    }
+  }
+
+  try {
+    clearFirebaseConfigCache()
+    await loadFirebaseConfig()
+    assert.equal(calls.length, 1)
+    const { url, options } = calls[0]
+    assert.equal(options.cache, 'no-store')
+    const parsed = new URL(url)
+    assert.equal(parsed.pathname, '/.netlify/functions/firebase-config')
+    assert.ok(parsed.searchParams.has('t'))
+  } finally {
+    clearFirebaseConfigCache()
+    globalThis.window = originalWindow
+    if (originalWindow === undefined) delete globalThis.window
+    globalThis.fetch = originalFetch
+    globalThis.sessionStorage = originalSessionStorage
+    globalThis.localStorage = originalLocalStorage
+  }
 })

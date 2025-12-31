@@ -7,6 +7,7 @@ import {
 
 const FIREBASE_CONFIG_CACHE_KEY = 'cssmate:firebaseConfig'
 const FIREBASE_CONFIG_ENDPOINT = '/.netlify/functions/firebase-config'
+const FIREBASE_API_KEY_FP_KEY = 'cssmate:lastApiKeyFp'
 const FETCH_TIMEOUT_MS = 8000
 
 let firebaseConfigSnapshot = null
@@ -36,12 +37,45 @@ function cacheFirebaseConfig(config) {
   }
 }
 
+function fp(k) {
+  return k ? `${k.slice(0, 6)}…${k.slice(-4)}` : 'none'
+}
+
+function getFirebaseConfigRequestUrl() {
+  const timestamp = Date.now()
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    const url = new URL(FIREBASE_CONFIG_ENDPOINT, window.location.origin)
+    url.searchParams.set('t', String(timestamp))
+    return url.toString()
+  }
+  return `${FIREBASE_CONFIG_ENDPOINT}?t=${timestamp}`
+}
+
+function updateApiKeyFingerprint(config) {
+  if (typeof window === 'undefined') return
+  const apiKey = typeof config?.apiKey === 'string' ? config.apiKey : ''
+  const nextFp = fp(apiKey)
+  if (!window.localStorage) return
+  try {
+    const previousFp = window.localStorage.getItem(FIREBASE_API_KEY_FP_KEY)
+    if (previousFp && previousFp !== nextFp) {
+      clearFirebaseConfigCache()
+      window.localStorage.setItem(FIREBASE_API_KEY_FP_KEY, nextFp)
+      window.location?.replace?.(`${window.location.pathname}?reloaded=1`)
+      return
+    }
+    window.localStorage.setItem(FIREBASE_API_KEY_FP_KEY, nextFp)
+  } catch (error) {
+    console.warn('Kunne ikke opdatere Firebase API key fingeraftryk', error)
+  }
+}
+
 async function fetchFirebaseConfig() {
   const controller = typeof AbortController === 'function' ? new AbortController() : null
   const timeoutId = setTimeout(() => controller?.abort(), FETCH_TIMEOUT_MS)
   let response
   try {
-    response = await fetch(FIREBASE_CONFIG_ENDPOINT, {
+    response = await fetch(getFirebaseConfigRequestUrl(), {
       headers: { Accept: 'application/json' },
       cache: 'no-store',
       signal: controller?.signal,
@@ -82,6 +116,7 @@ export async function loadFirebaseConfig() {
     try {
       const fetched = await fetchFirebaseConfig()
       if (fetched) {
+        updateApiKeyFingerprint(fetched)
         cacheFirebaseConfig(fetched)
         if (typeof window !== 'undefined') {
           window.FIREBASE_CONFIG = fetched
@@ -145,5 +180,8 @@ export function clearFirebaseConfigCache() {
   if (typeof window === 'undefined') return
   try {
     window.sessionStorage?.removeItem(FIREBASE_CONFIG_CACHE_KEY)
+  } catch {}
+  try {
+    delete window.FIREBASE_CONFIG
   } catch {}
 }
