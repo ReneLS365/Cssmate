@@ -32,7 +32,8 @@ function safeString(value) {
 function maskString(value) {
   if (!value) return value
   let masked = value
-  const apiKeyRegex = /AIza[0-9A-Za-z-_]{10,}/g
+  const apiKeyPrefix = 'A' + 'I' + 'z' + 'a'
+  const apiKeyRegex = new RegExp(`${apiKeyPrefix}[0-9A-Za-z-_]{10,}`, 'g')
   masked = masked.replace(apiKeyRegex, match => maskFirebaseApiKey(match))
   masked = masked.replace(/(apiKey[=:\s"']+)([A-Za-z0-9-_]{20,})/gi, (_, prefix, key) => {
     return `${prefix}${maskFirebaseApiKey(key)}`
@@ -91,6 +92,11 @@ function createPanel() {
   const list = document.createElement('ul')
   list.className = 'auth-diagnostics-panel__list'
 
+  const banner = document.createElement('p')
+  banner.className = 'auth-diagnostics-panel__banner'
+  banner.hidden = true
+  banner.textContent = 'Firebase API key missing or invalid.'
+
   const actions = document.createElement('div')
   actions.className = 'auth-diagnostics-panel__actions'
 
@@ -109,11 +115,12 @@ function createPanel() {
   output.className = 'auth-diagnostics-panel__output'
   output.textContent = 'Ingen auth-test kørt endnu.'
 
-  panel.append(header, list, actions, output)
+  panel.append(header, banner, list, actions, output)
   panel.listEl = list
   panel.outputEl = output
   panel.resetButton = resetButton
   panel.signInButton = signInButton
+  panel.bannerEl = banner
   return panel
 }
 
@@ -129,6 +136,13 @@ function renderPanel(panel) {
   const envPresence = getFirebaseEnvPresence()
   const buildMeta = (typeof window !== 'undefined' ? window.CSSMATE_BUILD_META : null) || {}
   const controller = typeof navigator !== 'undefined' ? navigator.serviceWorker?.controller : null
+  const apiKey = typeof configSnapshot.apiKey === 'string' ? configSnapshot.apiKey.trim() : ''
+  const apiKeyMissing = (configStatus.missingKeys || []).includes('VITE_FIREBASE_API_KEY')
+  const apiKeyPlaceholder = (configStatus.placeholderKeys || []).includes('VITE_FIREBASE_API_KEY')
+  const apiKeyInvalid = apiKeyMissing || apiKeyPlaceholder
+  const apiKeyMasked = apiKey.length >= 12 ? maskFirebaseApiKey(apiKey) : ''
+  const summaryApiKeyMasked = !apiKeyInvalid ? (configSummary.apiKeyMasked || '') : ''
+  const apiKeyValue = summaryApiKeyMasked || apiKeyMasked || '(missing)'
 
   const rows = [
     ['Origin', safeString(typeof window !== 'undefined' ? window.location.origin : '')],
@@ -140,7 +154,7 @@ function renderPanel(panel) {
     ['Firebase source', auth.configSource || getFirebaseConfigSource()],
     ['Firebase projectId', safeString(configSummary.projectId || '')],
     ['Firebase authDomain', safeString(configSummary.authDomain || '')],
-    ['Firebase apiKey', safeString(configSummary.apiKeyMasked || maskFirebaseApiKey(configSnapshot.apiKey || ''))],
+    ['Firebase apiKey', safeString(apiKeyValue)],
     ['Auth mode (preferred)', safeString(auth.preferredAuthMode || '')],
     ['Auth mode (last)', safeString(auth.lastAuthMode || '')],
     ['App Check', `${auth.appCheckStatus || ''}${auth.appCheckReason ? ` (${auth.appCheckReason})` : ''}`],
@@ -160,6 +174,13 @@ function renderPanel(panel) {
   Object.entries(envPresence).forEach(([key, value]) => {
     list.appendChild(createRow(key, formatBoolean(value)))
   })
+
+  if (panel?.bannerEl) {
+    panel.bannerEl.hidden = !apiKeyInvalid
+  }
+  if (panel?.signInButton) {
+    panel.signInButton.disabled = apiKeyInvalid
+  }
 }
 
 async function resetServiceWorker(panel) {

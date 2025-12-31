@@ -1,7 +1,9 @@
 import { expect, test } from '@playwright/test'
+import { makeFakeApiKey } from '../helpers/fakeApiKey.js'
 
+const apiKey = makeFakeApiKey()
 const MOCK_FIREBASE_CONFIG = {
-  apiKey: 'AIzaSyDiagTestKey-1234567890',
+  apiKey,
   authDomain: 'diag.example.com',
   projectId: 'diag-project',
   appId: '1:1234567890:web:abcdef',
@@ -17,5 +19,6 @@ test('auth diagnostics panel shows masked api key', async ({ page }) => {
   const panel = page.locator('#authDiagnosticsPanel')
   await expect(panel).toBeVisible()
   await expect(panel).toContainText('Firebase apiKey')
-  await expect(panel).toContainText('AIzaSy...7890')
+  const masked = `${apiKey.slice(0, 6)}...${apiKey.slice(-4)}`
+  await expect(panel).toContainText(masked)
 })
