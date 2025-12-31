@@ -9,9 +9,15 @@ if (versionScriptUrl) {
 importScripts('/js/version.js')
 }
 
-const CACHE_VERSION = 'sscaff-v-20251230104502191' // bumped for always-latest deploy flow
-const RESOLVED_CACHE_VERSION = (typeof self !== 'undefined' && self.CSSMATE_BUILD_META?.cacheKey) ? self.CSSMATE_BUILD_META.cacheKey : CACHE_VERSION
-const CACHE_NAME = 'sscaff-' + RESOLVED_CACHE_VERSION
+const BASE_CACHE_VERSION = '20251230104502191' // bumped for always-latest deploy flow
+const RESOLVED_CACHE_VERSION = (typeof self !== 'undefined' && self.CSSMATE_BUILD_META?.cacheKey) ? self.CSSMATE_BUILD_META.cacheKey : BASE_CACHE_VERSION
+const FIREBASE_CACHE_SALT_RAW = (typeof self !== 'undefined' && self.CSSMATE_BUILD_META?.firebaseAppId)
+  ? self.CSSMATE_BUILD_META.firebaseAppId
+  : (typeof self !== 'undefined' && self.CSSMATE_BUILD_META?.firebaseProjectId)
+      ? self.CSSMATE_BUILD_META.firebaseProjectId
+      : 'default'
+const FIREBASE_CACHE_SALT = String(FIREBASE_CACHE_SALT_RAW).replace(/[^a-zA-Z0-9._-]/g, '-')
+const CACHE_NAME = `sscaff-v${RESOLVED_CACHE_VERSION}-${FIREBASE_CACHE_SALT}`
 const PRECACHE_URLS = [
   '/',
   '/index.html',
@@ -127,6 +133,10 @@ self.addEventListener('message', event => {
 self.addEventListener('fetch', event => {
   const { request } = event
   if (request.method !== 'GET') return
+  if (event.request.url.includes('/.netlify/functions/firebase-config')) {
+    event.respondWith(fetch(event.request))
+    return
+  }
 
   const url = new URL(request.url)
   const bypassRemoteOrigins = [

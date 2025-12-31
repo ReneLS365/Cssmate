@@ -21,6 +21,7 @@ import { applyBuildMetadata, isDebugOverlayEnabled, updateCurrentView } from './
 import { resetAppState, resetOfflineCache } from './src/utils/reset-app.js'
 import { initBootInline } from './boot-inline.js'
 import { isLighthouseMode } from './src/config/lighthouse-mode.js'
+import { isDiagnosticsEnabled, mountDiagnostics } from './src/ui/auth-diagnostics.js'
 
 function readCiFlag () {
   if (typeof document !== 'undefined') {
@@ -171,7 +172,6 @@ let authProviderModulePromise = null
 let appGuardModulePromise = null
 let debugOverlayModulePromise = null
 let authBootstrapModulePromise = null
-let authDiagnosticsModulePromise = null
 let authProviderSubscribed = false
 let cachedAuthIdentity = null
 
@@ -208,21 +208,6 @@ function ensureAuthBootstrapModule () {
     authBootstrapModulePromise = import('./src/auth/bootstrap.js')
   }
   return authBootstrapModulePromise
-}
-
-function shouldShowAuthDiagnostics () {
-  if (typeof window === 'undefined') return false
-  const params = new URLSearchParams(window.location.search)
-  if (params.get('diag') === '1' || params.get('diag') === 'auth') return true
-  const path = window.location.pathname || ''
-  return path.startsWith('/diag/auth') || path.startsWith('/diag')
-}
-
-function ensureAuthDiagnosticsModule () {
-  if (!authDiagnosticsModulePromise) {
-    authDiagnosticsModulePromise = import('./src/ui/auth-diagnostics.js')
-  }
-  return authDiagnosticsModulePromise
 }
 
 async function initAuthGateLazy () {
@@ -265,13 +250,6 @@ function initDebugOverlayLazy () {
       .then(mod => mod?.initDebugTools?.())
       .catch(error => console.warn('Kunne ikke indlæse debug overlay', error))
   })
-}
-
-function initAuthDiagnosticsLazy () {
-  if (!shouldShowAuthDiagnostics()) return
-  ensureAuthDiagnosticsModule()
-    .then(mod => mod?.initAuthDiagnostics?.())
-    .catch(error => console.warn('Kunne ikke indlæse auth diagnostics', error))
 }
 
 function initAppGuardLazy () {
@@ -5808,6 +5786,9 @@ function configureBootstrap () {
   exposeDebugHooks()
   exposeExportHelpers()
   initBootInline()
+  if (isDiagnosticsEnabled()) {
+    mountDiagnostics({ forceVisible: true, allowSwReset: true })
+  }
   runWhenIdle(() => {
     loadDefaultAdminCode().catch(() => {})
   })
@@ -5823,7 +5804,6 @@ export async function bootstrapApp () {
   configureBootstrap()
   registerIndexMissingHandler()
   initDebugOverlayLazy()
-  initAuthDiagnosticsLazy()
   scheduleAuthBootstrap()
 
   let authGatePromise = null
