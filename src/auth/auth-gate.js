@@ -179,13 +179,14 @@ function handleAuthChange (state) {
   const requiresVerification = Boolean(state?.requiresVerification)
   const hasUser = Boolean(state?.user)
   const message = state?.message || (status === SESSION_STATUS.NO_ACCESS ? 'Ingen adgang til teamet.' : '')
-  const authErrorCode = getAuthDiagnostics()?.lastAuthErrorCode || ''
+  const authErrorCode = state?.error?.code || getAuthDiagnostics()?.lastAuthErrorCode || ''
+  const hasAuthError = Boolean(state?.error)
 
   if (!authReady && !hasUser) {
     setGateVisible(true)
     showSection('login')
     updateProviderButtons()
-    const variant = status === SESSION_STATUS.NO_ACCESS || status === SESSION_STATUS.ERROR ? 'error' : ''
+    const variant = status === SESSION_STATUS.NO_ACCESS || status === SESSION_STATUS.ERROR || hasAuthError ? 'error' : ''
     setMessage(message || 'Log ind for at fortsætte', variant, authErrorCode)
     return
   }
@@ -208,7 +209,7 @@ function handleAuthChange (state) {
     setGateVisible(true)
     showSection('login')
     updateProviderButtons()
-    const variant = status === SESSION_STATUS.NO_ACCESS || status === SESSION_STATUS.ERROR ? 'error' : ''
+    const variant = status === SESSION_STATUS.NO_ACCESS || status === SESSION_STATUS.ERROR || hasAuthError ? 'error' : ''
     setMessage(message || 'Log ind for at fortsætte', variant, authErrorCode)
     return
   }
