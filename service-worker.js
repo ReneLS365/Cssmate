@@ -154,14 +154,11 @@ self.addEventListener('fetch', event => {
     '/api/firebase-config',
     '/config.json',
     '/js/firebase-env.js',
-    '/js/shared-auth.js',
   ]
   const bypass =
     bypassPaths.includes(url.pathname) ||
     url.pathname.startsWith('/__/auth') ||
-    url.pathname.includes('/auth') ||
-    url.pathname.includes('firebase') ||
-    url.pathname.includes('firebase-config')
+    url.pathname.startsWith('/__/firebase')
   if (bypass) {
     event.respondWith(fetch(request))
     return
