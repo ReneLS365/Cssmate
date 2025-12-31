@@ -64,6 +64,23 @@ export async function resetServiceWorkerAndCaches () {
   window.location?.reload()
 }
 
+export async function hardRepairClient () {
+  if (!shouldUseBrowserApis()) return
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations()
+      await Promise.all(regs.map(reg => reg.unregister()))
+    }
+    if ('caches' in window) {
+      const keys = await caches.keys()
+      await Promise.all(keys.map(key => caches.delete(key)))
+    }
+  } catch {}
+  try { window.sessionStorage?.clear() } catch {}
+  try { window.localStorage?.removeItem('cssmate:firebaseConfig') } catch {}
+  window.location?.replace?.(`${window.location.pathname}?repaired=1`)
+}
+
 async function clearFirestorePersistence () {
   try {
     const db = await getFirestoreDb()

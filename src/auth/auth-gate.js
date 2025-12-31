@@ -2,7 +2,7 @@ import { initAuthProvider } from './auth-provider.js'
 import { getAuthDiagnostics, waitForAuthReady } from '../../js/shared-auth.js'
 import { initAuthSession, onChange as onSessionChange, getState as getSessionState, SESSION_STATUS } from './session.js'
 import { isLighthouseMode } from '../config/lighthouse-mode.js'
-import { resetServiceWorkerAndCaches } from '../utils/reset-app.js'
+import { hardRepairClient } from '../utils/reset-app.js'
 
 let gate
 let loadingScreen
@@ -25,7 +25,11 @@ let isSubmitting = false
 function shouldShowRepair (message, errorCode, variant) {
   if (variant !== 'error') return false
   const combined = `${message || ''} ${errorCode || ''}`.toLowerCase()
-  return combined.includes('auth/api-key-expired') || combined.includes('auth/invalid-api-key')
+  return combined.includes('auth/api-key-expired') ||
+    combined.includes('auth/internal-error') ||
+    combined.includes('auth/invalid-api-key') ||
+    combined.includes('config-fetch') ||
+    combined.includes('config-timeout')
 }
 
 function setRepairVisible (visible) {
@@ -276,7 +280,7 @@ export function initAuthGate () {
   if (repairButton) {
     repairButton.addEventListener('click', () => {
       if (isSubmitting) return
-      resetServiceWorkerAndCaches()
+      hardRepairClient()
     })
   }
   initAuthSession()
