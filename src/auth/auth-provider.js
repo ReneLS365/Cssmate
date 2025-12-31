@@ -23,7 +23,7 @@ let verifiedReject = null
 let initialized = false
 let authInitStarted = false
 let authInitPromise = null
-const AUTH_INIT_TIMEOUT_MS = 8000
+const AUTH_INIT_TIMEOUT_MS = 15000
 
 function ensureVerifiedPromise () {
   if (verifiedPromise) return verifiedPromise
@@ -145,9 +145,9 @@ function getAuthProviderApi () {
     ensureAuth: ensureAuthInit,
     prefetchAuth: prefetchAuthInit,
     actions: {
-      signInWithGoogle: () => ensureAuthInit().then(() => loginWithProvider('google')),
-      signInWithEmail: (...args) => ensureAuthInit().then(() => signInWithEmail(...args)),
-      signUpWithEmail: (...args) => ensureAuthInit().then(() => signUpWithEmail(...args)),
+      signInWithGoogle: () => loginWithProvider('google'),
+      signInWithEmail: (...args) => signInWithEmail(...args),
+      signUpWithEmail: (...args) => signUpWithEmail(...args),
       signOut: logoutUser,
       sendPasswordReset: (...args) => ensureAuthInit().then(() => sendPasswordReset(...args)),
       resendVerification: (...args) => ensureAuthInit().then(() => resendEmailVerification(...args)),
