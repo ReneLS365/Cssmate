@@ -8,7 +8,7 @@ import {
 } from '../config/firebase-config.js'
 import { maskFirebaseApiKey } from '../config/firebase-utils.js'
 import { markCacheReset } from '../state/debug.js'
-import { resetServiceWorkerAndCaches } from '../utils/reset-app.js'
+import { hardRepairClient } from '../utils/reset-app.js'
 
 const PANEL_ID = 'authDiagnosticsPanel'
 
@@ -112,7 +112,7 @@ function createPanel() {
 
   const resetButton = document.createElement('button')
   resetButton.type = 'button'
-  resetButton.textContent = 'Reset SW + caches'
+  resetButton.textContent = 'Repair'
 
   const signInButton = document.createElement('button')
   signInButton.type = 'button'
@@ -231,13 +231,8 @@ async function handleReset(panel) {
   try {
     markCacheReset()
   } catch {}
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      window.localStorage.removeItem('cssmate_app_version')
-    }
-  } catch {}
   if (panel?.outputEl) panel.outputEl.textContent = 'Caches ryddet. Genindlæser…'
-  await resetServiceWorkerAndCaches()
+  await hardRepairClient()
 }
 
 async function runSignInTest(panel) {

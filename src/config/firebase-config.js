@@ -55,17 +55,20 @@ function cfgVersion(cfg) {
 }
 
 function updateCfgVersionAndAutoRepair(cfg) {
-  if (typeof window === 'undefined' || !window.localStorage) return false
+  if (typeof window === 'undefined' || !window.sessionStorage) return false
   try {
-    const prev = window.localStorage.getItem(FIREBASE_CFG_VERSION_KEY)
+    try {
+      window.localStorage?.removeItem(FIREBASE_CFG_VERSION_KEY)
+    } catch {}
+    const prev = window.sessionStorage.getItem(FIREBASE_CFG_VERSION_KEY)
     const next = cfgVersion(cfg)
     if (prev && next && prev !== next) {
       clearFirebaseConfigCache()
-      window.localStorage.setItem(FIREBASE_CFG_VERSION_KEY, next)
+      window.sessionStorage.setItem(FIREBASE_CFG_VERSION_KEY, next)
       window.location?.replace?.(`${window.location.pathname}?reloaded=1`)
       return true
     }
-    if (next) window.localStorage.setItem(FIREBASE_CFG_VERSION_KEY, next)
+    if (next) window.sessionStorage.setItem(FIREBASE_CFG_VERSION_KEY, next)
   } catch (error) {
     console.warn('Kunne ikke gemme Firebase config version', error)
   }
@@ -97,9 +100,12 @@ async function fetchFirebaseConfig() {
   return sanitizeFirebaseConfig(data)
 }
 
-function buildOfflineConfigError() {
+function buildOfflineConfigError(reason = 'offline-config') {
   const error = new Error('Du er offline. Kan ikke hente login-konfiguration.')
   error.code = 'offline-config'
+  if (reason && reason !== 'offline-config') {
+    error.offlineReason = reason
+  }
   return error
 }
 
@@ -133,7 +139,7 @@ export async function loadFirebaseConfig() {
         return cached
       }
       if (error?.code === 'config-fetch' || error?.code === 'config-timeout') {
-        throw buildOfflineConfigError()
+        throw buildOfflineConfigError(error.code)
       }
       throw error
     }
