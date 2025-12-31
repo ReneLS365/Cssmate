@@ -81,6 +81,23 @@ export async function hardRepairClient () {
   window.location?.replace?.(`${window.location.pathname}?repaired=1`)
 }
 
+export async function resetApp () {
+  if (!shouldUseBrowserApis()) return
+
+  await clearServiceWorkers()
+  await clearCaches()
+
+  try { window.localStorage?.clear() } catch {}
+  try { window.sessionStorage?.clear() } catch {}
+
+  await clearIndexedDb()
+
+  const origin = window.location?.origin || ''
+  const path = window.location?.pathname || ''
+  const target = `${origin}${path}?resetDone=1`
+  window.location?.replace?.(target)
+}
+
 async function clearFirestorePersistence () {
   try {
     const db = await getFirestoreDb()
