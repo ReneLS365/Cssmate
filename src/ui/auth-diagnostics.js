@@ -7,7 +7,7 @@ import {
   getFirebaseEnvPresence,
 } from '../config/firebase-config.js'
 import { maskFirebaseApiKey } from '../config/firebase-utils.js'
-import { markCacheReset } from '../state/debug.js'
+import { getDebugState, markCacheReset } from '../state/debug.js'
 import { resetApp } from '../utils/reset-app.js'
 
 const PANEL_ID = 'authDiagnosticsPanel'
@@ -203,6 +203,7 @@ function renderPanel(panel) {
   list.textContent = ''
 
   const auth = getAuthDiagnostics()
+  const debugState = getDebugState()
   const configSummary = getFirebaseConfigSummarySnapshot()
   const configSnapshot = getFirebaseConfigSnapshot() || {}
   const configStatus = getFirebaseConfigStatus()
@@ -229,6 +230,9 @@ function renderPanel(panel) {
     ['Firebase projectId', safeString(configSummary.projectId || '')],
     ['Firebase authDomain', safeString(configSummary.authDomain || '')],
     ['Firebase apiKey', safeString(apiKeyValue)],
+    ['Auth ready', formatBoolean(Boolean(auth.authReady))],
+    ['Signed in', formatBoolean(Boolean(auth.isAuthenticated))],
+    ['Auth gate reason', safeString(debugState?.authGateReason || '')],
     ['Auth mode (preferred)', safeString(auth.preferredAuthMode || '')],
     ['Auth mode (last)', safeString(auth.lastAuthMode || '')],
     ['App Check', `${auth.appCheckStatus || ''}${auth.appCheckReason ? ` (${auth.appCheckReason})` : ''}`],
