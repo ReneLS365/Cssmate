@@ -1,5 +1,5 @@
-import { loadFirebaseConfig } from './firebase-config.js'
-import { FIREBASE_SDK_VERSION } from './firebase-sdk.js'
+import { FIREBASE_SDK_VERSION } from '../config/firebase-sdk.js'
+import { getFirebaseConfig } from './firebase-config.js'
 
 let appPromise = null
 let sdkPromise = null
@@ -13,7 +13,7 @@ async function loadFirebaseAppSdk() {
 export function getFirebaseApp() {
   if (!appPromise) {
     appPromise = (async () => {
-      const config = await loadFirebaseConfig()
+      const config = getFirebaseConfig()
 
       if (!config || !config.apiKey) {
         throw new Error('Firebase config missing apiKey')

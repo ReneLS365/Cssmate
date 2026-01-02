@@ -4,20 +4,6 @@ import test from 'node:test'
 import { clearFirebaseConfigCache, loadFirebaseConfig } from '../src/config/firebase-config.js'
 import { sanitizeFirebaseConfig, validateFirebaseConfig } from '../src/config/firebase-utils.js'
 
-function createStorage() {
-  const store = new Map()
-  return {
-    getItem: key => (store.has(key) ? store.get(key) : null),
-    setItem: (key, value) => {
-      store.set(key, String(value))
-    },
-    removeItem: key => {
-      store.delete(key)
-    },
-    keys: () => Array.from(store.keys()),
-  }
-}
-
 test('validateFirebaseConfig flags missing required keys', () => {
   const result = validateFirebaseConfig({ projectId: 'demo' })
   assert.equal(result.isValid, false)
@@ -62,56 +48,91 @@ test('sanitizeFirebaseConfig trims and drops empty values', () => {
   assert.equal(config.authDomain, undefined)
 })
 
-test('loadFirebaseConfig uses no-store fetch with cache buster', async () => {
+test('loadFirebaseConfig reads config from env', async () => {
   const originalWindow = globalThis.window
-  const originalFetch = globalThis.fetch
-  const originalSessionStorage = globalThis.sessionStorage
-  const originalLocalStorage = globalThis.localStorage
+  const originalEnv = { ...process.env }
 
-  const sessionStorage = createStorage()
-  const localStorage = createStorage()
-  const calls = []
-
-  globalThis.window = {
-    location: { origin: 'https://example.com', pathname: '/index.html', search: '' },
-    sessionStorage,
-    localStorage,
-  }
-  globalThis.sessionStorage = sessionStorage
-  globalThis.localStorage = localStorage
-  globalThis.fetch = async (url, options) => {
-    calls.push({ url, options })
-    return {
-      ok: true,
-      json: async () => ({
-        apiKey: 'AIzaSyTestKey1234567890',
-        authDomain: 'demo.firebaseapp.com',
-        projectId: 'demo',
-        appId: 'app-id',
-      }),
-    }
-  }
+  process.env.VITE_FIREBASE_API_KEY = 'AIzaSyTestKey1234567890'
+  process.env.VITE_FIREBASE_AUTH_DOMAIN = 'demo.firebaseapp.com'
+  process.env.VITE_FIREBASE_PROJECT_ID = 'demo'
+  process.env.VITE_FIREBASE_APP_ID = 'app-id'
 
   try {
     clearFirebaseConfigCache()
-    await loadFirebaseConfig()
-    assert.equal(calls.length, 1)
-    const { url, options } = calls[0]
-    assert.equal(options.cache, 'no-store')
-    const parsed = new URL(url)
-    assert.equal(parsed.pathname, '/.netlify/functions/firebase-config')
-    assert.ok(parsed.searchParams.has('t'))
-    const storedVersion = localStorage.getItem('cssmate:firebaseCfgVersion')
-    assert.equal(storedVersion, 'demo|app-id|demo.firebaseapp.com')
-    const storedKeys = Array.from(localStorage.keys())
-    const apiKeyStored = storedKeys.some(key => key.toLowerCase().includes('apikey'))
-    assert.equal(apiKeyStored, false)
+    const config = await loadFirebaseConfig()
+    assert.equal(config.apiKey, 'AIzaSyTestKey1234567890')
+    assert.equal(config.authDomain, 'demo.firebaseapp.com')
+    assert.equal(config.projectId, 'demo')
+    assert.equal(config.appId, 'app-id')
   } finally {
     clearFirebaseConfigCache()
     globalThis.window = originalWindow
     if (originalWindow === undefined) delete globalThis.window
-    globalThis.fetch = originalFetch
-    globalThis.sessionStorage = originalSessionStorage
-    globalThis.localStorage = originalLocalStorage
+    process.env = originalEnv
+  }
+})
+
+test('loadFirebaseConfig reads config from session storage', async () => {
+  const originalWindow = globalThis.window
+  const originalEnv = { ...process.env }
+  const sessionStorage = {
+    store: new Map(),
+    getItem(key) {
+      return this.store.get(key) ?? null
+    },
+    setItem(key, value) {
+      this.store.set(key, value)
+    },
+    removeItem(key) {
+      this.store.delete(key)
+    },
+    clear() {
+      this.store.clear()
+    },
+  }
+
+  globalThis.window = { sessionStorage }
+  delete process.env.VITE_FIREBASE_API_KEY
+  delete process.env.VITE_FIREBASE_AUTH_DOMAIN
+  delete process.env.VITE_FIREBASE_PROJECT_ID
+  delete process.env.VITE_FIREBASE_APP_ID
+
+  const storedConfig = {
+    apiKey: 'AIzaSySessionKey1234567890',
+    authDomain: 'session.firebaseapp.com',
+    projectId: 'session-project',
+    appId: 'session-app',
+  }
+
+  try {
+    sessionStorage.setItem('cssmate:firebaseConfig', JSON.stringify(storedConfig))
+    clearFirebaseConfigCache()
+    const config = await loadFirebaseConfig()
+    assert.equal(config.apiKey, storedConfig.apiKey)
+    assert.equal(config.authDomain, storedConfig.authDomain)
+    assert.equal(config.projectId, storedConfig.projectId)
+    assert.equal(config.appId, storedConfig.appId)
+  } finally {
+    clearFirebaseConfigCache()
+    globalThis.window = originalWindow
+    if (originalWindow === undefined) delete globalThis.window
+    process.env = originalEnv
+  }
+})
+
+test('loadFirebaseConfig throws when required env vars are missing', async () => {
+  const originalEnv = { ...process.env }
+
+  delete process.env.VITE_FIREBASE_API_KEY
+  delete process.env.VITE_FIREBASE_AUTH_DOMAIN
+  delete process.env.VITE_FIREBASE_PROJECT_ID
+  delete process.env.VITE_FIREBASE_APP_ID
+
+  try {
+    clearFirebaseConfigCache()
+    await assert.rejects(loadFirebaseConfig(), /Missing env vars/)
+  } finally {
+    clearFirebaseConfigCache()
+    process.env = originalEnv
   }
 })

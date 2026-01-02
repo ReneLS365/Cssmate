@@ -6,7 +6,7 @@
   - Auth UI gate: `src/auth/auth-gate.js`
   - Auth provider glue: `src/auth/auth-provider.js`
 - **Auth + config**
-  - Firebase config helpers: `src/config/firebase.js`
+  - Firebase config helpers: `src/firebase/firebase-config.js`
   - Auth initialization + providers + App Check: `js/shared-auth.js`
   - Firestore wrapper + error tracking: `js/shared-firestore.js`
 - **Session + access**
@@ -18,13 +18,12 @@
   - Team access guard: `src/ui/app-guard.js`
   - Team admin page + diagnostics: `src/ui/team-admin-page.js`
   - Debug overlay: `src/ui/debug-overlay.js`
-- **Server/config**
-  - Netlify config endpoint: `netlify/functions/firebase-config.js`
-  - Build-time public env generation (non-secret): `scripts/generate-firebase-config.js`
+- **Build-time config**
+  - Public env generation (non-secret flags): `scripts/generate-firebase-config.js`
 
 ## Data flow (happy path)
-1. **Config**: `js/shared-auth.js` fetches `/.netlify/functions/firebase-config` and caches in `sessionStorage` (falls back to cache for offline).
-2. **Validation**: `src/config/firebase.js` validates required keys and rejects placeholders.
+1. **Config**: `js/shared-auth.js` reads Firebase config from `import.meta.env` via `src/firebase/firebase-config.js`.
+2. **Validation**: `src/config/firebase-utils.js` validates required keys and rejects placeholders.
 3. **Auth init**: Firebase Auth is initialized, persistence is set, and `getRedirectResult()` runs once.
 4. **App Check**: Deferred init (idle) in `js/shared-auth.js` if enabled and a site key exists.
 5. **Session**: `src/auth/session.js` listens to auth changes and resolves team access via `src/services/team-access.js`.
