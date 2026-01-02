@@ -370,7 +370,7 @@ export async function initSharedAuth() {
       logConfigDiagnostics(validation);
     }
     logDevDiagnostics('env-presence', getFirebaseEnvPresence());
-    logAuthEvent('auth-strategy', { preferred: shouldPreferRedirect() ? 'redirect' : 'popup' });
+    logAuthEvent('auth-strategy', { preferred: getPreferredAuthModeLabel() });
     if (!validation.isValid) {
       if (isLocalhost() || isE2eTestMode()) {
         useMockAuth = true;
@@ -497,15 +497,14 @@ function isUserVerified(user) {
 function shouldFallbackToRedirect(error) {
   if (!error) return false;
   const code = error?.code || '';
-  return code.includes('popup') || code === 'auth/cancelled-popup-request' || code === 'auth/popup-closed-by-user';
+  return code.includes('popup')
+    || code === 'auth/cancelled-popup-request'
+    || code === 'auth/popup-closed-by-user'
+    || code === 'auth/operation-not-supported-in-this-environment';
 }
 
-function shouldPreferRedirect() {
-  if (typeof window === 'undefined') return false;
-  const coarsePointer = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
-  const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
-  const isMobileAgent = /android|iphone|ipad|ipod/i.test(userAgent);
-  return coarsePointer || isMobileAgent;
+function getPreferredAuthModeLabel() {
+  return 'popup-first';
 }
 
 function buildAuthHint(error) {
@@ -590,12 +589,6 @@ export async function loginWithProvider(providerId) {
   const provider = getProvider(providerId);
   provider.setCustomParameters?.({ prompt: 'select_account' });
   try {
-    if (shouldPreferRedirect()) {
-      lastAuthMode = 'redirect';
-      logAuthEvent('login-redirect', { providerId });
-      await authModule.signInWithRedirect(authInstance, provider);
-      return;
-    }
     lastAuthMode = 'popup';
     logAuthEvent('login-popup', { providerId });
     await withTimeout(authModule.signInWithPopup(authInstance, provider), AUTH_ACTION_TIMEOUT_MS, 'login-popup');
@@ -769,7 +762,7 @@ export function getAuthDiagnostics() {
     lastAuthErrorCode: lastAuthErrorCode || authError?.code || '',
     configStatus: { ...configStatus },
     configSource: getFirebaseConfigSource(),
-    preferredAuthMode: shouldPreferRedirect() ? 'redirect' : 'popup',
+    preferredAuthMode: getPreferredAuthModeLabel(),
     lastAuthMode: lastAuthMode || '',
   };
 }

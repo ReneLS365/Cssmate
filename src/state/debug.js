@@ -2,6 +2,7 @@ const DEBUG_STORAGE_KEY = 'sscaffDebug'
 
 const defaultState = {
   authReady: false,
+  authGateReason: '',
   user: {
     uid: null,
     email: '',
@@ -134,6 +135,10 @@ export function updateAuthDebugState (authContext) {
       emailVerified: Boolean(user?.emailVerified || authContext?.isVerified),
     },
   })
+}
+
+export function updateAuthGateReason (reason = '') {
+  setState({ authGateReason: reason || '' })
 }
 
 export function updateTeamDebugState ({ teamId, member, teamResolved, membershipStatus, membershipCheckPath, accessStatus, accessError, memberAssigned }) {
