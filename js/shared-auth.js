@@ -9,7 +9,7 @@ import {
   reportFirebaseConfigStatus,
 } from '../src/config/firebase-config.js';
 import { getFirebaseConfigSummary } from '../src/config/firebase-utils.js';
-import { getFirebaseApp } from '../src/config/firebase-init.js';
+import { getFirebaseApp } from '../src/firebase/firebase-app.js';
 import { isLighthouseMode } from '../src/config/lighthouse-mode.js';
 import { FIREBASE_SDK_VERSION as FIREBASE_SDK_VERSION_VALUE } from '../src/config/firebase-sdk.js';
 

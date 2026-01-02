@@ -22,6 +22,7 @@ import { resetAppState, resetOfflineCache } from './src/utils/reset-app.js'
 import { initBootInline } from './boot-inline.js'
 import { isLighthouseMode } from './src/config/lighthouse-mode.js'
 import { isDiagnosticsEnabled, mountDiagnostics } from './src/ui/auth-diagnostics.js'
+import { getFirebaseConfigDiagnostics } from './src/firebase/firebase-config.js'
 
 function readCiFlag () {
   if (typeof document !== 'undefined') {
@@ -33,6 +34,18 @@ function readCiFlag () {
 
 let IS_CI = false
 let IS_LIGHTHOUSE = false
+
+function isDevBuild () {
+  try {
+    return Boolean(typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV)
+  } catch (error) {
+    return false
+  }
+}
+
+if (isDevBuild()) {
+  console.log('[firebase:diagnostics]', getFirebaseConfigDiagnostics())
+}
 
 function setupServiceWorkerAutoReload () {
   if (typeof window === 'undefined') return

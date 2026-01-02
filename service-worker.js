@@ -29,9 +29,10 @@ const PRECACHE_URLS = [
   '/css/pwa.css',
   '/src/styles/fixes.css',
   '/src/config/firebase-config.js',
-  '/src/config/firebase-init.js',
   '/src/config/firebase-sdk.js',
   '/src/config/firebase-utils.js',
+  '/src/firebase/firebase-config.js',
+  '/src/firebase/firebase-app.js',
   '/src/debug/tools.js',
   '/src/state/debug.js',
   '/src/state/user-store.js',
@@ -131,10 +132,6 @@ self.addEventListener('message', event => {
 self.addEventListener('fetch', event => {
   const { request } = event
   if (request.method !== 'GET') return
-  if (event.request.url.includes('/.netlify/functions/firebase-config')) {
-    event.respondWith(fetch(event.request, { cache: 'no-store' }))
-    return
-  }
 
   const url = new URL(request.url)
   const bypassRemoteOrigins = [
@@ -158,9 +155,6 @@ self.addEventListener('fetch', event => {
   }
 
   const bypassPaths = [
-    '/.netlify/functions/firebase-config',
-    '/api/firebase-config',
-    '/config.json',
     '/js/firebase-env.js',
   ]
   const bypass =
