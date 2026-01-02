@@ -3,6 +3,7 @@ import { getAuthDiagnostics, waitForAuthReady } from '../../js/shared-auth.js'
 import { initAuthSession, onChange as onSessionChange, getState as getSessionState, SESSION_STATUS } from './session.js'
 import { isLighthouseMode } from '../config/lighthouse-mode.js'
 import { hardRepairClient } from '../utils/reset-app.js'
+import { updateAuthGateReason } from '../state/debug.js'
 
 let gate
 let loadingScreen
@@ -186,12 +187,11 @@ function handleAuthChange (state) {
   const authErrorCode = state?.error?.code || getAuthDiagnostics()?.lastAuthErrorCode || ''
   const hasAuthError = Boolean(state?.error)
 
-  if (!authReady && !hasUser) {
+  if (!authReady) {
     setGateVisible(true)
-    showSection('login')
-    updateProviderButtons()
-    const variant = status === SESSION_STATUS.NO_ACCESS || status === SESSION_STATUS.ERROR || hasAuthError ? 'error' : ''
-    setMessage(message || 'Log ind for at fortsætte', variant, authErrorCode)
+    showSection('loading')
+    updateAuthGateReason('auth-waiting')
+    setMessage(state?.message || 'Login initialiseres…', '', authErrorCode)
     return
   }
 
@@ -199,13 +199,7 @@ function handleAuthChange (state) {
     showSection('hidden')
     setGateVisible(false)
     setMessage('')
-    return
-  }
-
-  if (!authReady) {
-    setGateVisible(true)
-    showSection('loading')
-    setMessage(state?.message || 'Login initialiseres…', '', authErrorCode)
+    updateAuthGateReason('')
     return
   }
 
@@ -215,6 +209,7 @@ function handleAuthChange (state) {
     updateProviderButtons()
     const variant = status === SESSION_STATUS.NO_ACCESS || status === SESSION_STATUS.ERROR || hasAuthError ? 'error' : ''
     setMessage(message || 'Log ind for at fortsætte', variant, authErrorCode)
+    updateAuthGateReason(status === SESSION_STATUS.NO_ACCESS ? 'no-access' : (hasAuthError ? 'auth-error' : 'signed-out'))
     return
   }
 
@@ -222,6 +217,7 @@ function handleAuthChange (state) {
     setGateVisible(true)
     showSection('verify')
     setMessage('Bekræft din email før du bruger appen.', '', authErrorCode)
+    updateAuthGateReason('needs-verification')
     return
   }
 }

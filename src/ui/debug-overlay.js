@@ -30,6 +30,7 @@ function renderOverlay (target, state) {
 
   lines.push('AUTH')
   lines.push(`authReady: ${formatBoolean(state.authReady)}`)
+  lines.push(`authGateReason: ${state.authGateReason || ''}`)
   lines.push(`user.uid: ${state.user?.uid || 'null'}`)
   lines.push(`user.email: ${state.user?.email || ''}`)
   lines.push(`providerIds: ${(state.user?.providerIds || []).join(', ')}`)
