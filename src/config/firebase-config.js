@@ -4,7 +4,11 @@ import {
   sanitizeFirebaseConfig,
   validateFirebaseConfig,
 } from './firebase-utils.js'
-import { getFirebaseConfig, getFirebaseConfigDiagnostics } from '../firebase/firebase-config.js'
+import {
+  getFirebaseConfig,
+  getFirebaseConfigDiagnostics,
+  getFirebaseConfigRuntimeSource,
+} from '../firebase/firebase-config.js'
 
 let firebaseConfigSnapshot = null
 let firebaseConfigStatus = { isValid: false, missingKeys: [], placeholderKeys: [] }
@@ -23,7 +27,7 @@ export async function loadFirebaseConfig() {
   firebaseConfigPromise = (async () => {
     const config = sanitizeFirebaseConfig(getFirebaseConfig())
     firebaseConfigSnapshot = config
-    firebaseConfigSource = 'env'
+    firebaseConfigSource = getFirebaseConfigRuntimeSource()
     if (typeof window !== 'undefined' && config) {
       window.FIREBASE_CONFIG = config
     }

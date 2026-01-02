@@ -72,6 +72,54 @@ test('loadFirebaseConfig reads config from env', async () => {
   }
 })
 
+test('loadFirebaseConfig reads config from session storage', async () => {
+  const originalWindow = globalThis.window
+  const originalEnv = { ...process.env }
+  const sessionStorage = {
+    store: new Map(),
+    getItem(key) {
+      return this.store.get(key) ?? null
+    },
+    setItem(key, value) {
+      this.store.set(key, value)
+    },
+    removeItem(key) {
+      this.store.delete(key)
+    },
+    clear() {
+      this.store.clear()
+    },
+  }
+
+  globalThis.window = { sessionStorage }
+  delete process.env.VITE_FIREBASE_API_KEY
+  delete process.env.VITE_FIREBASE_AUTH_DOMAIN
+  delete process.env.VITE_FIREBASE_PROJECT_ID
+  delete process.env.VITE_FIREBASE_APP_ID
+
+  const storedConfig = {
+    apiKey: 'AIzaSySessionKey1234567890',
+    authDomain: 'session.firebaseapp.com',
+    projectId: 'session-project',
+    appId: 'session-app',
+  }
+
+  try {
+    sessionStorage.setItem('cssmate:firebaseConfig', JSON.stringify(storedConfig))
+    clearFirebaseConfigCache()
+    const config = await loadFirebaseConfig()
+    assert.equal(config.apiKey, storedConfig.apiKey)
+    assert.equal(config.authDomain, storedConfig.authDomain)
+    assert.equal(config.projectId, storedConfig.projectId)
+    assert.equal(config.appId, storedConfig.appId)
+  } finally {
+    clearFirebaseConfigCache()
+    globalThis.window = originalWindow
+    if (originalWindow === undefined) delete globalThis.window
+    process.env = originalEnv
+  }
+})
+
 test('loadFirebaseConfig throws when required env vars are missing', async () => {
   const originalEnv = { ...process.env }
 
