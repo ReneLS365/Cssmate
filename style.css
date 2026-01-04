@@ -650,6 +650,60 @@ input.csm-name{
   .csm-row{column-gap:4px;padding-inline:10px;}
 }
 
+@media (max-width:480px){
+  :root{
+    --m-col-qty: 3.2rem;
+    --m-col-price: 3.6rem;
+    --m-col-sum: 4.2rem;
+  }
+
+  .material-row,
+  .csm-row{
+    display:grid;
+    grid-template-columns:minmax(0, 1fr) var(--m-col-qty) var(--m-col-price) var(--m-col-sum);
+    gap:6px;
+    align-items:stretch;
+    max-width:100%;
+  }
+
+  .material-row > *,
+  .csm-row > *{ min-width:0; }
+
+  .mat-name,
+  .csm-name,
+  input.csm-name{
+    white-space:normal;
+    overflow:visible;
+    text-overflow:clip;
+    overflow-wrap:anywhere;
+    word-break:break-word;
+    line-height:1.15;
+    text-align:left;
+  }
+
+  .material-row input,
+  .csm-row input{
+    width:100%;
+    box-sizing:border-box;
+  }
+
+  .mat-qty,
+  .mat-price,
+  .csm-qty,
+  .csm-price{ text-align:center; }
+
+  .mat-sum,
+  .csm-sum{ text-align:right; white-space:nowrap; }
+}
+
+@media (max-width:360px){
+  :root{
+    --m-col-qty: 3.0rem;
+    --m-col-price: 3.4rem;
+    --m-col-sum: 3.9rem;
+  }
+}
+
 @media print{
   header,nav,.no-print,.csmate-numpad{display:none!important}
   body{background:#fff;color:#000}

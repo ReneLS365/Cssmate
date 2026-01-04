@@ -8,11 +8,23 @@ const HTML_ENTRIES = [
 ];
 const INLINE_HANDLER_REGEX = /\son[a-z]+\s*=/i;
 
+function findInlineHandlers(contents) {
+  const lines = contents.split(/\r?\n/);
+  const matches = [];
+  lines.forEach((line, index) => {
+    if (INLINE_HANDLER_REGEX.test(line)) {
+      matches.push({ line: index + 1, snippet: line.trim() });
+    }
+  });
+  return matches;
+}
+
 async function scanFile(path) {
   try {
     const contents = await readFile(path, 'utf8');
-    if (INLINE_HANDLER_REGEX.test(contents)) {
-      return path;
+    const matches = findInlineHandlers(contents);
+    if (matches.length) {
+      return { path, matches };
     }
   } catch {
     return null;
@@ -25,8 +37,16 @@ async function run() {
   const matches = results.filter(Boolean);
 
   if (matches.length) {
+    const summary = matches
+      .map(({ path, matches: fileMatches }) => {
+        const lines = fileMatches
+          .map(({ line, snippet }) => `  line ${line}: ${snippet}`)
+          .join('\n');
+        return `${path}\n${lines}`;
+      })
+      .join('\n');
     console.error(
-      `[guard-no-inline-event-handlers] Inline event handler(s) detected in:\n${matches.join('\n')}\n` +
+      `[guard-no-inline-event-handlers] Inline event handler(s) detected:\n${summary}\n` +
       'Remove inline handlers (e.g. onload=) to keep CSP strict and avoid broken CSS.'
     );
     process.exit(1);
