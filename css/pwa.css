@@ -13,6 +13,9 @@
   .pwa-install-wrap{
     bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   }
+  .app-root{
+    padding-bottom: calc(1.5rem + 72px);
+  }
 }
 .pwa-install-btn {
   padding: 10px 14px;
