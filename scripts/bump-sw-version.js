@@ -1,30 +1,88 @@
-import { readFile, writeFile } from 'node:fs/promises'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+#!/usr/bin/env node
+import fs from "node:fs";
+import path from "node:path";
+import { execSync } from "node:child_process";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const swPath = path.join(__dirname, '..', 'service-worker.js')
+const ROOT = process.cwd();
 
-function formatVersionTag(date = new Date()) {
-  const stamp = date.toISOString().replace(/[-:.TZ]/g, '')
-  return `sscaff-v-${stamp}`
-}
-
-async function main() {
-  const swSource = await readFile(swPath, 'utf8')
-  const versionPattern = /const CACHE_VERSION = ['"].*?['"]/m
-  if (!versionPattern.test(swSource)) {
-    console.warn('bump-sw-version: CACHE_VERSION placeholder not found – skipping update')
-    return
+function exists(p) {
+  try {
+    fs.accessSync(p, fs.constants.F_OK);
+    return true;
+  } catch {
+    return false;
   }
-
-  const nextTag = formatVersionTag()
-  const updatedSource = swSource.replace(versionPattern, `const CACHE_VERSION = '${nextTag}'`)
-  await writeFile(swPath, updatedSource, 'utf8')
-  console.log('bump-sw-version: Updated CACHE_VERSION to', nextTag)
 }
 
-main().catch(error => {
-  console.error('bump-sw-version: Failed to bump service worker version', error)
-  process.exitCode = 1
-})
+function readText(p) {
+  return fs.readFileSync(p, "utf8");
+}
+
+function writeText(p, s) {
+  fs.writeFileSync(p, s, "utf8");
+}
+
+function getShortSha() {
+  const envSha =
+    process.env.COMMIT_REF ||
+    process.env.GITHUB_SHA ||
+    process.env.SHA ||
+    "";
+  if (envSha) return String(envSha).slice(0, 8);
+
+  try {
+    return execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] })
+      .toString()
+      .trim();
+  } catch {
+    return "nogit";
+  }
+}
+
+function utcStamp() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}`;
+}
+
+function findServiceWorker() {
+  const candidates = [
+    path.join(ROOT, "service-worker.js"),
+    path.join(ROOT, "sw.js"),
+    path.join(ROOT, "js", "service-worker.js"),
+    path.join(ROOT, "js", "sw.js"),
+    path.join(ROOT, "src", "service-worker.js"),
+    path.join(ROOT, "src", "sw.js"),
+  ];
+  for (const p of candidates) if (exists(p)) return p;
+  return null;
+}
+
+const swPath = findServiceWorker();
+if (!swPath) {
+  console.error("bump-sw-version: service worker file not found");
+  process.exit(1);
+}
+
+const buildId = `${utcStamp()}-${getShortSha()}`;
+const token = "__CACHE_VERSION__";
+
+const before = readText(swPath);
+
+if (before.includes(token)) {
+  const after = before.split(token).join(buildId);
+  writeText(swPath, after);
+  console.log(`bump-sw-version: updated token in ${path.relative(ROOT, swPath)} -> ${buildId}`);
+  process.exit(0);
+}
+
+const re = /(const\s+SW_BUILD_ID\s*=\s*['"])([^'"]*)(['"])/;
+if (re.test(before)) {
+  const after = before.replace(re, `$1${buildId}$3`);
+  writeText(swPath, after);
+  console.log(`bump-sw-version: updated SW_BUILD_ID in ${path.relative(ROOT, swPath)} -> ${buildId}`);
+  process.exit(0);
+}
+
+console.error(`bump-sw-version: no token or SW_BUILD_ID assignment found in ${path.relative(ROOT, swPath)}`);
+process.exit(1);

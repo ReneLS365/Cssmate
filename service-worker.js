@@ -12,7 +12,9 @@ importScripts('/js/version.js')
 const BUILD_META = (typeof self !== 'undefined' && self.CSSMATE_BUILD_META) ? self.CSSMATE_BUILD_META : {}
 const APP_VERSION = BUILD_META.cacheKey || self.CSSMATE_APP_VERSION || BUILD_META.appVersion || 'dev'
 const FIREBASE_APP_ID = BUILD_META.firebaseAppId || BUILD_META.firebaseProjectId || 'default'
-const CACHE_VERSION = `sscaff-${APP_VERSION}-${String(FIREBASE_APP_ID).replace(/[^a-zA-Z0-9._-]/g, '-')}`
+// Replaced at build time by scripts/bump-sw-version.js
+const SW_BUILD_ID = "__CACHE_VERSION__"
+const CACHE_VERSION = `sscaff-${APP_VERSION}-${String(FIREBASE_APP_ID).replace(/[^a-zA-Z0-9._-]/g, '-')}-${SW_BUILD_ID}`
 const CACHE_NAME = CACHE_VERSION
 const PRECACHE_URLS = [
   '/',

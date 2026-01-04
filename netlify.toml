@@ -1,16 +1,16 @@
 [build]
   command = "npm run build"
-  publish = "."
+  publish = ".netlify_publish"
   [build.environment]
     NODE_VERSION = "22"
 
  [context.deploy-preview]
   command = "npm run build"
-  publish = "."
+  publish = ".netlify_publish"
 
 [context.branch-deploy]
   command = "npm run build"
-  publish = "."
+  publish = ".netlify_publish"
 
 [[plugins]]
   package = "netlify-plugin-a11y"
