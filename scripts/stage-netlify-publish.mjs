@@ -52,6 +52,7 @@ const ROOT_ALLOW = new Set([
   "placeholders",
   "assets",
   "debug",
+  "data",
 ]);
 
 const ROOT_DENY_PREFIX = [
