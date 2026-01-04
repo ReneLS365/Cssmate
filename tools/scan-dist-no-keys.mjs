@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 const DIST = 'dist'
+const NETLIFY_PUBLISH = '.netlify_publish'
 const firebasePrefix = ['AI', 'za'].join('')
 const RX = new RegExp(firebasePrefix)
 
@@ -23,10 +24,14 @@ function walk(dir) {
   }
 }
 
-if (!fs.existsSync(DIST)) {
-  console.log('ℹ️ dist/ not found, skipping dist scan')
+const distDir = path.resolve(process.cwd(), DIST)
+const publishDir = path.resolve(process.cwd(), NETLIFY_PUBLISH)
+const scanDir = fs.existsSync(distDir) ? distDir : (fs.existsSync(publishDir) ? publishDir : null)
+
+if (!scanDir) {
+  console.log('ℹ️ dist/ and .netlify_publish not found, skipping output scan')
   process.exit(0)
 }
 
-walk(DIST)
-console.log('✅ dist clean')
+walk(scanDir)
+console.log(`✅ output clean (${path.basename(scanDir)})`)
