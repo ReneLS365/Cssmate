@@ -388,17 +388,17 @@ button{cursor:pointer}
 
 @media (max-width:480px){
   :root{
-    --m-col-name:52%;
-    --m-col-qty:14%;
-    --m-col-price:14%;
-    --m-col-sum:20%;
+    --m-col-name:3.4fr;
+    --m-col-qty:1fr;
+    --m-col-price:1fr;
+    --m-col-sum:1.4fr;
   }
 
   .material-row,
   .csm-row{
     display:grid;
-    grid-template-columns:var(--m-col-name) var(--m-col-qty) var(--m-col-price) var(--m-col-sum);
-    gap:8px;
+    grid-template-columns:minmax(0,var(--m-col-name)) minmax(0,var(--m-col-qty)) minmax(0,var(--m-col-price)) minmax(0,var(--m-col-sum));
+    gap:6px;
     align-items:stretch;
     max-width:100%;
   }
@@ -435,10 +435,10 @@ button{cursor:pointer}
 
 @media (max-width:360px){
   :root{
-    --m-col-name:48%;
-    --m-col-qty:16%;
-    --m-col-price:14%;
-    --m-col-sum:22%;
+    --m-col-name:3.1fr;
+    --m-col-qty:1fr;
+    --m-col-price:0.9fr;
+    --m-col-sum:1.3fr;
   }
 
   .csm-sum,
