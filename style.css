@@ -388,16 +388,15 @@ button{cursor:pointer}
 
 @media (max-width:480px){
   :root{
-    --m-col-name:3.4fr;
-    --m-col-qty:1fr;
-    --m-col-price:1fr;
-    --m-col-sum:1.4fr;
+    --col-qty: clamp(3.1rem, 18vw, 3.8rem);
+    --col-price: clamp(3.3rem, 20vw, 4.2rem);
+    --col-sum: clamp(3.6rem, 22vw, 4.8rem);
   }
 
   .material-row,
   .csm-row{
     display:grid;
-    grid-template-columns:minmax(0,var(--m-col-name)) minmax(0,var(--m-col-qty)) minmax(0,var(--m-col-price)) minmax(0,var(--m-col-sum));
+    grid-template-columns:minmax(0,1fr) var(--col-qty) var(--col-price) var(--col-sum);
     gap:6px;
     align-items:stretch;
     max-width:100%;
@@ -406,6 +405,7 @@ button{cursor:pointer}
   .material-row > *,
   .csm-row > *{min-width:0}
 
+  .mat-name,
   .csm-name,
   input.csm-name,
   .material-row .mat-name{
@@ -434,19 +434,11 @@ button{cursor:pointer}
 }
 
 @media (max-width:360px){
-  :root{
-    --m-col-name:3.1fr;
-    --m-col-qty:1fr;
-    --m-col-price:0.9fr;
-    --m-col-sum:1.3fr;
-  }
-
   .csm-sum,
   .mat-sum{font-size:0.9rem}
 }
 
-.csm-row--custom { all: unset; }
-.csm-row--custom * { all: unset; }
+.csm-row--custom { display:block; }
 
 .empty-state{margin:0;padding:16px;border:1px dashed var(--border);border-radius:12px;text-align:center;color:var(--muted);background:rgba(255,255,255,0.03)}
 
@@ -517,6 +509,7 @@ button{cursor:pointer}
   input,
   .csm-sum,
   .csm-name{min-height:40px}
+  input{padding:0.4rem 0.55rem}
   .card,
   .panel,
   main{
