@@ -9,7 +9,15 @@ const viewports = [
 for (const viewport of viewports) {
   test(`material rows stay on one line at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport)
-    await page.goto('/debug/material-row-debug.html', { waitUntil: 'domcontentloaded' })
+    await page.goto('/debug/material-row-debug.html', { waitUntil: 'load' })
+
+    await page.waitForFunction(() => {
+      const row = document.querySelector('.material-row')
+      if (!row) {
+        return false
+      }
+      return getComputedStyle(row).display === 'grid'
+    })
 
     const row = page.locator('.material-row').first()
     await expect(row).toBeVisible()
