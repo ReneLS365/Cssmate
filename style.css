@@ -226,6 +226,22 @@ label span{color:var(--muted);font-size:0.85rem}
 input,select,textarea,button{background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:var(--r-sm);min-height:44px;padding:10px;font-size:16px;max-width:100%;box-sizing:border-box;transition:border-color .12s ease,box-shadow .12s ease,background-color .12s ease}
 input.numpad-readonly{caret-color:transparent}
 textarea{resize:vertical}
+
+/* Material-navn (ikke-manual) renderes som <div> for at kunne wrappe teksten */
+.mat-name:not(input),.csm-name:not(input){
+  background:var(--panel);
+  color:var(--text);
+  border:1px solid var(--border);
+  border-radius:var(--r-sm);
+  min-height:44px;
+  padding:10px;
+  display:flex;
+  align-items:center;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  line-height:1.15;
+}
 button{cursor:pointer}
 .sektion{flex-direction:column;gap:var(--gap)}
 .row{display:flex;gap:8px;flex-wrap:wrap}
@@ -308,7 +324,15 @@ button{cursor:pointer}
 .material-row,
 .csm-row {
   display: grid;
-  grid-template-columns: var(--materials-grid-desktop);
+  /*
+    One horizontal row per materiale:
+    (navn | antal | pris | sum)
+
+    NOTE:
+    Hvis grid-template-columns bliver invalid (fx manglende CSS-var eller browser-zoom),
+    falder layoutet tilbage til 1 kolonne og alt stapler.
+  */
+  grid-template-columns: var(--materials-grid, minmax(0, 1fr) 3.2rem 3.6rem 4.2rem);
   column-gap: 10px;
   row-gap: 6px;
   align-items: center;
@@ -318,6 +342,13 @@ button{cursor:pointer}
   border:1px solid var(--border);
   background: var(--panel);
 }
+
+.material-row > *,
+.csm-row > *{ min-width: 0; }
+
+/* Grid children MUST be allowed to shrink, otherwise they force horizontal scrolling */
+.material-row > *,
+.csm-row > * { min-width: 0; }
 
 .material-row + .material-row,
 .csm-row + .csm-row { margin-top: 8px; }
@@ -351,10 +382,18 @@ button{cursor:pointer}
 .csm-row input:focus,
 .material-row input:focus { border-color: var(--accent); background: var(--elev); }
 
-.csm-name { min-width: 140px; text-align: left; }
+.csm-name { min-width: 0; text-align: left; }
 .manual .csm-name { font-weight: 600; }
-.material-name{min-width:140px;text-align:left}
+.material-name{min-width:0;text-align:left}
 .material-total{text-align:right;white-space:nowrap;color:var(--text)}
+
+.mat-name,
+.csm-name,
+input.csm-name{
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 
 .csm-qty,
 .csm-price,
