@@ -85,14 +85,39 @@
 /* === Materialerække 4-kolonne grid og debug-outline === */
 .material-row,
 .mat-row.csm-row {
-  grid-template-columns: var(--materials-grid-desktop);
+  display: grid;
+  gap: var(--materials-gap, 8px);
+  align-items: center;
+  grid-template-columns: var(
+    --materials-grid-desktop,
+    2fr minmax(64px, 0.9fr) minmax(72px, 1fr) minmax(88px, 1.1fr)
+  );
 }
 
 @media (max-width: 400px) {
   .material-row,
   .mat-row.csm-row {
-    grid-template-columns: var(--materials-grid-mobile);
+    grid-template-columns: var(
+      --materials-grid-mobile,
+      1.8fr minmax(52px, 0.7fr) minmax(60px, 0.85fr) minmax(64px, 1fr)
+    );
   }
+}
+
+/* div-variant af navn skal ligne input */
+.material-row .material-name,
+.mat-row.csm-row .material-name {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  line-height: 1.2;
 }
 
 .material-row .csm-name,
