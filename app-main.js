@@ -9,7 +9,6 @@ import { setupNumpad } from './js/numpad.js'
 import { exportMeta, setSlaebFormulaText } from './js/export-meta.js'
 import { buildAkkordData as buildSharedAkkordData } from './js/akkord-data.js'
 import { buildExportModel as buildSharedExportModel } from './js/export-model.js'
-import { createVirtualMaterialsList } from './src/modules/materialsvirtuallist.js'
 import { initClickGuard } from './src/ui/guards/clickguard.js'
 import { setAdminOk, restoreAdminState, isAdminUnlocked } from './src/state/admin.js'
 import { setActiveJob } from './src/state/jobs.js'
@@ -787,6 +786,9 @@ function setActiveTab(tabId, { focus = false } = {}) {
 
   currentTabId = nextTabId;
   updateCurrentView(nextTabId)
+  if (typeof document !== 'undefined') {
+    document.dispatchEvent(new CustomEvent('cssmate:tab-change', { detail: { tabId: nextTabId } }))
+  }
   try {
     const storage = window.localStorage;
     if (storage) {
@@ -1511,19 +1513,29 @@ function clearMaterialSuggestions() {
 }
 
 function scrollFirstMaterialMatch(normalizedQuery) {
-  if (!normalizedQuery || !materialsVirtualListController || !materialsVirtualListController.container) return;
+  if (!normalizedQuery) return;
   const index = lastRenderedMaterials.findIndex(item => {
     const key = getMaterialSearchKey(item);
     return key && key.includes(normalizedQuery);
   });
   if (index < 0) return;
-  const rowHeight = materialsVirtualListController.rowHeight || 64;
-  const targetScroll = Math.max(index - 1, 0) * rowHeight;
-  try {
-    materialsVirtualListController.container.scrollTo({ top: targetScroll, behavior: 'smooth' });
-  } catch {
-    materialsVirtualListController.container.scrollTop = targetScroll;
+
+  if (materialsVirtualListController?.container) {
+    const rowHeight = materialsVirtualListController.rowHeight || 64;
+    const targetScroll = Math.max(index - 1, 0) * rowHeight;
+    try {
+      materialsVirtualListController.container.scrollTo({ top: targetScroll, behavior: 'smooth' });
+    } catch {
+      materialsVirtualListController.container.scrollTop = targetScroll;
+    }
+    return;
   }
+
+  const list = document.querySelector('.materials-list');
+  if (!list) return;
+  const rowElement = list.querySelector(`[data-index="${index}"]`) || list.querySelectorAll('.material-row')[index];
+  if (!rowElement) return;
+  rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function updateMaterialSuggestions() {
@@ -1863,24 +1875,26 @@ function renderOptaelling() {
     return result
   }
 
-  if (lastRenderShowSelected !== showOnlySelectedMaterials && materialsVirtualListController) {
+  if (materialsVirtualListController) {
     materialsVirtualListController.controller.destroy?.();
     materialsVirtualListController = null;
   }
   lastRenderShowSelected = showOnlySelectedMaterials;
 
-  if (!materialsVirtualListController || materialsVirtualListController.container !== list) {
-    const controller = createVirtualMaterialsList({
-      container: list,
-      items,
-      renderRow,
-      rowHeight: 64,
-      overscan: 8
-    })
-    materialsVirtualListController = { container: list, controller, rowHeight: 64 }
-  } else {
-    materialsVirtualListController.controller.update(items)
+  // Force non-virtual list (variable row height safe)
+  list.classList.remove('materials-virtual-list');
+  list.style.position = '';
+  list.style.overflowY = '';
+  list.style.willChange = '';
+  list.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    const result = renderRow(item, index);
+    const rowEl = result?.row || result;
+    if (rowEl) frag.appendChild(rowEl);
   }
+  list.appendChild(frag);
 
   attachMaterialSearchScrollHandler(list)
 

@@ -322,7 +322,8 @@ button{cursor:pointer}
   color: var(--text);
 }
 .material-row,
-.csm-row {
+.csm-row,
+.mat-row.csm-row {
   display: grid;
   /*
     One horizontal row per materiale:
@@ -332,7 +333,10 @@ button{cursor:pointer}
     Hvis grid-template-columns bliver invalid (fx manglende CSS-var eller browser-zoom),
     falder layoutet tilbage til 1 kolonne og alt stapler.
   */
-  grid-template-columns: var(--materials-grid, minmax(0, 1fr) 3.2rem 3.6rem 4.2rem);
+  grid-template-columns: var(
+    --materials-grid-desktop,
+    2fr minmax(64px, 0.9fr) minmax(72px, 1fr) minmax(72px, 1fr)
+  );
   column-gap: 10px;
   row-gap: 6px;
   align-items: center;
@@ -342,9 +346,6 @@ button{cursor:pointer}
   border:1px solid var(--border);
   background: var(--panel);
 }
-
-.material-row > *,
-.csm-row > *{ min-width: 0; }
 
 /* Grid children MUST be allowed to shrink, otherwise they force horizontal scrolling */
 .material-row > *,
@@ -694,6 +695,16 @@ input.csm-name{
 
   .mat-sum,
   .csm-sum{ text-align:right; white-space:nowrap; }
+}
+
+@media (max-width:400px){
+  .material-row,
+  .mat-row.csm-row{
+    grid-template-columns: var(
+      --materials-grid-mobile,
+      1.4fr minmax(56px, 0.8fr) minmax(64px, 0.9fr) minmax(64px, 0.9fr)
+    );
+  }
 }
 
 @media (max-width:360px){
