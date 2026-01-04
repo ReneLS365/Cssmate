@@ -15,8 +15,6 @@ let baseValue = 0
 let activeOperator = null
 let expressionParts = []
 let suppressNextFocus = false
-const NUMPAD_HIDE_DELAY = 180
-let overlayHideTimer = null
 const NUMPAD_ACTIVE_CLASS = 'numpad-target-active'
 const NUMPAD_COMMIT_READY_CLASS = 'numpad-commit--ready'
 const NUMPAD_COMMITTED_CLASS = 'numpad-committed'
@@ -48,6 +46,7 @@ function initNumpad () {
   }
 
   document.addEventListener('keydown', handleKeydown)
+  document.addEventListener('cssmate:tab-change', handleTabChange)
 
   bindInputs()
   observeNumpadInputs()
@@ -196,10 +195,6 @@ function showNumpadForInput (input) {
 
   updateDisplays()
 
-  if (overlayHideTimer) {
-    clearTimeout(overlayHideTimer)
-    overlayHideTimer = null
-  }
   overlay.removeAttribute('hidden')
   overlay.removeAttribute('inert')
   overlay.classList.remove('numpad-hidden')
@@ -249,18 +244,11 @@ function hideNumpad ({ commit = false } = {}) {
   overlay.classList.add('numpad-hidden')
   overlay.setAttribute('aria-hidden', 'true')
   overlay.setAttribute('inert', '')
+  overlay.setAttribute('hidden', '')
   if (displayUpdateFrame) {
     cancelAnimationFrame(displayUpdateFrame)
     displayUpdateFrame = null
   }
-  if (overlayHideTimer) {
-    clearTimeout(overlayHideTimer)
-  }
-  overlayHideTimer = setTimeout(() => {
-    if (overlay) {
-      overlay.setAttribute('hidden', '')
-    }
-  }, NUMPAD_HIDE_DELAY)
   activeInput = null
   initialFieldValue = ''
   if (document?.documentElement) {
@@ -280,6 +268,11 @@ function hideNumpad ({ commit = false } = {}) {
   if (commit && commitTarget) {
     flashCommit(commitTarget)
   }
+}
+
+function handleTabChange () {
+  if (!isNumpadOpen()) return
+  hideNumpad({ commit: false })
 }
 
 function handleCommitClick () {

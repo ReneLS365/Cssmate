@@ -90,7 +90,7 @@
   align-items: center;
   grid-template-columns: var(
     --materials-grid-desktop,
-    2fr minmax(64px, 0.9fr) minmax(72px, 1fr) minmax(88px, 1.1fr)
+    2fr minmax(64px, 0.9fr) minmax(72px, 1fr) minmax(72px, 1fr)
   );
 }
 
@@ -99,9 +99,14 @@
   .mat-row.csm-row {
     grid-template-columns: var(
       --materials-grid-mobile,
-      1.8fr minmax(52px, 0.7fr) minmax(60px, 0.85fr) minmax(64px, 1fr)
+      1.4fr minmax(56px, 0.8fr) minmax(64px, 0.9fr) minmax(64px, 0.9fr)
     );
   }
+}
+
+.material-row > *,
+.csm-row > * {
+  min-width: 0;
 }
 
 /* div-variant af navn skal ligne input */
@@ -120,6 +125,7 @@
   line-height: 1.2;
 }
 
+.material-row .mat-name,
 .material-row .csm-name,
 .mat-row.csm-row .csm-name {
   min-width: 0;
