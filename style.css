@@ -432,6 +432,12 @@ button{cursor:pointer}
     --m-col-price: 3.4rem;
     --m-col-sum: 3.9rem;
   }
+
+  .mat-sum,
+  .csm-sum{
+    font-size:0.85rem;
+    padding:0 10px;
+  }
 }
 
 .csm-row--custom { display:block; }
