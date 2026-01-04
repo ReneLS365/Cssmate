@@ -6,7 +6,7 @@ const HTML_ENTRIES = [
   resolve(ROOT, 'index.html'),
   resolve(ROOT, 'debug', 'material-row-debug.html'),
 ];
-const INLINE_HANDLER_REGEX = /\son[a-z]+\s*=/i;
+const INLINE_HANDLER_REGEX = /(^|\s)on[a-z]+\s*=/i;
 
 function findInlineHandlers(contents) {
   const lines = contents.split(/\r?\n/);
