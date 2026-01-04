@@ -388,28 +388,26 @@ button{cursor:pointer}
 
 @media (max-width:480px){
   :root{
-    --col-qty: clamp(3.1rem, 18vw, 3.8rem);
-    --col-price: clamp(3.3rem, 20vw, 4.2rem);
-    --col-sum: clamp(3.6rem, 22vw, 4.8rem);
+    --m-col-qty: 3.2rem;
+    --m-col-price: 3.6rem;
+    --m-col-sum: 4.2rem;
   }
 
   .material-row,
   .csm-row{
     display:grid;
-    grid-template-columns:minmax(0,1fr) var(--col-qty) var(--col-price) var(--col-sum);
+    grid-template-columns: minmax(0, 1fr) var(--m-col-qty) var(--m-col-price) var(--m-col-sum);
     gap:6px;
     align-items:stretch;
     max-width:100%;
   }
 
   .material-row > *,
-  .csm-row > *{min-width:0}
+  .csm-row > *{ min-width:0; }
 
   .mat-name,
   .csm-name,
-  input.csm-name,
-  .material-row .mat-name{
-    min-width:0;
+  input.csm-name{
     white-space:normal;
     overflow:visible;
     text-overflow:clip;
@@ -419,23 +417,21 @@ button{cursor:pointer}
     text-align:left;
   }
 
-  .csm-qty,
-  .csm-price,
-  .mat-qty,
-  .mat-price{
-    text-align:center;
-  }
+  .mat-qty, .csm-qty,
+  .mat-price, .csm-price{ text-align:center; }
 
-  .csm-sum,
-  .mat-sum{
-    white-space:nowrap;
+  .mat-sum, .csm-sum{
     text-align:right;
+    white-space:nowrap;
   }
 }
 
 @media (max-width:360px){
-  .csm-sum,
-  .mat-sum{font-size:0.9rem}
+  :root{
+    --m-col-qty: 3.0rem;
+    --m-col-price: 3.4rem;
+    --m-col-sum: 3.9rem;
+  }
 }
 
 .csm-row--custom { display:block; }
@@ -496,7 +492,6 @@ button{cursor:pointer}
   .tab-panels{padding:0.5rem 0.75rem 1rem}
 }
 @media (max-width:480px){
-  html{font-size:15px}
   body{line-height:1.4}
   :root{--header-height:48px;--tab-bar-height:46px}
   .material-row label{font-size:0.9rem}
@@ -519,7 +514,7 @@ button{cursor:pointer}
 }
 
 @media (max-width:360px){
-  body{font-size:14px;line-height:1.35}
+  body{line-height:1.35}
   .tabs{padding-inline:0.25rem}
 }
 
