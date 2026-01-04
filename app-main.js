@@ -5646,6 +5646,14 @@ async function initApp() {
   if (appInitialized) return;
   appInitialized = true;
 
+  const a9Overlay = document.getElementById('a9-overlay');
+  if (a9Overlay) {
+    a9Overlay.classList.add('a9-hidden');
+    a9Overlay.setAttribute('hidden', '');
+    a9Overlay.setAttribute('inert', '');
+    a9Overlay.setAttribute('aria-hidden', 'true');
+  }
+
   setupTabPanelsStability();
   initTabs();
   setupUiScaleControls();
