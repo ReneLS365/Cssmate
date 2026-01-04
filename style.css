@@ -116,7 +116,7 @@ body{font-size:16px;line-height:1.45;font-weight:400;background-color:var(--bg,#
 }
 header{position:sticky;top:0;background:var(--elev);border-bottom:1px solid var(--border);z-index:5}
 header .bar{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px 10px;min-height:var(--header-height)}
-header .ttl{font-weight:700}
+header .ttl{font-weight:700;font-size:1.4rem;line-height:1.1;margin:0}
 .topbar-nav{display:flex;align-items:center;gap:8px;flex:1 1 auto;min-width:0}
 .topbar-actions{display:flex;align-items:center;flex:0 0 auto}
 .ui-scale-control{position:relative;display:flex;align-items:center;gap:6px}
@@ -135,7 +135,7 @@ header .ttl{font-weight:700}
 .table-wrapper,
 .scroll-area{overscroll-behavior:auto}
 .tabs::-webkit-scrollbar{height:4px}
-.tab{flex:0 0 auto;scroll-snap-align:start;min-width:4.5rem;padding:0.5rem 0.85rem;font-size:0.95rem;border-radius:0.6rem;border:1px solid rgba(255,255,255,0.08);background:var(--panel);color:var(--muted);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background-color .15s ease,color .15s ease,border-color .15s ease,transform .12s ease}
+.tab{flex:0 0 auto;scroll-snap-align:start;min-width:4.5rem;padding:0.5rem 0.85rem;font-size:0.95rem;border-radius:0.6rem;border:1px solid rgba(255,255,255,0.08);background:var(--panel);color:var(--muted);font-weight:600;white-space:nowrap;overflow:visible;text-overflow:clip;transition:background-color .15s ease,color .15s ease,border-color .15s ease,transform .12s ease}
 .tab:not(.tab--active):hover{color:var(--text);border-color:rgba(255,255,255,0.18)}
 .tab--active{background:var(--accent);color:var(--text-on-accent);border-color:var(--accent);box-shadow:0 0 0 1px rgba(0,0,0,0.08) inset}
 .tab-panel{display:none;width:100%;min-height:0}
@@ -461,11 +461,12 @@ button{cursor:pointer}
 }
 @media (max-width:480px){
   body{font-size:15px;line-height:1.4}
-  .tabs .tab{flex:1 1 auto;width:auto}
+  :root{--header-height:48px;--tab-bar-height:46px}
+  .tabs .tab{flex:0 0 auto;width:auto}
   .material-row label{font-size:0.9rem}
   .material-row .system-badge{margin-left:6px;font-size:0.65rem}
   .system-option{flex:1 1 100%}
-  header .bar{gap:12px}
+  header .bar{gap:12px;padding:4px 8px}
   .worker-output{font-size:0.9rem}
   .form-actions button{flex:1 1 100%;min-width:0}
 }
@@ -556,7 +557,7 @@ button{cursor:pointer}
     padding:10px 12px;
   }
 
-  header .bar{padding-inline:8px;}
+  header .bar{padding:4px 8px;}
 
   .material-row,
   .csm-row{column-gap:4px;padding-inline:10px;}
@@ -847,5 +848,3 @@ html.auth-locked body{overflow:hidden}
 .app-guard__debug{margin:0;color:var(--muted);font-size:.85rem;line-height:1.4;word-break:break-word}
 
 /* Debug outlines for material rows (kept to visualize rendered layout) */
-.material-row{outline:1px solid red !important}
-.material-row>*{outline:1px dashed lime !important}

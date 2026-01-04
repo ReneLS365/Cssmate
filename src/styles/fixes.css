@@ -85,26 +85,24 @@
 /* === Materialerække 4-kolonne grid og debug-outline === */
 .material-row,
 .mat-row.csm-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 70px 70px 90px;
-  column-gap: 0.5rem;
-  align-items: center;
-  width: 100%;
+  grid-template-columns: var(--materials-grid-desktop);
 }
 
 @media (max-width: 400px) {
   .material-row,
   .mat-row.csm-row {
     grid-template-columns: var(--materials-grid-mobile);
-    column-gap: 6px;
   }
 }
 
 .material-row .csm-name,
 .mat-row.csm-row .csm-name {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  min-width: 0;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  overflow: visible;
 }
 
 .material-row .csm-qty,
@@ -123,14 +121,4 @@
   display: block;
   width: auto;
   max-width: 100%;
-}
-
-.material-row,
-.mat-row.csm-row {
-  outline: 1px solid rgba(255, 0, 0, 0.3);
-}
-
-.material-row > *,
-.mat-row.csm-row > * {
-  outline: 1px dashed rgba(0, 255, 0, 0.3);
 }
