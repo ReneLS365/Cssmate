@@ -34,6 +34,7 @@ export function createMaterialRow (item, {
   if (item.systemKey) {
     row.dataset.system = item.systemKey
   }
+  applyMaterialRowLayoutLock(row)
 
   const sanitizedId = String(item.id).replace(/[^a-zA-Z0-9_-]+/g, '-')
   const qtyInputId = `qty-${sanitizedId}`
@@ -122,6 +123,25 @@ export function createMaterialRow (item, {
   row.dataset.hasQty = hasQty ? 'true' : 'false'
 
   return { row, nameInput, qtyInput, priceInput, sumElement }
+}
+
+function applyMaterialRowLayoutLock (row) {
+  if (!row || typeof window === 'undefined') return
+
+  const maxMobileWidth = 480
+  const mediaQuery = window.matchMedia?.(`(max-width: ${maxMobileWidth}px)`)
+  const isMobile = mediaQuery ? mediaQuery.matches : window.innerWidth <= maxMobileWidth
+
+  row.style.display = 'grid'
+  row.style.gridTemplateColumns = isMobile
+    ? 'minmax(0, 1fr) 3.2rem 3.6rem 4.2rem'
+    : '2fr minmax(64px, 0.9fr) minmax(72px, 1fr) minmax(72px, 1fr)'
+  row.style.columnGap = isMobile ? '6px' : '10px'
+  row.style.rowGap = '6px'
+  row.style.alignItems = isMobile ? 'stretch' : 'center'
+  row.style.width = '100%'
+  row.style.maxWidth = '100%'
+  row.dataset.layoutLocked = 'true'
 }
 
 export function attachRowHandlers (row, {
