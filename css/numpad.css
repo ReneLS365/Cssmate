@@ -6,7 +6,7 @@
   display: block;
   z-index: 9999;
   transition: opacity 0.15s ease-out;
-  touch-action: none;
+  touch-action: auto;
 }
 
 #numpad-overlay.numpad-hidden {
@@ -24,6 +24,8 @@
   max-width: 420px;
   margin: 0;
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   background: var(--panel);
   border-radius: var(--r-lg);
   padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0.5rem));
