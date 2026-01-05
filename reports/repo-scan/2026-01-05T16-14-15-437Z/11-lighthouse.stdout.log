@@ -1,0 +1,4 @@
+
+> sscaff-app@2025.13.0 lh:mobile
+> mkdir -p ./reports/lighthouse && CHROME_BIN=$(command -v google-chrome-stable || command -v google-chrome || command -v chromium-browser || command -v chromium || true) && CHROME_PATH=${CHROME_PATH:-$CHROME_BIN} lighthouse http://127.0.0.1:4173 --form-factor=mobile --only-categories=performance,best-practices,accessibility,seo --output=json --output-path=${LH_OUTPUT_PATH:-./reports/lighthouse/mobile.json} --chrome-flags="--headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu --remote-debugging-port=0" --max-wait-for-load=45000 --throttling-method=provided --no-enable-error-reporting
+

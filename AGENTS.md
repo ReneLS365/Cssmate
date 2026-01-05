@@ -9,6 +9,75 @@ Formålet med denne fil er at sikre, at alle AI-/Codex-agenter arbejder på samm
 
 ---
 
+## Project Guardrails (Frozen areas + Never change)
+
+**Frosne faner (må aldrig ændres direkte eller indirekte):**
+- Sagsinfo
+- Optælling
+- Løn
+- Delt sager
+
+**NEVER change:**
+- Priser, prislister, datasæt eller prisformatering.
+- Løn/akkord-beregninger, afrundinger, totaler, parsing eller nummerformattering.
+- Materialeliste-logik, ordering, row-layout, input-adfærd, eksport-mapping eller beregningslogik.
+- Offline/eksport-semantik der bruges af de frosne faner.
+- Global CSS eller shared komponent-CSS, hvis der er risiko for layout-ændringer i frosne faner.
+
+---
+
+## Allowed work (Historik/Team/Hjælp only + safe perf + cleanup policy)
+
+**Tilladt arbejde:**
+- Små, fuldt isolerede bugfixes.
+- Performance/responsiveness/build-time forbedringer uden adfærdsændringer.
+- Ryd op i dødt/ubrugt kode/aktiver **kun** når det er dokumenteret ubrugt.
+- Arbejde begrænset til **Historik**, **Team** og **Hjælp**.
+
+**Ikke tilladt:**
+- Store refactors.
+- Nye dependencies uden eksplicit godkendelse.
+- Ændringer i delte utilities/komponenter, hvis der er risiko for regression i frosne faner.
+
+---
+
+## Verification checklist (build/tests + manual mobile smoke for frozen tabs)
+
+**Automatiserede checks:**
+- `npm run build`
+- `npm test` (og øvrige relevante scripts, hvis de findes)
+
+**Manuel mobil-smoke (skal dokumenteres):**
+- Sagsinfo: uændret, ingen errors.
+- Optælling: uændret, totals/inputs uændrede.
+- Løn: uændret, beregninger uændrede.
+- Delt sager: uændret, ingen errors.
+- Historik/Team/Hjælp: forbedringer fungerer og er fejlfrie.
+
+**Compliance:**
+- Ingen ændringer i pris-/calc-/data-filer.
+- Ingen layout-ændringer i frosne faner.
+
+---
+
+## PR checklist (freeze compliance statement required)
+
+- [ ] Beskriv **hvad** der ændrede sig og **hvorfor**.
+- [ ] List alle berørte filer.
+- [ ] List kommandoer der er kørt (build/tests).
+- [ ] Notér manuelle smoke-tests.
+- [ ] **Freeze compliance:** eksplicit erklæring om at frosne faner ikke er ændret.
+
+---
+
+## Cleanup policy (remove only proven-unused items)
+
+- Fjern kun kode/aktiver når de er **bevist** ubrugt.
+- Ingen “gæt” på oprydning i delte områder.
+- Ingen TODO/FIXME i ændrede filer.
+
+---
+
 ## 1. Projekt-kontrakt (ALDRIG bryd disse)
 
 ### 1.1 Stack og arkitektur

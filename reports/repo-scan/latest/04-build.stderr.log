@@ -1,0 +1,9 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+[firebase-env] Missing or placeholder Firebase env vars:
+- VITE_FIREBASE_API_KEY
+- VITE_FIREBASE_AUTH_DOMAIN
+- VITE_FIREBASE_PROJECT_ID
+- VITE_FIREBASE_APP_ID

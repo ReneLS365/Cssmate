@@ -1,0 +1,3016 @@
+{
+  "totals": {
+    "TODO": 8,
+    "FIXME": 3,
+    "HACK": 0,
+    "console.error": 72,
+    "console.warn": 114,
+    "eval(": 0,
+    "dangerouslySetInnerHTML": 0,
+    "apiKey": 36,
+    "FIREBASE": 415
+  },
+  "matches": [
+    {
+      "file": ".github/dependabot.yml",
+      "line": 15,
+      "pattern": "FIREBASE",
+      "excerpt": "- \"@firebase/rules-unit-testing\""
+    },
+    {
+      "file": ".github/dependabot.yml",
+      "line": 19,
+      "pattern": "FIREBASE",
+      "excerpt": "- \"firebase-tools\""
+    },
+    {
+      "file": ".github/workflows/deploy-firestore-rules.yml",
+      "line": 17,
+      "pattern": "FIREBASE",
+      "excerpt": "GOOGLE_APPLICATION_CREDENTIALS: /tmp/firebase-sa.json"
+    },
+    {
+      "file": ".github/workflows/deploy-firestore-rules.yml",
+      "line": 28,
+      "pattern": "FIREBASE",
+      "excerpt": "- name: Install Firebase CLI"
+    },
+    {
+      "file": ".github/workflows/deploy-firestore-rules.yml",
+      "line": 29,
+      "pattern": "FIREBASE",
+      "excerpt": "run: npm install -g firebase-tools"
+    },
+    {
+      "file": ".github/workflows/deploy-firestore-rules.yml",
+      "line": 37,
+      "pattern": "FIREBASE",
+      "excerpt": "run: firebase deploy --only firestore:rules --project \"$FIREBASE_PROJECT_ID\" --non-interactive"
+    },
+    {
+      "file": ".gitignore",
+      "line": 10,
+      "pattern": "FIREBASE",
+      "excerpt": "# Generated Firebase config (contains env-injected values)"
+    },
+    {
+      "file": ".gitignore",
+      "line": 11,
+      "pattern": "FIREBASE",
+      "excerpt": "js/firebase-env.js"
+    },
+    {
+      "file": "AGENTS.md",
+      "line": 77,
+      "pattern": "TODO",
+      "excerpt": "- Ingen TODO/FIXME i ændrede filer."
+    },
+    {
+      "file": "AGENTS.md",
+      "line": 229,
+      "pattern": "TODO",
+      "excerpt": "* Ingen TODO/FIXME tilbage i ændrede filer."
+    },
+    {
+      "file": "AGENTS.md",
+      "line": 382,
+      "pattern": "TODO",
+      "excerpt": "* Lægge TODO-kommentarer ind i stedet for færdig kode."
+    },
+    {
+      "file": "AGENTS.md",
+      "line": 518,
+      "pattern": "TODO",
+      "excerpt": "* Ingen TODO/FIXME i ændrede filer."
+    },
+    {
+      "file": "AGENTS.md",
+      "line": 77,
+      "pattern": "FIXME",
+      "excerpt": "- Ingen TODO/FIXME i ændrede filer."
+    },
+    {
+      "file": "AGENTS.md",
+      "line": 229,
+      "pattern": "FIXME",
+      "excerpt": "* Ingen TODO/FIXME tilbage i ændrede filer."
+    },
+    {
+      "file": "AGENTS.md",
+      "line": 518,
+      "pattern": "FIXME",
+      "excerpt": "* Ingen TODO/FIXME i ændrede filer."
+    },
+    {
+      "file": "AGENTS.md",
+      "line": 226,
+      "pattern": "console.error",
+      "excerpt": "* Ingen `console.error` i normal brug."
+    },
+    {
+      "file": "AGENTS.md",
+      "line": 473,
+      "pattern": "console.error",
+      "excerpt": "* Ingen `console.error` eller 404 må fremkomme ved “normal” brug."
+    },
+    {
+      "file": "PERF_REPORT.md",
+      "line": 11,
+      "pattern": "FIREBASE",
+      "excerpt": "4. **Deferred non-critical bootstrap scripts** (`firebase-env.js`, `version.js`) to reduce initial parse/execute blocking."
+    },
+    {
+      "file": "app-main.js",
+      "line": 341,
+      "pattern": "console.error",
+      "excerpt": "console.error('Eksport-panel kunne ikke indlæses', error)"
+    },
+    {
+      "file": "app-main.js",
+      "line": 432,
+      "pattern": "console.error",
+      "excerpt": "console.error('Kunne ikke indlæse materialelisterne.', error)"
+    },
+    {
+      "file": "app-main.js",
+      "line": 463,
+      "pattern": "console.error",
+      "excerpt": "console.error('Materiale-UI kunne ikke initialiseres', error)"
+    },
+    {
+      "file": "app-main.js",
+      "line": 4264,
+      "pattern": "console.error",
+      "excerpt": "console.error('Kunne ikke importere akkordseddel', error);"
+    },
+    {
+      "file": "app-main.js",
+      "line": 5307,
+      "pattern": "console.error",
+      "excerpt": "console.error('PDF eksport fejlede:', err);"
+    },
+    {
+      "file": "app-main.js",
+      "line": 5354,
+      "pattern": "console.error",
+      "excerpt": "console.error('Kunne ikke importere JSON', error);"
+    },
+    {
+      "file": "app-main.js",
+      "line": 5377,
+      "pattern": "console.error",
+      "excerpt": "console.error('Kunne ikke importere CSV', err);"
+    },
+    {
+      "file": "app-main.js",
+      "line": 5859,
+      "pattern": "console.error",
+      "excerpt": "console.error('CSMate init fejlede', error)"
+    },
+    {
+      "file": "app-main.js",
+      "line": 170,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Unable to access localStorage for version check', error)"
+    },
+    {
+      "file": "app-main.js",
+      "line": 243,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke indlæse auth-modulet', error)"
+    },
+    {
+      "file": "app-main.js",
+      "line": 263,
+      "pattern": "console.warn",
+      "excerpt": ".catch(error => console.warn('Kunne ikke indlæse debug overlay', error))"
+    },
+    {
+      "file": "app-main.js",
+      "line": 271,
+      "pattern": "console.warn",
+      "excerpt": ".catch(error => console.warn('Kunne ikke indlæse app-guard', error))"
+    },
+    {
+      "file": "app-main.js",
+      "line": 285,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke indlæse delte sager panelet', error)"
+    },
+    {
+      "file": "app-main.js",
+      "line": 300,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke indlæse team-admin siden', error)"
+    },
+    {
+      "file": "app-main.js",
+      "line": 354,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke forberede eksportpanelet', error)"
+    },
+    {
+      "file": "app-main.js",
+      "line": 356,
+      "pattern": "console.warn",
+      "excerpt": "ensureExportLibsLazy()?.catch?.(error => console.warn('Kunne ikke loade eksportlibs', error))"
+    },
+    {
+      "file": "app-main.js",
+      "line": 357,
+      "pattern": "console.warn",
+      "excerpt": "ensureZipLibLazy()?.catch?.(error => console.warn('Kunne ikke loade ZIP-lib', error))"
+    },
+    {
+      "file": "app-main.js",
+      "line": 561,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke indlæse standard admin-kode', error)"
+    },
+    {
+      "file": "app-main.js",
+      "line": 747,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Faneknap ikke fundet for id', tabId);"
+    },
+    {
+      "file": "app-main.js",
+      "line": 752,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Faneknap mangler data-tab-id', nextButton);"
+    },
+    {
+      "file": "app-main.js",
+      "line": 757,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Tab-panel ikke fundet for id', nextTabId);"
+    },
+    {
+      "file": "app-main.js",
+      "line": 905,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Faner kunne ikke initialiseres – mangler markup')"
+    },
+    {
+      "file": "app-main.js",
+      "line": 1081,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke normalisere historik-post', error);"
+    },
+    {
+      "file": "app-main.js",
+      "line": 2158,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke gemme kladde', error);"
+    },
+    {
+      "file": "app-main.js",
+      "line": 2285,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke gemme sag lokalt', error);"
+    },
+    {
+      "file": "app-main.js",
+      "line": 2297,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke slette sag', error);"
+    },
+    {
+      "file": "app-main.js",
+      "line": 2313,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke hente lokale sager', error);"
+    },
+    {
+      "file": "app-main.js",
+      "line": 3012,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke gemme projekt snapshot', error);"
+    },
+    {
+      "file": "app-main.js",
+      "line": 4203,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Ingen materialer fundet i import', { availableFields, materialFields });"
+    },
+    {
+      "file": "app-main.js",
+      "line": 4841,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke opdatere eksportdata', err);"
+    },
+    {
+      "file": "app-main.js",
+      "line": 5501,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke læse iOS prompt flag', error);"
+    },
+    {
+      "file": "app-main.js",
+      "line": 5514,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke gemme iOS prompt flag', error);"
+    },
+    {
+      "file": "app-main.js",
+      "line": 5550,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Service worker blev ikke klar i tide til install-knappen', error);"
+    },
+    {
+      "file": "app-main.js",
+      "line": 5572,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Install prompt failed', error);"
+    },
+    {
+      "file": "app-main.js",
+      "line": 5796,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke gendanne kladde', error);"
+    },
+    {
+      "file": "app-main.js",
+      "line": 5807,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Auth bootstrap fejlede', error)"
+    },
+    {
+      "file": "app-main.js",
+      "line": 5848,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke indlæse auth-gate', error)"
+    },
+    {
+      "file": "app-main.js",
+      "line": 24,
+      "pattern": "FIREBASE",
+      "excerpt": "import { getFirebaseConfigDiagnostics } from './src/firebase/firebase-config.js'"
+    },
+    {
+      "file": "app-main.js",
+      "line": 46,
+      "pattern": "FIREBASE",
+      "excerpt": "console.log('[firebase:diagnostics]', getFirebaseConfigDiagnostics())"
+    },
+    {
+      "file": "boot-inline.js",
+      "line": 199,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Service worker registration failed due to network issues; keeping existing worker', error);"
+    },
+    {
+      "file": "ci/check-lh-score.js",
+      "line": 5,
+      "pattern": "console.error",
+      "excerpt": "console.error(`Lighthouse report missing at ${reportPath}`)"
+    },
+    {
+      "file": "ci/check-lh-score.js",
+      "line": 20,
+      "pattern": "console.error",
+      "excerpt": "console.error(`Lighthouse score below required ${MIN_SCORE}`)"
+    },
+    {
+      "file": "codex-bootstrap.js",
+      "line": 177,
+      "pattern": "console.error",
+      "excerpt": "console.error('Lighthouse score below required 100');"
+    },
+    {
+      "file": "codex-bootstrap.js",
+      "line": 210,
+      "pattern": "console.error",
+      "excerpt": "console.error('Service worker missing CACHE_VERSION');"
+    },
+    {
+      "file": "codex-bootstrap.js",
+      "line": 215,
+      "pattern": "console.error",
+      "excerpt": "console.error('PWA fetch handler missing');"
+    },
+    {
+      "file": "docs/AUTH_SETUP.md",
+      "line": 1,
+      "pattern": "FIREBASE",
+      "excerpt": "# Firebase Auth setup (sscaff)"
+    },
+    {
+      "file": "docs/AUTH_SETUP.md",
+      "line": 4,
+      "pattern": "FIREBASE",
+      "excerpt": "Firebase Auth → **Authorized domains** must include:"
+    },
+    {
+      "file": "docs/SharedCases-Security-Runbook.md",
+      "line": 6,
+      "pattern": "FIREBASE",
+      "excerpt": "- **Login:** Konfigurer Firebase Auth med multi-provider (Google og Microsoft som minimum, evt. Apple/Facebook). Sæt Netlify/CI miljøvariabler `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VI"
+    },
+    {
+      "file": "docs/SharedCases-Security-Runbook.md",
+      "line": 34,
+      "pattern": "FIREBASE",
+      "excerpt": "1. Opret Firebase-projekt og aktivér Auth."
+    },
+    {
+      "file": "docs/SharedCases-Security-Runbook.md",
+      "line": 36,
+      "pattern": "FIREBASE",
+      "excerpt": "3. Sæt Netlify/CI miljøvariablerne `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` (+ evt. bucket/messaging/measurement) og kør build så `js/fi"
+    },
+    {
+      "file": "docs/auth-audit.md",
+      "line": 9,
+      "pattern": "FIREBASE",
+      "excerpt": "- Firebase config helpers: `src/firebase/firebase-config.js`"
+    },
+    {
+      "file": "docs/auth-audit.md",
+      "line": 22,
+      "pattern": "FIREBASE",
+      "excerpt": "- Public env generation (non-secret flags): `scripts/generate-firebase-config.js`"
+    },
+    {
+      "file": "docs/auth-audit.md",
+      "line": 25,
+      "pattern": "FIREBASE",
+      "excerpt": "1. **Config**: `js/shared-auth.js` reads Firebase config from `import.meta.env` via `src/firebase/firebase-config.js`."
+    },
+    {
+      "file": "docs/auth-audit.md",
+      "line": 26,
+      "pattern": "FIREBASE",
+      "excerpt": "2. **Validation**: `src/config/firebase-utils.js` validates required keys and rejects placeholders."
+    },
+    {
+      "file": "docs/auth-audit.md",
+      "line": 27,
+      "pattern": "FIREBASE",
+      "excerpt": "3. **Auth init**: Firebase Auth is initialized, persistence is set, and `getRedirectResult()` runs once."
+    },
+    {
+      "file": "docs/auth-audit.md",
+      "line": 68,
+      "pattern": "FIREBASE",
+      "excerpt": "- reCAPTCHA v3 site key registered for the same Firebase project"
+    },
+    {
+      "file": "docs/auth-audit.md",
+      "line": 72,
+      "pattern": "FIREBASE",
+      "excerpt": "These checks require a real Firebase environment and were **not run in this environment**:"
+    },
+    {
+      "file": "docs/auth-audit.md",
+      "line": 73,
+      "pattern": "FIREBASE",
+      "excerpt": "- Sign-in/out: Not run (requires Firebase env)"
+    },
+    {
+      "file": "docs/auth-audit.md",
+      "line": 74,
+      "pattern": "FIREBASE",
+      "excerpt": "- New user: Not run (requires Firebase env)"
+    },
+    {
+      "file": "docs/auth-audit.md",
+      "line": 75,
+      "pattern": "FIREBASE",
+      "excerpt": "- Existing user: Not run (requires Firebase env)"
+    },
+    {
+      "file": "docs/auth-audit.md",
+      "line": 76,
+      "pattern": "FIREBASE",
+      "excerpt": "- Admin user: Not run (requires Firebase env)"
+    },
+    {
+      "file": "docs/auth-audit.md",
+      "line": 77,
+      "pattern": "FIREBASE",
+      "excerpt": "- Invite accept: Not run (requires Firebase env)"
+    },
+    {
+      "file": "docs/auth-audit.md",
+      "line": 78,
+      "pattern": "FIREBASE",
+      "excerpt": "- Offline mode behavior: Not run (requires Firebase env)"
+    },
+    {
+      "file": "docs/debug-login.md",
+      "line": 8,
+      "pattern": "FIREBASE",
+      "excerpt": "* `authReady` – Firebase Auth er initialiseret."
+    },
+    {
+      "file": "docs/debug-login.md",
+      "line": 29,
+      "pattern": "FIREBASE",
+      "excerpt": "1. **authReady = false** – Firebase config mangler eller Auth er ikke initialiseret. Tjek at `VITE_FIREBASE_*` env vars er sat og at auth-diagnostik viser `projectId`/`authDomain`."
+    },
+    {
+      "file": "docs/firebase-deploy-checklist.md",
+      "line": 1,
+      "pattern": "FIREBASE",
+      "excerpt": "# Firebase tjekliste (sscaff-43a33)"
+    },
+    {
+      "file": "docs/firebase-deploy-checklist.md",
+      "line": 13,
+      "pattern": "FIREBASE",
+      "excerpt": "`npm run build` genererer `js/firebase-env.js` med **ikke-hemmelige** indstillinger (providers, App Check m.m.). Selve Firebase-konfigurationen læses direkte fra `import.meta.env` i klienten."
+    },
+    {
+      "file": "docs/firebase-deploy-checklist.md",
+      "line": 15,
+      "pattern": "FIREBASE",
+      "excerpt": "## Firebase Auth – tilladte domæner"
+    },
+    {
+      "file": "docs/firebase-deploy-checklist.md",
+      "line": 27,
+      "pattern": "FIREBASE",
+      "excerpt": "2) Deploy med `npx firebase deploy --only firestore --project sscaff-43a33`."
+    },
+    {
+      "file": "docs/firebase-deploy-checklist.md",
+      "line": 28,
+      "pattern": "FIREBASE",
+      "excerpt": "3) Verificér i Firebase Console, at regelsættet matcher commit og at der ikke er ubrugte stager."
+    },
+    {
+      "file": "docs/iam-firestore-roles.md",
+      "line": 23,
+      "pattern": "FIREBASE",
+      "excerpt": "> Bemærk: Firebase Authentication-brugere styres af Firestore Security Rules og appens login-flow, ikke IAM. IAM dækker kun console-/servicekonto-adgang."
+    },
+    {
+      "file": "docs/stop-task-report.md",
+      "line": 17,
+      "pattern": "FIREBASE",
+      "excerpt": "- Generated `js/firebase-env.js` and `js/version.js`."
+    },
+    {
+      "file": "docs/stop-task-report.md",
+      "line": 35,
+      "pattern": "FIREBASE",
+      "excerpt": "- `netlify.toml`: updated CSP to enforcement mode and aligned it with Firebase + esm.sh usage."
+    },
+    {
+      "file": "index.html",
+      "line": 18,
+      "pattern": "FIREBASE",
+      "excerpt": "<script src=\"/js/firebase-env.js\" defer></script>"
+    },
+    {
+      "file": "index.html",
+      "line": 576,
+      "pattern": "FIREBASE",
+      "excerpt": "<p>Viser login- og Firebase-status. Kun admin kan se denne blok.</p>"
+    },
+    {
+      "file": "js/a9-calc.js",
+      "line": 61,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke kopiere formel til udklipsholderen', error);"
+    },
+    {
+      "file": "js/a9-calc.js",
+      "line": 271,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Ugyldig udregning', error);"
+    },
+    {
+      "file": "js/akkord-data.js",
+      "line": 18,
+      "pattern": "console.error",
+      "excerpt": "console.error('Kunne ikke hente rå akkorddata', error);"
+    },
+    {
+      "file": "js/akkord-export-ui.js",
+      "line": 157,
+      "pattern": "console.error",
+      "excerpt": "console.error('JSON export failed', error);"
+    },
+    {
+      "file": "js/akkord-export-ui.js",
+      "line": 189,
+      "pattern": "console.error",
+      "excerpt": "console.error('Export failed', error);"
+    },
+    {
+      "file": "js/akkord-export-ui.js",
+      "line": 220,
+      "pattern": "console.error",
+      "excerpt": "console.error('Import akkordseddel failed', error);"
+    },
+    {
+      "file": "js/akkord-export-ui.js",
+      "line": 134,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke gemme eksport-historik', error);"
+    },
+    {
+      "file": "js/export-pdf.js",
+      "line": 241,
+      "pattern": "console.error",
+      "excerpt": "console.error('PDF eksport er ikke tilgængelig.', error)"
+    },
+    {
+      "file": "js/export-pdf.js",
+      "line": 204,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('[cssmateExportPDFBlob] Ingen exportmodel – bruger placeholder-akkordseddel.pdf')"
+    },
+    {
+      "file": "js/export-zip.js",
+      "line": 97,
+      "pattern": "console.error",
+      "excerpt": "console.error('CSV eksport fejlede', error);"
+    },
+    {
+      "file": "js/export-zip.js",
+      "line": 109,
+      "pattern": "console.error",
+      "excerpt": "console.error('ZIP eksport fejlede', error);"
+    },
+    {
+      "file": "js/numpad.js",
+      "line": 41,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('[numpad] double-trigger detected', { key, deltaMs: now - debugGuardRef.t })"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 111,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke læse mock login', error);"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 122,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke rydde mock login', error);"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 129,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke gemme mock login', error);"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 191,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('App Check deaktiveret: mangler reCAPTCHA v3 site key.');"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 207,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke aktivere App Check debug token', error);"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 217,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('App Check init fejlede', error);"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 256,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Auth listener fejlede', error);"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 302,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Firebase konfiguration mangler eller er placeholder.', {"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 407,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke sætte persistence', error);"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 539,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Auth fejl', {"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 562,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Firebase Auth domæne mismatch', { authDomain, currentHost, allowlist: Array.from(allowlist) });"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 624,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Logout fejlede', error);"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 10,
+      "pattern": "FIREBASE",
+      "excerpt": "} from '../src/config/firebase-config.js';"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 11,
+      "pattern": "FIREBASE",
+      "excerpt": "import { getFirebaseConfigSummary } from '../src/config/firebase-utils.js';"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 12,
+      "pattern": "FIREBASE",
+      "excerpt": "import { getFirebaseApp } from '../src/firebase/firebase-app.js';"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 14,
+      "pattern": "FIREBASE",
+      "excerpt": "import { FIREBASE_SDK_VERSION as FIREBASE_SDK_VERSION_VALUE } from '../src/config/firebase-sdk.js';"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 142,
+      "pattern": "FIREBASE",
+      "excerpt": "const auth = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-auth.js`);"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 149,
+      "pattern": "FIREBASE",
+      "excerpt": "appCheckModule = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-app-check.js`);"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 302,
+      "pattern": "FIREBASE",
+      "excerpt": "console.warn('Firebase konfiguration mangler eller er placeholder.', {"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 313,
+      "pattern": "FIREBASE",
+      "excerpt": "? 'Firebase API key misconfigured in Netlify env: VITE_FIREBASE_API_KEY'"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 314,
+      "pattern": "FIREBASE",
+      "excerpt": ": `Firebase config mangler i Netlify env: ${missing.join(', ') || 'ukendt'}`;"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 401,
+      "pattern": "FIREBASE",
+      "excerpt": "const app = await withTimeout(getFirebaseAppInstance(), AUTH_INIT_TIMEOUT_MS, 'firebase-init');"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 522,
+      "pattern": "FIREBASE",
+      "excerpt": "return 'Domænet er ikke godkendt i Firebase Auth.';"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 525,
+      "pattern": "FIREBASE",
+      "excerpt": "return 'Login-udbyderen er ikke aktiveret i Firebase Auth.';"
+    },
+    {
+      "file": "js/shared-auth.js",
+      "line": 562,
+      "pattern": "FIREBASE",
+      "excerpt": "console.warn('Firebase Auth domæne mismatch', { authDomain, currentHost, allowlist: Array.from(allowlist) });"
+    },
+    {
+      "file": "js/shared-cases-panel.js",
+      "line": 328,
+      "pattern": "console.error",
+      "excerpt": "console.error('Import fejlede', error);"
+    },
+    {
+      "file": "js/shared-cases-panel.js",
+      "line": 344,
+      "pattern": "console.error",
+      "excerpt": "console.error('Download fejlede', error);"
+    },
+    {
+      "file": "js/shared-cases-panel.js",
+      "line": 360,
+      "pattern": "console.error",
+      "excerpt": "console.error('PDF fejlede', error);"
+    },
+    {
+      "file": "js/shared-cases-panel.js",
+      "line": 379,
+      "pattern": "console.error",
+      "excerpt": "console.error('Status opdatering fejlede', error);"
+    },
+    {
+      "file": "js/shared-cases-panel.js",
+      "line": 397,
+      "pattern": "console.error",
+      "excerpt": "console.error('Sletning fejlede', error);"
+    },
+    {
+      "file": "js/shared-cases-panel.js",
+      "line": 503,
+      "pattern": "console.error",
+      "excerpt": "console.error('Bootstrap fejlede', error);"
+    },
+    {
+      "file": "js/shared-cases-panel.js",
+      "line": 531,
+      "pattern": "console.error",
+      "excerpt": "console.error('Backup export fejlede', error);"
+    },
+    {
+      "file": "js/shared-cases-panel.js",
+      "line": 550,
+      "pattern": "console.error",
+      "excerpt": "console.error('Backup import fejlede', error);"
+    },
+    {
+      "file": "js/shared-cases-panel.js",
+      "line": 667,
+      "pattern": "console.error",
+      "excerpt": "console.error('Kunne ikke hente delte sager', error);"
+    },
+    {
+      "file": "js/shared-cases-panel.js",
+      "line": 217,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Logout fejlede', error);"
+    },
+    {
+      "file": "js/shared-cases-panel.js",
+      "line": 308,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke parse JSON til PDF', error);"
+    },
+    {
+      "file": "js/shared-cases-panel.js",
+      "line": 484,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke sætte Team ID', error);"
+    },
+    {
+      "file": "js/shared-cases-panel.js",
+      "line": 620,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke kopiere UID', error);"
+    },
+    {
+      "file": "js/shared-firestore.js",
+      "line": 39,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke konvertere Firestore timestamp', error);"
+    },
+    {
+      "file": "js/shared-firestore.js",
+      "line": 9,
+      "pattern": "FIREBASE",
+      "excerpt": "firestoreModule = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-firestore.js`);"
+    },
+    {
+      "file": "js/shared-ledger.js",
+      "line": 400,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke hente sag', error);"
+    },
+    {
+      "file": "js/storageDraft.js",
+      "line": 38,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke gemme kladde', error)"
+    },
+    {
+      "file": "js/storageHistory.js",
+      "line": 29,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke serialisere historik', error)"
+    },
+    {
+      "file": "js/storageHistory.js",
+      "line": 60,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke gemme historik', error)"
+    },
+    {
+      "file": "js/vendor/html2canvas.esm.js",
+      "line": 1632,
+      "pattern": "TODO",
+      "excerpt": "return 16 * token.number; // TODO use correct font-size"
+    },
+    {
+      "file": "js/vendor/html2canvas.esm.js",
+      "line": 6442,
+      "pattern": "TODO",
+      "excerpt": "// TODO If the image has no intrinsic dimensions but has intrinsic proportions, it's rendered as if contain had been specified instead."
+    },
+    {
+      "file": "js/vendor/html2canvas.esm.js",
+      "line": 6765,
+      "pattern": "TODO",
+      "excerpt": "// TODO As some browsers display the line as more than 1px if the font-size is big,"
+    },
+    {
+      "file": "js/vendor/html2canvas.esm.js",
+      "line": 6773,
+      "pattern": "TODO",
+      "excerpt": "// TODO try and find exact position for line-through"
+    },
+    {
+      "file": "js/vendor/html2canvas.esm.js",
+      "line": 7673,
+      "pattern": "console.error",
+      "excerpt": "if (typeof window !== 'undefined' && window.console && typeof console.error === 'function') {"
+    },
+    {
+      "file": "js/vendor/html2canvas.esm.js",
+      "line": 7675,
+      "pattern": "console.error",
+      "excerpt": "console.error.apply(console, __spreadArray([this.id, this.getTime() + \"ms\"], args));"
+    },
+    {
+      "file": "js/vendor/html2canvas.esm.js",
+      "line": 7656,
+      "pattern": "console.warn",
+      "excerpt": "if (typeof window !== 'undefined' && window.console && typeof console.warn === 'function') {"
+    },
+    {
+      "file": "js/vendor/html2canvas.esm.js",
+      "line": 7658,
+      "pattern": "console.warn",
+      "excerpt": "console.warn.apply(console, __spreadArray([this.id, this.getTime() + \"ms\"], args));"
+    },
+    {
+      "file": "js/vendor/jspdf.es.min.js",
+      "line": 51,
+      "pattern": "console.error",
+      "excerpt": "import t from\"@babel/runtime/helpers/typeof\";import{zlibSync as e,unzlibSync as r}from\"fflate\";var n=function(){return\"undefined\"!=typeof window?window:\"undefined\"!=typeof global?global:\"undefined\"!=t"
+    },
+    {
+      "file": "js/vendor/jspdf.es.min.js",
+      "line": 86,
+      "pattern": "console.error",
+      "excerpt": "*/var k={print:4,modify:8,copy:16,\"annot-forms\":32};function I(t,e,r,n){this.v=1,this.r=2;var i=192;t.forEach((function(t){if(void 0!==k.perm)throw new Error(\"Invalid permission: \"+t);i+=k[t]})),this."
+    },
+    {
+      "file": "js/vendor/jspdf.es.min.js",
+      "line": 51,
+      "pattern": "console.warn",
+      "excerpt": "import t from\"@babel/runtime/helpers/typeof\";import{zlibSync as e,unzlibSync as r}from\"fflate\";var n=function(){return\"undefined\"!=typeof window?window:\"undefined\"!=typeof global?global:\"undefined\"!=t"
+    },
+    {
+      "file": "js/vendor/jspdf.umd.min.js",
+      "line": 51,
+      "pattern": "console.error",
+      "excerpt": "!function(t,e){\"object\"==typeof exports&&\"undefined\"!=typeof module?e(exports):\"function\"==typeof define&&define.amd?define([\"exports\"],e):e((t=t||self).jspdf={})}(this,(function(t){\"use strict\";funct"
+    },
+    {
+      "file": "js/vendor/jspdf.umd.min.js",
+      "line": 86,
+      "pattern": "console.error",
+      "excerpt": "*/var P={print:4,modify:8,copy:16,\"annot-forms\":32};function k(t,e,r,n){this.v=1,this.r=2;var i=192;t.forEach((function(t){if(void 0!==P.perm)throw new Error(\"Invalid permission: \"+t);i+=P[t]})),this."
+    },
+    {
+      "file": "js/vendor/jspdf.umd.min.js",
+      "line": 51,
+      "pattern": "console.warn",
+      "excerpt": "!function(t,e){\"object\"==typeof exports&&\"undefined\"!=typeof module?e(exports):\"function\"==typeof define&&define.amd?define([\"exports\"],e):e((t=t||self).jspdf={})}(this,(function(t){\"use strict\";funct"
+    },
+    {
+      "file": "main.js",
+      "line": 49,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke starte auth diagnostics', error);"
+    },
+    {
+      "file": "main.js",
+      "line": 67,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Kunne ikke starte Cssmate', error);"
+    },
+    {
+      "file": "main.min.js",
+      "line": 1,
+      "pattern": "console.warn",
+      "excerpt": "function runWhenIdle(e){\"function\"!=typeof requestIdleCallback?setTimeout(e,150):requestIdleCallback(e,{timeout:1500})}let bootstrapPromise=null;function scheduleBootstrap(){\"undefined\"!=typeof docume"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 11,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/rules-unit-testing\": \"^5.0.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 15,
+      "pattern": "FIREBASE",
+      "excerpt": "\"firebase-tools\": \"^15.1.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 169,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/ai\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 171,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/ai/-/ai-2.6.1.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 176,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-check-interop-types\": \"0.3.3\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 177,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 178,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/logger\": \"0.5.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 179,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 186,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app\": \"0.x\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 187,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-types\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 190,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/analytics\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 192,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/analytics/-/analytics-0.10.19.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 197,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 198,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/installations\": \"0.6.19\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 199,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/logger\": \"0.5.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 200,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 204,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 207,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/analytics-compat\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 209,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/analytics-compat/-/analytics-compat-0.2.25.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 214,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/analytics\": \"0.10.19\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 215,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/analytics-types\": \"0.8.3\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 216,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 217,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 221,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-compat\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 224,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/analytics-types\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 226,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/analytics-types/-/analytics-types-0.8.3.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 231,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/app\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 233,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/app/-/app-0.14.6.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 239,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 240,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/logger\": \"0.5.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 241,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 249,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/app-check\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 251,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/app-check/-/app-check-0.11.0.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 256,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 257,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/logger\": \"0.5.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 258,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 265,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 268,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/app-check-compat\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 270,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/app-check-compat/-/app-check-compat-0.4.0.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 275,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-check\": \"0.11.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 276,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-check-types\": \"0.5.3\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 277,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 278,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/logger\": \"0.5.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 279,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 286,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-compat\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 289,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/app-check-interop-types\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 291,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/app-check-interop-types/-/app-check-interop-types-0.3.3.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 296,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/app-check-types\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 298,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/app-check-types/-/app-check-types-0.5.3.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 303,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/app-compat\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 305,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/app-compat/-/app-compat-0.5.6.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 311,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app\": \"0.14.6\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 312,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 313,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/logger\": \"0.5.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 314,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 321,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/app-types\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 323,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/app-types/-/app-types-0.9.3.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 329,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/auth\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 331,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/auth/-/auth-1.12.0.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 336,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 337,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/logger\": \"0.5.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 338,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 345,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app\": \"0.x\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 354,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/auth-compat\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 356,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/auth-compat/-/auth-compat-0.6.2.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 361,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/auth\": \"1.12.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 362,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/auth-types\": \"0.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 363,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 364,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 371,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-compat\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 374,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/auth-interop-types\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 376,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/auth-interop-types/-/auth-interop-types-0.2.4.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 381,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/auth-types\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 383,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/auth-types/-/auth-types-0.13.0.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 388,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-types\": \"0.x\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 389,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 392,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/component\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 394,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/component/-/component-0.7.0.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 399,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 406,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/data-connect\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 408,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/data-connect/-/data-connect-0.3.12.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 413,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/auth-interop-types\": \"0.2.4\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 414,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 415,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/logger\": \"0.5.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 416,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 420,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 423,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/database\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 425,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/database/-/database-1.1.0.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 430,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-check-interop-types\": \"0.3.3\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 431,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/auth-interop-types\": \"0.2.4\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 432,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 433,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/logger\": \"0.5.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 434,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 442,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/database-compat\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 444,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/database-compat/-/database-compat-2.1.0.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 449,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 450,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/database\": \"1.1.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 451,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/database-types\": \"1.0.16\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 452,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/logger\": \"0.5.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 453,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 460,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/database-types\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 462,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/database-types/-/database-types-1.0.16.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 467,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-types\": \"0.9.3\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 468,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 471,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/firestore\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 473,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/firestore/-/firestore-4.9.3.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 478,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 479,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/logger\": \"0.5.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 480,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 481,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/webchannel-wrapper\": \"1.0.5\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 490,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 493,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/firestore-compat\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 495,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/firestore-compat/-/firestore-compat-0.4.3.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 500,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 501,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/firestore\": \"4.9.3\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 502,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/firestore-types\": \"3.0.3\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 503,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 510,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-compat\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 513,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/firestore-types\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 515,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/firestore-types/-/firestore-types-3.0.3.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 520,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-types\": \"0.x\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 521,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 524,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/functions\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 526,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/functions/-/functions-0.13.1.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 531,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-check-interop-types\": \"0.3.3\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 532,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/auth-interop-types\": \"0.2.4\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 533,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 534,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/messaging-interop-types\": \"0.2.3\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 535,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 542,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 545,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/functions-compat\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 547,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/functions-compat/-/functions-compat-0.4.1.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 552,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 553,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/functions\": \"0.13.1\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 554,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/functions-types\": \"0.6.3\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 555,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 562,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-compat\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 565,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/functions-types\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 567,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/functions-types/-/functions-types-0.6.3.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 572,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/installations\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 574,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/installations/-/installations-0.6.19.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 579,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 580,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 585,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 588,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/installations-compat\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 590,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/installations-compat/-/installations-compat-0.2.19.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 595,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 596,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/installations\": \"0.6.19\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 597,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/installations-types\": \"0.5.3\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 598,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 602,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-compat\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 605,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/installations-types\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 607,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/installations-types/-/installations-types-0.5.3.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 612,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-types\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 615,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/logger\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 617,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/logger/-/logger-0.5.0.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 628,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/messaging\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 630,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/messaging/-/messaging-0.12.23.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 635,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 636,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/installations\": \"0.6.19\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 637,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/messaging-interop-types\": \"0.2.3\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 638,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 643,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 646,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/messaging-compat\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 648,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/messaging-compat/-/messaging-compat-0.2.23.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 653,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 654,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/messaging\": \"0.12.23\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 655,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 659,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-compat\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 662,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/messaging-interop-types\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 664,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/messaging-interop-types/-/messaging-interop-types-0.2.3.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 669,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/performance\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 671,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/performance/-/performance-0.7.9.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 676,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 677,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/installations\": \"0.6.19\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 678,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/logger\": \"0.5.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 679,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 684,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 687,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/performance-compat\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 689,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/performance-compat/-/performance-compat-0.2.22.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 694,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 695,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/logger\": \"0.5.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 696,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/performance\": \"0.7.9\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 697,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/performance-types\": \"0.2.3\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 698,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 702,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-compat\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 705,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/performance-types\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 707,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/performance-types/-/performance-types-0.2.3.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 712,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/remote-config\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 714,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/remote-config/-/remote-config-0.7.0.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 719,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 720,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/installations\": \"0.6.19\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 721,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/logger\": \"0.5.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 722,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 726,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 729,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/remote-config-compat\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 731,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/remote-config-compat/-/remote-config-compat-0.2.20.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 736,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 737,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/logger\": \"0.5.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 738,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/remote-config\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 739,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/remote-config-types\": \"0.5.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 740,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 744,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-compat\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 747,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/remote-config-types\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 749,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/remote-config-types/-/remote-config-types-0.5.0.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 754,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/rules-unit-testing\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 756,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/rules-unit-testing/-/rules-unit-testing-5.0.0.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 764,
+      "pattern": "FIREBASE",
+      "excerpt": "\"firebase\": \"^12.0.0\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 767,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/storage\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 769,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/storage/-/storage-0.14.0.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 774,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 775,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 782,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 785,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/storage-compat\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 787,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/storage-compat/-/storage-compat-0.4.0.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 792,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/component\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 793,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/storage\": \"0.14.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 794,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/storage-types\": \"0.8.3\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 795,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 802,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-compat\": \"0.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 805,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/storage-types\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 807,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/storage-types/-/storage-types-0.8.3.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 812,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-types\": \"0.x\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 813,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.x\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 816,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/util\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 818,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/util/-/util-1.13.0.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 831,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/@firebase/webchannel-wrapper\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 833,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/@firebase/webchannel-wrapper/-/webchannel-wrapper-1.0.5.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6216,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6218,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/firebase/-/firebase-12.7.0.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6224,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/ai\": \"2.6.1\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6225,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/analytics\": \"0.10.19\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6226,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/analytics-compat\": \"0.2.25\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6227,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app\": \"0.14.6\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6228,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-check\": \"0.11.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6229,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-check-compat\": \"0.4.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6230,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-compat\": \"0.5.6\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6231,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/app-types\": \"0.9.3\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6232,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/auth\": \"1.12.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6233,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/auth-compat\": \"0.6.2\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6234,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/data-connect\": \"0.3.12\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6235,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/database\": \"1.1.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6236,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/database-compat\": \"2.1.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6237,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/firestore\": \"4.9.3\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6238,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/firestore-compat\": \"0.4.3\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6239,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/functions\": \"0.13.1\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6240,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/functions-compat\": \"0.4.1\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6241,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/installations\": \"0.6.19\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6242,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/installations-compat\": \"0.2.19\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6243,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/messaging\": \"0.12.23\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6244,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/messaging-compat\": \"0.2.23\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6245,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/performance\": \"0.7.9\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6246,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/performance-compat\": \"0.2.22\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6247,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/remote-config\": \"0.7.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6248,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/remote-config-compat\": \"0.2.20\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6249,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/storage\": \"0.14.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6250,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/storage-compat\": \"0.4.0\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6251,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/util\": \"1.13.0\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6254,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6256,
+      "pattern": "FIREBASE",
+      "excerpt": "\"resolved\": \"https://registry.npmjs.org/firebase-tools/-/firebase-tools-15.1.0.tgz\","
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6338,
+      "pattern": "FIREBASE",
+      "excerpt": "\"firebase\": \"lib/bin/firebase.js\""
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6344,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/accepts\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6358,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/ansi-escapes\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6374,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/ansi-regex\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6387,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/chokidar\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6412,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/commander\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6422,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/configstore\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6440,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/content-disposition\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6453,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/cookie-signature\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6460,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/debug\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6470,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/debug/node_modules/ms\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6477,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/dot-prop\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6490,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/encodeurl\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6500,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/express\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6547,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/finalhandler\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6566,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/form-data\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6583,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/fresh\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6593,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/glob\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6614,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/glob/node_modules/minimatch\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6630,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/is-wsl\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6640,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/jackspeak\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6656,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/lru-cache\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6663,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/marked\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6677,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/marked-terminal\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6699,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/merge-descriptors\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6709,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/mime\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6722,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/minimatch\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6735,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/minimatch/node_modules/brace-expansion\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6746,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/negotiator\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6756,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/open\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6769,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/path-scurry\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6786,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/picomatch\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6799,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/readdirp\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6812,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/safe-buffer\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6833,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/send\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6858,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/send/node_modules/mime\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6871,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/serve-static\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6887,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/tmp\": {"
+    },
+    {
+      "file": "package-lock.json",
+      "line": 6897,
+      "pattern": "FIREBASE",
+      "excerpt": "\"node_modules/firebase-tools/node_modules/xdg-basedir\": {"
+    },
+    {
+      "file": "package.json",
+      "line": 12,
+      "pattern": "FIREBASE",
+      "excerpt": "\"test:integration\": \"npx firebase emulators:exec --project sscaff-43a33 --only firestore \\\"node --test tests/integration/*.test.js\\\"\","
+    },
+    {
+      "file": "package.json",
+      "line": 13,
+      "pattern": "FIREBASE",
+      "excerpt": "\"test:rules\": \"npx firebase emulators:exec --project sscaff-43a33 --only firestore \\\"node --test tests/integration/firestore-rules.test.js\\\"\","
+    },
+    {
+      "file": "package.json",
+      "line": 26,
+      "pattern": "FIREBASE",
+      "excerpt": "\"verify:firebase-env\": \"node tools/verify-firebase-env.mjs\","
+    },
+    {
+      "file": "package.json",
+      "line": 27,
+      "pattern": "FIREBASE",
+      "excerpt": "\"verify:no-firebase-env\": \"git ls-files | grep -E \\\"^js/firebase-env\\\\.js$\\\" && exit 1 || true\","
+    },
+    {
+      "file": "package.json",
+      "line": 28,
+      "pattern": "FIREBASE",
+      "excerpt": "\"build:firebase-env\": \"node scripts/generate-firebase-config.js\","
+    },
+    {
+      "file": "package.json",
+      "line": 30,
+      "pattern": "FIREBASE",
+      "excerpt": "\"build\": \"npm run verify:firebase-env && npm run verify:no-firebase-env && npm run build:firebase-env && npm run build:version && npm run bump:sw && npm run build:min-js && npm run stage:netlify && np"
+    },
+    {
+      "file": "package.json",
+      "line": 61,
+      "pattern": "FIREBASE",
+      "excerpt": "\"@firebase/rules-unit-testing\": \"^5.0.0\","
+    },
+    {
+      "file": "package.json",
+      "line": 65,
+      "pattern": "FIREBASE",
+      "excerpt": "\"firebase-tools\": \"^15.1.0\","
+    },
+    {
+      "file": "scripts/bump-sw-version.js",
+      "line": 63,
+      "pattern": "console.error",
+      "excerpt": "console.error(\"bump-sw-version: service worker file not found\");"
+    },
+    {
+      "file": "scripts/bump-sw-version.js",
+      "line": 87,
+      "pattern": "console.error",
+      "excerpt": "console.error(`bump-sw-version: no token or SW_BUILD_ID assignment found in ${path.relative(ROOT, swPath)}`);"
+    },
+    {
+      "file": "scripts/compare-json.js",
+      "line": 25,
+      "pattern": "console.error",
+      "excerpt": "console.error('Usage: node scripts/compare-json.js <export1.json> <export2.json>')"
+    },
+    {
+      "file": "scripts/compare-json.js",
+      "line": 33,
+      "pattern": "console.error",
+      "excerpt": "console.error('JSON files differ after scrubbing volatile fields.')"
+    },
+    {
+      "file": "scripts/generate-firebase-config.js",
+      "line": 44,
+      "pattern": "console.error",
+      "excerpt": "console.error(`[firebase-env] Missing required Firebase env vars: ${missingFirebaseEnvKeys.join(', ')}`)"
+    },
+    {
+      "file": "scripts/generate-firebase-config.js",
+      "line": 45,
+      "pattern": "console.error",
+      "excerpt": "console.error(`[firebase-env] Set ${skipFirebaseConfigCheckEnvKey}=1 to bypass this check (not recommended).`)"
+    },
+    {
+      "file": "scripts/generate-firebase-config.js",
+      "line": 25,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('[firebase-env] Missing environment variable VITE_FIREBASE_RECAPTCHA_V3_SITE_KEY. App Check will be disabled unless the key is set.')"
+    },
+    {
+      "file": "scripts/generate-firebase-config.js",
+      "line": 6,
+      "pattern": "apiKey",
+      "excerpt": "apiKey: 'VITE_FIREBASE_API_KEY',"
+    },
+    {
+      "file": "scripts/generate-firebase-config.js",
+      "line": 14,
+      "pattern": "apiKey",
+      "excerpt": "const requiredFirebaseKeys = ['apiKey', 'authDomain', 'projectId', 'appId']"
+    },
+    {
+      "file": "scripts/generate-firebase-config.js",
+      "line": 3,
+      "pattern": "FIREBASE",
+      "excerpt": "const targetPath = 'js/firebase-env.js'"
+    },
+    {
+      "file": "scripts/generate-firebase-config.js",
+      "line": 25,
+      "pattern": "FIREBASE",
+      "excerpt": "console.warn('[firebase-env] Missing environment variable VITE_FIREBASE_RECAPTCHA_V3_SITE_KEY. App Check will be disabled unless the key is set.')"
+    },
+    {
+      "file": "scripts/generate-firebase-config.js",
+      "line": 44,
+      "pattern": "FIREBASE",
+      "excerpt": "console.error(`[firebase-env] Missing required Firebase env vars: ${missingFirebaseEnvKeys.join(', ')}`)"
+    },
+    {
+      "file": "scripts/generate-firebase-config.js",
+      "line": 45,
+      "pattern": "FIREBASE",
+      "excerpt": "console.error(`[firebase-env] Set ${skipFirebaseConfigCheckEnvKey}=1 to bypass this check (not recommended).`)"
+    },
+    {
+      "file": "scripts/generate-firebase-config.js",
+      "line": 66,
+      "pattern": "FIREBASE",
+      "excerpt": "const payload = `// Auto-generated by scripts/generate-firebase-config.js"
+    },
+    {
+      "file": "scripts/generate-firebase-config.js",
+      "line": 79,
+      "pattern": "FIREBASE",
+      "excerpt": "console.log(`[firebase-env] Wrote Firebase config to ${targetPath}`)"
+    },
+    {
+      "file": "scripts/update-price-lists.js",
+      "line": 113,
+      "pattern": "console.error",
+      "excerpt": "console.error('update-price-lists: Fejl under prisopdatering', error)"
+    },
+    {
+      "file": "service-worker.js",
+      "line": 33,
+      "pattern": "FIREBASE",
+      "excerpt": "'/src/config/firebase-config.js',"
+    },
+    {
+      "file": "service-worker.js",
+      "line": 34,
+      "pattern": "FIREBASE",
+      "excerpt": "'/src/config/firebase-sdk.js',"
+    },
+    {
+      "file": "service-worker.js",
+      "line": 35,
+      "pattern": "FIREBASE",
+      "excerpt": "'/src/config/firebase-utils.js',"
+    },
+    {
+      "file": "service-worker.js",
+      "line": 36,
+      "pattern": "FIREBASE",
+      "excerpt": "'/src/firebase/firebase-config.js',"
+    },
+    {
+      "file": "service-worker.js",
+      "line": 37,
+      "pattern": "FIREBASE",
+      "excerpt": "'/src/firebase/firebase-app.js',"
+    },
+    {
+      "file": "service-worker.js",
+      "line": 160,
+      "pattern": "FIREBASE",
+      "excerpt": "'/js/firebase-env.js',"
+    },
+    {
+      "file": "service-worker.js",
+      "line": 165,
+      "pattern": "FIREBASE",
+      "excerpt": "url.pathname.startsWith('/__/firebase')"
+    },
+    {
+      "file": "src/auth/auth-gate.js",
+      "line": 110,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Auth action fejlede', error)"
+    },
+    {
+      "file": "src/auth/auth-gate.js",
+      "line": 267,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('AuthGate markup mangler')"
+    },
+    {
+      "file": "src/auth/auth-provider.js",
+      "line": 114,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('AuthProvider listener fejlede', error)"
+    },
+    {
+      "file": "src/auth/bootstrap.js",
+      "line": 18,
+      "pattern": "console.warn",
+      "excerpt": "console.warn('Auth bootstrap fejlede', error)"
+    }
+  ],
+  "maxMatches": 500
+}
