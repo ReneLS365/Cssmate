@@ -29,7 +29,7 @@ const DEBUG_NUMPAD = Boolean(
   (typeof import.meta !== 'undefined' && import.meta.env && String(import.meta.env.VITE_DEBUG_NUMPAD ?? '') === '1')
 )
 const debugGuardRef = { t: 0, key: '', count: 0 }
-const keyPressGuardRef = { t: 0, key: '' }
+const keyPressGuardRef = { t: 0, key: '', source: '' }
 const KEY_PRESS_GUARD_MS = 120
 
 function debugKeyPress (key) {
@@ -47,13 +47,18 @@ function debugKeyPress (key) {
   debugGuardRef.count = 1
 }
 
-function shouldHandleKeyPress (key) {
+function shouldHandleKeyPress (key, source) {
   const now = performance.now()
-  if (keyPressGuardRef.key === key && now - keyPressGuardRef.t < KEY_PRESS_GUARD_MS) {
+  if (
+    keyPressGuardRef.key === key &&
+    keyPressGuardRef.source !== source &&
+    now - keyPressGuardRef.t < KEY_PRESS_GUARD_MS
+  ) {
     return false
   }
   keyPressGuardRef.t = now
   keyPressGuardRef.key = key
+  keyPressGuardRef.source = source
   return true
 }
 
@@ -114,7 +119,7 @@ function initNumpad () {
       event.preventDefault()
       event.stopPropagation()
       debugKeyPress('commit')
-      if (!shouldHandleKeyPress('commit')) return
+      if (!shouldHandleKeyPress('commit', 'pointerdown')) return
       handleCommitClick()
     }, { passive: false })
     commitBtn.addEventListener('click', event => {
@@ -141,7 +146,7 @@ function initNumpad () {
       event.preventDefault()
       event.stopPropagation()
       debugKeyPress(keyValue)
-      if (!shouldHandleKeyPress(keyValue)) return
+      if (!shouldHandleKeyPress(keyValue, 'pointerdown')) return
       handleKey(keyValue)
     }, { passive: false })
     keyBtn.addEventListener('click', event => {
