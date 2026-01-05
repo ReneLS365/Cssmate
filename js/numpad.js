@@ -20,6 +20,35 @@ const NUMPAD_COMMIT_READY_CLASS = 'numpad-commit--ready'
 const NUMPAD_COMMITTED_CLASS = 'numpad-committed'
 let initialFieldValue = ''
 let displayUpdateFrame = null
+let positionUpdateFrame = null
+let positionListenersActive = false
+const NUMPAD_MARGIN = 8
+
+function clamp (value, min, max) {
+  return Math.max(min, Math.min(max, value))
+}
+
+function getNumpadPosition (anchorRect, panelRect) {
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0
+
+  let left = anchorRect.left
+  let top = anchorRect.bottom + NUMPAD_MARGIN
+
+  const spaceBelow = viewportHeight - anchorRect.bottom
+  const spaceAbove = anchorRect.top
+  const panelWidth = panelRect.width || 0
+  const panelHeight = panelRect.height || 0
+
+  if (spaceBelow < panelHeight + NUMPAD_MARGIN && spaceAbove >= panelHeight + NUMPAD_MARGIN) {
+    top = anchorRect.top - panelHeight - NUMPAD_MARGIN
+  }
+
+  left = clamp(left, NUMPAD_MARGIN, viewportWidth - panelWidth - NUMPAD_MARGIN)
+  top = clamp(top, NUMPAD_MARGIN, viewportHeight - panelHeight - NUMPAD_MARGIN)
+
+  return { left, top }
+}
 
 function isNumpadOpen () {
   return Boolean(overlay && !overlay.classList.contains('numpad-hidden'))
@@ -84,6 +113,41 @@ function initNumpad () {
 
   bindInputs()
   observeNumpadInputs()
+}
+
+function scheduleNumpadPosition () {
+  if (!overlay || !dialog || !activeInput || !isNumpadOpen()) return
+  if (positionUpdateFrame) return
+  positionUpdateFrame = requestAnimationFrame(() => {
+    positionUpdateFrame = null
+    positionNumpad()
+  })
+}
+
+function positionNumpad () {
+  if (!dialog || !activeInput) return
+  const anchorRect = activeInput.getBoundingClientRect()
+  const panelRect = dialog.getBoundingClientRect()
+  const next = getNumpadPosition(anchorRect, panelRect)
+
+  dialog.style.left = `${next.left}px`
+  dialog.style.top = `${next.top}px`
+  dialog.style.opacity = '1'
+  dialog.style.transform = 'translate3d(0, 0, 0)'
+}
+
+function startPositionListeners () {
+  if (positionListenersActive) return
+  window.addEventListener('scroll', scheduleNumpadPosition, true)
+  window.addEventListener('resize', scheduleNumpadPosition)
+  positionListenersActive = true
+}
+
+function stopPositionListeners () {
+  if (!positionListenersActive) return
+  window.removeEventListener('scroll', scheduleNumpadPosition, true)
+  window.removeEventListener('resize', scheduleNumpadPosition)
+  positionListenersActive = false
 }
 
 function handleNumpadFocus (event) {
@@ -217,6 +281,12 @@ function showNumpadForInput (input) {
   if (dialog && typeof dialog.focus === 'function') {
     dialog.focus()
   }
+  if (dialog) {
+    dialog.style.opacity = '0'
+    dialog.style.transform = 'translate3d(0, 6px, 0)'
+  }
+  startPositionListeners()
+  scheduleNumpadPosition()
 }
 
 function hideNumpad ({ commit = false } = {}) {
@@ -257,9 +327,14 @@ function hideNumpad ({ commit = false } = {}) {
   overlay.setAttribute('aria-hidden', 'true')
   overlay.setAttribute('inert', '')
   overlay.setAttribute('hidden', '')
+  stopPositionListeners()
   if (displayUpdateFrame) {
     cancelAnimationFrame(displayUpdateFrame)
     displayUpdateFrame = null
+  }
+  if (positionUpdateFrame) {
+    cancelAnimationFrame(positionUpdateFrame)
+    positionUpdateFrame = null
   }
   activeInput = null
   initialFieldValue = ''

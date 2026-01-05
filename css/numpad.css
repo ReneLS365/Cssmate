@@ -3,9 +3,7 @@
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.55);
-  display: flex;
-  justify-content: center;
-  align-items: flex-end;
+  display: block;
   z-index: 9999;
   transition: opacity 0.15s ease-out;
   touch-action: none;
@@ -18,9 +16,14 @@
 
 /* Panel */
 .numpad-panel {
-  width: 100%;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: min(420px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
   max-width: 420px;
-  margin: 0 auto 8px;
+  margin: 0;
+  overflow: auto;
   background: var(--panel);
   border-radius: var(--r-lg);
   padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0.5rem));
@@ -215,7 +218,7 @@
 
 @media (min-width: 480px) {
   .numpad-panel {
-    margin-bottom: 16px;
+    margin: 0;
   }
 }
 
