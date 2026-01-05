@@ -386,6 +386,22 @@ button{cursor:pointer}
 .csm-name { min-width: 0; text-align: left; }
 .manual .csm-name { font-weight: 600; }
 .material-name{min-width:0;text-align:left}
+.material-row .material-name{
+  box-sizing:border-box;
+  width:100%;
+  min-height:44px;
+  padding:10px 12px;
+  border-radius:var(--radius-md);
+  border:1px solid var(--border);
+  background:var(--panel-soft);
+  color:var(--text);
+  display:flex;
+  align-items:center;
+  line-height:1.2;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
 .material-total{text-align:right;white-space:nowrap;color:var(--text)}
 
 .mat-name,
