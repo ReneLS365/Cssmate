@@ -204,8 +204,9 @@
 .material-row .material-total,
 .material-row .csm-sum,
 .material-row .mat-sum {
-  flex: 0 0 var(--mat-col-sum) !important;
-  width: var(--mat-col-sum) !important;
+  flex: 0 1 auto !important;
+  min-width: var(--mat-col-sum) !important;
+  width: auto !important;
   justify-content: flex-end !important;
   text-align: right !important;
   white-space: nowrap !important;
