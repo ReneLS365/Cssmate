@@ -29,6 +29,15 @@ function initNumpad () {
   overlay = document.querySelector('[data-numpad-overlay]') || document.getElementById('numpad-overlay')
   if (!overlay) return
 
+  // Ensure overlay is not trapped inside transformed/scaled containers (Android fixed-position bug)
+  try {
+    if (overlay.parentElement && overlay.parentElement !== document.body) {
+      document.body.appendChild(overlay)
+    }
+  } catch (e) {
+    // ignore
+  }
+
   dialog = overlay.querySelector('[data-numpad-dialog]') || overlay.querySelector('.numpad-panel')
 
   displayExpr = document.getElementById('numpad-display-expression')
@@ -40,10 +49,35 @@ function initNumpad () {
 
   if (commitBtn) {
     commitBtn.addEventListener('click', handleCommitClick)
+    commitBtn.addEventListener('pointerdown', event => {
+      event.preventDefault()
+      event.stopPropagation()
+      handleCommitClick()
+    }, { passive: false })
   }
   if (closeBtn) {
     closeBtn.addEventListener('click', () => hideNumpad({ commit: false }))
+    closeBtn.addEventListener('pointerdown', event => {
+      event.preventDefault()
+      event.stopPropagation()
+      hideNumpad({ commit: false })
+    }, { passive: false })
   }
+
+  overlay.querySelectorAll('.numpad-key').forEach(keyBtn => {
+    const keyValue = keyBtn.dataset.key
+    if (!keyValue) return
+    keyBtn.addEventListener('pointerdown', event => {
+      event.preventDefault()
+      event.stopPropagation()
+      handleKey(keyValue)
+    }, { passive: false })
+    keyBtn.addEventListener('click', event => {
+      event.preventDefault()
+      event.stopPropagation()
+      handleKey(keyValue)
+    })
+  })
 
   document.addEventListener('keydown', handleKeydown)
   document.addEventListener('cssmate:tab-change', handleTabChange)
@@ -80,28 +114,6 @@ function handleNumpadPointerDown (event) {
 }
 
 function handleOverlayPointerDown (event) {
-  const keyEl = event.target.closest('.numpad-key')
-  const isCommit = commitBtn && (event.target === commitBtn || commitBtn.contains(event.target))
-  const isClose = closeBtn && (event.target === closeBtn || closeBtn.contains(event.target))
-
-  if (keyEl && keyEl.dataset.key) {
-    event.preventDefault()
-    handleKey(keyEl.dataset.key)
-    return
-  }
-
-  if (isCommit) {
-    event.preventDefault()
-    handleCommitClick()
-    return
-  }
-
-  if (isClose) {
-    event.preventDefault()
-    hideNumpad({ commit: false })
-    return
-  }
-
   // Klik på mørk baggrund lukker uden commit
   if (event.target === overlay) {
     event.preventDefault()
