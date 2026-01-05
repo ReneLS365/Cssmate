@@ -22,6 +22,7 @@ let initialFieldValue = ''
 let displayUpdateFrame = null
 let positionUpdateFrame = null
 let positionListenersActive = false
+let keyboardBlockActive = false
 const NUMPAD_MARGIN = 8
 
 function clamp (value, min, max) {
@@ -148,6 +149,25 @@ function stopPositionListeners () {
   window.removeEventListener('scroll', scheduleNumpadPosition, true)
   window.removeEventListener('resize', scheduleNumpadPosition)
   positionListenersActive = false
+}
+
+function handleKeyboardBlock (event) {
+  if (!isNumpadOpen()) return
+  if (event.key === 'Escape' || event.key === 'Enter') return
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+function startKeyboardBlock () {
+  if (keyboardBlockActive) return
+  window.addEventListener('keydown', handleKeyboardBlock, true)
+  keyboardBlockActive = true
+}
+
+function stopKeyboardBlock () {
+  if (!keyboardBlockActive) return
+  window.removeEventListener('keydown', handleKeyboardBlock, true)
+  keyboardBlockActive = false
 }
 
 function handleNumpadFocus (event) {
@@ -286,6 +306,7 @@ function showNumpadForInput (input) {
     dialog.style.transform = 'translate3d(0, 6px, 0)'
   }
   startPositionListeners()
+  startKeyboardBlock()
   scheduleNumpadPosition()
 }
 
@@ -328,6 +349,7 @@ function hideNumpad ({ commit = false } = {}) {
   overlay.setAttribute('inert', '')
   overlay.setAttribute('hidden', '')
   stopPositionListeners()
+  stopKeyboardBlock()
   if (displayUpdateFrame) {
     cancelAnimationFrame(displayUpdateFrame)
     displayUpdateFrame = null
@@ -391,12 +413,6 @@ function handleKeydown (event) {
     handleCommitClick()
     return
   }
-
-  const mapped = mapKeyboardKey(event.key)
-  if (!mapped) return
-
-  handleKey(mapped)
-  event.preventDefault()
 }
 
 /* Tast-logic */
