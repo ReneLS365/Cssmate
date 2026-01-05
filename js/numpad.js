@@ -24,6 +24,43 @@ let positionUpdateFrame = null
 let positionListenersActive = false
 let keyboardBlockActive = false
 const NUMPAD_MARGIN = 8
+const DEBUG_NUMPAD = Boolean(
+  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV) ||
+  (typeof import.meta !== 'undefined' && import.meta.env && String(import.meta.env.VITE_DEBUG_NUMPAD ?? '') === '1')
+)
+const debugGuardRef = { t: 0, key: '', count: 0 }
+const keyPressGuardRef = { t: 0, key: '', source: '' }
+const KEY_PRESS_GUARD_MS = 120
+
+function debugKeyPress (key) {
+  if (!DEBUG_NUMPAD) return
+  const now = performance.now()
+  if (debugGuardRef.key === key && now - debugGuardRef.t < 300) {
+    debugGuardRef.count += 1
+    if (debugGuardRef.count >= 2) {
+      console.warn('[numpad] double-trigger detected', { key, deltaMs: now - debugGuardRef.t })
+    }
+    return
+  }
+  debugGuardRef.t = now
+  debugGuardRef.key = key
+  debugGuardRef.count = 1
+}
+
+function shouldHandleKeyPress (key, source) {
+  const now = performance.now()
+  if (
+    keyPressGuardRef.key === key &&
+    keyPressGuardRef.source !== source &&
+    now - keyPressGuardRef.t < KEY_PRESS_GUARD_MS
+  ) {
+    return false
+  }
+  keyPressGuardRef.t = now
+  keyPressGuardRef.key = key
+  keyPressGuardRef.source = source
+  return true
+}
 
 function clamp (value, min, max) {
   return Math.max(min, Math.min(max, value))
@@ -78,20 +115,28 @@ function initNumpad () {
   overlay.addEventListener('pointerdown', handleOverlayPointerDown, { passive: false })
 
   if (commitBtn) {
-    commitBtn.addEventListener('click', handleCommitClick)
     commitBtn.addEventListener('pointerdown', event => {
       event.preventDefault()
       event.stopPropagation()
+      debugKeyPress('commit')
+      if (!shouldHandleKeyPress('commit', 'pointerdown')) return
       handleCommitClick()
     }, { passive: false })
+    commitBtn.addEventListener('click', event => {
+      event.preventDefault()
+      event.stopPropagation()
+    })
   }
   if (closeBtn) {
-    closeBtn.addEventListener('click', () => hideNumpad({ commit: false }))
     closeBtn.addEventListener('pointerdown', event => {
       event.preventDefault()
       event.stopPropagation()
       hideNumpad({ commit: false })
     }, { passive: false })
+    closeBtn.addEventListener('click', event => {
+      event.preventDefault()
+      event.stopPropagation()
+    })
   }
 
   overlay.querySelectorAll('.numpad-key').forEach(keyBtn => {
@@ -100,12 +145,13 @@ function initNumpad () {
     keyBtn.addEventListener('pointerdown', event => {
       event.preventDefault()
       event.stopPropagation()
+      debugKeyPress(keyValue)
+      if (!shouldHandleKeyPress(keyValue, 'pointerdown')) return
       handleKey(keyValue)
     }, { passive: false })
     keyBtn.addEventListener('click', event => {
       event.preventDefault()
       event.stopPropagation()
-      handleKey(keyValue)
     })
   })
 
