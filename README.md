@@ -27,6 +27,14 @@ npm test
    - Historik/Team/Hjælp: ændringer fungerer.
 4. Bekræft “freeze compliance” i PR.
 
-## Reports
+## Repo scan (lokal)
 
-Repo-scans gemmes under `reports/repo-scan/` (seneste rapport i `reports/repo-scan/latest/`).
+Kør repo-scan lokalt med:
+
+```bash
+node tools/repo-scan.mjs
+```
+
+Kopiér de vigtigste fund til `docs/repo-scan/KNOWN_ISSUES.md`. Scan-rapporter under
+`reports/repo-scan/` er lokale artefakter og må ikke commit’es. Hvis du har brug for at dele
+logs, zip `reports/repo-scan/` og vedhæft som GitHub-issue eller CI-artifact.

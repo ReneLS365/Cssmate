@@ -6,6 +6,7 @@ test-results/
 playwright/.cache/
 .lighthouseci/
 reports/lighthouse/*.json
+reports/repo-scan/**
 
 # Generated Firebase config (contains env-injected values)
 js/firebase-env.js
