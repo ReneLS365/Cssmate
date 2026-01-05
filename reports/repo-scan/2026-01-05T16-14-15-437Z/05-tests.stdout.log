@@ -1,0 +1,430 @@
+
+> sscaff-app@2025.13.0 test
+> node --test tests/*.test.js
+
+TAP version 13
+# Subtest: resolveMembershipStatus maps access statuses
+ok 1 - resolveMembershipStatus maps access statuses
+  ---
+  duration_ms: 7.882152
+  ...
+# Subtest: resolveSessionStatus maps to admin/member/signed-out
+ok 2 - resolveSessionStatus maps to admin/member/signed-out
+  ---
+  duration_ms: 0.756835
+  ...
+# Subtest: convertMontageToDemontage maps export model to demontage payload
+ok 3 - convertMontageToDemontage maps export model to demontage payload
+  ---
+  duration_ms: 2.808377
+  ...
+# Subtest: buildAkkordData preserves km counts and computes amounts
+ok 4 - buildAkkordData preserves km counts and computes amounts
+  ---
+  duration_ms: 4.363963
+  ...
+# Subtest: buildAkkordData derives km count from kmBelob when count is missing
+ok 5 - buildAkkordData derives km count from kmBelob when count is missing
+  ---
+  duration_ms: 0.493048
+  ...
+# Subtest: export buttons trigger their actions correctly
+ok 6 - export buttons trigger their actions correctly
+  ---
+  duration_ms: 34.582087
+  ...
+# Subtest: import button reports failures to the user
+ok 7 - import button reports failures to the user
+  ---
+  duration_ms: 1.53715
+  ...
+# Subtest: serves the app shell
+ok 8 - serves the app shell
+  ---
+  duration_ms: 61.485655
+  ...
+# Forsøger at læse materialer fra import { materials: false, lines: false, linjer: false, items: false }
+# Forsøger at læse materialer fra import { materials: false, lines: false, linjer: false, items: true }
+# Forsøger at læse materialer fra import { materials: false, lines: false, linjer: false, items: false }
+# Ingen materialer fundet i import {
+#   availableFields: [],
+#   materialFields: { materials: false, lines: false, linjer: false, items: false }
+# }
+# Forsøger at læse materialer fra import { materials: false, lines: false, linjer: false, items: false }
+# Forsøger at læse materialer fra import { materials: false, lines: false, linjer: false, items: false }
+# Forsøger at læse materialer fra import { materials: true, lines: false, linjer: false, items: false }
+# Subtest: applyImportedAkkordData rehydrates exported items payload
+ok 9 - applyImportedAkkordData rehydrates exported items payload
+  ---
+  duration_ms: 99.589559
+  ...
+# Subtest: applyImportedAkkordData imports payloads that only contain items
+ok 10 - applyImportedAkkordData imports payloads that only contain items
+  ---
+  duration_ms: 2.491662
+  ...
+# Subtest: applyImportedAkkordData reports an error when no material fields are present
+ok 11 - applyImportedAkkordData reports an error when no material fields are present
+  ---
+  duration_ms: 2.886799
+  ...
+# Subtest: AkkordExportV2 roundtrip preserves snapshot data
+ok 12 - AkkordExportV2 roundtrip preserves snapshot data
+  ---
+  duration_ms: 4.748234
+  ...
+# Subtest: cssmate job snapshot round-trips via import handler
+ok 13 - cssmate job snapshot round-trips via import handler
+  ---
+  duration_ms: 2.16752
+  ...
+# Subtest: applyImportedAkkordData imports legacy v1 payloads
+ok 14 - applyImportedAkkordData imports legacy v1 payloads
+  ---
+  duration_ms: 2.300161
+  ...
+# Kunne ikke starte Cssmate ReferenceError: MutationObserver is not defined
+#     at initMaterialRowEnhancements (file:///workspace/Cssmate/boot-inline.js:110:20)
+#     at initBootInline (file:///workspace/Cssmate/boot-inline.js:232:3)
+#     at configureBootstrap (file:///workspace/Cssmate/app-main.js:5823:3)
+#     at Module.bootstrapApp (file:///workspace/Cssmate/app-main.js:5839:3)
+#     at file:///workspace/Cssmate/main.js:64:41
+# Subtest: isDiagnosticsEnabled returns true when ?diag=1 is present
+ok 15 - isDiagnosticsEnabled returns true when ?diag=1 is present
+  ---
+  duration_ms: 8.214402
+  ...
+# Subtest: parseAdminEmails normalizes input
+ok 16 - parseAdminEmails normalizes input
+  ---
+  duration_ms: 3.481113
+  ...
+# Subtest: getAdminEmails falls back to default when window is missing
+ok 17 - getAdminEmails falls back to default when window is missing
+  ---
+  duration_ms: 0.552989
+  ...
+# Subtest: getAdminEmails reads from window whitelist
+ok 18 - getAdminEmails reads from window whitelist
+  ---
+  duration_ms: 0.435404
+  ...
+# Subtest: isAdminEmail matches normalized values
+ok 19 - isAdminEmail matches normalized values
+  ---
+  duration_ms: 0.539187
+  ...
+# Subtest: calculateTotals sums extra work when provided
+ok 20 - calculateTotals sums extra work when provided
+  ---
+  duration_ms: 2.829552
+  ...
+# Subtest: generates and validates JSON and PDF exports
+ok 21 - generates and validates JSON and PDF exports
+  ---
+  duration_ms: 29.086924
+  ...
+# Subtest: buildAkkordJsonPayload preserves jobFactor from raw data
+ok 22 - buildAkkordJsonPayload preserves jobFactor from raw data
+  ---
+  duration_ms: 5.212112
+  ...
+# Subtest: buildExportModel normalizes totals and extras
+ok 23 - buildExportModel normalizes totals and extras
+  ---
+  duration_ms: 4.100366
+  ...
+# Subtest: buildExportModel duplicates items into materials for compatibility
+ok 24 - buildExportModel duplicates items into materials for compatibility
+  ---
+  duration_ms: 0.554805
+  ...
+# Subtest: buildAkkordCSV exports BOM, semicolons, and formatted numbers
+ok 25 - buildAkkordCSV exports BOM, semicolons, and formatted numbers
+  ---
+  duration_ms: 8.244248
+  ...
+# Subtest: exportPDFBlob skaber akkordseddel med reference-overskrifter
+ok 26 - exportPDFBlob skaber akkordseddel med reference-overskrifter
+  ---
+  duration_ms: 166.09289
+  ...
+# Subtest: resolveKmInputValue prefers kmAntal when provided
+ok 27 - resolveKmInputValue prefers kmAntal when provided
+  ---
+  duration_ms: 2.493826
+  ...
+# Subtest: resolveKmInputValue derives kmAntal from km amount when flagged as amount
+ok 28 - resolveKmInputValue derives kmAntal from km amount when flagged as amount
+  ---
+  duration_ms: 0.476917
+  ...
+# Subtest: resolveKmInputValue treats km as count when not flagged as amount
+ok 29 - resolveKmInputValue treats km as count when not flagged as amount
+  ---
+  duration_ms: 0.245856
+  ...
+# Subtest: resolveKmInputValue derives kmAntal from kmBelob when provided
+ok 30 - resolveKmInputValue derives kmAntal from kmBelob when provided
+  ---
+  duration_ms: 0.402793
+  ...
+# Subtest: resolveKmInputValue returns empty string when no km data is available
+ok 31 - resolveKmInputValue returns empty string when no km data is available
+  ---
+  duration_ms: 3.275094
+  ...
+# Subtest: mergeExtrasKm restores km count from extraInputs and keeps amount
+ok 32 - mergeExtrasKm restores km count from extraInputs and keeps amount
+  ---
+  duration_ms: 0.626467
+  ...
+# Subtest: mergeExtrasKm does not override explicit kmBelob
+ok 33 - mergeExtrasKm does not override explicit kmBelob
+  ---
+  duration_ms: 0.330798
+  ...
+# Subtest: validateFirebaseConfig flags missing required keys
+ok 34 - validateFirebaseConfig flags missing required keys
+  ---
+  duration_ms: 2.557429
+  ...
+# Subtest: validateFirebaseConfig flags placeholder values
+ok 35 - validateFirebaseConfig flags placeholder values
+  ---
+  duration_ms: 0.665701
+  ...
+# Subtest: validateFirebaseConfig flags short apiKey values
+ok 36 - validateFirebaseConfig flags short apiKey values
+  ---
+  duration_ms: 0.329478
+  ...
+# Subtest: sanitizeFirebaseConfig trims and drops empty values
+ok 37 - sanitizeFirebaseConfig trims and drops empty values
+  ---
+  duration_ms: 0.492126
+  ...
+# Subtest: loadFirebaseConfig reads config from env
+ok 38 - loadFirebaseConfig reads config from env
+  ---
+  duration_ms: 2.324703
+  ...
+# Subtest: loadFirebaseConfig reads config from session storage
+ok 39 - loadFirebaseConfig reads config from session storage
+  ---
+  duration_ms: 0.759939
+  ...
+# Subtest: loadFirebaseConfig throws when required env vars are missing
+ok 40 - loadFirebaseConfig throws when required env vars are missing
+  ---
+  duration_ms: 1.47562
+  ...
+# Subtest: validateFirebaseEnv flags missing env vars
+ok 41 - validateFirebaseEnv flags missing env vars
+  ---
+  duration_ms: 2.790689
+  ...
+# Subtest: validateFirebaseEnv flags placeholder env vars
+ok 42 - validateFirebaseEnv flags placeholder env vars
+  ---
+  duration_ms: 2.557694
+  ...
+# Subtest: validateFirebaseEnv passes trimmed values
+ok 43 - validateFirebaseEnv passes trimmed values
+  ---
+  duration_ms: 0.784345
+  ...
+# Subtest: normalizeHistoryEntry respects timestamp for createdAt
+ok 44 - normalizeHistoryEntry respects timestamp for createdAt
+  ---
+  duration_ms: 47.038216
+  ...
+# Subtest: formatDateLabel returns local date without shift
+ok 45 - formatDateLabel returns local date without shift
+  ---
+  duration_ms: 0.793097
+  ...
+# Subtest: normalizeHistoryEntry parses worker rate text into base range
+ok 46 - normalizeHistoryEntry parses worker rate text into base range
+  ---
+  duration_ms: 11.951108
+  ...
+# Subtest: normalizeHistoryList sorts newest entries first
+ok 47 - normalizeHistoryList sorts newest entries first
+  ---
+  duration_ms: 3.68838
+  ...
+# Subtest: precomputed display strings include address, hours and base wage
+ok 48 - precomputed display strings include address, hours and base wage
+  ---
+  duration_ms: 1.478696
+  ...
+# Subtest: normalizeSearchValue strips accents for more forgiving search
+ok 49 - normalizeSearchValue strips accents for more forgiving search
+  ---
+  duration_ms: 0.609185
+  ...
+# Subtest: handleImportAkkord resolves after successful import
+ok 50 - handleImportAkkord resolves after successful import
+  ---
+  duration_ms: 7.997654
+  ...
+# Subtest: handleImportAkkord propagates failures from cssmateHandleAkkordImport
+ok 51 - handleImportAkkord propagates failures from cssmateHandleAkkordImport
+  ---
+  duration_ms: 4.52492
+  ...
+# Subtest: normalizeInviteRecord rejects malformed invites
+ok 52 - normalizeInviteRecord rejects malformed invites
+  ---
+  duration_ms: 2.883863
+  ...
+# Subtest: normalizeInviteRecord normalizes valid invites
+ok 53 - normalizeInviteRecord normalizes valid invites
+  ---
+  duration_ms: 1.029198
+  ...
+# Subtest: buildMemberDocPath uses formatted team id and uid
+ok 54 - buildMemberDocPath uses formatted team id and uid
+  ---
+  duration_ms: 2.777379
+  ...
+# Subtest: buildMemberDocPath throws without uid
+ok 55 - buildMemberDocPath throws without uid
+  ---
+  duration_ms: 0.990246
+  ...
+# Subtest: pdf-layout-no-overlap
+ok 56 - pdf-layout-no-overlap
+  ---
+  duration_ms: 142.557815
+  ...
+# Subtest: placeholder asset exists: public/placeholders/placeholder-akkordseddel.json
+ok 57 - placeholder asset exists: public/placeholders/placeholder-akkordseddel.json
+  ---
+  duration_ms: 11.787801
+  ...
+# Subtest: placeholder asset exists: public/placeholders/placeholder-akkordseddel.pdf
+ok 58 - placeholder asset exists: public/placeholders/placeholder-akkordseddel.pdf
+  ---
+  duration_ms: 1.884534
+  ...
+# Subtest: resetApp clears service workers, caches, storage, and indexedDB
+ok 59 - resetApp clears service workers, caches, storage, and indexedDB
+  ---
+  duration_ms: 22.378169
+  ...
+# Subtest: sessionReady becomes true when membershipStatus is "member"
+ok 60 - sessionReady becomes true when membershipStatus is "member"
+  ---
+  duration_ms: 2.322789
+  ...
+# Subtest: sessionReady remains false when membershipStatus is "error"
+ok 61 - sessionReady remains false when membershipStatus is "error"
+  ---
+  duration_ms: 0.441917
+  ...
+# Subtest: finally block scenario: membershipStatus should not be overwritten after successful access
+ok 62 - finally block scenario: membershipStatus should not be overwritten after successful access
+  ---
+  duration_ms: 0.47176
+  ...
+# Subtest: finally block scenario with BUG: membershipStatus gets incorrectly overwritten
+ok 63 - finally block scenario with BUG: membershipStatus gets incorrectly overwritten
+  ---
+  duration_ms: 0.459378
+  ...
+# Subtest: validateBackupSchema accepterer gyldigt schema
+ok 64 - validateBackupSchema accepterer gyldigt schema
+  ---
+  duration_ms: 2.0513
+  ...
+# Subtest: validateBackupSchema afviser ukendt schemaVersion
+ok 65 - validateBackupSchema afviser ukendt schemaVersion
+  ---
+  duration_ms: 0.633525
+  ...
+# Subtest: normalizeTeamId trims, lowercases og fjerner ulovlige tegn
+ok 66 - normalizeTeamId trims, lowercases og fjerner ulovlige tegn
+  ---
+  duration_ms: 2.123164
+  ...
+# Subtest: formatTeamId returnerer normaliseret slug uden præfiks
+ok 67 - formatTeamId returnerer normaliseret slug uden præfiks
+  ---
+  duration_ms: 0.26429
+  ...
+# Subtest: getDisplayTeamId viser læsbar slug
+ok 68 - getDisplayTeamId viser læsbar slug
+  ---
+  duration_ms: 0.506152
+  ...
+# Subtest: formatMissingMembershipMessage inkluderer sti til memberDoc
+ok 69 - formatMissingMembershipMessage inkluderer sti til memberDoc
+  ---
+  duration_ms: 0.46083
+  ...
+# Subtest: saveDraft and loadDraft roundtrip data with metadata
+ok 70 - saveDraft and loadDraft roundtrip data with metadata
+  ---
+  duration_ms: 7.082879
+  ...
+# Subtest: loadDraft tolerates invalid payloads
+ok 71 - loadDraft tolerates invalid payloads
+  ---
+  duration_ms: 7.126997
+  ...
+# Subtest: loadHistory clears invalid stored state
+ok 72 - loadHistory clears invalid stored state
+  ---
+  duration_ms: 35.395242
+  ...
+# Subtest: clearDraft removes stored draft
+ok 73 - clearDraft removes stored draft
+  ---
+  duration_ms: 0.462243
+  ...
+# Subtest: appendHistoryEntry normalizes entries and sorts newest first
+ok 74 - appendHistoryEntry normalizes entries and sorts newest first
+  ---
+  duration_ms: 11.487431
+  ...
+# Subtest: deleteHistoryEntry removes the matching entry
+ok 75 - deleteHistoryEntry removes the matching entry
+  ---
+  duration_ms: 1.268893
+  ...
+# Subtest: history is trimmed to the maximum number of entries
+ok 76 - history is trimmed to the maximum number of entries
+  ---
+  duration_ms: 296.987048
+  ...
+# Subtest: appendHistoryEntry upserts entries with matching sagsnummer
+ok 77 - appendHistoryEntry upserts entries with matching sagsnummer
+  ---
+  duration_ms: 1.417924
+  ...
+# Subtest: appendHistoryEntry dedupes identical payloads via historyKey
+ok 78 - appendHistoryEntry dedupes identical payloads via historyKey
+  ---
+  duration_ms: 1.632631
+  ...
+# Subtest: migrateHistory dedupes entries without sagsnummer using fallback key
+ok 79 - migrateHistory dedupes entries without sagsnummer using fallback key
+  ---
+  duration_ms: 1.149669
+  ...
+# Subtest: selectDeterministicInvite er case-insensitiv og vælger deterministisk invite for default team
+ok 80 - selectDeterministicInvite er case-insensitiv og vælger deterministisk invite for default team
+  ---
+  duration_ms: 3.842346
+  ...
+1..80
+# tests 80
+# suites 0
+# pass 80
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4653.826848

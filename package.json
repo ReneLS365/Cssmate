@@ -13,6 +13,7 @@
     "test:rules": "npx firebase emulators:exec --project sscaff-43a33 --only firestore \"node --test tests/integration/firestore-rules.test.js\"",
     "lint": "npm run test:html",
     "format": "npm run lint",
+    "repo:scan": "node tools/repo-scan.mjs",
     "prepare": "node scripts/prepare-playwright.js",
     "guard:secrets": "node tools/guard-no-keys.mjs",
     "guard:html": "node tools/guard-no-inline-event-handlers.mjs",
