@@ -153,3 +153,75 @@
   width: auto;
   max-width: 100%;
 }
+
+/* ===== MATERIAL ROW LAYOUT LOCK (FLEX) =====
+   Prevent Grid from collapsing to 1 column on some mobile browsers.
+   Ensures: name | qty | price | sum is always a single horizontal row.
+*/
+:root {
+  --mat-col-qty: 3.2rem;
+  --mat-col-price: 3.6rem;
+  --mat-col-sum: 4.2rem;
+}
+
+.material-row,
+.mat-row.csm-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+/* Name takes remaining space and can wrap */
+.material-row .material-name,
+.material-row .csm-name,
+.material-row .mat-name {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+}
+
+/* Fixed columns */
+.material-row .material-qty,
+.material-row .csm-qty,
+.material-row .mat-qty {
+  flex: 0 0 var(--mat-col-qty) !important;
+  width: var(--mat-col-qty) !important;
+  text-align: center !important;
+}
+
+.material-row .material-price,
+.material-row .csm-price,
+.material-row .mat-price {
+  flex: 0 0 var(--mat-col-price) !important;
+  width: var(--mat-col-price) !important;
+  text-align: center !important;
+}
+
+.material-row .material-total,
+.material-row .csm-sum,
+.material-row .mat-sum {
+  flex: 0 0 var(--mat-col-sum) !important;
+  width: var(--mat-col-sum) !important;
+  justify-content: flex-end !important;
+  text-align: right !important;
+  white-space: nowrap !important;
+}
+
+/* Inputs must fill their fixed columns cleanly */
+.material-row input {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+@media (max-width: 360px) {
+  :root {
+    --mat-col-qty: 3rem;
+    --mat-col-price: 3.4rem;
+    --mat-col-sum: 3.9rem;
+  }
+}
