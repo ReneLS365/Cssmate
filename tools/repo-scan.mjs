@@ -40,8 +40,9 @@ async function runCommand(command, label) {
       stderr += chunk.toString();
     });
 
-    child.on("close", (code) => {
-      resolve({ label, command, exitCode: code ?? 0, stdout, stderr });
+    child.on("close", (code, signal) => {
+      const exitCode = code ?? (signal ? 1 : 0);
+      resolve({ label, command, exitCode, signal, stdout, stderr });
     });
   });
 }
