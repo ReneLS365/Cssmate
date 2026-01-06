@@ -63,8 +63,8 @@ Formålet med denne fil er at sikre, at alle AI-/Codex-agenter arbejder på samm
 ## Repo-scan workflow (lokal)
 
 - Kør `node tools/repo-scan.mjs` lokalt, når du skal indsamle logs og baseline-status.
-- Kopiér de vigtigste fund til `docs/repo-scan/KNOWN_ISSUES.md`.
-- Scan-rapporter under `reports/repo-scan/` er lokale artefakter og må ikke commit’es.
+- Opsummér de vigtigste fund i `docs/repo-scan-findings.md`.
+- Scan-rapporter under `reports/repo-scan/` er lokale artefakter og må ikke commit’es (kun `.gitkeep`).
 - Hvis logs skal deles, zip `reports/repo-scan/` og vedhæft som GitHub-issue eller CI-artifact.
 
 ---

@@ -29,12 +29,12 @@ npm test
 
 ## Repo scan (lokal)
 
-Kør repo-scan lokalt med:
+Kør repo-scan lokalt:
 
 ```bash
 node tools/repo-scan.mjs
 ```
 
-Kopiér de vigtigste fund til `docs/repo-scan/KNOWN_ISSUES.md`. Scan-rapporter under
-`reports/repo-scan/` er lokale artefakter og må ikke commit’es. Hvis du har brug for at dele
-logs, zip `reports/repo-scan/` og vedhæft som GitHub-issue eller CI-artifact.
+Output skrives til `reports/repo-scan/` og er gitignored (kun `.gitkeep` er tracked).
+Opsummer fund og status i `docs/repo-scan-findings.md`. Del logs ved at zippe
+`reports/repo-scan/` og vedhæfte til et GitHub-issue eller CI-artifact.
