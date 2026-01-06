@@ -1,12 +1,16 @@
 node_modules/
 .DS_Store
 npm-debug.log*
+**/*.stdout.log
+**/*.stderr.log
+**/*.log
 playwright-report/
 test-results/
 playwright/.cache/
 .lighthouseci/
 reports/lighthouse/*.json
 reports/repo-scan/**
+!reports/repo-scan/.gitkeep
 
 # Generated Firebase config (contains env-injected values)
 js/firebase-env.js

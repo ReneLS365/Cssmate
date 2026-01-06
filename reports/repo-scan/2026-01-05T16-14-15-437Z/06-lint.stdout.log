@@ -1,8 +1,0 @@
-
-> sscaff-app@2025.13.0 lint
-> npm run test:html
-
-
-> sscaff-app@2025.13.0 test:html
-> html-validate "index.html"
-
