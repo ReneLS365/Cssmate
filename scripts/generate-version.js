@@ -28,7 +28,7 @@ function resolveBuildContext () {
 }
 
 function resolveDeployUrl () {
-  return process.env.DEPLOY_URL || process.env.URL || ''
+  return process.env.URL || ''
 }
 
 function resolveSiteUrl () {
