@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <title>Ryd cache</title>
+</head>
+<body>
+  <main>
+    <h1>Ryd cache</h1>
+    <p id="resetStatus">Forbereder nulstilling…</p>
+    <button id="resetAction" type="button">Nulstil nu</button>
+    <p>
+      <a id="backToApp" href="/">Tilbage til appen</a>
+    </p>
+  </main>
+  <script type="module">
+    import { resetApp } from '/src/utils/reset-app.js'
+
+    const status = document.getElementById('resetStatus')
+    const action = document.getElementById('resetAction')
+    const backLink = document.getElementById('backToApp')
+
+    function setStatus(message) {
+      status.textContent = message
+    }
+
+    async function runReset() {
+      action.disabled = true
+      setStatus('Rydder offline cache og genindlæser…')
+      try {
+        await resetApp()
+      } catch (error) {
+        console.warn('Reset fejlede', error)
+        setStatus('Reset kunne ikke fuldføres. Prøv igen eller genstart browseren.')
+        action.disabled = false
+      }
+    }
+
+    const params = new URLSearchParams(window.location.search)
+    if (params.has('resetDone')) {
+      setStatus('Reset fuldført. Åbn appen igen.')
+      action.hidden = true
+    } else {
+      action.addEventListener('click', runReset)
+      runReset()
+    }
+
+    backLink.addEventListener('click', () => {
+      backLink.setAttribute('aria-busy', 'true')
+    })
+  </script>
+</body>
+</html>

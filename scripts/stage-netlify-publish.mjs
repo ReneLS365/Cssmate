@@ -36,6 +36,7 @@ function findWebRoot() {
 
 const ROOT_ALLOW = new Set([
   "index.html",
+  "reset.html",
   "main.js",
   "main.min.js",
   "app-main.js",
