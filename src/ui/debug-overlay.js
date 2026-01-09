@@ -57,22 +57,9 @@ function renderOverlay (target, state) {
   lines.push(`Build: ${state.buildMeta?.appVersion || ''} ${state.buildMeta?.gitSha || ''}`)
   lines.push(`Built: ${state.buildMeta?.buildTime || ''}`)
   lines.push(`Cache key: ${state.buildMeta?.cacheKey || ''}`)
-  lines.push(`Firebase projectId: ${state.buildMeta?.firebaseProjectId || ''}`)
-  if (Array.isArray(state.buildMeta?.allowedFirebaseProjects) && state.buildMeta.allowedFirebaseProjects.length) {
-    lines.push(`Allowed projects: ${state.buildMeta.allowedFirebaseProjects.join(', ')}`)
-  }
-  if (state.buildMeta && state.buildMeta.firebaseProjectAllowed === false) {
-    lines.push('⚠️ Firebase projectId ikke på allowlist')
-  }
   if (state.lastCacheResetAt) {
     lines.push(`Sidst ryddet cache: ${state.lastCacheResetAt}`)
   }
-
-  lines.push('')
-  lines.push('FIRESTORE')
-  lines.push(`lastFirestoreError.code: ${state.lastFirestoreError?.code || ''}`)
-  lines.push(`lastFirestoreError.message: ${state.lastFirestoreError?.message || ''}`)
-  lines.push(`lastFirestoreError.path: ${state.lastFirestoreError?.path || ''}`)
 
   target.textEl.textContent = lines.join('\n')
 }

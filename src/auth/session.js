@@ -1,7 +1,7 @@
 import { getAuthContext, onAuthStateChange, waitForAuthReady } from '../../js/shared-auth.js'
 import { normalizeEmail } from './roles.js'
 import { isLighthouseMode } from '../config/lighthouse-mode.js'
-import { setLastFirestoreError, updateSessionDebugState } from '../state/debug.js'
+import { updateSessionDebugState } from '../state/debug.js'
 import { markUserLoading, resetUserState, setUserLoadedState } from '../state/user-store.js'
 import { resolveMembershipStatus, resolveSessionStatus, SESSION_STATUS } from './access-state.js'
 import {
@@ -280,7 +280,6 @@ async function evaluateAccess () {
       : (accessError ? Object.assign(new Error(accessError.message || 'Ingen adgang'), { code: accessError.code }) : null)
     const memberPath = currentUser?.uid ? buildMemberDocPath(resolvedTeamId, currentUser.uid) : ''
     if (accessError?.code) {
-      setLastFirestoreError(accessError, memberPath)
     }
     const lockTeam = accessStatus === TEAM_ACCESS_STATUS.OK ? !isAdmin : false
     teamLockedFlag = lockTeam

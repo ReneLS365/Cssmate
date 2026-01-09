@@ -22,16 +22,12 @@ const defaultState = {
   sessionReady: false,
   sessionStatus: '',
   currentView: '',
-  lastFirestoreError: null,
   buildMeta: {
     appVersion: '',
     buildTime: '',
     gitSha: '',
     buildId: '',
     cacheKey: '',
-    firebaseProjectId: '',
-    firebaseProjectAllowed: true,
-    allowedFirebaseProjects: [],
     warnings: [],
   },
   lastCacheResetAt: '',
@@ -45,8 +41,7 @@ function getSnapshot () {
     ...debugState,
     user: { ...debugState.user },
     accessError: debugState.accessError ? { ...debugState.accessError } : null,
-    lastFirestoreError: debugState.lastFirestoreError ? { ...debugState.lastFirestoreError } : null,
-    buildMeta: { ...debugState.buildMeta, allowedFirebaseProjects: [...(debugState.buildMeta?.allowedFirebaseProjects || [])], warnings: [...(debugState.buildMeta?.warnings || [])] },
+    buildMeta: { ...debugState.buildMeta, warnings: [...(debugState.buildMeta?.warnings || [])] },
   }
 }
 
@@ -179,41 +174,6 @@ export function updateCurrentView (viewId) {
   setState({ currentView: viewId || '' })
 }
 
-export function setLastFirestoreError (error, path = '') {
-  if (!error) {
-    setState({ lastFirestoreError: null })
-    return
-  }
-  const code = error?.code || error?.name || 'error'
-  const message = error?.message || String(error)
-  const normalizedPath = path || ''
-  setState({
-    lastFirestoreError: {
-      code,
-      message,
-      path: normalizedPath,
-      at: new Date().toISOString(),
-    },
-  })
-  if (code === 'failed-precondition' && message?.toLowerCase?.()?.includes('index')) {
-    console.warn(message)
-    dispatchIndexMissing(message, normalizedPath)
-  }
-}
-
-export function clearLastFirestoreError () {
-  setState({ lastFirestoreError: null })
-}
-
-function dispatchIndexMissing (message, path) {
-  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return
-  const detail = {
-    message: message || 'Mangler Firestore index. Se console for create-index link.',
-    path: path || '',
-  }
-  window.dispatchEvent(new CustomEvent('sscaff:index-missing', { detail }))
-}
-
 function resolveBuildMeta () {
   if (typeof self !== 'undefined' && self.CSSMATE_BUILD_META) return self.CSSMATE_BUILD_META
   if (typeof window !== 'undefined' && window.CSSMATE_BUILD_META) return window.CSSMATE_BUILD_META
@@ -222,14 +182,6 @@ function resolveBuildMeta () {
 
 export function applyBuildMetadata () {
   const meta = resolveBuildMeta() || {}
-  const firebaseConfig = typeof window !== 'undefined' ? window.FIREBASE_CONFIG || {} : {}
-  const allowedProjects = Array.isArray(meta.allowedFirebaseProjects) ? meta.allowedFirebaseProjects.filter(Boolean) : []
-  const projectId = firebaseConfig?.projectId || ''
-  const projectAllowed = allowedProjects.length === 0 || (projectId ? allowedProjects.includes(projectId) : true)
-  const warnings = []
-  if (projectId && allowedProjects.length && !projectAllowed) {
-    warnings.push(`Uventet Firebase projectId: ${projectId}`)
-  }
   setState({
     buildMeta: {
       appVersion: meta.appVersion || '',
@@ -237,15 +189,9 @@ export function applyBuildMetadata () {
       gitSha: meta.gitSha || '',
       buildId: meta.buildId || '',
       cacheKey: meta.cacheKey || '',
-      firebaseProjectId: projectId,
-      firebaseProjectAllowed: projectAllowed,
-      allowedFirebaseProjects: allowedProjects,
-      warnings,
+      warnings: [],
     },
   })
-  if (!projectAllowed && projectId) {
-    console.warn('[Debug] Firebase projectId er uventet', { projectId, allowedProjects })
-  }
 }
 
 export function markCacheReset () {

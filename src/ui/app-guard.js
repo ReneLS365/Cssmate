@@ -4,7 +4,6 @@ import { APP_VERSION, GIT_SHA } from '../version.js'
 import { DEFAULT_TEAM_SLUG, formatTeamId, getDisplayTeamId } from '../services/team-ids.js'
 import { migrateMemberDocIfNeeded } from '../services/teams.js'
 import { resetAppState } from '../utils/reset-app.js'
-import { APP_CHECK_REASON, APP_CHECK_STATUS } from '../../js/shared-auth.js'
 import { logoutUser } from '../../js/shared-auth.js'
 import { TEAM_ACCESS_STATUS } from '../services/team-access.js'
 
@@ -208,9 +207,7 @@ function updateGuardContent (state) {
   }
   if (debugEl) {
     const swStatus = (typeof navigator !== 'undefined' && navigator.serviceWorker?.controller) ? 'aktiv' : 'ingen'
-    const appCheckState = APP_CHECK_STATUS || 'off'
-    const appCheckInfo = APP_CHECK_REASON ? `${appCheckState} (${APP_CHECK_REASON})` : appCheckState
-    debugEl.textContent = `Version: ${APP_VERSION} ${GIT_SHA} — SW: ${swStatus} — TeamID: ${teamId || 'ukendt'} — AppCheck: ${appCheckInfo}`
+    debugEl.textContent = `Version: ${APP_VERSION} ${GIT_SHA} — SW: ${swStatus} — TeamID: ${teamId || 'ukendt'}`
   }
 }
 
