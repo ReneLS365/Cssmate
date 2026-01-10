@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cssmate Admin</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="print.css" media="print">
+</head>
+<body>
+  <main class="app">
+    <section class="card">
+      <header class="card-header">
+        <h1>Admin</h1>
+        <p>Kun brugere med admin-email kan se denne side.</p>
+      </header>
+      <p id="adminMessage" class="status-message" aria-live="polite"></p>
+      <div class="shared-status-card" aria-live="polite">
+        <div class="shared-status-row"><span>Bruger:</span><strong id="adminUserEmail">–</strong></div>
+      </div>
+      <div class="shared-auth-controls" aria-live="polite">
+        <button id="adminLogin" type="button">Log ind</button>
+        <button id="adminLogout" type="button" hidden>Log ud</button>
+        <a href="/index.html">Til forsiden</a>
+      </div>
+    </section>
+
+    <section id="adminContent" class="card" hidden>
+      <header class="card-header">
+        <h2>Admin panel</h2>
+        <p>Her kan du tilgå admin-funktioner.</p>
+      </header>
+      <p>Indholdet er kun synligt for admin-brugere.</p>
+    </section>
+  </main>
+
+  <script src="auth0-config.js"></script>
+  <script type="module" src="src/auth/admin-page.js"></script>
+</body>
+</html>
