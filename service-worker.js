@@ -11,14 +11,14 @@ importScripts('/js/version.js')
 
 const BUILD_META = (typeof self !== 'undefined' && self.CSSMATE_BUILD_META) ? self.CSSMATE_BUILD_META : {}
 const APP_VERSION = BUILD_META.cacheKey || self.CSSMATE_APP_VERSION || BUILD_META.appVersion || 'dev'
-const FIREBASE_APP_ID = BUILD_META.firebaseAppId || BUILD_META.firebaseProjectId || 'default'
 // Replaced at build time by scripts/bump-sw-version.js
-const SW_BUILD_ID = "202601082024-0571e52"
-const CACHE_VERSION = `sscaff-${APP_VERSION}-${String(FIREBASE_APP_ID).replace(/[^a-zA-Z0-9._-]/g, '-')}-${SW_BUILD_ID}`
+const SW_BUILD_ID = "202601092001-2491e6b"
+const CACHE_VERSION = `sscaff-${APP_VERSION}-${SW_BUILD_ID}`
 const CACHE_NAME = CACHE_VERSION
 const PRECACHE_URLS = [
   '/',
   '/index.html',
+  '/accept-invite.html',
   '/reset.html',
   '/main.js',
   '/main.min.js',
@@ -31,14 +31,10 @@ const PRECACHE_URLS = [
   '/css/numpad.css',
   '/css/pwa.css',
   '/src/styles/fixes.css',
-  '/src/config/firebase-config.js',
-  '/src/config/firebase-sdk.js',
-  '/src/config/firebase-utils.js',
-  '/src/firebase/firebase-config.js',
-  '/src/firebase/firebase-app.js',
   '/src/debug/tools.js',
   '/src/state/debug.js',
   '/src/state/user-store.js',
+  '/src/api/client.js',
   '/src/ui/debug-overlay.js',
   '/src/ui/app-guard.js',
   '/src/ui/team-admin-page.js',
@@ -49,6 +45,7 @@ const PRECACHE_URLS = [
   '/src/utils/reset-app.js',
   '/js/akkord-export.js',
   '/js/akkord-export-ui.js',
+  '/js/accept-invite.js',
   '/js/shared-ledger.js',
   '/js/shared-cases-panel.js',
   '/js/storageDraft.js',
@@ -137,14 +134,7 @@ self.addEventListener('fetch', event => {
   if (request.method !== 'GET') return
 
   const url = new URL(request.url)
-  const bypassRemoteOrigins = [
-    'https://identitytoolkit.googleapis.com',
-    'https://securetoken.googleapis.com',
-    'https://accounts.google.com',
-    'https://www.googleapis.com',
-    'https://firestore.googleapis.com',
-    'https://www.gstatic.com',
-  ]
+  const bypassRemoteOrigins = []
   if (url.origin !== self.location.origin) {
     if (bypassRemoteOrigins.includes(url.origin)) {
       event.respondWith(fetch(request))
@@ -157,13 +147,8 @@ self.addEventListener('fetch', event => {
     return
   }
 
-  const bypassPaths = [
-    '/js/firebase-env.js',
-  ]
-  const bypass =
-    bypassPaths.includes(url.pathname) ||
-    url.pathname.startsWith('/__/auth') ||
-    url.pathname.startsWith('/__/firebase')
+  const bypassPaths = []
+  const bypass = bypassPaths.includes(url.pathname)
   if (bypass) {
     event.respondWith(fetch(request))
     return

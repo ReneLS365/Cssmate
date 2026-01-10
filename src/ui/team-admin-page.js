@@ -1,16 +1,17 @@
 import {
+  addTeamMemberByEmail,
   addTeamMemberByUid,
   getTeamDocument,
   listTeamInvites,
   listTeamMembers,
   PermissionDeniedError,
+  revokeTeamInvite,
   removeTeamMember,
   saveTeamMember,
   setMemberActive,
   saveTeamInvite,
 } from '../../js/shared-ledger.js'
 import { getAuthDiagnostics } from '../../js/shared-auth.js'
-import { checkFirestoreConnection } from '../../js/shared-firestore.js'
 import { assertAdmin } from '../auth/admin.js'
 import { normalizeEmail } from '../auth/roles.js'
 import { getState as getSessionState, onChange as onSessionChange, refreshAccess, requestBootstrapAccess } from '../auth/session.js'
@@ -39,6 +40,9 @@ let diagnosticsWarning
 let inviteEmailInput
 let inviteRoleSelect
 let inviteSubmitButton
+let inviteLinkContainer
+let inviteLinkInput
+let inviteLinkCopyButton
 let uidInput
 let uidRoleSelect
 let uidSubmitButton
@@ -233,19 +237,34 @@ function renderInvites (invites = []) {
     const row = document.createElement('div')
     row.className = 'team-invite-row'
     const label = document.createElement('div')
-    // Determine status: pending by default, or accepted if used, or deaktiveret if inactive
     let status = invite.status || 'pending'
-    if (invite.usedAt) status = 'accepteret'
-    else if (invite.active === false) status = 'deaktiveret'
+    const statusLabels = {
+      pending: 'afventer',
+      accepted: 'accepteret',
+      revoked: 'tilbagekaldt',
+      expired: 'udløbet',
+    }
+    const statusLabel = statusLabels[status] || status
     const email = invite.email || invite.emailLower || '–'
     const role = invite.role || 'member'
     const createdAtLabel = formatInviteCreatedAt(invite.createdAt || invite.addedAt)
-    label.textContent = `${email} · ${role} · ${status} · Oprettet: ${createdAtLabel}`
-    const copyBtn = document.createElement('button')
-    copyBtn.type = 'button'
-    copyBtn.textContent = 'Kopiér invite-id'
-    copyBtn.addEventListener('click', () => copyToClipboard(invite.inviteId || invite.id || ''))
-    row.append(label, copyBtn)
+    label.textContent = `${email} · ${role} · ${statusLabel} · Oprettet: ${createdAtLabel}`
+    const actions = document.createElement('div')
+    actions.className = 'team-invite-actions'
+    const revokeBtn = document.createElement('button')
+    revokeBtn.type = 'button'
+    revokeBtn.textContent = 'Tilbagekald'
+    revokeBtn.disabled = status === 'revoked' || status === 'expired' || status === 'accepted'
+    revokeBtn.addEventListener('click', async () => {
+      try {
+        await revokeTeamInvite(invite.inviteId || invite.id || '')
+        await loadTeamData()
+      } catch (error) {
+        setStatus(error?.message || 'Kunne ikke tilbagekalde invite.', 'error')
+      }
+    })
+    actions.append(revokeBtn)
+    row.append(label, actions)
     invitesListEl.appendChild(row)
   })
 }
@@ -415,20 +434,24 @@ async function handleInviteSubmit () {
   if (!inviteEmailInput || !inviteRoleSelect) return
   if (!requireAdminAction()) return
   const email = inviteEmailInput.value || ''
-  if (!email.trim()) {
-    setStatus('Angiv email for medlemmet.', 'error')
+  if (email && !normalizeEmail(email)) {
+    setStatus('Ugyldig email.', 'error')
     return
   }
   const role = inviteRoleSelect.value === 'admin' ? 'admin' : 'member'
   setLoading(true)
   try {
-    await saveTeamInvite(lastTeamId, { email, role })
+    const result = await saveTeamInvite(lastTeamId, { email, role })
     inviteEmailInput.value = ''
+    if (inviteLinkContainer && inviteLinkInput && result?.inviteUrl) {
+      inviteLinkInput.value = result.inviteUrl
+      inviteLinkContainer.hidden = false
+      inviteLinkContainer.removeAttribute('aria-hidden')
+    }
     setStatus('Invitation sendt.', 'success')
     // Reload invites list to show the new invite
     const invites = await listTeamInvites(lastTeamId)
-    const activeInvites = invites.filter(invite => invite.active !== false && !invite.usedAt)
-    renderInvites(activeInvites)
+    renderInvites(invites)
   } catch (error) {
     console.warn('Send invite failed', error)
     setStatus(error?.message || 'Kunne ikke sende invitation', 'error')
@@ -486,6 +509,10 @@ function clearTeamLists () {
   if (membersListEl) membersListEl.textContent = ''
   if (invitesListEl) invitesListEl.textContent = ''
   if (membersReadOnlyListEl) membersReadOnlyListEl.textContent = ''
+  if (inviteLinkContainer) {
+    inviteLinkContainer.hidden = true
+    inviteLinkContainer.setAttribute('aria-hidden', 'true')
+  }
 }
 
 function renderDiagnosticsRows (rows) {
@@ -509,40 +536,20 @@ async function refreshDiagnostics (session) {
   renderDiagnosticsRows(['Indlæser diagnostic...'])
   if (diagnosticsWarning) diagnosticsWarning.textContent = ''
   const authDiagnostics = getAuthDiagnostics()
-  const firestore = await checkFirestoreConnection({ timeoutMs: 5000 })
   if (token !== diagnosticsToken) return
 
   const debugState = getDebugState()
-  const lastFirestoreCode = debugState?.lastFirestoreError?.code || ''
-  const firestoreStatus = firestore.ok ? 'ja' : `nej (${firestore.error?.code || 'fejl'})`
-  const appCheckLabel = authDiagnostics.appCheckReason
-    ? `${authDiagnostics.appCheckStatus} (${authDiagnostics.appCheckReason})`
-    : authDiagnostics.appCheckStatus
 
   renderDiagnosticsRows([
     `Auth klar: ${authDiagnostics.authReady ? 'ja' : 'nej'}`,
     `Logget ind: ${authDiagnostics.isAuthenticated ? 'ja' : 'nej'}`,
-    `Firebase projectId: ${authDiagnostics.projectId || '–'}`,
-    `Firebase authDomain: ${authDiagnostics.authDomain || '–'}`,
-    `App Check: ${appCheckLabel || 'ukendt'}`,
-    `Firestore reachable: ${firestoreStatus}`,
     `Sidste auth-fejlkode: ${authDiagnostics.lastAuthErrorCode || '–'}`,
-    `Sidste Firestore-fejl: ${lastFirestoreCode || '–'}`,
+    `Team ID: ${debugState?.teamId || '–'}`,
   ])
 
   if (diagnosticsWarning) {
-    if (authDiagnostics.appCheckStatus !== 'on' && authDiagnostics.appCheckStatus !== 'off') {
-      diagnosticsWarning.textContent = 'App Check fejler. Tjek site key og Firebase App Check-indstillinger.'
-      diagnosticsWarning.dataset.variant = 'warning'
-      return
-    }
-    if (authDiagnostics.appCheckStatus === 'off' && authDiagnostics.appCheckReason === 'missing_site_key') {
-      diagnosticsWarning.textContent = 'App Check er slået fra, fordi site key mangler. Admin bør tilføje key.'
-      diagnosticsWarning.dataset.variant = 'warning'
-    } else {
-      diagnosticsWarning.textContent = ''
-      diagnosticsWarning.dataset.variant = ''
-    }
+    diagnosticsWarning.textContent = ''
+    diagnosticsWarning.dataset.variant = ''
   }
 }
 
@@ -693,8 +700,7 @@ async function loadTeamData () {
     renderTeamInfo(team)
     renderMembers(members, sessionRole, session?.user?.uid || '')
     renderReadOnlyMembers(members)
-    const activeInvites = allowInvites ? invites.filter(invite => invite.active !== false && !invite.usedAt) : []
-    renderInvites(activeInvites)
+    renderInvites(allowInvites ? invites : [])
     setStatus('Team opdateret.', 'success')
   } catch (error) {
     console.warn('Load team data failed', error)
@@ -756,6 +762,9 @@ function bindEvents () {
   if (inviteSubmitButton) {
     inviteSubmitButton.addEventListener('click', handleInviteSubmit)
   }
+  if (inviteLinkCopyButton) {
+    inviteLinkCopyButton.addEventListener('click', () => copyToClipboard(inviteLinkInput?.value || ''))
+  }
   if (uidSubmitButton) {
     uidSubmitButton.addEventListener('click', handleAddByUid)
   }
@@ -808,6 +817,9 @@ export function initTeamAdminPage () {
   inviteEmailInput = document.getElementById('teamInviteEmailTeamPage')
   inviteRoleSelect = document.getElementById('teamInviteRoleTeamPage')
   inviteSubmitButton = document.getElementById('teamInviteSubmitTeamPage')
+  inviteLinkContainer = document.getElementById('teamInviteLinkContainer')
+  inviteLinkInput = document.getElementById('teamInviteLink')
+  inviteLinkCopyButton = document.getElementById('teamInviteCopy')
   uidInput = document.getElementById('teamUidInput')
   uidRoleSelect = document.getElementById('teamUidRole')
   uidSubmitButton = document.getElementById('teamUidSubmit')

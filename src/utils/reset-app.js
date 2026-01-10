@@ -1,6 +1,4 @@
 import { logoutUser } from '../../js/shared-auth.js'
-import { getFirestoreDb, getFirestoreHelpers } from '../../js/shared-firestore.js'
-import { clearFirebaseConfigCache } from '../config/firebase-config.js'
 import { clearTeamAccessCache } from '../services/team-access.js'
 
 function shouldUseBrowserApis () {
@@ -29,7 +27,7 @@ async function clearCaches () {
 
 async function clearIndexedDb () {
   if (!shouldUseBrowserApis() || !window.indexedDB) return
-  const knownDbNames = ['csmate_projects', 'firebaseLocalStorageDb']
+  const knownDbNames = ['csmate_projects']
   if (typeof indexedDB.databases !== 'function') {
     knownDbNames.forEach(name => {
       try { indexedDB.deleteDatabase(name) } catch {}
@@ -56,9 +54,6 @@ async function clearOfflineCaches () {
 
 export async function resetServiceWorkerAndCaches () {
   if (!shouldUseBrowserApis()) return
-  try {
-    clearFirebaseConfigCache()
-  } catch {}
   await clearServiceWorkers()
   await clearCaches()
   window.location?.reload()
@@ -77,7 +72,6 @@ export async function hardRepairClient () {
     }
   } catch {}
   try { window.sessionStorage?.clear() } catch {}
-  try { window.localStorage?.removeItem('cssmate:firebaseConfig') } catch {}
   window.location?.replace?.(`${window.location.pathname}?repaired=1`)
 }
 
@@ -96,21 +90,6 @@ export async function resetApp () {
   const path = window.location?.pathname || ''
   const target = `${origin}${path}?resetDone=1`
   window.location?.replace?.(target)
-}
-
-async function clearFirestorePersistence () {
-  try {
-    const db = await getFirestoreDb()
-    const sdk = await getFirestoreHelpers()
-    if (typeof sdk.terminate === 'function') {
-      await sdk.terminate(db)
-    }
-    if (typeof sdk.clearIndexedDbPersistence === 'function') {
-      await sdk.clearIndexedDbPersistence(db)
-    }
-  } catch (error) {
-    console.warn('Kunne ikke nulstille Firestore persistence', error)
-  }
 }
 
 function clearStorage () {
@@ -135,7 +114,6 @@ export async function resetAppState ({ reload = true } = {}) {
     console.warn('Logout fejlede under reset', error)
   }
 
-  await clearFirestorePersistence()
   await clearOfflineCaches()
   await clearIndexedDb()
   clearTeamAccessCache()
