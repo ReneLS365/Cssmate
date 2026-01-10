@@ -65,7 +65,7 @@ function resolveSslSetting (databaseUrl) {
   if (urlSetting !== null) {
     return urlSetting
   }
-  return true
+  return false
 }
 
 function buildPoolConfig () {
