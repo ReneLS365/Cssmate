@@ -21,6 +21,7 @@ import { resetAppState, resetOfflineCache } from './src/utils/reset-app.js'
 import { initBootInline } from './boot-inline.js'
 import { isLighthouseMode } from './src/config/lighthouse-mode.js'
 import { isDiagnosticsEnabled, mountDiagnostics } from './src/ui/auth-diagnostics.js'
+import { initAuth0Ui } from './src/auth/auth0-ui.js'
 
 function readCiFlag () {
   if (typeof document !== 'undefined') {
@@ -5659,6 +5660,7 @@ async function initApp() {
   initTabs();
   setupUiScaleControls();
   setupAdminLoginButton();
+  runWhenIdle(() => initAuth0Ui());
 
   const optaellingContainer = getDomElement('optaellingContainer');
   if (optaellingContainer) {

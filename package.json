@@ -49,10 +49,11 @@
     "test:lh": "bash scripts/run-lhci.sh",
     "verify:perf": "npm run build && npm run test:lh",
     "verify:deploy": "npm run verify:build-and-tests && npm run verify:perf",
-  "partykit:dev": "partykit dev",
-  "partykit:deploy": "partykit deploy"
+    "partykit:dev": "partykit dev",
+    "partykit:deploy": "partykit deploy"
   },
   "dependencies": {
+    "@auth0/auth0-spa-js": "^2.11.1",
     "bcryptjs": "^2.4.3",
     "jose": "^5.9.6",
     "pg": "^8.14.1"
