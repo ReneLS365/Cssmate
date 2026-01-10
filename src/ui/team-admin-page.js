@@ -19,6 +19,7 @@ import { getDebugState } from '../state/debug.js'
 import { resetAppState } from '../utils/reset-app.js'
 import { createTeamWithMembership, TEAM_ACCESS_STATUS } from '../services/team-access.js'
 import { BOOTSTRAP_ADMIN_EMAIL, DEFAULT_TEAM_SLUG, formatTeamId } from '../services/team-ids.js'
+import { DEFAULT_TEAM_SLUG, formatTeamId } from '../services/team-ids.js'
 
 let initialized = false
 let teamPanel
@@ -657,7 +658,8 @@ function renderAccessState (session) {
   const canEditMembers = canViewMembers && isAdmin
   const canShowAdmin = canEditMembers
   const canBootstrapAction = Boolean(session?.bootstrapAvailable && accessStatus === TEAM_ACCESS_STATUS.NO_TEAM)
-  const isBootstrapAdmin = normalizeEmail(session?.user?.email) === normalizeEmail(BOOTSTRAP_ADMIN_EMAIL)
+  const bootstrapEmail = normalizeEmail(session?.bootstrapAdminEmail || BOOTSTRAP_ADMIN_EMAIL || '')
+  const isBootstrapAdmin = normalizeEmail(session?.user?.email) === bootstrapEmail
   const teamId = formatTeamId(session?.teamId || DEFAULT_TEAM_SLUG)
   const canClaimOwner = isBootstrapAdmin
     && teamId === formatTeamId(DEFAULT_TEAM_SLUG)

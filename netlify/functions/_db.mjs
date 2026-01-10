@@ -1,38 +1,60 @@
 import { Pool } from 'pg'
 
 const DATABASE_URL = process.env.DATABASE_URL || process.env.NETLIFY_DATABASE_URL || ''
+const DATABASE_SSL = process.env.DATABASE_SSL
 
 let pool = null
 
-function normalizeSslMode () {
-  const rawMode = process.env.DATABASE_SSLMODE || process.env.PGSSLMODE || ''
-  const mode = rawMode.trim().toLowerCase()
-  if (mode === 'disable' || mode === 'allow' || mode === 'prefer') {
-    return 'disable'
+function parseBoolean (value) {
+  if (!value) {
+    return null
   }
-  if (mode) {
-    return 'require'
+  const normalized = String(value).trim().toLowerCase()
+  if (['1', 'true', 'yes', 'on', 'require'].includes(normalized)) {
+    return true
   }
-  const rawFlag = process.env.DATABASE_SSL || ''
-  const flag = rawFlag.trim().toLowerCase()
-  if (flag === 'true' || flag === '1' || flag === 'require') {
-    return 'require'
+  if (['0', 'false', 'no', 'off', 'disable'].includes(normalized)) {
+    return false
   }
-  if (flag === 'false' || flag === '0' || flag === 'disable') {
-    return 'disable'
+  return null
+}
+
+function parseSslMode (urlString) {
+  try {
+    const url = new URL(urlString)
+    const sslmode = url.searchParams.get('sslmode')
+    if (!sslmode) {
+      return null
+    }
+    if (sslmode.toLowerCase() === 'disable') {
+      return false
+    }
+    return true
+  } catch {
+    return null
   }
-  return ''
+}
+
+function resolveSslSetting () {
+  const envSetting = parseBoolean(DATABASE_SSL)
+  if (envSetting !== null) {
+    return envSetting
+  }
+  const urlSetting = parseSslMode(DATABASE_URL)
+  if (urlSetting !== null) {
+    return urlSetting
+  }
+  return false
 }
 
 function buildPoolConfig () {
   if (!DATABASE_URL) {
     throw new Error('DATABASE_URL mangler')
   }
-  const sslMode = normalizeSslMode()
-  const ssl = sslMode === 'require' ? { rejectUnauthorized: false } : undefined
+  const useSsl = resolveSslSetting()
   return {
     connectionString: DATABASE_URL,
-    ssl,
+    ...(useSsl ? { ssl: { rejectUnauthorized: false } } : {}),
   }
 }
 
