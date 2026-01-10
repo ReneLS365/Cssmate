@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs'
-import { query } from './_db.mjs'
+import { query, withTransaction } from './_db.mjs'
 import { generateToken, hashToken, signToken, verifyToken } from './_auth.mjs'
+import { ensureActiveOwnerGuard } from './owner-guards.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 const BOOTSTRAP_ADMIN_EMAIL = 'mr.lion1995@gmail.com'
@@ -243,6 +244,13 @@ async function handleTeamBootstrap (event, teamSlug) {
     return jsonResponse(403, { error: 'Kun admin kan bootstrappe team.' })
   }
   const team = await ensureTeam(teamSlug, user.id)
+  await query(
+    `INSERT INTO team_members (team_id, user_id, role, status, created_at)
+     VALUES ($1, $2, $3, $4, NOW())
+     ON CONFLICT (team_id, user_id)
+     DO UPDATE SET role = EXCLUDED.role, status = EXCLUDED.status`,
+    [team.id, user.id, 'owner', 'active']
+  )
   return jsonResponse(200, { teamId: teamSlug, team })
 }
 
@@ -296,27 +304,47 @@ async function handleTeamMemberPatch (event, teamSlug, memberId) {
   const existing = await getMember(team.id, memberId)
   const nextRole = role || existing?.role || 'member'
   const nextStatus = status || existing?.status || 'active'
-  if (existing?.role === 'owner') {
-    const removesOwnership = nextRole !== 'owner'
-    const disablesOwner = existing.status === 'active' && nextStatus !== 'active'
-    if (removesOwnership || disablesOwner) {
-      const owners = await query(
-        'SELECT COUNT(*)::int AS count FROM team_members WHERE team_id = $1 AND role = $2 AND status = $3',
-        [team.id, 'owner', 'active']
-      )
-      if ((owners.rows[0]?.count || 0) <= 1) {
-        return jsonResponse(400, { error: 'Teamet skal have mindst én owner.' })
-      }
-    }
-  }
   if (!existing) {
     await query(
       'INSERT INTO team_members (team_id, user_id, role, status, created_at) VALUES ($1, $2, $3, $4, NOW())',
       [team.id, memberId, nextRole, nextStatus]
     )
+    return emptyResponse(204)
+  }
+  if (existing.role === 'owner') {
+    await withTransaction(async (client) => {
+      const memberResult = await client.query(
+        'SELECT user_id, role, status FROM team_members WHERE team_id = $1 AND user_id = $2 FOR UPDATE',
+        [team.id, memberId]
+      )
+      const current = memberResult.rows[0]
+      if (!current) return
+      const resolvedRole = role || current.role
+      const resolvedStatus = status || current.status
+      const ownersResult = await client.query(
+        'SELECT user_id, status FROM team_members WHERE team_id = $1 AND role = $2 FOR UPDATE',
+        [team.id, 'owner']
+      )
+      const allowed = ensureActiveOwnerGuard({
+        owners: ownersResult.rows,
+        targetUserId: memberId,
+        existingRole: current.role,
+        existingStatus: current.status,
+        nextRole: resolvedRole,
+        nextStatus: resolvedStatus,
+        isDelete: false,
+      })
+      if (!allowed) {
+        const error = new Error('Teamet skal have mindst én owner.')
+        error.status = 400
+        throw error
+      }
+      await client.query(
+        'UPDATE team_members SET role = $1, status = $2 WHERE team_id = $3 AND user_id = $4',
+        [resolvedRole, resolvedStatus, team.id, memberId]
+      )
+    })
   } else {
-    const nextRole = role || existing.role
-    const nextStatus = status || existing.status
     await query(
       'UPDATE team_members SET role = $1, status = $2 WHERE team_id = $3 AND user_id = $4',
       [nextRole, nextStatus, team.id, memberId]
@@ -333,13 +361,34 @@ async function handleTeamMemberDelete (event, teamSlug, memberId) {
   const existing = await getMember(team.id, memberId)
   if (!existing) return emptyResponse(204)
   if (existing.role === 'owner') {
-    const owners = await query(
-      'SELECT COUNT(*)::int AS count FROM team_members WHERE team_id = $1 AND role = $2 AND status = $3',
-      [team.id, 'owner', 'active']
-    )
-    if ((owners.rows[0]?.count || 0) <= 1) {
-      return jsonResponse(400, { error: 'Teamet skal have mindst én owner.' })
-    }
+    await withTransaction(async (client) => {
+      const memberResult = await client.query(
+        'SELECT user_id, role, status FROM team_members WHERE team_id = $1 AND user_id = $2 FOR UPDATE',
+        [team.id, memberId]
+      )
+      const current = memberResult.rows[0]
+      if (!current) return
+      const ownersResult = await client.query(
+        'SELECT user_id, status FROM team_members WHERE team_id = $1 AND role = $2 FOR UPDATE',
+        [team.id, 'owner']
+      )
+      const allowed = ensureActiveOwnerGuard({
+        owners: ownersResult.rows,
+        targetUserId: memberId,
+        existingRole: current.role,
+        existingStatus: current.status,
+        nextRole: current.role,
+        nextStatus: current.status,
+        isDelete: true,
+      })
+      if (!allowed) {
+        const error = new Error('Teamet skal have mindst én owner.')
+        error.status = 400
+        throw error
+      }
+      await client.query('DELETE FROM team_members WHERE team_id = $1 AND user_id = $2', [team.id, memberId])
+    })
+    return emptyResponse(204)
   }
   await query('DELETE FROM team_members WHERE team_id = $1 AND user_id = $2', [team.id, memberId])
   return emptyResponse(204)

@@ -22,7 +22,7 @@ function decodeJwt (token) {
   }
 }
 
-function buildUserFromToken (token) {
+export function buildUserFromToken (token) {
   const payload = decodeJwt(token)
   if (!payload || !payload.sub) return null
   if (payload.exp && payload.exp * 1000 < Date.now()) {

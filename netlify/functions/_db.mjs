@@ -30,3 +30,21 @@ export async function query (text, params) {
   }
 }
 
+export async function withTransaction (handler) {
+  const client = await getPool().connect()
+  try {
+    await client.query('BEGIN')
+    const result = await handler(client)
+    await client.query('COMMIT')
+    return result
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK')
+    } catch {
+      // ignore rollback errors
+    }
+    throw error
+  } finally {
+    client.release()
+  }
+}

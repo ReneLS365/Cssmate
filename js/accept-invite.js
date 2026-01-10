@@ -1,7 +1,7 @@
 import { apiJson, clearAuthToken, getAuthToken } from '../src/api/client.js'
 import { persistTeamId } from '../src/services/team-ids.js'
 
-const PENDING_INVITE_KEY = 'cssmate:pendingInvite'
+export const PENDING_INVITE_KEY = 'cssmate:pendingInvite'
 
 const statusEl = document.getElementById('inviteStatus')
 const loginButton = document.getElementById('inviteLogin')
@@ -29,7 +29,7 @@ function storePendingInvite (inviteId, token) {
   }
 }
 
-async function acceptInvite (inviteId, token) {
+export async function acceptInvite (inviteId, token) {
   setStatus('Accepterer invitation…')
   try {
     const result = await apiJson('/api/invites/accept', {
