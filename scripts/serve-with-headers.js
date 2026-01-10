@@ -5,7 +5,6 @@
 import express from 'express';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
-import rateLimit from 'express-rate-limit';
 import { loadNetlifyHeaders } from '../tools/generate-headers.mjs';
 
 const PORT = process.env.PORT || process.argv[2] || 4173;
@@ -21,12 +20,6 @@ const SECURITY_HEADERS = {
 
 const app = express();
 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
 
 function matchHeadersForPath(requestPath) {
   if (!requestPath.startsWith('/')) {
@@ -79,8 +72,6 @@ app.use((req, res, next) => {
   }
   next();
 });
-
-app.use(limiter);
 
 function injectCiFlag (html) {
   if (!IS_CI) return html;
