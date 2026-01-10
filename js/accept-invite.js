@@ -1,4 +1,4 @@
-import { apiJson, getAuthToken } from '../src/api/client.js'
+import { apiJson, clearAuthToken, getAuthToken } from '../src/api/client.js'
 import { persistTeamId } from '../src/services/team-ids.js'
 
 const PENDING_INVITE_KEY = 'cssmate:pendingInvite'
@@ -44,6 +44,13 @@ async function acceptInvite (inviteId, token) {
       window.location.href = '/index.html'
     }, 800)
   } catch (error) {
+    if (error?.status === 401) {
+      clearAuthToken()
+      storePendingInvite(inviteId, token)
+      setStatus('Sessionen er udløbet. Log ind igen for at acceptere invitationen.', 'error')
+      if (loginButton) loginButton.hidden = false
+      return
+    }
     setStatus(error?.message || 'Ugyldig/udløbet invitation.', 'error')
     if (retryButton) retryButton.hidden = false
   }

@@ -25,6 +25,10 @@ function decodeJwt (token) {
 function buildUserFromToken (token) {
   const payload = decodeJwt(token)
   if (!payload || !payload.sub) return null
+  if (payload.exp && payload.exp * 1000 < Date.now()) {
+    clearAuthToken()
+    return null
+  }
   return {
     uid: payload.sub,
     email: normalizeEmail(payload.email || ''),

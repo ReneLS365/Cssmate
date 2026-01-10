@@ -333,7 +333,10 @@ async function handleTeamMemberDelete (event, teamSlug, memberId) {
   const existing = await getMember(team.id, memberId)
   if (!existing) return emptyResponse(204)
   if (existing.role === 'owner') {
-    const owners = await query('SELECT COUNT(*)::int AS count FROM team_members WHERE team_id = $1 AND role = $2', [team.id, 'owner'])
+    const owners = await query(
+      'SELECT COUNT(*)::int AS count FROM team_members WHERE team_id = $1 AND role = $2 AND status = $3',
+      [team.id, 'owner', 'active']
+    )
     if ((owners.rows[0]?.count || 0) <= 1) {
       return jsonResponse(400, { error: 'Teamet skal have mindst én owner.' })
     }
