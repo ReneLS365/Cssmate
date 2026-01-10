@@ -1,10 +1,15 @@
 import bcrypt from 'bcryptjs'
-import { query, withTransaction } from './_db.mjs'
+import { db } from './_db.mjs'
 import { generateToken, hashToken, signToken, verifyToken } from './_auth.mjs'
 import { ensureActiveOwnerGuard } from './owner-guards.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
-const BOOTSTRAP_ADMIN_EMAIL = 'mr.lion1995@gmail.com'
+const BOOTSTRAP_ADMIN_EMAIL = process.env.BOOTSTRAP_ADMIN_EMAIL || 'mr.lion1995@gmail.com'
+
+function isMissingRelationError (error) {
+  const message = error?.message || ''
+  return /relation .* does not exist/i.test(message)
+}
 
 function jsonResponse (statusCode, payload) {
   return {
@@ -69,12 +74,12 @@ async function requireAuth (event) {
 }
 
 async function findUserByEmail (email) {
-  const result = await query('SELECT id, email, password_hash, created_at FROM users WHERE email = $1', [email])
+  const result = await db.query('SELECT id, email, password_hash, created_at FROM users WHERE email = $1', [email])
   return result.rows[0] || null
 }
 
 async function findTeamBySlug (slug) {
-  const result = await query('SELECT id, name, created_at FROM teams WHERE name = $1', [slug])
+  const result = await db.query('SELECT id, name, created_at FROM teams WHERE name = $1', [slug])
   return result.rows[0] || null
 }
 
@@ -82,12 +87,12 @@ async function ensureTeam (slug, ownerId = null) {
   const existing = await findTeamBySlug(slug)
   if (existing) return existing
   const teamId = crypto.randomUUID()
-  await query(
+  await db.query(
     'INSERT INTO teams (id, name, created_at) VALUES ($1, $2, NOW())',
     [teamId, slug]
   )
   if (ownerId) {
-    await query(
+    await db.query(
       'INSERT INTO team_members (team_id, user_id, role, status, created_at) VALUES ($1, $2, $3, $4, NOW()) ON CONFLICT (team_id, user_id) DO NOTHING',
       [teamId, ownerId, 'owner', 'active']
     )
@@ -96,7 +101,7 @@ async function ensureTeam (slug, ownerId = null) {
 }
 
 async function getMember (teamId, userId) {
-  const result = await query(
+  const result = await db.query(
     'SELECT team_id, user_id, role, status, created_at FROM team_members WHERE team_id = $1 AND user_id = $2',
     [teamId, userId]
   )
@@ -190,7 +195,7 @@ async function handleSignup (event) {
   }
   const passwordHash = await bcrypt.hash(password, 10)
   const userId = crypto.randomUUID()
-  await query(
+  await db.query(
     'INSERT INTO users (id, email, password_hash, created_at) VALUES ($1, $2, $3, NOW())',
     [userId, email, passwordHash]
   )
@@ -221,20 +226,21 @@ async function handleTeamAccess (event, teamSlug) {
   const user = await requireAuth(event)
   const team = await findTeamBySlug(teamSlug)
   if (!team) {
-    return jsonResponse(200, { status: 'no-team', teamId: teamSlug })
+    return jsonResponse(200, { status: 'no-team', teamId: teamSlug, bootstrapAdminEmail: BOOTSTRAP_ADMIN_EMAIL })
   }
   const member = await getMember(team.id, user.id)
   if (!member) {
-    return jsonResponse(200, { status: 'no-access', reason: 'not-member', teamId: teamSlug })
+    return jsonResponse(200, { status: 'no-access', reason: 'not-member', teamId: teamSlug, bootstrapAdminEmail: BOOTSTRAP_ADMIN_EMAIL })
   }
   if (member.status !== 'active') {
-    return jsonResponse(200, { status: 'no-access', reason: 'inactive', teamId: teamSlug })
+    return jsonResponse(200, { status: 'no-access', reason: 'inactive', teamId: teamSlug, bootstrapAdminEmail: BOOTSTRAP_ADMIN_EMAIL })
   }
   return jsonResponse(200, {
     status: 'ok',
     teamId: teamSlug,
     team: { id: team.id, name: team.name },
     member: { uid: user.id, role: member.role, status: member.status },
+    bootstrapAdminEmail: BOOTSTRAP_ADMIN_EMAIL,
   })
 }
 
@@ -244,14 +250,14 @@ async function handleTeamBootstrap (event, teamSlug) {
     return jsonResponse(403, { error: 'Kun admin kan bootstrappe team.' })
   }
   const team = await ensureTeam(teamSlug, user.id)
-  await query(
+  await db.query(
     `INSERT INTO team_members (team_id, user_id, role, status, created_at)
      VALUES ($1, $2, $3, $4, NOW())
      ON CONFLICT (team_id, user_id)
      DO UPDATE SET role = EXCLUDED.role, status = EXCLUDED.status`,
     [team.id, user.id, 'owner', 'active']
   )
-  return jsonResponse(200, { teamId: teamSlug, team })
+  return jsonResponse(200, { ok: true, teamId: teamSlug, role: 'owner' })
 }
 
 async function handleTeamMembersList (event, teamSlug) {
@@ -259,7 +265,7 @@ async function handleTeamMembersList (event, teamSlug) {
   const team = await findTeamBySlug(teamSlug)
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
   await requireTeamRole(team.id, user.id, ['owner', 'admin', 'member'])
-  const result = await query(
+  const result = await db.query(
     `SELECT m.user_id, m.role, m.status, m.created_at, u.email, u.display_name
      FROM team_members m
      LEFT JOIN users u ON u.id = m.user_id
@@ -283,7 +289,7 @@ async function handleTeamMemberCreate (event, teamSlug) {
     targetUserId = target?.id || ''
   }
   if (!targetUserId) return jsonResponse(400, { error: 'Bruger ikke fundet.' })
-  await query(
+  await db.query(
     'INSERT INTO team_members (team_id, user_id, role, status, created_at) VALUES ($1, $2, $3, $4, NOW()) ON CONFLICT (team_id, user_id) DO NOTHING',
     [team.id, targetUserId, role, 'active']
   )
@@ -305,14 +311,14 @@ async function handleTeamMemberPatch (event, teamSlug, memberId) {
   const nextRole = role || existing?.role || 'member'
   const nextStatus = status || existing?.status || 'active'
   if (!existing) {
-    await query(
+    await db.query(
       'INSERT INTO team_members (team_id, user_id, role, status, created_at) VALUES ($1, $2, $3, $4, NOW())',
       [team.id, memberId, nextRole, nextStatus]
     )
     return emptyResponse(204)
   }
   if (existing.role === 'owner') {
-    await withTransaction(async (client) => {
+    await db.withTransaction(async (client) => {
       const memberResult = await client.query(
         'SELECT user_id, role, status FROM team_members WHERE team_id = $1 AND user_id = $2 FOR UPDATE',
         [team.id, memberId]
@@ -345,7 +351,7 @@ async function handleTeamMemberPatch (event, teamSlug, memberId) {
       )
     })
   } else {
-    await query(
+    await db.query(
       'UPDATE team_members SET role = $1, status = $2 WHERE team_id = $3 AND user_id = $4',
       [nextRole, nextStatus, team.id, memberId]
     )
@@ -361,7 +367,7 @@ async function handleTeamMemberDelete (event, teamSlug, memberId) {
   const existing = await getMember(team.id, memberId)
   if (!existing) return emptyResponse(204)
   if (existing.role === 'owner') {
-    await withTransaction(async (client) => {
+    await db.withTransaction(async (client) => {
       const memberResult = await client.query(
         'SELECT user_id, role, status FROM team_members WHERE team_id = $1 AND user_id = $2 FOR UPDATE',
         [team.id, memberId]
@@ -390,7 +396,7 @@ async function handleTeamMemberDelete (event, teamSlug, memberId) {
     })
     return emptyResponse(204)
   }
-  await query('DELETE FROM team_members WHERE team_id = $1 AND user_id = $2', [team.id, memberId])
+  await db.query('DELETE FROM team_members WHERE team_id = $1 AND user_id = $2', [team.id, memberId])
   return emptyResponse(204)
 }
 
@@ -405,7 +411,7 @@ async function handleInviteCreate (event, teamSlug) {
   const rawToken = generateToken()
   const tokenHash = hashToken(rawToken)
   const inviteId = crypto.randomUUID()
-  const result = await query(
+  const result = await db.query(
     `INSERT INTO team_invites (id, team_id, email, role, token_hash, status, expires_at, created_by, created_at)
      VALUES ($1, $2, $3, $4, $5, $6, NOW() + interval '7 days', $7, NOW())
      RETURNING id, expires_at`,
@@ -424,7 +430,7 @@ async function handleInviteList (event, teamSlug) {
   const team = await findTeamBySlug(teamSlug)
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
   await requireTeamRole(team.id, user.id, ['owner', 'admin'])
-  const result = await query(
+  const result = await db.query(
     `SELECT i.id, i.email, i.role, i.status, i.expires_at, i.created_at, i.accepted_at, t.name as team_slug
      FROM team_invites i
      JOIN teams t ON t.id = i.team_id
@@ -437,11 +443,11 @@ async function handleInviteList (event, teamSlug) {
 
 async function handleInviteRevoke (event, inviteId) {
   const user = await requireAuth(event)
-  const inviteResult = await query('SELECT id, team_id FROM team_invites WHERE id = $1', [inviteId])
+  const inviteResult = await db.query('SELECT id, team_id FROM team_invites WHERE id = $1', [inviteId])
   const invite = inviteResult.rows[0]
   if (!invite) return jsonResponse(404, { error: 'Invitation findes ikke.' })
   await requireTeamRole(invite.team_id, user.id, ['owner', 'admin'])
-  await query('UPDATE team_invites SET status = $1 WHERE id = $2', ['revoked', inviteId])
+  await db.query('UPDATE team_invites SET status = $1 WHERE id = $2', ['revoked', inviteId])
   return emptyResponse(204)
 }
 
@@ -454,7 +460,7 @@ async function handleInviteAccept (event) {
     return jsonResponse(400, { error: 'InviteId og token er påkrævet.' })
   }
   const tokenHash = hashToken(token)
-  const result = await query(
+  const result = await db.query(
     `SELECT i.id, i.team_id, i.role, i.status, i.expires_at, t.name as team_slug
      FROM team_invites i
      JOIN teams t ON t.id = i.team_id
@@ -465,22 +471,22 @@ async function handleInviteAccept (event) {
   if (!invite) return jsonResponse(404, { error: 'Invitation findes ikke.' })
   if (invite.status !== 'pending') return jsonResponse(400, { error: 'Invitationen er ikke aktiv.' })
   if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
-    await query('UPDATE team_invites SET status = $1 WHERE id = $2', ['expired', inviteId])
+    await db.query('UPDATE team_invites SET status = $1 WHERE id = $2', ['expired', inviteId])
     return jsonResponse(400, { error: 'Invitationen er udløbet.' })
   }
-  const tokenResult = await query('SELECT token_hash FROM team_invites WHERE id = $1', [inviteId])
+  const tokenResult = await db.query('SELECT token_hash FROM team_invites WHERE id = $1', [inviteId])
   const storedHash = tokenResult.rows[0]?.token_hash
   if (!storedHash || storedHash !== tokenHash) {
     return jsonResponse(400, { error: 'Ugyldig invitation.' })
   }
-  await query(
+  await db.query(
     `INSERT INTO team_members (team_id, user_id, role, status, created_at)
      VALUES ($1, $2, $3, $4, NOW())
      ON CONFLICT (team_id, user_id)
      DO UPDATE SET role = EXCLUDED.role, status = EXCLUDED.status`,
     [invite.team_id, user.id, invite.role, 'active']
   )
-  await query(
+  await db.query(
     `UPDATE team_invites SET status = $1, accepted_by = $2, accepted_at = NOW()
      WHERE id = $3`,
     ['accepted', user.id, inviteId]
@@ -499,7 +505,7 @@ async function handleCaseCreate (event, teamSlug) {
   }
   const caseId = crypto.randomUUID()
   const totals = body.totals || { materials: 0, montage: 0, demontage: 0, total: 0 }
-  await query(
+  await db.query(
     `INSERT INTO team_cases
       (case_id, team_id, job_number, case_kind, system, totals, status, created_at, updated_at, last_updated_at,
        created_by, created_by_email, created_by_name, updated_by, json_content)
@@ -518,7 +524,7 @@ async function handleCaseCreate (event, teamSlug) {
       body.jsonContent || null,
     ]
   )
-  const result = await query(
+  const result = await db.query(
     `SELECT c.*, t.name as team_slug
      FROM team_cases c
      JOIN teams t ON t.id = c.team_id
@@ -536,7 +542,7 @@ async function handleCaseList (event, teamSlug) {
   if (!member || member.status !== 'active') {
     return jsonResponse(403, { error: 'Ingen adgang til teamet.' })
   }
-  const result = await query(
+  const result = await db.query(
     `SELECT c.*, t.name as team_slug
      FROM team_cases c
      JOIN teams t ON t.id = c.team_id
@@ -554,7 +560,7 @@ async function handleCaseGet (event, teamSlug, caseId) {
   if (!member || member.status !== 'active') {
     return jsonResponse(403, { error: 'Ingen adgang til teamet.' })
   }
-  const result = await query(
+  const result = await db.query(
     `SELECT c.*, t.name as team_slug
      FROM team_cases c
      JOIN teams t ON t.id = c.team_id
@@ -574,7 +580,7 @@ async function handleCaseDelete (event, teamSlug, caseId) {
   if (!member || member.status !== 'active') {
     return jsonResponse(403, { error: 'Ingen adgang til teamet.' })
   }
-  const result = await query(
+  const result = await db.query(
     'SELECT created_by FROM team_cases WHERE team_id = $1 AND case_id = $2',
     [team.id, caseId]
   )
@@ -583,12 +589,12 @@ async function handleCaseDelete (event, teamSlug, caseId) {
   if (row.created_by !== user.id && member.role !== 'admin' && member.role !== 'owner') {
     return jsonResponse(403, { error: 'Kun opretter eller admin kan slette sagen.' })
   }
-  await query(
+  await db.query(
     `UPDATE team_cases SET status = $1, deleted_at = NOW(), deleted_by = $2, updated_at = NOW(), last_updated_at = NOW(), updated_by = $2
      WHERE team_id = $3 AND case_id = $4`,
     ['deleted', user.id, team.id, caseId]
   )
-  const updated = await query(
+  const updated = await db.query(
     `SELECT c.*, t.name as team_slug
      FROM team_cases c
      JOIN teams t ON t.id = c.team_id
@@ -607,18 +613,18 @@ async function handleCaseStatus (event, teamSlug, caseId) {
   if (!member || member.status !== 'active') {
     return jsonResponse(403, { error: 'Ingen adgang til teamet.' })
   }
-  const result = await query('SELECT created_by FROM team_cases WHERE team_id = $1 AND case_id = $2', [team.id, caseId])
+  const result = await db.query('SELECT created_by FROM team_cases WHERE team_id = $1 AND case_id = $2', [team.id, caseId])
   const row = result.rows[0]
   if (!row) return jsonResponse(404, { error: 'Sag findes ikke.' })
   if (row.created_by !== user.id && member.role !== 'admin' && member.role !== 'owner') {
     return jsonResponse(403, { error: 'Kun opretter eller admin kan ændre status.' })
   }
-  await query(
+  await db.query(
     `UPDATE team_cases SET status = $1, updated_at = NOW(), last_updated_at = NOW(), updated_by = $2
      WHERE team_id = $3 AND case_id = $4`,
     [body.status || 'kladde', user.id, team.id, caseId]
   )
-  const updated = await query(
+  const updated = await db.query(
     `SELECT c.*, t.name as team_slug
      FROM team_cases c
      JOIN teams t ON t.id = c.team_id
@@ -636,14 +642,14 @@ async function handleBackupExport (event, teamSlug) {
   if (!member || member.status !== 'active' || (member.role !== 'admin' && member.role !== 'owner')) {
     return jsonResponse(403, { error: 'Kun admin kan eksportere backup.' })
   }
-  const casesResult = await query(
+  const casesResult = await db.query(
     `SELECT c.*, t.name as team_slug
      FROM team_cases c
      JOIN teams t ON t.id = c.team_id
      WHERE c.team_id = $1`,
     [team.id]
   )
-  const auditResult = await query(
+  const auditResult = await db.query(
     `SELECT id, team_id, case_id, action, actor, summary, created_at
      FROM team_audit
      WHERE team_id = $1
@@ -688,7 +694,7 @@ async function handleBackupImport (event, teamSlug) {
   const body = parseBody(event)
   const cases = Array.isArray(body?.cases) ? body.cases : []
   for (const entry of cases) {
-    await query(
+    await db.query(
       `INSERT INTO team_cases
         (case_id, team_id, job_number, case_kind, system, totals, status, created_at, updated_at, last_updated_at,
          created_by, created_by_email, created_by_name, updated_by, json_content, deleted_at, deleted_by)
@@ -782,7 +788,9 @@ export async function handler (event) {
     return jsonResponse(404, { error: 'Endpoint findes ikke.' })
   } catch (error) {
     const status = error?.status || 500
-    const message = error?.message || 'Serverfejl'
+    const message = isMissingRelationError(error)
+      ? 'DB er ikke migreret. Kør migrations/001_init.sql mod Neon.'
+      : (error?.message || 'Serverfejl')
     return jsonResponse(status, { error: message })
   }
 }

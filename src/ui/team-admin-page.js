@@ -17,7 +17,8 @@ import { normalizeEmail } from '../auth/roles.js'
 import { getState as getSessionState, onChange as onSessionChange, refreshAccess, requestBootstrapAccess } from '../auth/session.js'
 import { getDebugState } from '../state/debug.js'
 import { resetAppState } from '../utils/reset-app.js'
-import { TEAM_ACCESS_STATUS } from '../services/team-access.js'
+import { createTeamWithMembership, TEAM_ACCESS_STATUS } from '../services/team-access.js'
+import { DEFAULT_TEAM_SLUG, formatTeamId } from '../services/team-ids.js'
 
 let initialized = false
 let teamPanel
@@ -43,6 +44,8 @@ let inviteSubmitButton
 let inviteLinkContainer
 let inviteLinkInput
 let inviteLinkCopyButton
+let claimOwnerContainer
+let claimOwnerButton
 let uidInput
 let uidRoleSelect
 let uidSubmitButton
@@ -99,6 +102,7 @@ function setLoading (isLoading) {
     inviteRoleSelect,
     uidInput,
     uidRoleSelect,
+    claimOwnerButton,
   ].forEach(btn => {
     if (btn) btn.disabled = disabled
   })
@@ -177,6 +181,24 @@ async function handleAccessBootstrap () {
     setStatus(error?.message || 'Kunne ikke oprette team-adgang.', 'error')
   } finally {
     if (accessBootstrapButton) accessBootstrapButton.disabled = false
+  }
+}
+
+async function handleClaimOwner () {
+  const session = lastSessionState || getSessionState()
+  const user = session?.user
+  if (!user) return
+  setStatus('Claim owner på hulmose…')
+  if (claimOwnerButton) claimOwnerButton.disabled = true
+  try {
+    await createTeamWithMembership({ teamId: DEFAULT_TEAM_SLUG, user })
+    await refreshAccess()
+    setStatus('Owner-rolle oprettet.', 'success')
+  } catch (error) {
+    console.warn('Claim owner failed', error)
+    setStatus(error?.message || 'Kunne ikke claim owner.', 'error')
+  } finally {
+    if (claimOwnerButton) claimOwnerButton.disabled = false
   }
 }
 
@@ -635,6 +657,11 @@ function renderAccessState (session) {
   const canEditMembers = canViewMembers && isAdmin
   const canShowAdmin = canEditMembers
   const canBootstrapAction = Boolean(session?.bootstrapAvailable && accessStatus === TEAM_ACCESS_STATUS.NO_TEAM)
+  const isBootstrapAdmin = normalizeEmail(session?.user?.email) === normalizeEmail(session?.bootstrapAdminEmail)
+  const teamId = formatTeamId(session?.teamId || DEFAULT_TEAM_SLUG)
+  const canClaimOwner = isBootstrapAdmin
+    && teamId === formatTeamId(DEFAULT_TEAM_SLUG)
+    && accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS
   const accessError = session?.accessError || session?.error || null
   const reason = session?.accessDetail?.reason || ''
   let message = session?.message || ''
@@ -682,6 +709,14 @@ function renderAccessState (session) {
   toggleAdminControls(canShowAdmin)
   toggleMemberOverview(canViewMembers && !isAdmin)
   updateAccessActions({ accessStatus, canBootstrapAction, isChecking })
+  if (claimOwnerContainer) {
+    claimOwnerContainer.hidden = !canClaimOwner
+    setAriaHidden(claimOwnerContainer, !canClaimOwner)
+  }
+  if (claimOwnerButton) {
+    claimOwnerButton.hidden = !canClaimOwner
+    claimOwnerButton.disabled = !canClaimOwner || isChecking || loading
+  }
 }
 
 async function loadTeamData () {
@@ -792,6 +827,7 @@ function bindEvents () {
   if (accessRetryButton) accessRetryButton.addEventListener('click', handleAccessRetry)
   if (accessBootstrapButton) accessBootstrapButton.addEventListener('click', handleAccessBootstrap)
   if (accessResetButton) accessResetButton.addEventListener('click', handleAccessReset)
+  if (claimOwnerButton) claimOwnerButton.addEventListener('click', handleClaimOwner)
 }
 
 export function initTeamAdminPage () {
@@ -820,6 +856,8 @@ export function initTeamAdminPage () {
   inviteLinkContainer = document.getElementById('teamInviteLinkContainer')
   inviteLinkInput = document.getElementById('teamInviteLink')
   inviteLinkCopyButton = document.getElementById('teamInviteCopy')
+  claimOwnerContainer = document.getElementById('teamClaimOwnerContainer')
+  claimOwnerButton = document.getElementById('teamClaimOwner')
   uidInput = document.getElementById('teamUidInput')
   uidRoleSelect = document.getElementById('teamUidRole')
   uidSubmitButton = document.getElementById('teamUidSubmit')
