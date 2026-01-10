@@ -23,6 +23,7 @@ const PRECACHE_URLS = [
   '/reset.html',
   '/main.js',
   '/main.min.js',
+  '/auth0-config.js',
   '/app-main.js',
   '/js/importmap.json',
   '/boot-inline.js',
