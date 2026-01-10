@@ -294,15 +294,22 @@ async function handleTeamMemberPatch (event, teamSlug, memberId) {
     return jsonResponse(400, { error: 'Ingen opdateringer angivet.' })
   }
   const existing = await getMember(team.id, memberId)
-  if (existing?.role === 'owner' && role && role !== 'owner') {
-    const owners = await query('SELECT COUNT(*)::int AS count FROM team_members WHERE team_id = $1 AND role = $2', [team.id, 'owner'])
-    if ((owners.rows[0]?.count || 0) <= 1) {
-      return jsonResponse(400, { error: 'Teamet skal have mindst én owner.' })
+  const nextRole = role || existing?.role || 'member'
+  const nextStatus = status || existing?.status || 'active'
+  if (existing?.role === 'owner') {
+    const removesOwnership = nextRole !== 'owner'
+    const disablesOwner = existing.status === 'active' && nextStatus !== 'active'
+    if (removesOwnership || disablesOwner) {
+      const owners = await query(
+        'SELECT COUNT(*)::int AS count FROM team_members WHERE team_id = $1 AND role = $2 AND status = $3',
+        [team.id, 'owner', 'active']
+      )
+      if ((owners.rows[0]?.count || 0) <= 1) {
+        return jsonResponse(400, { error: 'Teamet skal have mindst én owner.' })
+      }
     }
   }
   if (!existing) {
-    const nextRole = role || 'member'
-    const nextStatus = status || 'active'
     await query(
       'INSERT INTO team_members (team_id, user_id, role, status, created_at) VALUES ($1, $2, $3, $4, NOW())',
       [team.id, memberId, nextRole, nextStatus]
