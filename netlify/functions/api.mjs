@@ -134,11 +134,13 @@ async function ensureTeam (slug, ownerId = null) {
 async function ensureBootstrapAdmin (userId, email) {
   if (normalizeEmail(email) !== normalizeEmail(BOOTSTRAP_ADMIN_EMAIL)) return
   const team = await ensureTeam(DEFAULT_TEAM_SLUG)
+  const existingMember = await getMember(team.id, userId)
+  if (existingMember) return
   await db.query(
     `INSERT INTO team_members (team_id, user_id, role, status, created_at)
      VALUES ($1, $2, $3, $4, NOW())
      ON CONFLICT (team_id, user_id)
-     DO UPDATE SET role = EXCLUDED.role, status = EXCLUDED.status`,
+     DO NOTHING`,
     [team.id, userId, 'owner', 'active']
   )
 }
