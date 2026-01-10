@@ -25,6 +25,31 @@ Set these environment variables when running the Netlify functions locally or in
 
 **Netlify UI:** Site settings → Build & deploy → Environment → Environment variables.
 
+## Auth0 (frontend)
+
+Sæt følgende miljøvariabler til Auth0-login i klienten:
+
+- `VITE_AUTH0_DOMAIN`
+- `VITE_AUTH0_CLIENT_ID`
+- `VITE_AUTH0_AUDIENCE` (valgfri, kun hvis du kalder en API)
+- `VITE_ADMIN_EMAIL` (én email der får admin-adgang)
+
+Lokalt: opret en `.env` i repo-roden med ovenstående værdier og kør `npm run preview`.
+I Auth0-appen skal callback/logout-URLs inkludere:
+
+- `http://127.0.0.1:4173`
+- `http://127.0.0.1:4173/admin.html`
+- `https://sscaff.netlify.app`
+- `https://sscaff.netlify.app/admin.html`
+
+**Test lokalt:**
+
+1. `npm run preview`
+2. Åbn appen → klik **Log ind** → log ind via Auth0.
+3. Bekræft at email vises og **Log ud** er synlig.
+4. Hvis email matcher `VITE_ADMIN_EMAIL`, vises admin-linket.
+5. Åbn `/admin.html` for at verificere admin-guard.
+
 ## Database migrations
 
 Kør migrations manuelt mod Neon/Postgres (idempotent):

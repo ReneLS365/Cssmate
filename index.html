@@ -469,6 +469,13 @@
       <div class="shared-auth-controls" aria-live="polite">
         <button id="sharedLogout" type="button" class="shared-logout" hidden>Log ud</button>
       </div>
+      <div class="shared-auth-controls" aria-live="polite">
+        <div class="shared-status-row"><span>Auth0 bruger:</span><strong id="authUserEmail">–</strong></div>
+        <button id="loginBtn" type="button">Log ind</button>
+        <button id="logoutBtn" type="button" hidden>Log ud</button>
+        <a id="adminLink" href="/admin.html" hidden>Admin</a>
+        <p id="authStatusMessage" class="status-message" aria-live="polite"></p>
+      </div>
       <div id="teamIdInputContainer" class="team-id-input">
         <label for="teamIdInput">Team ID:</label>
         <input id="teamIdInput" type="text" placeholder="f.eks. hulmose">
