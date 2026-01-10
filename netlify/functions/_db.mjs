@@ -1,3 +1,4 @@
+import { readFile } from 'fs/promises'
 import { Pool } from 'pg'
 
 const DATABASE_SSL = process.env.DATABASE_SSL
@@ -8,6 +9,59 @@ const DATABASE_URL_CANDIDATES = [
 ]
 
 let pool = null
+let migrationPromise = null
+let migrationsEnsured = false
+
+async function readMigrationFile (relativePath) {
+  const fileUrl = new URL(relativePath, import.meta.url)
+  return readFile(fileUrl, 'utf8')
+}
+
+async function ensureMigrations () {
+  if (migrationPromise) return migrationPromise
+  migrationPromise = (async () => {
+    const client = await pool.connect()
+    try {
+      const usersResult = await client.query("SELECT to_regclass('public.users') AS table_name")
+      const hasUsersTable = Boolean(usersResult.rows[0]?.table_name)
+      const slugResult = await client.query(
+        `SELECT 1
+         FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'teams' AND column_name = 'slug'`
+      )
+      const hasTeamSlug = slugResult.rowCount > 0
+      if (hasUsersTable && hasTeamSlug) {
+        migrationsEnsured = true
+        return
+      }
+
+      const migrations = await Promise.all([
+        readMigrationFile('../../migrations/001_init.sql'),
+        readMigrationFile('../../migrations/002_add_team_slug.sql'),
+      ])
+      await client.query('BEGIN')
+      for (const sql of migrations) {
+        if (sql?.trim()) {
+          await client.query(sql)
+        }
+      }
+      await client.query('COMMIT')
+      migrationsEnsured = true
+    } catch (error) {
+      try {
+        await client.query('ROLLBACK')
+      } catch {
+        // ignore rollback errors
+      }
+      migrationPromise = null
+      migrationsEnsured = false
+      throw error
+    } finally {
+      client.release()
+    }
+  })()
+  return migrationPromise
+}
 
 function parseBoolean (value) {
   if (!value) {
@@ -86,15 +140,18 @@ function buildPoolConfig () {
   }
 }
 
-export function getPool () {
+export async function getPool () {
   if (!pool) {
     pool = new Pool(buildPoolConfig())
+  }
+  if (!migrationsEnsured) {
+    await ensureMigrations()
   }
   return pool
 }
 
 export async function query (text, params) {
-  const client = await getPool().connect()
+  const client = await (await getPool()).connect()
   try {
     return await client.query(text, params)
   } finally {
@@ -103,7 +160,7 @@ export async function query (text, params) {
 }
 
 export async function withTransaction (handler) {
-  const client = await getPool().connect()
+  const client = await (await getPool()).connect()
   try {
     await client.query('BEGIN')
     const result = await handler(client)
