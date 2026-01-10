@@ -61,6 +61,7 @@ function baseResult ({ teamId, user, source = 'resolveTeamAccess' }) {
     teamId: formatTeamId(teamId),
     uid: user?.uid || '',
     email: user?.email || '',
+    bootstrapAdminEmail: '',
     role: '',
     owner: false,
     member: false,
@@ -120,6 +121,7 @@ async function readTeamAccess ({ teamId, user, source = 'resolveTeamAccess' }) {
         teamId: normalizedTeamId,
         reason: 'missing-team',
         error: { code: 'missing-team', message: 'Team mangler. Opret det eller vælg et andet team.' },
+        bootstrapAdminEmail: response.bootstrapAdminEmail || '',
         raw: response,
       }
     }
@@ -130,6 +132,7 @@ async function readTeamAccess ({ teamId, user, source = 'resolveTeamAccess' }) {
         teamId: normalizedTeamId,
         reason: response.reason || 'not-member',
         error: { code: response.reason || 'not-member', message: 'Ingen adgang til dette team.' },
+        bootstrapAdminEmail: response.bootstrapAdminEmail || '',
         raw: response,
       }
     }
@@ -140,6 +143,7 @@ async function readTeamAccess ({ teamId, user, source = 'resolveTeamAccess' }) {
         teamId: normalizedTeamId,
         reason: response.reason || 'error',
         error: { code: response.reason || 'error', message: 'Kunne ikke kontrollere team-adgang.' },
+        bootstrapAdminEmail: response.bootstrapAdminEmail || '',
         raw: response,
       }
     }
@@ -149,6 +153,7 @@ async function readTeamAccess ({ teamId, user, source = 'resolveTeamAccess' }) {
       status: TEAM_ACCESS_STATUS.OK,
       teamId: normalizedTeamId,
       role,
+      bootstrapAdminEmail: response.bootstrapAdminEmail || '',
       owner: role === 'owner',
       member: true,
       active: true,
@@ -222,4 +227,3 @@ export async function createTeamWithMembership ({ teamId, user }) {
 export function getTeamAccessWithTimeout (options) {
   return resolveTeamAccess(options)
 }
-
