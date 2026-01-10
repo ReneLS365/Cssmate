@@ -108,6 +108,7 @@ function buildState (overrides = {}) {
     canChangeTeam: true,
     teamLocked: teamLockedFlag,
     bootstrapAvailable: false,
+    bootstrapAdminEmail: BOOTSTRAP_ADMIN_EMAIL,
     hasAccess: false,
     ...overrides,
   }
@@ -173,8 +174,8 @@ function satisfiesAccess (state, requireAdmin = false) {
   return state.status === SESSION_STATUS.ADMIN || state.status === SESSION_STATUS.MEMBER
 }
 
-function canBootstrap (user, teamId) {
-  return normalizeEmail(user?.email) === normalizeEmail(BOOTSTRAP_ADMIN_EMAIL)
+function canBootstrap (user, teamId, bootstrapAdminEmail = BOOTSTRAP_ADMIN_EMAIL) {
+  return normalizeEmail(user?.email) === normalizeEmail(bootstrapAdminEmail)
     && normalizeTeamId(teamId || preferredTeamSlug) === normalizeTeamId(DEFAULT_TEAM_SLUG)
 }
 
@@ -303,8 +304,9 @@ async function evaluateAccess () {
         role: '',
       })
     }
+    const bootstrapAdminEmail = accessResult?.bootstrapAdminEmail || sessionState.bootstrapAdminEmail || BOOTSTRAP_ADMIN_EMAIL
     const bootstrapAvailable = (accessStatus === TEAM_ACCESS_STATUS.NO_TEAM || accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE)
-      && canBootstrap(currentUser, resolvedTeamId)
+      && canBootstrap(currentUser, resolvedTeamId, bootstrapAdminEmail)
       && !hasBootstrapRun(currentUser?.uid)
     const nextState = setState({
       status: sessionStatus,
@@ -319,6 +321,7 @@ async function evaluateAccess () {
       canChangeTeam: !lockTeam || isAdmin,
       teamLocked: teamLockedFlag,
       bootstrapAvailable,
+      bootstrapAdminEmail,
       teamResolved: true,
       memberExists,
       memberActive,
@@ -576,7 +579,7 @@ function waitForAccess ({ requireAdmin = false } = {}) {
 async function requestBootstrapAccess () {
   const auth = getAuthContext()
   const targetTeamId = formatTeamId(sessionState.teamId || preferredTeamSlug)
-  if (!canBootstrap(auth?.user, targetTeamId)) {
+  if (!canBootstrap(auth?.user, targetTeamId, sessionState.bootstrapAdminEmail || BOOTSTRAP_ADMIN_EMAIL)) {
     throw new Error('Bootstrap er ikke tilladt for denne bruger.')
   }
   await createTeamWithMembership({ teamId: targetTeamId, user: auth.user })

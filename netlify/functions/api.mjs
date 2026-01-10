@@ -226,20 +226,21 @@ async function handleTeamAccess (event, teamSlug) {
   const user = await requireAuth(event)
   const team = await findTeamBySlug(teamSlug)
   if (!team) {
-    return jsonResponse(200, { status: 'no-team', teamId: teamSlug })
+    return jsonResponse(200, { status: 'no-team', teamId: teamSlug, bootstrapAdminEmail: BOOTSTRAP_ADMIN_EMAIL })
   }
   const member = await getMember(team.id, user.id)
   if (!member) {
-    return jsonResponse(200, { status: 'no-access', reason: 'not-member', teamId: teamSlug })
+    return jsonResponse(200, { status: 'no-access', reason: 'not-member', teamId: teamSlug, bootstrapAdminEmail: BOOTSTRAP_ADMIN_EMAIL })
   }
   if (member.status !== 'active') {
-    return jsonResponse(200, { status: 'no-access', reason: 'inactive', teamId: teamSlug })
+    return jsonResponse(200, { status: 'no-access', reason: 'inactive', teamId: teamSlug, bootstrapAdminEmail: BOOTSTRAP_ADMIN_EMAIL })
   }
   return jsonResponse(200, {
     status: 'ok',
     teamId: teamSlug,
     team: { id: team.id, name: team.name },
     member: { uid: user.id, role: member.role, status: member.status },
+    bootstrapAdminEmail: BOOTSTRAP_ADMIN_EMAIL,
   })
 }
 
