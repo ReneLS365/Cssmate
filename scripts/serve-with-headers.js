@@ -11,7 +11,13 @@ const PORT = process.env.PORT || process.argv[2] || 4173;
 // Juster DIR hvis der findes en build-mappe. Hvis appen kører direkte fra repo-roden, lad den være som nu.
 const DIR = path.resolve(process.argv[3] || process.cwd());
 const IS_CI = process.env.CSSMATE_IS_CI === '1';
-const HEADER_RULES = loadNetlifyHeaders();
+let HEADER_RULES = [];
+try {
+  HEADER_RULES = loadNetlifyHeaders();
+} catch (error) {
+  console.warn('Kunne ikke indlæse Netlify headers, fortsætter uden.', error?.message || error);
+  HEADER_RULES = [];
+}
 const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'strict-origin-when-cross-origin',

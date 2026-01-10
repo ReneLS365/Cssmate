@@ -38,9 +38,16 @@ export async function apiFetch (path, options = {}) {
   const response = await fetch(path, { ...options, headers })
   if (!response.ok) {
     const errorText = await response.text()
-    const error = new Error(errorText || response.statusText || 'API fejl')
+    let payload = null
+    try {
+      payload = errorText ? JSON.parse(errorText) : null
+    } catch {
+      payload = null
+    }
+    const message = payload?.error || errorText || response.statusText || 'API fejl'
+    const error = new Error(message)
     error.status = response.status
-    error.payload = errorText
+    error.payload = payload || errorText
     throw error
   }
   return response
@@ -57,4 +64,3 @@ export async function apiJson (path, options = {}) {
     return null
   }
 }
-
