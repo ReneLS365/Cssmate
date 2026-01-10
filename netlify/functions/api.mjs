@@ -5,10 +5,11 @@ import { ensureActiveOwnerGuard } from './owner-guards.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 const BOOTSTRAP_ADMIN_EMAIL = process.env.BOOTSTRAP_ADMIN_EMAIL || 'mr.lion1995@gmail.com'
+const DEFAULT_TEAM_SLUG = process.env.DEFAULT_TEAM_SLUG || 'hulmose'
 
 function isMissingRelationError (error) {
   const message = error?.message || ''
-  return /relation .* does not exist/i.test(message)
+  return /relation .* does not exist/i.test(message) || /column .* does not exist/i.test(message)
 }
 
 function jsonResponse (statusCode, payload) {
@@ -34,6 +35,15 @@ function parseBody (event) {
 
 function normalizeEmail (email) {
   return (email || '').toString().trim().toLowerCase()
+}
+
+function normalizeTeamSlug (value) {
+  const cleaned = (value || '').toString().trim().toLowerCase()
+  const normalized = cleaned
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return normalized || DEFAULT_TEAM_SLUG
 }
 
 function getRoutePath (event) {
@@ -79,17 +89,19 @@ async function findUserByEmail (email) {
 }
 
 async function findTeamBySlug (slug) {
-  const result = await db.query('SELECT id, name, created_at FROM teams WHERE name = $1', [slug])
+  const result = await db.query('SELECT id, slug, name, created_at FROM teams WHERE slug = $1', [slug])
   return result.rows[0] || null
 }
 
 async function ensureTeam (slug, ownerId = null) {
-  const existing = await findTeamBySlug(slug)
+  const normalizedSlug = normalizeTeamSlug(slug)
+  const existing = await findTeamBySlug(normalizedSlug)
   if (existing) return existing
   const teamId = crypto.randomUUID()
+  const teamName = normalizedSlug
   await db.query(
-    'INSERT INTO teams (id, name, created_at) VALUES ($1, $2, NOW())',
-    [teamId, slug]
+    'INSERT INTO teams (id, slug, name, created_at) VALUES ($1, $2, $3, NOW())',
+    [teamId, normalizedSlug, teamName]
   )
   if (ownerId) {
     await db.query(
@@ -97,7 +109,7 @@ async function ensureTeam (slug, ownerId = null) {
       [teamId, ownerId, 'owner', 'active']
     )
   }
-  return { id: teamId, name: slug, created_at: new Date().toISOString() }
+  return { id: teamId, slug: normalizedSlug, name: teamName, created_at: new Date().toISOString() }
 }
 
 async function getMember (teamId, userId) {
@@ -224,21 +236,22 @@ async function handleLogin (event) {
 
 async function handleTeamAccess (event, teamSlug) {
   const user = await requireAuth(event)
-  const team = await findTeamBySlug(teamSlug)
+  const normalizedSlug = normalizeTeamSlug(teamSlug)
+  const team = await findTeamBySlug(normalizedSlug)
   if (!team) {
-    return jsonResponse(200, { status: 'no-team', teamId: teamSlug, bootstrapAdminEmail: BOOTSTRAP_ADMIN_EMAIL })
+    return jsonResponse(200, { status: 'no-team', teamId: normalizedSlug, bootstrapAdminEmail: BOOTSTRAP_ADMIN_EMAIL })
   }
   const member = await getMember(team.id, user.id)
   if (!member) {
-    return jsonResponse(200, { status: 'no-access', reason: 'not-member', teamId: teamSlug, bootstrapAdminEmail: BOOTSTRAP_ADMIN_EMAIL })
+    return jsonResponse(200, { status: 'no-access', reason: 'not-member', teamId: normalizedSlug, bootstrapAdminEmail: BOOTSTRAP_ADMIN_EMAIL })
   }
   if (member.status !== 'active') {
-    return jsonResponse(200, { status: 'no-access', reason: 'inactive', teamId: teamSlug, bootstrapAdminEmail: BOOTSTRAP_ADMIN_EMAIL })
+    return jsonResponse(200, { status: 'no-access', reason: 'inactive', teamId: normalizedSlug, bootstrapAdminEmail: BOOTSTRAP_ADMIN_EMAIL })
   }
   return jsonResponse(200, {
     status: 'ok',
-    teamId: teamSlug,
-    team: { id: team.id, name: team.name },
+    teamId: normalizedSlug,
+    team: { id: team.id, name: team.name, slug: team.slug },
     member: { uid: user.id, role: member.role, status: member.status },
     bootstrapAdminEmail: BOOTSTRAP_ADMIN_EMAIL,
   })
@@ -246,10 +259,14 @@ async function handleTeamAccess (event, teamSlug) {
 
 async function handleTeamBootstrap (event, teamSlug) {
   const user = await requireAuth(event)
+  const normalizedSlug = normalizeTeamSlug(teamSlug)
+  if (normalizeTeamSlug(DEFAULT_TEAM_SLUG) !== normalizedSlug) {
+    return jsonResponse(403, { error: 'Bootstrap er kun tilladt på default-teamet.' })
+  }
   if (normalizeEmail(user.email) !== normalizeEmail(BOOTSTRAP_ADMIN_EMAIL)) {
     return jsonResponse(403, { error: 'Kun admin kan bootstrappe team.' })
   }
-  const team = await ensureTeam(teamSlug, user.id)
+  const team = await ensureTeam(normalizedSlug)
   await db.query(
     `INSERT INTO team_members (team_id, user_id, role, status, created_at)
      VALUES ($1, $2, $3, $4, NOW())
@@ -257,12 +274,17 @@ async function handleTeamBootstrap (event, teamSlug) {
      DO UPDATE SET role = EXCLUDED.role, status = EXCLUDED.status`,
     [team.id, user.id, 'owner', 'active']
   )
-  return jsonResponse(200, { ok: true, teamId: teamSlug, role: 'owner' })
+  return jsonResponse(200, { ok: true, teamId: normalizedSlug, role: 'owner' })
+}
+
+async function handleAuthSession (event) {
+  const user = await requireAuth(event)
+  return jsonResponse(200, { user: { id: user.id, email: user.email } })
 }
 
 async function handleTeamMembersList (event, teamSlug) {
   const user = await requireAuth(event)
-  const team = await findTeamBySlug(teamSlug)
+  const team = await findTeamBySlug(normalizeTeamSlug(teamSlug))
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
   await requireTeamRole(team.id, user.id, ['owner', 'admin', 'member'])
   const result = await db.query(
@@ -279,7 +301,7 @@ async function handleTeamMembersList (event, teamSlug) {
 async function handleTeamMemberCreate (event, teamSlug) {
   const user = await requireAuth(event)
   const body = parseBody(event)
-  const team = await findTeamBySlug(teamSlug)
+  const team = await findTeamBySlug(normalizeTeamSlug(teamSlug))
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
   await requireTeamRole(team.id, user.id, ['owner', 'admin'])
   const role = body.role === 'admin' ? 'admin' : (body.role === 'owner' ? 'owner' : 'member')
@@ -299,7 +321,7 @@ async function handleTeamMemberCreate (event, teamSlug) {
 async function handleTeamMemberPatch (event, teamSlug, memberId) {
   const user = await requireAuth(event)
   const body = parseBody(event)
-  const team = await findTeamBySlug(teamSlug)
+  const team = await findTeamBySlug(normalizeTeamSlug(teamSlug))
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
   await requireTeamRole(team.id, user.id, ['owner', 'admin'])
   const role = body.role === 'admin' || body.role === 'member' || body.role === 'owner' ? body.role : null
@@ -361,7 +383,7 @@ async function handleTeamMemberPatch (event, teamSlug, memberId) {
 
 async function handleTeamMemberDelete (event, teamSlug, memberId) {
   const user = await requireAuth(event)
-  const team = await findTeamBySlug(teamSlug)
+  const team = await findTeamBySlug(normalizeTeamSlug(teamSlug))
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
   await requireTeamRole(team.id, user.id, ['owner', 'admin'])
   const existing = await getMember(team.id, memberId)
@@ -405,7 +427,7 @@ async function handleInviteCreate (event, teamSlug) {
   const body = parseBody(event)
   const role = body.role === 'admin' ? 'admin' : 'member'
   const email = normalizeEmail(body.email || '') || null
-  const team = await findTeamBySlug(teamSlug)
+  const team = await findTeamBySlug(normalizeTeamSlug(teamSlug))
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
   await requireTeamRole(team.id, user.id, ['owner', 'admin'])
   const rawToken = generateToken()
@@ -427,11 +449,11 @@ async function handleInviteCreate (event, teamSlug) {
 
 async function handleInviteList (event, teamSlug) {
   const user = await requireAuth(event)
-  const team = await findTeamBySlug(teamSlug)
+  const team = await findTeamBySlug(normalizeTeamSlug(teamSlug))
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
   await requireTeamRole(team.id, user.id, ['owner', 'admin'])
   const result = await db.query(
-    `SELECT i.id, i.email, i.role, i.status, i.expires_at, i.created_at, i.accepted_at, t.name as team_slug
+    `SELECT i.id, i.email, i.role, i.status, i.expires_at, i.created_at, i.accepted_at, t.slug as team_slug
      FROM team_invites i
      JOIN teams t ON t.id = i.team_id
      WHERE i.team_id = $1
@@ -461,7 +483,7 @@ async function handleInviteAccept (event) {
   }
   const tokenHash = hashToken(token)
   const result = await db.query(
-    `SELECT i.id, i.team_id, i.role, i.status, i.expires_at, t.name as team_slug
+    `SELECT i.id, i.team_id, i.role, i.status, i.expires_at, t.slug as team_slug
      FROM team_invites i
      JOIN teams t ON t.id = i.team_id
      WHERE i.id = $1`,
@@ -497,7 +519,7 @@ async function handleInviteAccept (event) {
 async function handleCaseCreate (event, teamSlug) {
   const user = await requireAuth(event)
   const body = parseBody(event)
-  const team = await findTeamBySlug(teamSlug)
+  const team = await findTeamBySlug(normalizeTeamSlug(teamSlug))
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
   const member = await getMember(team.id, user.id)
   if (!member || member.status !== 'active') {
@@ -525,7 +547,7 @@ async function handleCaseCreate (event, teamSlug) {
     ]
   )
   const result = await db.query(
-    `SELECT c.*, t.name as team_slug
+    `SELECT c.*, t.slug as team_slug
      FROM team_cases c
      JOIN teams t ON t.id = c.team_id
      WHERE c.case_id = $1`,
@@ -536,14 +558,14 @@ async function handleCaseCreate (event, teamSlug) {
 
 async function handleCaseList (event, teamSlug) {
   const user = await requireAuth(event)
-  const team = await findTeamBySlug(teamSlug)
+  const team = await findTeamBySlug(normalizeTeamSlug(teamSlug))
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
   const member = await getMember(team.id, user.id)
   if (!member || member.status !== 'active') {
     return jsonResponse(403, { error: 'Ingen adgang til teamet.' })
   }
   const result = await db.query(
-    `SELECT c.*, t.name as team_slug
+    `SELECT c.*, t.slug as team_slug
      FROM team_cases c
      JOIN teams t ON t.id = c.team_id
      WHERE c.team_id = $1 AND c.deleted_at IS NULL`,
@@ -554,14 +576,14 @@ async function handleCaseList (event, teamSlug) {
 
 async function handleCaseGet (event, teamSlug, caseId) {
   const user = await requireAuth(event)
-  const team = await findTeamBySlug(teamSlug)
+  const team = await findTeamBySlug(normalizeTeamSlug(teamSlug))
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
   const member = await getMember(team.id, user.id)
   if (!member || member.status !== 'active') {
     return jsonResponse(403, { error: 'Ingen adgang til teamet.' })
   }
   const result = await db.query(
-    `SELECT c.*, t.name as team_slug
+    `SELECT c.*, t.slug as team_slug
      FROM team_cases c
      JOIN teams t ON t.id = c.team_id
      WHERE c.team_id = $1 AND c.case_id = $2`,
@@ -574,7 +596,7 @@ async function handleCaseGet (event, teamSlug, caseId) {
 
 async function handleCaseDelete (event, teamSlug, caseId) {
   const user = await requireAuth(event)
-  const team = await findTeamBySlug(teamSlug)
+  const team = await findTeamBySlug(normalizeTeamSlug(teamSlug))
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
   const member = await getMember(team.id, user.id)
   if (!member || member.status !== 'active') {
@@ -595,7 +617,7 @@ async function handleCaseDelete (event, teamSlug, caseId) {
     ['deleted', user.id, team.id, caseId]
   )
   const updated = await db.query(
-    `SELECT c.*, t.name as team_slug
+    `SELECT c.*, t.slug as team_slug
      FROM team_cases c
      JOIN teams t ON t.id = c.team_id
      WHERE c.team_id = $1 AND c.case_id = $2`,
@@ -607,7 +629,7 @@ async function handleCaseDelete (event, teamSlug, caseId) {
 async function handleCaseStatus (event, teamSlug, caseId) {
   const user = await requireAuth(event)
   const body = parseBody(event)
-  const team = await findTeamBySlug(teamSlug)
+  const team = await findTeamBySlug(normalizeTeamSlug(teamSlug))
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
   const member = await getMember(team.id, user.id)
   if (!member || member.status !== 'active') {
@@ -625,7 +647,7 @@ async function handleCaseStatus (event, teamSlug, caseId) {
     [body.status || 'kladde', user.id, team.id, caseId]
   )
   const updated = await db.query(
-    `SELECT c.*, t.name as team_slug
+    `SELECT c.*, t.slug as team_slug
      FROM team_cases c
      JOIN teams t ON t.id = c.team_id
      WHERE c.team_id = $1 AND c.case_id = $2`,
@@ -636,14 +658,14 @@ async function handleCaseStatus (event, teamSlug, caseId) {
 
 async function handleBackupExport (event, teamSlug) {
   const user = await requireAuth(event)
-  const team = await findTeamBySlug(teamSlug)
+  const team = await findTeamBySlug(normalizeTeamSlug(teamSlug))
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
   const member = await getMember(team.id, user.id)
   if (!member || member.status !== 'active' || (member.role !== 'admin' && member.role !== 'owner')) {
     return jsonResponse(403, { error: 'Kun admin kan eksportere backup.' })
   }
   const casesResult = await db.query(
-    `SELECT c.*, t.name as team_slug
+    `SELECT c.*, t.slug as team_slug
      FROM team_cases c
      JOIN teams t ON t.id = c.team_id
      WHERE c.team_id = $1`,
@@ -685,7 +707,7 @@ async function handleBackupExport (event, teamSlug) {
 
 async function handleBackupImport (event, teamSlug) {
   const user = await requireAuth(event)
-  const team = await findTeamBySlug(teamSlug)
+  const team = await findTeamBySlug(normalizeTeamSlug(teamSlug))
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
   const member = await getMember(team.id, user.id)
   if (!member || member.status !== 'active' || (member.role !== 'admin' && member.role !== 'owner')) {
@@ -742,6 +764,7 @@ export async function handler (event) {
   try {
     if (method === 'POST' && path === '/auth/signup') return await handleSignup(event)
     if (method === 'POST' && path === '/auth/login') return await handleLogin(event)
+    if (method === 'GET' && path === '/auth/session') return await handleAuthSession(event)
 
     const teamAccessMatch = path.match(/^\/teams\/([^/]+)\/access$/)
     if (teamAccessMatch && method === 'GET') return await handleTeamAccess(event, teamAccessMatch[1])
@@ -789,7 +812,7 @@ export async function handler (event) {
   } catch (error) {
     const status = error?.status || 500
     const message = isMissingRelationError(error)
-      ? 'DB er ikke migreret. Kør migrations/001_init.sql mod Neon.'
+      ? 'DB er ikke migreret. Kør migrations/001_init.sql og migrations/002_add_team_slug.sql mod Neon.'
       : (error?.message || 'Serverfejl')
     return jsonResponse(status, { error: message })
   }

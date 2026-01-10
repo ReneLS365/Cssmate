@@ -13,12 +13,17 @@ npm test
 
 ## Required env vars (backend)
 
-Set these environment variables when running the Netlify functions locally or in production:
+Set these environment variables when running the Netlify functions locally or in production.
+**Ingen dummy-fallbacks** som `base` må bruges i DB-konfigurationen.
 
-- `DATABASE_URL` (fallback: `NETLIFY_DATABASE_URL`)
+- `DATABASE_URL` (primær, anbefalet). Til Neon: inkluder `sslmode=require`.
+- Fallback: `NETLIFY_DATABASE_URL` eller `NETLIFY_DATABASE_URL_UNPOOLED`
 - `JWT_SECRET`
 - `APP_BASE_URL` (fx `https://sscaff.netlify.app`)
 - `BOOTSTRAP_ADMIN_EMAIL` (optional, default: `mr.lion1995@gmail.com`)
+- `DEFAULT_TEAM_SLUG` (optional, default: `hulmose`)
+
+**Netlify UI:** Site settings → Build & deploy → Environment → Environment variables.
 
 ## Database migrations
 
@@ -26,7 +31,20 @@ Kør migrations manuelt mod Neon/Postgres (idempotent):
 
 ```bash
 psql "$DATABASE_URL" -f migrations/001_init.sql
+psql "$DATABASE_URL" -f migrations/002_add_team_slug.sql
 ```
+
+## MIGRATION + DEPLOY CHECKLIST
+
+1. Sæt env vars i Netlify (se ovenfor).
+2. Verificér at `DATABASE_URL` (eller Netlify fallback) ikke er en dummy/placeholder.
+3. Kør migrations i rækkefølge:
+   - `migrations/001_init.sql`
+   - `migrations/002_add_team_slug.sql`
+4. Deploy og verificér:
+   - Signup/login fungerer.
+   - Team access og bootstrap-claim fungerer på default-teamet.
+5. Ryd op i Netlify env vars: fjern evt. gamle `VITE_FIREBASE_*` værdier.
 
 ## Guardrails (kort)
 

@@ -1,7 +1,11 @@
 import { Pool } from 'pg'
 
-const DATABASE_URL = process.env.DATABASE_URL || process.env.NETLIFY_DATABASE_URL || ''
 const DATABASE_SSL = process.env.DATABASE_SSL
+const DATABASE_URL_CANDIDATES = [
+  process.env.DATABASE_URL,
+  process.env.NETLIFY_DATABASE_URL,
+  process.env.NETLIFY_DATABASE_URL_UNPOOLED,
+]
 
 let pool = null
 
@@ -35,25 +39,49 @@ function parseSslMode (urlString) {
   }
 }
 
-function resolveSslSetting () {
+function resolveDatabaseUrl () {
+  const candidates = DATABASE_URL_CANDIDATES.filter(Boolean)
+  for (const candidate of candidates) {
+    const trimmed = String(candidate).trim()
+    if (!trimmed || trimmed.toLowerCase() === 'base') continue
+    try {
+      const parsed = new URL(trimmed)
+      if (parsed.protocol === 'postgres:' || parsed.protocol === 'postgresql:') {
+        return trimmed
+      }
+    } catch {
+      continue
+    }
+  }
+  return ''
+}
+
+function resolveSslSetting (databaseUrl) {
   const envSetting = parseBoolean(DATABASE_SSL)
   if (envSetting !== null) {
     return envSetting
   }
-  const urlSetting = parseSslMode(DATABASE_URL)
+  const urlSetting = parseSslMode(databaseUrl)
   if (urlSetting !== null) {
     return urlSetting
   }
-  return false
+  return true
 }
 
 function buildPoolConfig () {
-  if (!DATABASE_URL) {
-    throw new Error('DATABASE_URL mangler')
+  const databaseUrl = resolveDatabaseUrl()
+  if (!databaseUrl) {
+    const missingKeys = [
+      'DATABASE_URL',
+      'NETLIFY_DATABASE_URL',
+      'NETLIFY_DATABASE_URL_UNPOOLED',
+    ].filter((key) => !process.env[key])
+    console.warn('Database URL mangler. Mangler env vars:', missingKeys.join(', ') || 'ukendt')
+    throw new Error('Database URL mangler. Sæt DATABASE_URL eller NETLIFY_DATABASE_URL(_UNPOOLED).')
   }
-  const useSsl = resolveSslSetting()
+  const useSsl = resolveSslSetting(databaseUrl)
   return {
-    connectionString: DATABASE_URL,
+    connectionString: databaseUrl,
     ...(useSsl ? { ssl: { rejectUnauthorized: false } } : {}),
   }
 }
