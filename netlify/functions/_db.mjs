@@ -1,16 +1,16 @@
 import { Pool } from 'pg'
 
+const DATABASE_URL = process.env.DATABASE_URL || process.env.NETLIFY_DATABASE_URL || ''
+
 let pool = null
 
 function buildPoolConfig () {
-  const connectionString = process.env.DATABASE_URL
-  if (!connectionString) {
+  if (!DATABASE_URL) {
     throw new Error('DATABASE_URL mangler')
   }
-  const sslRequired = process.env.DATABASE_SSL === 'true'
   return {
-    connectionString,
-    ssl: sslRequired ? { rejectUnauthorized: false } : undefined,
+    connectionString: DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
   }
 }
 
@@ -47,4 +47,10 @@ export async function withTransaction (handler) {
   } finally {
     client.release()
   }
+}
+
+export const db = {
+  getPool,
+  query,
+  withTransaction,
 }
