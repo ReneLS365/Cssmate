@@ -658,8 +658,8 @@ function renderAccessState (session) {
   const canEditMembers = canViewMembers && isAdmin
   const canShowAdmin = canEditMembers
   const canBootstrapAction = Boolean(session?.bootstrapAvailable && accessStatus === TEAM_ACCESS_STATUS.NO_TEAM)
-  const isBootstrapAdmin = normalizeEmail(session?.user?.email) === normalizeEmail(BOOTSTRAP_ADMIN_EMAIL)
-  const isBootstrapAdmin = normalizeEmail(session?.user?.email) === normalizeEmail(session?.bootstrapAdminEmail)
+  const bootstrapEmail = normalizeEmail(session?.bootstrapAdminEmail || BOOTSTRAP_ADMIN_EMAIL || '')
+  const isBootstrapAdmin = normalizeEmail(session?.user?.email) === bootstrapEmail
   const teamId = formatTeamId(session?.teamId || DEFAULT_TEAM_SLUG)
   const canClaimOwner = isBootstrapAdmin
     && teamId === formatTeamId(DEFAULT_TEAM_SLUG)
