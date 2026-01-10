@@ -11,6 +11,23 @@ npm run build
 npm test
 ```
 
+## Required env vars (backend)
+
+Set these environment variables when running the Netlify functions locally or in production:
+
+- `DATABASE_URL` (fallback: `NETLIFY_DATABASE_URL`)
+- `JWT_SECRET`
+- `APP_BASE_URL` (fx `https://sscaff.netlify.app`)
+- `BOOTSTRAP_ADMIN_EMAIL` (optional, default: `mr.lion1995@gmail.com`)
+
+## Database migrations
+
+Kør migrations manuelt mod Neon/Postgres (idempotent):
+
+```bash
+psql "$DATABASE_URL" -f migrations/001_init.sql
+```
+
 ## Guardrails (kort)
 
 **Frosne faner:** Sagsinfo, Optælling, Løn, Delt sager.  

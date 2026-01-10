@@ -136,7 +136,7 @@ function bindLoginHandlers () {
       const password = passwordInput?.value || ''
       await handleAuthAction(
         () => authProvider.actions.signUpWithEmail(email, password),
-        'Konto oprettet. Tjek din email for bekræftelse.'
+        'Konto oprettet.'
       )
     })
   }
@@ -215,9 +215,9 @@ function handleAuthChange (state) {
 
   if (requiresVerification) {
     setGateVisible(true)
-    showSection('verify')
-    setMessage('Bekræft din email før du bruger appen.', '', authErrorCode)
-    updateAuthGateReason('needs-verification')
+    showSection('login')
+    setMessage('Log ind for at fortsætte.', '', authErrorCode)
+    updateAuthGateReason('signed-out')
     return
   }
 }
