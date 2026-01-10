@@ -4,6 +4,9 @@
   [build.environment]
     NODE_VERSION = "22"
 
+[functions]
+  included_files = ["migrations/*.sql"]
+
  [context.deploy-preview]
   command = "npm run build"
   publish = ".netlify_publish"

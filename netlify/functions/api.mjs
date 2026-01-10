@@ -62,6 +62,25 @@ function getAuthHeader (event) {
   return headers.authorization || headers.Authorization || ''
 }
 
+function resolveAppBaseUrl (event) {
+  const raw = String(process.env.APP_BASE_URL || '').trim()
+  if (raw && raw.toLowerCase() !== 'base') {
+    try {
+      const parsed = new URL(raw)
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        return parsed.origin
+      }
+    } catch {
+      // ignore invalid env value
+    }
+  }
+  const headers = event.headers || {}
+  const host = headers['x-forwarded-host'] || headers.host
+  if (!host) return ''
+  const protocol = (headers['x-forwarded-proto'] || 'https').split(',')[0].trim()
+  return `${protocol}://${host}`
+}
+
 async function requireAuth (event) {
   const header = getAuthHeader(event)
   if (!header.startsWith('Bearer ')) {
@@ -110,6 +129,20 @@ async function ensureTeam (slug, ownerId = null) {
     )
   }
   return { id: teamId, slug: normalizedSlug, name: teamName, created_at: new Date().toISOString() }
+}
+
+async function ensureBootstrapAdmin (userId, email) {
+  if (normalizeEmail(email) !== normalizeEmail(BOOTSTRAP_ADMIN_EMAIL)) return
+  const team = await ensureTeam(DEFAULT_TEAM_SLUG)
+  const existingMember = await getMember(team.id, userId)
+  if (existingMember) return
+  await db.query(
+    `INSERT INTO team_members (team_id, user_id, role, status, created_at)
+     VALUES ($1, $2, $3, $4, NOW())
+     ON CONFLICT (team_id, user_id)
+     DO NOTHING`,
+    [team.id, userId, 'owner', 'active']
+  )
 }
 
 async function getMember (teamId, userId) {
@@ -211,6 +244,7 @@ async function handleSignup (event) {
     'INSERT INTO users (id, email, password_hash, created_at) VALUES ($1, $2, $3, NOW())',
     [userId, email, passwordHash]
   )
+  await ensureBootstrapAdmin(userId, email)
   const token = await signToken({ userId, email })
   return jsonResponse(200, { token })
 }
@@ -230,6 +264,7 @@ async function handleLogin (event) {
   if (!ok) {
     return jsonResponse(401, { error: 'Forkert login.' })
   }
+  await ensureBootstrapAdmin(user.id, user.email)
   const token = await signToken({ userId: user.id, email: user.email })
   return jsonResponse(200, { token })
 }
@@ -439,7 +474,9 @@ async function handleInviteCreate (event, teamSlug) {
      RETURNING id, expires_at`,
     [inviteId, team.id, email, role, tokenHash, 'pending', user.id]
   )
-  const inviteUrl = `${process.env.APP_BASE_URL || ''}/accept-invite?inviteId=${inviteId}&token=${rawToken}`
+  const baseUrl = resolveAppBaseUrl(event)
+  const invitePath = `/accept-invite?inviteId=${inviteId}&token=${rawToken}`
+  const inviteUrl = baseUrl ? `${baseUrl}${invitePath}` : invitePath
   return jsonResponse(200, {
     inviteId,
     expiresAt: result.rows[0]?.expires_at ? new Date(result.rows[0].expires_at).toISOString() : null,
@@ -760,8 +797,12 @@ async function handleBackupImport (event, teamSlug) {
 export async function handler (event) {
   const method = event.httpMethod || 'GET'
   const path = getRoutePath(event)
+  const action = String(event.queryStringParameters?.action || '').toLowerCase()
 
   try {
+    if (method === 'POST' && action === 'signup') return await handleSignup(event)
+    if (method === 'POST' && action === 'login') return await handleLogin(event)
+
     if (method === 'POST' && path === '/auth/signup') return await handleSignup(event)
     if (method === 'POST' && path === '/auth/login') return await handleLogin(event)
     if (method === 'GET' && path === '/auth/session') return await handleAuthSession(event)
