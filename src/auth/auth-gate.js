@@ -22,6 +22,7 @@ let logoutButton
 let repairButton
 let authProvider
 let isSubmitting = false
+let fieldsContainer
 
 function shouldShowRepair (message, errorCode, variant) {
   if (variant !== 'error') return false
@@ -122,30 +123,25 @@ function bindLoginHandlers () {
   }
   if (loginButton) {
     loginButton.addEventListener('click', async () => {
-      const email = emailInput?.value || ''
-      const password = passwordInput?.value || ''
       await handleAuthAction(
-        () => authProvider.actions.signInWithEmail(email, password),
+        () => authProvider.actions.signInWithEmail(),
         'Logger ind…'
       )
     })
   }
   if (signupButton) {
     signupButton.addEventListener('click', async () => {
-      const email = emailInput?.value || ''
-      const password = passwordInput?.value || ''
       await handleAuthAction(
-        () => authProvider.actions.signUpWithEmail(email, password),
-        'Konto oprettet.'
+        () => authProvider.actions.signUpWithEmail(),
+        'Sender dig til oprettelse…'
       )
     })
   }
   if (forgotButton) {
     forgotButton.addEventListener('click', async () => {
-      const email = emailInput?.value || ''
       await handleAuthAction(
-        () => authProvider.actions.sendPasswordReset(email),
-        'Link til nulstilling er sendt, hvis emailen findes.'
+        () => authProvider.actions.sendPasswordReset(),
+        'Åbner login, hvor du kan nulstille adgangskode.'
       )
     })
   }
@@ -176,6 +172,20 @@ function updateProviderButtons () {
   if (!googleButton || !authProvider?.getEnabledProviders) return
   const enabled = authProvider.getEnabledProviders()
   googleButton.hidden = !enabled.includes('google')
+}
+
+function hideLegacyFields () {
+  if (fieldsContainer) {
+    fieldsContainer.setAttribute('hidden', '')
+  }
+  if (emailInput) {
+    emailInput.value = ''
+    emailInput.setAttribute('hidden', '')
+  }
+  if (passwordInput) {
+    passwordInput.value = ''
+    passwordInput.setAttribute('hidden', '')
+  }
 }
 
 function handleAuthChange (state) {
@@ -251,6 +261,7 @@ export function initAuthGate () {
   loadingScreen = document.getElementById('authLoadingScreen')
   loginScreen = document.getElementById('authLoginScreen')
   verifyScreen = document.getElementById('authVerifyScreen')
+  fieldsContainer = loginScreen?.querySelector?.('.auth-fields') || null
   messageEl = document.getElementById('authMessage')
   emailInput = document.getElementById('authEmail')
   passwordInput = document.getElementById('authPassword')
@@ -272,6 +283,7 @@ export function initAuthGate () {
   }
 
   authProvider = initAuthProvider()
+  hideLegacyFields()
   bindLoginHandlers()
   if (repairButton) {
     repairButton.addEventListener('click', () => {
