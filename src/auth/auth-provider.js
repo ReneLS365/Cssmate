@@ -2,15 +2,9 @@ import {
   getAuthContext,
   getCurrentUser,
   getEnabledProviders,
-  initSharedAuth,
   loginWithProvider,
   logoutUser,
   onAuthStateChange,
-  reloadCurrentUser,
-  resendEmailVerification,
-  sendPasswordReset,
-  signInWithEmail,
-  signUpWithEmail,
   waitForAuthReady,
 } from '../../js/shared-auth.js'
 import { updateAuthDebugState } from '../state/debug.js'
@@ -145,13 +139,8 @@ function getAuthProviderApi () {
     ensureAuth: ensureAuthInit,
     prefetchAuth: prefetchAuthInit,
     actions: {
-      signInWithGoogle: () => loginWithProvider('google'),
-      signInWithEmail: (...args) => signInWithEmail(...args),
-      signUpWithEmail: (...args) => signUpWithEmail(...args),
+      signInWithRedirect: () => loginWithProvider('auth0'),
       signOut: logoutUser,
-      sendPasswordReset: (...args) => ensureAuthInit().then(() => sendPasswordReset(...args)),
-      resendVerification: (...args) => ensureAuthInit().then(() => resendEmailVerification(...args)),
-      reloadUser: (...args) => ensureAuthInit().then(() => reloadCurrentUser(...args)),
     },
   }
 }

@@ -1,4 +1,6 @@
 import { createAuth0Client } from '../../js/vendor/auth0-spa-js.js'
+import { resolveBaseUrl } from './resolve-base-url.js'
+import { isAutomated } from '../config/runtime-modes.js'
 
 let auth0Client = null
 let initPromise = null
@@ -58,28 +60,36 @@ function requireAuth0Config () {
 export async function initAuth () {
   if (initPromise) return initPromise
   initPromise = (async () => {
-    const env = requireAuth0Config()
-    const auth0 = await createAuth0Client({
-      domain: env.domain,
-      clientId: env.clientId,
-      authorizationParams: {
-        redirect_uri: typeof window !== 'undefined' ? window.location.origin : undefined,
-        audience: env.audience || undefined,
-      },
-      cacheLocation: 'localstorage',
-      useRefreshTokens: true,
-    })
+    try {
+      const env = requireAuth0Config()
+      const baseUrl = resolveBaseUrl()
+      const auth0 = await createAuth0Client({
+        domain: env.domain,
+        clientId: env.clientId,
+        authorizationParams: {
+          redirect_uri: baseUrl,
+          audience: env.audience || undefined,
+        },
+        cacheLocation: 'localstorage',
+        useRefreshTokens: true,
+      })
 
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search)
-      if (params.has('code') && params.has('state')) {
-        await auth0.handleRedirectCallback()
-        window.history.replaceState({}, document.title, window.location.pathname)
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search)
+        if (params.has('code') && params.has('state')) {
+          await auth0.handleRedirectCallback()
+          window.history.replaceState({}, document.title, window.location.pathname)
+        }
       }
-    }
 
-    auth0Client = auth0
-    return auth0
+      auth0Client = auth0
+      return auth0
+    } catch (error) {
+      if (isAutomated()) {
+        return null
+      }
+      throw error
+    }
   })()
   return initPromise
 }
@@ -91,22 +101,26 @@ async function getClient () {
 
 export async function login () {
   const auth0 = await getClient()
+  if (!auth0) return
   return auth0.loginWithRedirect()
 }
 
 export async function logout () {
   const auth0 = await getClient()
-  const returnTo = typeof window !== 'undefined' ? window.location.origin : undefined
+  if (!auth0) return
+  const returnTo = resolveBaseUrl()
   return auth0.logout({ logoutParams: { returnTo } })
 }
 
 export async function isAuthenticated () {
   const auth0 = await getClient()
+  if (!auth0) return false
   return auth0.isAuthenticated()
 }
 
 export async function getUser () {
   const auth0 = await getClient()
+  if (!auth0) return null
   return auth0.getUser()
 }
 
@@ -119,15 +133,6 @@ export function isAdmin (user) {
 
 export async function getAccessTokenSilently () {
   const auth0 = await getClient()
+  if (!auth0) return null
   return auth0.getTokenSilently()
 }
-export {
-  getToken as getAccessTokenSilently,
-  getUser,
-  initAuth0 as initAuth,
-  isAdmin,
-  isAuthenticated,
-  login,
-  logout,
-  signup,
-} from './auth0-client.js'

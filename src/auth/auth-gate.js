@@ -10,19 +10,11 @@ let loadingScreen
 let loginScreen
 let verifyScreen
 let messageEl
-let emailInput
-let passwordInput
-let googleButton
 let loginButton
-let signupButton
-let forgotButton
-let resendButton
-let verifiedButton
 let logoutButton
 let repairButton
 let authProvider
 let isSubmitting = false
-let fieldsContainer
 
 function shouldShowRepair (message, errorCode, variant) {
   if (variant !== 'error') return false
@@ -85,19 +77,12 @@ function setGateVisible (visible) {
 function disableForm (disabled) {
   isSubmitting = disabled
   ;[
-    googleButton,
     loginButton,
-    signupButton,
-    forgotButton,
-    resendButton,
-    verifiedButton,
     logoutButton,
     repairButton,
   ].forEach((btn) => {
     if (btn) btn.disabled = disabled
   })
-  if (emailInput) emailInput.disabled = disabled && emailInput.dataset.locked !== 'false'
-  if (passwordInput) passwordInput.disabled = disabled && passwordInput.dataset.locked !== 'false'
 }
 
 async function handleAuthAction (fn, successMessage) {
@@ -116,75 +101,15 @@ async function handleAuthAction (fn, successMessage) {
 }
 
 function bindLoginHandlers () {
-  if (googleButton) {
-    googleButton.addEventListener('click', async () => {
-      await handleAuthAction(() => authProvider.actions.signInWithGoogle(), 'Logger ind…')
-    })
-  }
   if (loginButton) {
     loginButton.addEventListener('click', async () => {
-      await handleAuthAction(
-        () => authProvider.actions.signInWithEmail(),
-        'Logger ind…'
-      )
-    })
-  }
-  if (signupButton) {
-    signupButton.addEventListener('click', async () => {
-      await handleAuthAction(
-        () => authProvider.actions.signUpWithEmail(),
-        'Sender dig til oprettelse…'
-      )
-    })
-  }
-  if (forgotButton) {
-    forgotButton.addEventListener('click', async () => {
-      await handleAuthAction(
-        () => authProvider.actions.sendPasswordReset(),
-        'Åbner login, hvor du kan nulstille adgangskode.'
-      )
-    })
-  }
-  if (resendButton) {
-    resendButton.addEventListener('click', async () => {
-      await handleAuthAction(
-        () => authProvider.actions.resendVerification(),
-        'Bekræftelsesmail sendt igen.'
-      )
-    })
-  }
-  if (verifiedButton) {
-    verifiedButton.addEventListener('click', async () => {
-      await handleAuthAction(
-        () => authProvider.actions.reloadUser(),
-        'Tjekker verificering…'
-      )
+      await handleAuthAction(() => authProvider.actions.signInWithRedirect(), 'Sender dig til login…')
     })
   }
   if (logoutButton) {
     logoutButton.addEventListener('click', async () => {
       await handleAuthAction(() => authProvider.actions.signOut(), 'Logget ud')
     })
-  }
-}
-
-function updateProviderButtons () {
-  if (!googleButton || !authProvider?.getEnabledProviders) return
-  const enabled = authProvider.getEnabledProviders()
-  googleButton.hidden = !enabled.includes('google')
-}
-
-function hideLegacyFields () {
-  if (fieldsContainer) {
-    fieldsContainer.setAttribute('hidden', '')
-  }
-  if (emailInput) {
-    emailInput.value = ''
-    emailInput.setAttribute('hidden', '')
-  }
-  if (passwordInput) {
-    passwordInput.value = ''
-    passwordInput.setAttribute('hidden', '')
   }
 }
 
@@ -216,7 +141,6 @@ function handleAuthChange (state) {
   if (!hasUser) {
     setGateVisible(true)
     showSection('login')
-    updateProviderButtons()
     const variant = status === SESSION_STATUS.NO_ACCESS || status === SESSION_STATUS.ERROR || hasAuthError ? 'error' : ''
     setMessage(message || 'Log ind for at fortsætte', variant, authErrorCode)
     updateAuthGateReason(status === SESSION_STATUS.NO_ACCESS ? 'no-access' : (hasAuthError ? 'auth-error' : 'signed-out'))
@@ -261,16 +185,8 @@ export function initAuthGate () {
   loadingScreen = document.getElementById('authLoadingScreen')
   loginScreen = document.getElementById('authLoginScreen')
   verifyScreen = document.getElementById('authVerifyScreen')
-  fieldsContainer = loginScreen?.querySelector?.('.auth-fields') || null
   messageEl = document.getElementById('authMessage')
-  emailInput = document.getElementById('authEmail')
-  passwordInput = document.getElementById('authPassword')
-  googleButton = document.getElementById('authGoogle')
   loginButton = document.getElementById('authLogin')
-  signupButton = document.getElementById('authSignup')
-  forgotButton = document.getElementById('authForgot')
-  resendButton = document.getElementById('authResend')
-  verifiedButton = document.getElementById('authVerified')
   logoutButton = document.getElementById('authLogout')
   repairButton = document.getElementById('authRepair')
 
@@ -283,7 +199,6 @@ export function initAuthGate () {
   }
 
   authProvider = initAuthProvider()
-  hideLegacyFields()
   bindLoginHandlers()
   if (repairButton) {
     repairButton.addEventListener('click', () => {
