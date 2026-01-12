@@ -7,6 +7,37 @@ import {
   logout,
 } from './auth0-client.js'
 
+const AUTOLOGIN_GUARD_KEY = 'cssmate_autologin_attempted'
+
+function isAuthCallbackUrl () {
+  if (typeof window === 'undefined') return false
+  const params = new URLSearchParams(window.location.search)
+  return params.has('code') || params.has('state') || params.has('error')
+}
+
+function shouldSkipAutoLogin () {
+  if (typeof window === 'undefined') return false
+  const path = window.location.pathname || ''
+  return path.startsWith('/diag') || path.startsWith('/_diag')
+}
+
+async function forceLoginIfNeeded () {
+  if (typeof window === 'undefined') return
+  if (shouldSkipAutoLogin()) return
+  if (isAuthCallbackUrl()) return
+
+  if (sessionStorage.getItem(AUTOLOGIN_GUARD_KEY) === '1') return
+
+  const authenticated = await isAuthenticated()
+  if (authenticated) {
+    sessionStorage.removeItem(AUTOLOGIN_GUARD_KEY)
+    return
+  }
+
+  sessionStorage.setItem(AUTOLOGIN_GUARD_KEY, '1')
+  await login()
+}
+
 function setHidden (element, hidden) {
   if (!element) return
   element.hidden = hidden
@@ -27,6 +58,9 @@ async function updateAuth0Ui (nodes) {
 
   try {
     const authenticated = await isAuthenticated()
+    if (authenticated) {
+      sessionStorage.removeItem(AUTOLOGIN_GUARD_KEY)
+    }
     setHidden(loginBtn, authenticated)
     setHidden(logoutBtn, !authenticated)
 
@@ -79,4 +113,6 @@ export async function initAuth0Ui () {
   }
 
   await updateAuth0Ui(nodes)
+  document.documentElement.classList.add('auth-ready')
+  await forceLoginIfNeeded()
 }
