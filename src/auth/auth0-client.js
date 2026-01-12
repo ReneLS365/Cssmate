@@ -1,134 +1,114 @@
 import createAuth0Client from '@auth0/auth0-spa-js'
-import { isAutomated } from '../config/runtime-modes.js'
 import { resolveBaseUrl } from './resolve-base-url.js'
 
-let client
-let initPromise
+let clientPromise = null
 
-const INVITE_TOKEN_KEY = 'cssmate:inviteToken'
-
-function env (key, fallback = '') {
-  return (import.meta?.env?.[key])
-    ?? (window.__ENV__?.[key])
-    ?? (typeof process !== 'undefined' ? process.env?.[key] : undefined)
-    ?? fallback
+function readEnvValue (value) {
+  if (value == null) return ''
+  const normalized = String(value).trim()
+  return normalized
 }
 
-function storeInviteToken (token) {
-  if (!token) return
-  try {
-    window.sessionStorage?.setItem(INVITE_TOKEN_KEY, token)
-  } catch {
-    // ignore
+function resolveConfig () {
+  const metaEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {}
+  const windowEnv = typeof window !== 'undefined' ? window : {}
+
+  return {
+    domain: readEnvValue(metaEnv.VITE_AUTH0_DOMAIN || windowEnv.VITE_AUTH0_DOMAIN),
+    clientId: readEnvValue(metaEnv.VITE_AUTH0_CLIENT_ID || windowEnv.VITE_AUTH0_CLIENT_ID),
+    audience: readEnvValue(metaEnv.VITE_AUTH0_AUDIENCE || windowEnv.VITE_AUTH0_AUDIENCE),
   }
 }
 
-export async function initAuth0 () {
-  if (client) return client
-  if (initPromise) return initPromise
+function buildAuthParams ({ redirectUri, audience }) {
+  const params = { redirect_uri: redirectUri }
+  if (audience) {
+    params.audience = audience
+  }
+  return params
+}
 
-  initPromise = (async () => {
+export async function getClient () {
+  if (clientPromise) return clientPromise
+
+  clientPromise = (async () => {
     try {
-      const domain = env('VITE_AUTH0_DOMAIN')
-      const clientId = env('VITE_AUTH0_CLIENT_ID')
-      const audience = env('VITE_AUTH0_AUDIENCE', '')
-      const baseUrl = resolveBaseUrl()
-
+      const { domain, clientId, audience } = resolveConfig()
       if (!domain || !clientId) {
-        throw new Error('Missing Auth0 env vars: VITE_AUTH0_DOMAIN / VITE_AUTH0_CLIENT_ID')
+        throw new Error('Auth0 config mangler. Tjek VITE_AUTH0_DOMAIN og VITE_AUTH0_CLIENT_ID.')
       }
 
-      client = await createAuth0Client({
+      const redirectUri = resolveBaseUrl()
+      const client = await createAuth0Client({
         domain,
         clientId,
         authorizationParams: {
-          redirect_uri: baseUrl,
-          ...(audience ? { audience } : {}),
+          ...buildAuthParams({ redirectUri, audience }),
         },
         cacheLocation: 'localstorage',
         useRefreshTokens: true,
       })
 
-      const qs = new URLSearchParams(window.location.search)
-      const hasCode = qs.has('code')
-      const hasState = qs.has('state')
-      const inviteToken = qs.get('invite')
-
-      if (inviteToken) {
-        storeInviteToken(inviteToken)
-      }
-
-      if (hasCode && hasState) {
-        const result = await client.handleRedirectCallback()
-        if (result?.appState?.invite) {
-          storeInviteToken(result.appState.invite)
-        }
-        window.history.replaceState({}, document.title, window.location.pathname)
-      }
-
-      if (inviteToken && !hasCode && !hasState) {
-        const authed = await client.isAuthenticated().catch(() => false)
-        if (!authed) {
-          await client.loginWithRedirect({ appState: { invite: inviteToken } })
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search)
+        if (params.has('code') && params.has('state')) {
+          await client.handleRedirectCallback()
+          window.history.replaceState({}, document.title, window.location.pathname)
         }
       }
 
       return client
     } catch (error) {
-      if (isAutomated()) {
-        return null
-      }
+      clientPromise = null
       throw error
     }
   })()
 
-  try {
-    return await initPromise
-  } finally {
-    initPromise = null
-  }
+  return clientPromise
 }
 
-export async function login (appState = {}) {
-  const c = await initAuth0()
-  if (!c) return
-  await c.loginWithRedirect({ appState })
+export async function initAuth0 () {
+  return getClient()
 }
 
-export async function signup (appState = {}) {
-  const c = await initAuth0()
-  if (!c) return
-  await c.loginWithRedirect({
+export async function login (appState) {
+  const client = await getClient()
+  const { audience } = resolveConfig()
+  await client.loginWithRedirect({
     appState,
-    authorizationParams: { screen_hint: 'signup', redirect_uri: resolveBaseUrl() },
+    authorizationParams: buildAuthParams({ redirectUri: resolveBaseUrl(), audience }),
   })
 }
 
-export function logout () {
-  if (!client) return
-  client.logout({ logoutParams: { returnTo: resolveBaseUrl() } })
+export async function signup (appState) {
+  const client = await getClient()
+  const { audience } = resolveConfig()
+  await client.loginWithRedirect({
+    appState,
+    authorizationParams: { ...buildAuthParams({ redirectUri: resolveBaseUrl(), audience }), screen_hint: 'signup' },
+  })
+}
+
+export async function logout () {
+  const client = await getClient()
+  await client.logout({ logoutParams: { returnTo: resolveBaseUrl() } })
 }
 
 export async function isAuthenticated () {
-  const c = await initAuth0()
-  if (!c) return false
-  return c.isAuthenticated()
+  const client = await getClient()
+  return client.isAuthenticated()
 }
 
 export async function getUser () {
-  const c = await initAuth0()
-  if (!c) return null
-  return c.getUser()
+  const client = await getClient()
+  return client.getUser()
 }
 
 export async function getToken () {
-  const c = await initAuth0()
-  if (!c) return null
-  return c.getTokenSilently()
-}
-
-export function isAdmin (user) {
-  const adminEmail = (env('VITE_ADMIN_EMAIL') || '').trim().toLowerCase()
-  const userEmail = (user?.email || '').trim().toLowerCase()
-  return Boolean(adminEmail && userEmail && adminEmail === userEmail)
+  const client = await getClient()
+  const { audience } = resolveConfig()
+  if (audience) {
+    return client.getTokenSilently({ authorizationParams: { audience } })
+  }
+  return client.getTokenSilently()
 }

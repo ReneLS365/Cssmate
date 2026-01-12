@@ -1,13 +1,6 @@
-import { isAdminEmail } from './roles.js'
-
-export function isAdminSession (session) {
-  const role = session?.member?.role || session?.role || ''
-  return role === 'admin' || role === 'owner' || isAdminEmail(session?.user?.email)
-}
-
-export function assertAdmin (session, actionLabel = 'Denne handling') {
-  if (isAdminSession(session)) return true
-  const error = new Error(`${actionLabel} kræver admin-adgang.`)
-  error.code = 'not-admin'
-  throw error
+export function isAdmin (userEmail) {
+  const metaEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {}
+  const configEmail = metaEnv.VITE_ADMIN_EMAIL || (typeof window !== 'undefined' ? window.VITE_ADMIN_EMAIL : '')
+  if (!configEmail || !userEmail) return false
+  return configEmail.trim().toLowerCase() === String(userEmail).trim().toLowerCase()
 }

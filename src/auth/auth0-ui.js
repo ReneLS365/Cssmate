@@ -1,11 +1,11 @@
+import { isAdmin } from './admin.js'
 import {
   getUser,
-  initAuth,
-  isAdmin,
+  initAuth0,
   isAuthenticated,
   login,
   logout,
-} from './auth0.js'
+} from './auth0-client.js'
 
 function setHidden (element, hidden) {
   if (!element) return
@@ -39,7 +39,7 @@ async function updateAuth0Ui (nodes) {
 
     const user = await getUser()
     setText(userEmail, user?.email || '–')
-    setHidden(adminLink, !isAdmin(user))
+    setHidden(adminLink, !isAdmin(user?.email))
     setText(statusMessage, '')
   } catch (error) {
     setHidden(loginBtn, false)
@@ -72,7 +72,7 @@ export async function initAuth0Ui () {
   })
 
   try {
-    await initAuth()
+    await initAuth0()
   } catch (error) {
     setText(nodes.statusMessage, error?.message || 'Auth0 kunne ikke initialiseres.')
     return

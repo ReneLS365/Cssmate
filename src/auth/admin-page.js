@@ -1,11 +1,11 @@
+import { isAdmin } from './admin.js'
 import {
   getUser,
-  initAuth,
-  isAdmin,
+  initAuth0,
   isAuthenticated,
   login,
   logout,
-} from './auth0.js'
+} from './auth0-client.js'
 
 function setHidden (element, hidden) {
   if (!element) return
@@ -33,7 +33,7 @@ async function guardAdminPage () {
   logoutBtn?.addEventListener('click', () => logout().catch(() => {}))
 
   try {
-    await initAuth()
+    await initAuth0()
   } catch (error) {
     setText(message, error?.message || 'Auth0 kunne ikke initialiseres.')
     return
@@ -53,7 +53,7 @@ async function guardAdminPage () {
   const user = await getUser()
   setText(userEmail, user?.email || '–')
 
-  if (!isAdmin(user)) {
+  if (!isAdmin(user?.email)) {
     setText(message, 'Adgang nægtet. Din konto er ikke admin.')
     setHidden(content, true)
     return
