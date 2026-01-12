@@ -12,11 +12,12 @@ function readEnvValue (value) {
 function resolveConfig () {
   const metaEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {}
   const windowEnv = typeof window !== 'undefined' ? window : {}
+  const env = (windowEnv && windowEnv.__ENV__) ? windowEnv.__ENV__ : {}
 
   return {
-    domain: readEnvValue(metaEnv.VITE_AUTH0_DOMAIN || windowEnv.VITE_AUTH0_DOMAIN),
-    clientId: readEnvValue(metaEnv.VITE_AUTH0_CLIENT_ID || windowEnv.VITE_AUTH0_CLIENT_ID),
-    audience: readEnvValue(metaEnv.VITE_AUTH0_AUDIENCE || windowEnv.VITE_AUTH0_AUDIENCE),
+    domain: readEnvValue(metaEnv.VITE_AUTH0_DOMAIN || env.VITE_AUTH0_DOMAIN || windowEnv.VITE_AUTH0_DOMAIN),
+    clientId: readEnvValue(metaEnv.VITE_AUTH0_CLIENT_ID || env.VITE_AUTH0_CLIENT_ID || windowEnv.VITE_AUTH0_CLIENT_ID),
+    audience: readEnvValue(metaEnv.VITE_AUTH0_AUDIENCE || env.VITE_AUTH0_AUDIENCE || windowEnv.VITE_AUTH0_AUDIENCE),
   }
 }
 

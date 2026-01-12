@@ -23,6 +23,7 @@ import { isAutomated, isCi, isLighthouse } from './src/config/runtime-modes.js'
 import { isDiagnosticsEnabled, mountDiagnostics } from './src/ui/auth-diagnostics.js'
 import { initAuth0Ui } from './src/auth/auth0-ui.js'
 import { getClient as getAuth0Client, getUser, isAuthenticated, login, signup } from './src/auth/auth0-client.js'
+import { forceLoginOnce } from './src/auth/force-login.js'
 
 function readCiFlag () {
   if (typeof document !== 'undefined') {
@@ -5957,6 +5958,9 @@ export async function bootstrapApp () {
   initDebugOverlayLazy()
 
   const skipAuthGate = IS_AUTOMATED || IS_CI || IS_LIGHTHOUSE
+  if (!skipAuthGate) {
+    forceLoginOnce().catch(() => {})
+  }
   if (!skipAuthGate) {
     const authGateState = await ensureAuthGateAccess()
     if (!authGateState.allowed) {

@@ -7,7 +7,7 @@
     VITE_ADMIN_EMAIL: ""
   }
   if (typeof window !== 'undefined') {
-    Object.assign(window, config)
     window.__ENV__ = Object.assign({}, window.__ENV__ || {}, config)
+    Object.assign(window, config)
   }
 })()

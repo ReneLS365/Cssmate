@@ -12,7 +12,7 @@ importScripts('/js/version.js')
 const BUILD_META = (typeof self !== 'undefined' && self.CSSMATE_BUILD_META) ? self.CSSMATE_BUILD_META : {}
 const APP_VERSION = BUILD_META.cacheKey || self.CSSMATE_APP_VERSION || BUILD_META.appVersion || 'dev'
 // Replaced at build time by scripts/bump-sw-version.js
-const SW_BUILD_ID = "202601131156-auth0gate"
+const SW_BUILD_ID = "202601131156-auth0force"
 const CACHE_VERSION = `sscaff-${APP_VERSION}-${SW_BUILD_ID}`
 const CACHE_NAME = CACHE_VERSION
 const PRECACHE_URLS = [
@@ -42,6 +42,7 @@ const PRECACHE_URLS = [
   '/src/auth/auth0-ui.js',
   '/src/auth/admin.js',
   '/src/auth/admin-page.js',
+  '/src/auth/force-login.js',
   '/src/auth/resolve-base-url.js',
   '/src/ui/debug-overlay.js',
   '/src/ui/app-guard.js',
