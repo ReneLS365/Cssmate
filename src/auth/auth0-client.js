@@ -1,4 +1,6 @@
 import createAuth0Client from '@auth0/auth0-spa-js'
+import { isAutomated } from '../config/runtime-modes.js'
+import { resolveBaseUrl } from './resolve-base-url.js'
 
 let client
 let initPromise
@@ -26,53 +28,58 @@ export async function initAuth0 () {
   if (initPromise) return initPromise
 
   initPromise = (async () => {
-    const domain = env('VITE_AUTH0_DOMAIN')
-    const clientId = env('VITE_AUTH0_CLIENT_ID')
-    const audience = env('VITE_AUTH0_AUDIENCE', '')
-    const origin = window.location.origin
+    try {
+      const domain = env('VITE_AUTH0_DOMAIN')
+      const clientId = env('VITE_AUTH0_CLIENT_ID')
+      const audience = env('VITE_AUTH0_AUDIENCE', '')
+      const baseUrl = resolveBaseUrl()
 
-    console.log('[auth0] redirect_uri', origin)
-
-    if (!domain || !clientId) {
-      throw new Error('Missing Auth0 env vars: VITE_AUTH0_DOMAIN / VITE_AUTH0_CLIENT_ID')
-    }
-
-    client = await createAuth0Client({
-      domain,
-      clientId,
-      authorizationParams: {
-        redirect_uri: origin,
-        ...(audience ? { audience } : {}),
-      },
-      cacheLocation: 'localstorage',
-      useRefreshTokens: true,
-    })
-
-    const qs = new URLSearchParams(window.location.search)
-    const hasCode = qs.has('code')
-    const hasState = qs.has('state')
-    const inviteToken = qs.get('invite')
-
-    if (inviteToken) {
-      storeInviteToken(inviteToken)
-    }
-
-    if (hasCode && hasState) {
-      const result = await client.handleRedirectCallback()
-      if (result?.appState?.invite) {
-        storeInviteToken(result.appState.invite)
+      if (!domain || !clientId) {
+        throw new Error('Missing Auth0 env vars: VITE_AUTH0_DOMAIN / VITE_AUTH0_CLIENT_ID')
       }
-      window.history.replaceState({}, document.title, window.location.pathname)
-    }
 
-    if (inviteToken && !hasCode && !hasState) {
-      const authed = await client.isAuthenticated().catch(() => false)
-      if (!authed) {
-        await client.loginWithRedirect({ appState: { invite: inviteToken } })
+      client = await createAuth0Client({
+        domain,
+        clientId,
+        authorizationParams: {
+          redirect_uri: baseUrl,
+          ...(audience ? { audience } : {}),
+        },
+        cacheLocation: 'localstorage',
+        useRefreshTokens: true,
+      })
+
+      const qs = new URLSearchParams(window.location.search)
+      const hasCode = qs.has('code')
+      const hasState = qs.has('state')
+      const inviteToken = qs.get('invite')
+
+      if (inviteToken) {
+        storeInviteToken(inviteToken)
       }
-    }
 
-    return client
+      if (hasCode && hasState) {
+        const result = await client.handleRedirectCallback()
+        if (result?.appState?.invite) {
+          storeInviteToken(result.appState.invite)
+        }
+        window.history.replaceState({}, document.title, window.location.pathname)
+      }
+
+      if (inviteToken && !hasCode && !hasState) {
+        const authed = await client.isAuthenticated().catch(() => false)
+        if (!authed) {
+          await client.loginWithRedirect({ appState: { invite: inviteToken } })
+        }
+      }
+
+      return client
+    } catch (error) {
+      if (isAutomated()) {
+        return null
+      }
+      throw error
+    }
   })()
 
   try {
@@ -84,37 +91,39 @@ export async function initAuth0 () {
 
 export async function login (appState = {}) {
   const c = await initAuth0()
+  if (!c) return
   await c.loginWithRedirect({ appState })
 }
 
 export async function signup (appState = {}) {
   const c = await initAuth0()
+  if (!c) return
   await c.loginWithRedirect({
     appState,
-    authorizationParams: { screen_hint: 'signup', redirect_uri: window.location.origin },
+    authorizationParams: { screen_hint: 'signup', redirect_uri: resolveBaseUrl() },
   })
 }
 
 export function logout () {
-  if (!client) {
-    window.location.href = window.location.origin
-    return
-  }
-  client.logout({ logoutParams: { returnTo: window.location.origin } })
+  if (!client) return
+  client.logout({ logoutParams: { returnTo: resolveBaseUrl() } })
 }
 
 export async function isAuthenticated () {
   const c = await initAuth0()
+  if (!c) return false
   return c.isAuthenticated()
 }
 
 export async function getUser () {
   const c = await initAuth0()
+  if (!c) return null
   return c.getUser()
 }
 
 export async function getToken () {
   const c = await initAuth0()
+  if (!c) return null
   return c.getTokenSilently()
 }
 

@@ -6,7 +6,6 @@ import {
   isAuthenticated,
   login,
   logout,
-  signup,
 } from '../src/auth/auth0-client.js'
 
 const AUTH_INIT_TIMEOUT_MS = 15000
@@ -185,34 +184,9 @@ export async function loginWithProvider () {
   await login()
 }
 
-export async function signUpWithEmail () {
-  await signup()
-}
-
-export async function signInWithEmail () {
-  await login()
-}
-
 export async function logoutUser () {
   await logout()
   setAuthState({ user: null, error: null })
-}
-
-export async function sendPasswordReset () {
-  await login()
-}
-
-export async function resendEmailVerification () {
-  const error = new Error('Email-verificering er ikke nødvendig i dette login.')
-  error.code = 'auth/verify-unavailable'
-  setAuthState({ user: currentUser, error })
-  throw error
-}
-
-export async function reloadCurrentUser () {
-  const user = normalizeAuth0User(await getUser())
-  setAuthState({ user, error: null })
-  return user
 }
 
 export function isMockAuthEnabled () {
