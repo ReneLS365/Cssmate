@@ -1,6 +1,7 @@
 import createAuth0Client from '@auth0/auth0-spa-js'
 
 let client
+let initPromise
 
 const INVITE_TOKEN_KEY = 'cssmate:inviteToken'
 
@@ -22,54 +23,63 @@ function storeInviteToken (token) {
 
 export async function initAuth0 () {
   if (client) return client
+  if (initPromise) return initPromise
 
-  const domain = env('VITE_AUTH0_DOMAIN')
-  const clientId = env('VITE_AUTH0_CLIENT_ID')
-  const audience = env('VITE_AUTH0_AUDIENCE', '')
-  const origin = window.location.origin
+  initPromise = (async () => {
+    const domain = env('VITE_AUTH0_DOMAIN')
+    const clientId = env('VITE_AUTH0_CLIENT_ID')
+    const audience = env('VITE_AUTH0_AUDIENCE', '')
+    const origin = window.location.origin
 
-  console.log('[auth0] redirect_uri', origin)
+    console.log('[auth0] redirect_uri', origin)
 
-  if (!domain || !clientId) {
-    throw new Error('Missing Auth0 env vars: VITE_AUTH0_DOMAIN / VITE_AUTH0_CLIENT_ID')
-  }
-
-  client = await createAuth0Client({
-    domain,
-    clientId,
-    authorizationParams: {
-      redirect_uri: origin,
-      ...(audience ? { audience } : {}),
-    },
-    cacheLocation: 'localstorage',
-    useRefreshTokens: true,
-  })
-
-  const qs = new URLSearchParams(window.location.search)
-  const hasCode = qs.has('code')
-  const hasState = qs.has('state')
-  const inviteToken = qs.get('invite')
-
-  if (inviteToken) {
-    storeInviteToken(inviteToken)
-  }
-
-  if (hasCode && hasState) {
-    const result = await client.handleRedirectCallback()
-    if (result?.appState?.invite) {
-      storeInviteToken(result.appState.invite)
+    if (!domain || !clientId) {
+      throw new Error('Missing Auth0 env vars: VITE_AUTH0_DOMAIN / VITE_AUTH0_CLIENT_ID')
     }
-    window.history.replaceState({}, document.title, window.location.pathname)
-  }
 
-  if (inviteToken && !hasCode && !hasState) {
-    const authed = await client.isAuthenticated().catch(() => false)
-    if (!authed) {
-      await client.loginWithRedirect({ appState: { invite: inviteToken } })
+    client = await createAuth0Client({
+      domain,
+      clientId,
+      authorizationParams: {
+        redirect_uri: origin,
+        ...(audience ? { audience } : {}),
+      },
+      cacheLocation: 'localstorage',
+      useRefreshTokens: true,
+    })
+
+    const qs = new URLSearchParams(window.location.search)
+    const hasCode = qs.has('code')
+    const hasState = qs.has('state')
+    const inviteToken = qs.get('invite')
+
+    if (inviteToken) {
+      storeInviteToken(inviteToken)
     }
-  }
 
-  return client
+    if (hasCode && hasState) {
+      const result = await client.handleRedirectCallback()
+      if (result?.appState?.invite) {
+        storeInviteToken(result.appState.invite)
+      }
+      window.history.replaceState({}, document.title, window.location.pathname)
+    }
+
+    if (inviteToken && !hasCode && !hasState) {
+      const authed = await client.isAuthenticated().catch(() => false)
+      if (!authed) {
+        await client.loginWithRedirect({ appState: { invite: inviteToken } })
+      }
+    }
+
+    return client
+  })()
+
+  try {
+    return await initPromise
+  } finally {
+    initPromise = null
+  }
 }
 
 export async function login (appState = {}) {
