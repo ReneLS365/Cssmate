@@ -2,11 +2,11 @@ import { normalizeEmail } from '../src/auth/roles.js'
 import { clearAuthToken } from '../src/api/client.js'
 import {
   getUser,
-  initAuth0,
+  initAuth as initAuth0,
   isAuthenticated,
   login,
   logout,
-} from '../src/auth/auth0-client.js'
+} from '../src/auth/auth0.js'
 
 const AUTH_INIT_TIMEOUT_MS = 15000
 const listeners = new Set()
