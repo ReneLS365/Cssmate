@@ -6,11 +6,16 @@ import express from 'express';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { loadNetlifyHeaders } from '../tools/generate-headers.mjs';
+import rateLimit from 'express-rate-limit';
 
 const PORT = process.env.PORT || process.argv[2] || 4173;
 // Juster DIR hvis der findes en build-mappe. Hvis appen kører direkte fra repo-roden, lad den være som nu.
 const DIR = path.resolve(process.argv[3] || process.cwd());
 const IS_CI = process.env.CSSMATE_IS_CI === '1';
+const limiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // limit each IP to 60 requests per windowMs
+});
 let HEADER_RULES = [];
 try {
   HEADER_RULES = loadNetlifyHeaders();
@@ -146,7 +151,7 @@ if (IS_CI) {
 
 app.use(express.static(DIR, { extensions: ['html'] }));
 
-app.get(/.*/, (req, res) => {
+app.get(/.*/, limiter, (req, res) => {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   if (IS_CI) {
     sendHtml(res, path.join(DIR, 'index.html'));
