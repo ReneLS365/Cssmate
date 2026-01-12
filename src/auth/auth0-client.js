@@ -16,7 +16,16 @@ function resolveConfig () {
   return {
     domain: readEnvValue(metaEnv.VITE_AUTH0_DOMAIN || windowEnv.VITE_AUTH0_DOMAIN),
     clientId: readEnvValue(metaEnv.VITE_AUTH0_CLIENT_ID || windowEnv.VITE_AUTH0_CLIENT_ID),
+    audience: readEnvValue(metaEnv.VITE_AUTH0_AUDIENCE || windowEnv.VITE_AUTH0_AUDIENCE),
   }
+}
+
+function buildAuthParams ({ redirectUri, audience }) {
+  const params = { redirect_uri: redirectUri }
+  if (audience) {
+    params.audience = audience
+  }
+  return params
 }
 
 export async function getClient () {
@@ -24,7 +33,7 @@ export async function getClient () {
 
   clientPromise = (async () => {
     try {
-      const { domain, clientId } = resolveConfig()
+      const { domain, clientId, audience } = resolveConfig()
       if (!domain || !clientId) {
         throw new Error('Auth0 config mangler. Tjek VITE_AUTH0_DOMAIN og VITE_AUTH0_CLIENT_ID.')
       }
@@ -34,7 +43,7 @@ export async function getClient () {
         domain,
         clientId,
         authorizationParams: {
-          redirect_uri: redirectUri,
+          ...buildAuthParams({ redirectUri, audience }),
         },
         cacheLocation: 'localstorage',
         useRefreshTokens: true,
@@ -64,17 +73,19 @@ export async function initAuth0 () {
 
 export async function login (appState) {
   const client = await getClient()
+  const { audience } = resolveConfig()
   await client.loginWithRedirect({
     appState,
-    authorizationParams: { redirect_uri: resolveBaseUrl() },
+    authorizationParams: buildAuthParams({ redirectUri: resolveBaseUrl(), audience }),
   })
 }
 
 export async function signup (appState) {
   const client = await getClient()
+  const { audience } = resolveConfig()
   await client.loginWithRedirect({
     appState,
-    authorizationParams: { redirect_uri: resolveBaseUrl(), screen_hint: 'signup' },
+    authorizationParams: { ...buildAuthParams({ redirectUri: resolveBaseUrl(), audience }), screen_hint: 'signup' },
   })
 }
 
@@ -95,5 +106,9 @@ export async function getUser () {
 
 export async function getToken () {
   const client = await getClient()
+  const { audience } = resolveConfig()
+  if (audience) {
+    return client.getTokenSilently({ authorizationParams: { audience } })
+  }
   return client.getTokenSilently()
 }
