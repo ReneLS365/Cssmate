@@ -35,12 +35,15 @@ Sæt følgende miljøvariabler til Auth0-login i klienten:
 - `VITE_ADMIN_EMAIL` (én email der får admin-adgang)
 
 Lokalt: opret en `.env` i repo-roden med ovenstående værdier og kør `npm run preview`.
+Universal Login kører via redirect-flow, så **ingen client secret må bruges i frontend**.
 I Auth0-appen skal callback/logout-URLs inkludere:
 
 - `http://127.0.0.1:4173`
 - `http://127.0.0.1:4173/admin.html`
 - `https://sscaff.netlify.app`
 - `https://sscaff.netlify.app/admin.html`
+
+**Allowed Web Origins** skal også inkludere `https://sscaff.netlify.app` (én s).
 
 **Test lokalt:**
 

@@ -25,7 +25,8 @@ import { initAuth0Ui } from './src/auth/auth0-ui.js'
 
 let IS_CI = false
 let IS_LIGHTHOUSE = false
-let IS_AUTOMATED = false
+const INVITE_TOKEN_KEY = 'cssmate:inviteToken'
+const INVITE_NOTICE_KEY = 'cssmate:inviteNoticeShown'
 
 function isDevBuild () {
   try {
@@ -139,6 +140,26 @@ function showUpdateBanner (currentVersion, previousVersion) {
         window.location.reload(true)
       }
     })
+  }
+}
+
+function maybeShowInviteNotice () {
+  if (typeof window === 'undefined') return
+  let token = ''
+  let noticeShown = ''
+  try {
+    token = window.sessionStorage?.getItem(INVITE_TOKEN_KEY) || ''
+    noticeShown = window.sessionStorage?.getItem(INVITE_NOTICE_KEY) || ''
+  } catch {
+    token = ''
+    noticeShown = ''
+  }
+  if (!token || noticeShown === '1') return
+  updateActionHint('Invitation registreret. Åbn Team for at fuldføre.', 'success')
+  try {
+    window.sessionStorage?.setItem(INVITE_NOTICE_KEY, '1')
+  } catch {
+    // ignore
   }
 }
 
@@ -5653,9 +5674,8 @@ async function initApp() {
   initTabs();
   setupUiScaleControls();
   setupAdminLoginButton();
-  if (!IS_AUTOMATED) {
-    runWhenIdle(() => initAuth0Ui());
-  }
+  runWhenIdle(() => initAuth0Ui());
+  runWhenIdle(() => maybeShowInviteNotice());
 
   const optaellingContainer = getDomElement('optaellingContainer');
   if (optaellingContainer) {

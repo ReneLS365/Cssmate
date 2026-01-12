@@ -1,4 +1,15 @@
+import { getToken } from '../auth/auth0-client.js'
+
 const TOKEN_STORAGE_KEY = 'cssmate:authToken'
+
+async function resolveAuthToken () {
+  if (typeof window === 'undefined') return getAuthToken()
+  try {
+    return await getToken()
+  } catch {
+    return getAuthToken()
+  }
+}
 
 export function getAuthToken () {
   if (typeof window === 'undefined') return ''
@@ -27,7 +38,7 @@ export function clearAuthToken () {
 }
 
 export async function apiFetch (path, options = {}) {
-  const token = getAuthToken()
+  const token = await resolveAuthToken()
   const headers = new Headers(options.headers || {})
   if (token) {
     headers.set('Authorization', `Bearer ${token}`)

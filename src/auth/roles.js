@@ -19,6 +19,7 @@ function getAdminEmails () {
   const candidates = window.SHARED_ADMIN_EMAILS
     || window.ADMIN_EMAILS
     || window.VITE_ADMIN_EMAILS
+    || window.VITE_ADMIN_EMAIL
     || []
   const parsed = parseAdminEmails(candidates)
   if (!parsed.length) return defaultList
