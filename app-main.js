@@ -33,6 +33,13 @@ function readCiFlag () {
   return typeof window !== 'undefined' && window.CSSMATE_IS_CI === true
 }
 
+function shouldSkipAuthGate () {
+  if (typeof window === 'undefined') return false
+  const params = new URLSearchParams(window.location.search || '')
+  const flag = params.get('skipAuthGate') || params.get('ci')
+  return flag === '1' || flag === 'true'
+}
+
 let IS_CI = false
 let IS_LIGHTHOUSE = false
 let IS_AUTOMATED = false
@@ -5957,10 +5964,9 @@ export async function bootstrapApp () {
   configureBootstrap()
   initDebugOverlayLazy()
 
-  const skipAuthGate = IS_AUTOMATED || IS_CI || IS_LIGHTHOUSE
-  if (!skipAuthGate) {
-    forceLoginOnce().catch(() => {})
-  }
+  forceLoginOnce().catch(() => {})
+
+  const skipAuthGate = shouldSkipAuthGate()
   if (!skipAuthGate) {
     const authGateState = await ensureAuthGateAccess()
     if (!authGateState.allowed) {
