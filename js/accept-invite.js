@@ -1,4 +1,5 @@
-import { apiJson, clearAuthToken, getAuthToken } from '../src/api/client.js'
+import { apiJson } from '../src/api/client.js'
+import { initAuth0, isAuthenticated, login } from '../src/auth/auth0-client.js'
 import { persistTeamId } from '../src/services/team-ids.js'
 
 export const PENDING_INVITE_KEY = 'cssmate:pendingInvite'
@@ -45,7 +46,6 @@ export async function acceptInvite (inviteId, token) {
     }, 800)
   } catch (error) {
     if (error?.status === 401) {
-      clearAuthToken()
       storePendingInvite(inviteId, token)
       setStatus('Sessionen er udløbet. Log ind igen for at acceptere invitationen.', 'error')
       if (loginButton) loginButton.hidden = false
@@ -60,7 +60,7 @@ function handleLoginRedirect () {
   const { inviteId, token } = readInviteParams()
   if (!inviteId || !token) return
   storePendingInvite(inviteId, token)
-  window.location.href = '/index.html'
+  login({ inviteId, token }).catch(() => {})
 }
 
 async function init () {
@@ -69,8 +69,16 @@ async function init () {
     setStatus('Invite-link mangler oplysninger.', 'error')
     return
   }
-  if (!getAuthToken()) {
-    setStatus('Log ind for at acceptere invitationen.')
+  try {
+    await initAuth0()
+    const authed = await isAuthenticated()
+    if (!authed) {
+      setStatus('Log ind for at acceptere invitationen.')
+      if (loginButton) loginButton.hidden = false
+      return
+    }
+  } catch (error) {
+    setStatus(error?.message || 'Auth0 kunne ikke initialiseres.', 'error')
     if (loginButton) loginButton.hidden = false
     return
   }
