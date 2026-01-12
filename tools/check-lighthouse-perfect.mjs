@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const reportDir = path.join(process.cwd(), 'reports', 'lighthouse');
@@ -124,7 +124,72 @@ function collectAuditDiagnostics(report) {
   return { topOffenders, spotlight };
 }
 
-function main() {
+function formatCategoryScore(score) {
+  if (!Number.isFinite(score)) return 'N/A';
+  return Math.round(score * 100);
+}
+
+function getCategoryScores(report) {
+  const categories = report?.categories ?? {};
+  return {
+    performance: formatCategoryScore(categories.performance?.score),
+    accessibility: formatCategoryScore(categories.accessibility?.score),
+    'best-practices': formatCategoryScore(categories['best-practices']?.score),
+    seo: formatCategoryScore(categories.seo?.score),
+    pwa: formatCategoryScore(categories.pwa?.score),
+  };
+}
+
+function formatDetailsItem(item) {
+  if (typeof item === 'string') return item;
+  try {
+    return JSON.stringify(item);
+  } catch {
+    return String(item);
+  }
+}
+
+function collectBestPracticesFailures(report) {
+  const bpCategory = report?.categories?.['best-practices'];
+  const auditRefs = bpCategory?.auditRefs ?? [];
+  const audits = report?.audits ?? {};
+
+  const failing = auditRefs
+    .map(ref => audits[ref.id])
+    .filter(audit => audit && audit.score !== 1 && audit.score !== null)
+    .map(audit => ({
+      id: audit.id,
+      title: audit.title,
+      score: audit.score,
+      displayValue: audit.displayValue,
+      detailsItems: Array.isArray(audit.details?.items) ? audit.details.items.slice(0, 3) : [],
+    }));
+
+  return failing.sort((a, b) => {
+    const scoreA = Number.isFinite(a.score) ? a.score : 1;
+    const scoreB = Number.isFinite(b.score) ? b.score : 1;
+    return scoreA - scoreB;
+  });
+}
+
+async function writeLighthouseArtifacts(report) {
+  const artifactsDir = path.join(process.cwd(), '.artifacts');
+  mkdirSync(artifactsDir, { recursive: true });
+  const jsonPath = path.join(artifactsDir, 'lighthouse.report.json');
+  const htmlPath = path.join(artifactsDir, 'lighthouse.report.html');
+
+  writeFileSync(jsonPath, JSON.stringify(report, null, 2));
+
+  try {
+    const { ReportGenerator } = await import('lighthouse/report/generator/report-generator.js');
+    const html = ReportGenerator.generateReport(report, 'html');
+    writeFileSync(htmlPath, html);
+  } catch (error) {
+    console.log(`⚠️ Could not generate HTML report: ${error?.message || error}`);
+  }
+}
+
+async function main() {
   const { reportPaths, warning } = loadReports();
   const reports = reportPaths.map(reportPath => readReport(reportPath));
 
@@ -220,6 +285,28 @@ function main() {
     failures.forEach(entry => {
       console.log(`- ${entry}`);
     });
+    const categoryScores = getCategoryScores(sampleReport);
+    console.log('Category scores:');
+    console.log(`- performance: ${categoryScores.performance}`);
+    console.log(`- accessibility: ${categoryScores.accessibility}`);
+    console.log(`- best-practices: ${categoryScores['best-practices']}`);
+    console.log(`- seo: ${categoryScores.seo}`);
+    console.log(`- pwa: ${categoryScores.pwa}`);
+
+    const bestPracticesFailures = collectBestPracticesFailures(sampleReport);
+    if (bestPracticesFailures.length) {
+      console.log('Best Practices failing audits:');
+      bestPracticesFailures.forEach(audit => {
+        const score = Number.isFinite(audit.score) ? audit.score.toFixed(2) : 'N/A';
+        const displayValue = audit.displayValue ?? 'N/A';
+        console.log(`- ${audit.id}: ${audit.title} | score=${score} | displayValue=${displayValue}`);
+        if (audit.detailsItems.length) {
+          audit.detailsItems.forEach((item, index) => {
+            console.log(`  item ${index + 1}: ${formatDetailsItem(item)}`);
+          });
+        }
+      });
+    }
 
     if (perfMedian !== null && perfMedian < performanceMin) {
       const { topOffenders, spotlight } = collectAuditDiagnostics(sampleReport);
@@ -237,10 +324,14 @@ function main() {
       }
     }
 
+    await writeLighthouseArtifacts(sampleReport);
     process.exit(1);
   }
 
   console.log('✅ Lighthouse PASSED');
 }
 
-main();
+main().catch(error => {
+  console.log(`❌ Lighthouse check failed: ${error?.message || error}`);
+  process.exit(1);
+});
