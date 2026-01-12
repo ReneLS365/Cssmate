@@ -1,7 +1,33 @@
-import { createAuth0Client } from '/js/vendor/auth0-spa-js.js'
 import { resolveBaseUrl } from './resolve-base-url.js'
 
 let clientPromise = null
+let auth0ModulePromise = null
+
+function resolveAuth0ModulePath () {
+  if (typeof window === 'undefined') {
+    return new URL('../../js/vendor/auth0-spa-js.js', import.meta.url).href
+  }
+  return '/js/vendor/auth0-spa-js.js'
+}
+
+async function loadAuth0Module () {
+  if (typeof window === 'undefined') {
+    return {
+      createAuth0Client: async () => ({
+        isAuthenticated: async () => false,
+        loginWithRedirect: async () => {},
+        logout: async () => {},
+        getUser: async () => null,
+        getTokenSilently: async () => '',
+        handleRedirectCallback: async () => {},
+      }),
+    }
+  }
+  if (!auth0ModulePromise) {
+    auth0ModulePromise = import(resolveAuth0ModulePath())
+  }
+  return auth0ModulePromise
+}
 
 function readEnvValue (value) {
   if (value == null) return ''
@@ -34,15 +60,18 @@ export async function getClient () {
 
   clientPromise = (async () => {
     try {
+      const { createAuth0Client } = await loadAuth0Module()
       const { domain, clientId, audience } = resolveConfig()
       if (!domain || !clientId) {
-        throw new Error('Auth0 config mangler. Tjek VITE_AUTH0_DOMAIN og VITE_AUTH0_CLIENT_ID.')
+        if (typeof window !== 'undefined') {
+          throw new Error('Auth0 config mangler. Tjek VITE_AUTH0_DOMAIN og VITE_AUTH0_CLIENT_ID.')
+        }
       }
 
       const redirectUri = resolveBaseUrl()
       const client = await createAuth0Client({
-        domain,
-        clientId,
+        domain: domain || 'test.local',
+        clientId: clientId || 'test',
         authorizationParams: {
           ...buildAuthParams({ redirectUri, audience }),
         },

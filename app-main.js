@@ -24,6 +24,7 @@ import { isDiagnosticsEnabled, mountDiagnostics } from './src/ui/auth-diagnostic
 import { initAuth0Ui } from './src/auth/auth0-ui.js'
 import { getClient as getAuth0Client, getUser, isAuthenticated, login, signup } from './src/auth/auth0-client.js'
 import { forceLoginOnce } from './src/auth/force-login.js'
+import { shouldSkipAuthGate } from './src/auth/skip-auth-gate.js'
 
 function readCiFlag () {
   if (typeof document !== 'undefined') {
@@ -31,13 +32,6 @@ function readCiFlag () {
     if (meta?.getAttribute('content') === '1') return true
   }
   return typeof window !== 'undefined' && window.CSSMATE_IS_CI === true
-}
-
-function shouldSkipAuthGate () {
-  if (typeof window === 'undefined') return false
-  const params = new URLSearchParams(window.location.search || '')
-  const flag = params.get('skipAuthGate') || params.get('ci')
-  return flag === '1' || flag === 'true'
 }
 
 let IS_CI = false
@@ -4387,7 +4381,7 @@ function handleAdminLogout(feedback) {
   updateActionHint('Admin-tilstand er slået fra.', 'success');
 }
 
-async function login() {
+async function handleAdminLogin() {
   const codeInput = document.getElementById('adminCode');
   const feedback = document.getElementById('adminFeedback');
   if (!codeInput) return;
@@ -4431,7 +4425,7 @@ function setupAdminLoginButton () {
   if (!adminLoginButton) return
   adminLoginButton.addEventListener('click', event => {
     event.preventDefault()
-    login()
+    handleAdminLogin()
   })
 }
 
@@ -5964,9 +5958,10 @@ export async function bootstrapApp () {
   configureBootstrap()
   initDebugOverlayLazy()
 
-  forceLoginOnce().catch(() => {})
-
-  const skipAuthGate = shouldSkipAuthGate()
+  const skipAuthGate = shouldSkipAuthGate() || IS_CI || IS_LIGHTHOUSE
+  if (!skipAuthGate) {
+    forceLoginOnce().catch(() => {})
+  }
   if (!skipAuthGate) {
     const authGateState = await ensureAuthGateAccess()
     if (!authGateState.allowed) {

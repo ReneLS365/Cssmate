@@ -28,14 +28,21 @@ async function forceLoginIfNeeded () {
   if (isAuthCallbackUrl()) return
 
   try {
-    if (sessionStorage.getItem(AUTOLOGIN_GUARD_KEY) === '1') return
-  } catch {}
+    let hasGuard = false
+    try {
+      hasGuard = sessionStorage.getItem(AUTOLOGIN_GUARD_KEY) === '1'
+    } catch {}
 
-  try {
     const authenticated = await isAuthenticated()
     if (authenticated) {
       sessionStorage.removeItem(AUTOLOGIN_GUARD_KEY)
       hideLoginOverlay()
+      return
+    }
+
+    if (hasGuard) {
+      showLoginOverlay({ message: 'Log ind for at fortsætte.' })
+      startLoginOverlayWatcher()
       return
     }
 

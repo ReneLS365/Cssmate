@@ -2,6 +2,8 @@ import { initAuth0, isAuthenticated, login } from './auth0-client.js'
 import { hideLoginOverlay, showLoginOverlay, startLoginOverlayWatcher } from '../ui/login-overlay.js'
 
 const KEY = 'cssmate_autologin_attempted'
+let authOverrides = {}
+let overlayOverrides = {}
 
 function isAuthCallbackUrl () {
   const params = new URLSearchParams(window.location.search)
@@ -14,23 +16,63 @@ function shouldSkipAutoLogin () {
   return path.startsWith('/diag') || path.startsWith('/_diag')
 }
 
+function getAuthDeps () {
+  return {
+    initAuth0,
+    isAuthenticated,
+    login,
+    ...authOverrides,
+  }
+}
+
+function getOverlayDeps () {
+  return {
+    hideLoginOverlay,
+    showLoginOverlay,
+    startLoginOverlayWatcher,
+    ...overlayOverrides,
+  }
+}
+
+export function setForceLoginDependencies ({ auth, overlay } = {}) {
+  if (auth) authOverrides = { ...authOverrides, ...auth }
+  if (overlay) overlayOverrides = { ...overlayOverrides, ...overlay }
+}
+
+export function resetForceLoginDependencies () {
+  authOverrides = {}
+  overlayOverrides = {}
+}
+
 export async function forceLoginOnce () {
   if (typeof window === 'undefined') return
   if (shouldSkipAutoLogin()) return
   if (isAuthCallbackUrl()) return
 
-  try {
-    sessionStorage.removeItem(KEY)
-  } catch {}
+  const auth = getAuthDeps()
+  const overlay = getOverlayDeps()
 
   let loginAttempted = false
+  let hasGuard = false
+  try {
+    hasGuard = sessionStorage.getItem(KEY) === '1'
+  } catch {}
 
   try {
-    await initAuth0()
+    await auth.initAuth0()
 
-    const ok = await isAuthenticated()
+    const ok = await auth.isAuthenticated()
     if (ok) {
-      hideLoginOverlay()
+      try {
+        sessionStorage.removeItem(KEY)
+      } catch {}
+      overlay.hideLoginOverlay()
+      return
+    }
+
+    if (hasGuard) {
+      overlay.showLoginOverlay({ message: 'Log ind for at fortsætte.' })
+      overlay.startLoginOverlayWatcher()
       return
     }
 
@@ -38,19 +80,19 @@ export async function forceLoginOnce () {
       sessionStorage.setItem(KEY, '1')
     } catch {}
     loginAttempted = true
-    await login()
+    await auth.login()
   } catch (error) {
     console.warn('Auto login failed', error)
     const message = error?.message || 'Auto login fejlede. Prøv at logge ind manuelt.'
-    showLoginOverlay({ error: message })
-    startLoginOverlayWatcher()
+    overlay.showLoginOverlay({ error: message })
+    overlay.startLoginOverlayWatcher()
 
     if (!loginAttempted) {
       try {
         try {
           sessionStorage.setItem(KEY, '1')
         } catch {}
-        await login()
+        await auth.login()
       } catch (loginError) {
         console.warn('Auto login redirect failed', loginError)
       }
