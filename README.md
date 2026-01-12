@@ -53,6 +53,23 @@ I Auth0-appen skal callback/logout-URLs inkludere:
 4. Hvis email matcher `VITE_ADMIN_EMAIL`, vises admin-linket.
 5. Åbn `/admin.html` for at verificere admin-guard.
 
+## Netlify production env vars
+
+Følgende keys skal være sat i Netlify (production) for at auth, invites og DB virker korrekt:
+
+- `VITE_AUTH0_DOMAIN`
+- `VITE_AUTH0_CLIENT_ID`
+- `VITE_AUTH0_AUDIENCE` (optional)
+- `VITE_ADMIN_EMAIL`
+- `JWT_SECRET`
+- `NETLIFY_DATABASE_URL`
+- `NETLIFY_DATABASE_URL_UNPOOLED`
+- `BOOTSTRAP_ADMIN_EMAIL`
+- `DEFAULT_TEAM_SLUG` (optional)
+- `APP_BASE_URL`
+
+Bemærk: Ændringer til disse værdier kræver et fresh deploy, så `auth0-config.js` bliver regenereret via `npm run build:auth0-config`.
+
 ## Database migrations
 
 Kør migrations manuelt mod Neon/Postgres (idempotent):
