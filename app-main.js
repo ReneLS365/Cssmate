@@ -19,7 +19,7 @@ import { downloadBlob } from './js/utils/downloadBlob.js'
 import { applyBuildMetadata, isDebugOverlayEnabled, updateCurrentView } from './src/state/debug.js'
 import { resetAppState, resetOfflineCache } from './src/utils/reset-app.js'
 import { initBootInline } from './boot-inline.js'
-import { isLighthouseMode } from './src/config/lighthouse-mode.js'
+import { isAutomated, isCi, isLighthouse } from './src/config/runtime-modes.js'
 import { isDiagnosticsEnabled, mountDiagnostics } from './src/ui/auth-diagnostics.js'
 import { initAuth0Ui } from './src/auth/auth0-ui.js'
 
@@ -33,6 +33,8 @@ function readCiFlag () {
 
 let IS_CI = false
 let IS_LIGHTHOUSE = false
+const INVITE_TOKEN_KEY = 'cssmate:inviteToken'
+const INVITE_NOTICE_KEY = 'cssmate:inviteNoticeShown'
 
 function isDevBuild () {
   try {
@@ -146,6 +148,26 @@ function showUpdateBanner (currentVersion, previousVersion) {
         window.location.reload(true)
       }
     })
+  }
+}
+
+function maybeShowInviteNotice () {
+  if (typeof window === 'undefined') return
+  let token = ''
+  let noticeShown = ''
+  try {
+    token = window.sessionStorage?.getItem(INVITE_TOKEN_KEY) || ''
+    noticeShown = window.sessionStorage?.getItem(INVITE_NOTICE_KEY) || ''
+  } catch {
+    token = ''
+    noticeShown = ''
+  }
+  if (!token || noticeShown === '1') return
+  updateActionHint('Invitation registreret. Åbn Team for at fuldføre.', 'success')
+  try {
+    window.sessionStorage?.setItem(INVITE_NOTICE_KEY, '1')
+  } catch {
+    // ignore
   }
 }
 
@@ -5661,6 +5683,7 @@ async function initApp() {
   setupUiScaleControls();
   setupAdminLoginButton();
   runWhenIdle(() => initAuth0Ui());
+  runWhenIdle(() => maybeShowInviteNotice());
 
   const optaellingContainer = getDomElement('optaellingContainer');
   if (optaellingContainer) {
@@ -5741,10 +5764,12 @@ async function initApp() {
     setupLazyExportPanelTriggers();
     setupOfflineCacheReset();
   });
-  runWhenIdle(() => {
-    setupServiceWorkerMessaging();
-    setupPWAInstallPrompt();
-  });
+  if (!IS_AUTOMATED) {
+    runWhenIdle(() => {
+      setupServiceWorkerMessaging();
+      setupPWAInstallPrompt();
+    });
+  }
   runWhenIdle(() => setupZipExportHistoryHook());
 
   document.getElementById('btnHardResetApp')?.addEventListener('click', () => {
@@ -5788,7 +5813,7 @@ async function restoreDraftOnLoad() {
 }
 
 function scheduleAuthBootstrap () {
-  if (IS_CI || IS_LIGHTHOUSE) return
+  if (IS_AUTOMATED || IS_CI || IS_LIGHTHOUSE) return
   runWhenIdle(() => {
     ensureAuthBootstrapModule()
       .then(mod => mod?.initAuth?.())
@@ -5801,12 +5826,17 @@ function scheduleAuthBootstrap () {
 function configureBootstrap () {
   if (bootstrapConfigured) return
   bootstrapConfigured = true
-  IS_CI = readCiFlag()
-  IS_LIGHTHOUSE = isLighthouseMode()
+  IS_CI = isCi()
+  IS_LIGHTHOUSE = isLighthouse()
+  IS_AUTOMATED = isAutomated()
   applyBuildMetadata()
-  setupServiceWorkerAutoReload()
+  if (!IS_AUTOMATED) {
+    setupServiceWorkerAutoReload()
+  }
   setupVersionCheck()
-  setupInstallPromptListeners()
+  if (!IS_AUTOMATED) {
+    setupInstallPromptListeners()
+  }
   exposeDebugHooks()
   exposeExportHelpers()
   initBootInline()

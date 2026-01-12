@@ -40,6 +40,7 @@ const ROOT_ALLOW = new Set([
   "reset.html",
   "main.js",
   "main.min.js",
+  "auth0-config.js",
   "app-main.js",
   "boot-inline.js",
   "style.css",

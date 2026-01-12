@@ -1,5 +1,13 @@
 import { normalizeEmail } from '../src/auth/roles.js'
-import { apiJson, clearAuthToken, getAuthToken, setAuthToken } from '../src/api/client.js'
+import { clearAuthToken } from '../src/api/client.js'
+import {
+  getUser,
+  initAuth0,
+  isAuthenticated,
+  login,
+  logout,
+  signup,
+} from '../src/auth/auth0-client.js'
 
 const AUTH_INIT_TIMEOUT_MS = 15000
 const listeners = new Set()
@@ -34,6 +42,17 @@ export function buildUserFromToken (token) {
     email: normalizeEmail(payload.email || ''),
     displayName: payload.name || '',
     providerId: 'password',
+    emailVerified: true,
+  }
+}
+
+function normalizeAuth0User (user) {
+  if (!user) return null
+  return {
+    uid: user.sub || '',
+    email: normalizeEmail(user.email || ''),
+    displayName: user.name || user.nickname || '',
+    providerId: 'auth0',
     emailVerified: true,
   }
 }
@@ -108,11 +127,30 @@ export async function initSharedAuth () {
       resolve(null)
     }, AUTH_INIT_TIMEOUT_MS)
     timer?.unref?.()
-    const token = getAuthToken()
-    const user = buildUserFromToken(token)
-    clearTimeout(timer)
-    setAuthState({ user, error: null })
-    resolve(user)
+    initAuth0()
+      .then(async () => {
+        const authed = await isAuthenticated()
+        if (!authed) {
+          clearTimeout(timer)
+          setAuthState({ user: null, error: null })
+          resolve(null)
+          return
+        }
+        const user = normalizeAuth0User(await getUser())
+        clearTimeout(timer)
+        setAuthState({ user, error: null })
+        resolve(user)
+      })
+      .catch((error) => {
+        clearTimeout(timer)
+        if (!error?.code) {
+          error.code = error?.message?.includes('Missing Auth0 env vars')
+            ? 'auth0/missing-config'
+            : 'auth0/init-failed'
+        }
+        setAuthState({ user: null, error })
+        resolve(null)
+      })
   })
   return initPromise
 }
@@ -140,60 +178,28 @@ export function getUserDisplay (user = currentUser) {
 }
 
 export function getEnabledProviders () {
-  return ['email']
+  return ['auth0']
 }
 
 export async function loginWithProvider () {
-  const error = new Error('Login med udbyder er ikke tilgængelig.')
-  error.code = 'auth/provider-disabled'
-  setAuthState({ user: null, error })
-  throw error
+  await login()
 }
 
-export async function signUpWithEmail (email, password) {
-  const response = await apiJson('/api/auth/signup', {
-    method: 'POST',
-    body: JSON.stringify({ email, password }),
-  })
-  if (!response?.token) {
-    const error = new Error('Kunne ikke oprette bruger.')
-    error.code = 'auth/signup-failed'
-    setAuthState({ user: null, error })
-    throw error
-  }
-  setAuthToken(response.token)
-  const user = buildUserFromToken(response.token)
-  setAuthState({ user, error: null })
-  return user
+export async function signUpWithEmail () {
+  await signup()
 }
 
-export async function signInWithEmail (email, password) {
-  const response = await apiJson('/api/auth/login', {
-    method: 'POST',
-    body: JSON.stringify({ email, password }),
-  })
-  if (!response?.token) {
-    const error = new Error('Login fejlede.')
-    error.code = 'auth/login-failed'
-    setAuthState({ user: null, error })
-    throw error
-  }
-  setAuthToken(response.token)
-  const user = buildUserFromToken(response.token)
-  setAuthState({ user, error: null })
-  return user
+export async function signInWithEmail () {
+  await login()
 }
 
 export async function logoutUser () {
-  clearAuthToken()
+  await logout()
   setAuthState({ user: null, error: null })
 }
 
 export async function sendPasswordReset () {
-  const error = new Error('Kodeordsreset er ikke tilgængelig endnu.')
-  error.code = 'auth/reset-unavailable'
-  setAuthState({ user: currentUser, error })
-  throw error
+  await login()
 }
 
 export async function resendEmailVerification () {
@@ -204,8 +210,7 @@ export async function resendEmailVerification () {
 }
 
 export async function reloadCurrentUser () {
-  const token = getAuthToken()
-  const user = buildUserFromToken(token)
+  const user = normalizeAuth0User(await getUser())
   setAuthState({ user, error: null })
   return user
 }
