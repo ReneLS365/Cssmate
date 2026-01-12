@@ -1,4 +1,4 @@
-import createAuth0Client from '@auth0/auth0-spa-js'
+import { createAuth0Client } from '/js/vendor/auth0-spa-js.js'
 import { resolveBaseUrl } from './resolve-base-url.js'
 
 let clientPromise = null
