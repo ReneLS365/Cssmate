@@ -23,6 +23,14 @@ import { isAutomated, isCi, isLighthouse } from './src/config/runtime-modes.js'
 import { isDiagnosticsEnabled, mountDiagnostics } from './src/ui/auth-diagnostics.js'
 import { initAuth0Ui } from './src/auth/auth0-ui.js'
 
+function readCiFlag () {
+  if (typeof document !== 'undefined') {
+    const meta = document.querySelector('meta[name="cssmate-is-ci"]')
+    if (meta?.getAttribute('content') === '1') return true
+  }
+  return typeof window !== 'undefined' && window.CSSMATE_IS_CI === true
+}
+
 let IS_CI = false
 let IS_LIGHTHOUSE = false
 const INVITE_TOKEN_KEY = 'cssmate:inviteToken'
