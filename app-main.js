@@ -22,6 +22,7 @@ import { initBootInline } from './boot-inline.js'
 import { isAutomated, isCi, isLighthouse } from './src/config/runtime-modes.js'
 import { isDiagnosticsEnabled, mountDiagnostics } from './src/ui/auth-diagnostics.js'
 import { initAuth0Ui } from './src/auth/auth0-ui.js'
+import { getClient as getAuth0Client, getUser, isAuthenticated, login, signup } from './src/auth/auth0-client.js'
 
 function readCiFlag () {
   if (typeof document !== 'undefined') {
@@ -33,6 +34,7 @@ function readCiFlag () {
 
 let IS_CI = false
 let IS_LIGHTHOUSE = false
+let IS_AUTOMATED = false
 const INVITE_TOKEN_KEY = 'cssmate:inviteToken'
 const INVITE_NOTICE_KEY = 'cssmate:inviteNoticeShown'
 
@@ -5660,6 +5662,102 @@ function showAuthGateShell () {
   document.documentElement.classList.add('auth-locked')
 }
 
+function getAuthGateElements () {
+  if (typeof document === 'undefined') return {}
+  return {
+    gate: document.getElementById('authGate'),
+    loadingScreen: document.getElementById('authLoadingScreen'),
+    loginScreen: document.getElementById('authLoginScreen'),
+    message: document.getElementById('authMessage'),
+    loginButton: document.getElementById('authLogin'),
+    signupButton: document.getElementById('authSignup'),
+  }
+}
+
+function setAuthGateSection (elements, section) {
+  if (!elements?.gate) return
+  elements.loadingScreen?.setAttribute('hidden', '')
+  elements.loginScreen?.setAttribute('hidden', '')
+  if (section === 'loading') elements.loadingScreen?.removeAttribute('hidden')
+  if (section === 'login') elements.loginScreen?.removeAttribute('hidden')
+}
+
+function setAuthGateMessage (elements, text, variant = '') {
+  if (!elements?.message) return
+  elements.message.textContent = text || ''
+  elements.message.dataset.variant = variant || ''
+}
+
+function setAppLocked (locked) {
+  if (typeof document === 'undefined') return
+  const app = document.getElementById('app')
+  document.documentElement.classList.toggle('auth-locked', locked)
+  if (!app) return
+  if (locked) {
+    app.setAttribute('aria-hidden', 'true')
+    app.setAttribute('inert', '')
+  } else {
+    app.removeAttribute('aria-hidden')
+    app.removeAttribute('inert')
+  }
+}
+
+function showLoginOverlay (elements) {
+  if (!elements?.gate) return
+  elements.gate.removeAttribute('hidden')
+  elements.gate.setAttribute('data-locked', 'true')
+  document.body?.classList?.add('auth-overlay-open')
+  setAppLocked(true)
+}
+
+function hideLoginOverlay (elements) {
+  if (!elements?.gate) return
+  elements.gate.setAttribute('hidden', '')
+  elements.gate.removeAttribute('data-locked')
+  document.body?.classList?.remove('auth-overlay-open')
+  setAuthGateMessage(elements, '')
+  setAppLocked(false)
+}
+
+async function ensureAuthGateAccess () {
+  const elements = getAuthGateElements()
+  if (!elements.gate) return { allowed: true, user: null }
+
+  showLoginOverlay(elements)
+  setAuthGateSection(elements, 'loading')
+  setAuthGateMessage(elements, '')
+
+  try {
+    await getAuth0Client()
+    const authed = await isAuthenticated()
+    if (!authed) {
+      setAuthGateSection(elements, 'login')
+      if (elements.loginButton) {
+        elements.loginButton.onclick = () => login().catch(() => {})
+      }
+      if (elements.signupButton) {
+        elements.signupButton.onclick = () => signup().catch(() => {})
+      }
+      return { allowed: false, user: null }
+    }
+
+    const user = await getUser()
+    hideLoginOverlay(elements)
+    return { allowed: true, user }
+  } catch (error) {
+    const message = error?.message || 'Auth0 kunne ikke initialiseres.'
+    setAuthGateSection(elements, 'login')
+    setAuthGateMessage(elements, message, 'error')
+    if (elements.loginButton) {
+      elements.loginButton.onclick = () => login().catch(() => {})
+    }
+    if (elements.signupButton) {
+      elements.signupButton.onclick = () => signup().catch(() => {})
+    }
+    return { allowed: false, user: null, error }
+  }
+}
+
 function markAppReady () {
   if (typeof document === 'undefined') return
   document.documentElement.classList.remove('app-booting')
@@ -5857,11 +5955,20 @@ export async function bootstrapApp () {
   bootstrapStarted = true
   configureBootstrap()
   initDebugOverlayLazy()
+
+  const skipAuthGate = IS_AUTOMATED || IS_CI || IS_LIGHTHOUSE
+  if (!skipAuthGate) {
+    const authGateState = await ensureAuthGateAccess()
+    if (!authGateState.allowed) {
+      markAppReady()
+      return
+    }
+  }
+
   scheduleAuthBootstrap()
 
   let authGatePromise = null
-  if (!IS_CI && !IS_LIGHTHOUSE) {
-    showAuthGateShell()
+  if (!skipAuthGate) {
     authGatePromise = initAuthGateLazy().catch(error => {
       console.warn('Kunne ikke indlæse auth-gate', error)
       return null

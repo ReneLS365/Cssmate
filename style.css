@@ -1004,6 +1004,7 @@ input.csm-name{
 .team-diagnostics{border:1px solid var(--border);background:var(--panel);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px}
 .diagnostic-list{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px;font-size:.9rem}
 html.auth-locked body{overflow:hidden}
+html.auth-locked #app{pointer-events:none;user-select:none}
 .app-guard{margin-bottom:var(--gap);gap:8px}
 .app-guard__status{font-weight:700;font-size:1.05rem}
 .app-guard__message{margin:0;color:var(--muted)}

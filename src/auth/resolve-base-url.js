@@ -11,13 +11,9 @@ export function resolveBaseUrl () {
     .map(value => (value == null ? '' : String(value).trim()))
     .find(value => value.length > 0)
 
-  if (!resolved) {
-    throw new Error('Base URL mangler. Sæt VITE_APP_BASE_URL eller APP_BASE_URL til en fuld https:// URL.')
-  }
-
-  const normalized = resolved.replace(/\/+$/, '')
-  if (!/^https?:\/\//i.test(normalized)) {
-    throw new Error('Base URL er ugyldig. Brug http:// eller https:// i VITE_APP_BASE_URL / APP_BASE_URL.')
+  const normalized = (resolved || '').replace(/\/+$/, '')
+  if (!normalized || !/^https?:\/\//i.test(normalized)) {
+    throw new Error('Invalid base URL for Auth0 redirect/logout')
   }
 
   return normalized
