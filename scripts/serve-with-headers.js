@@ -126,7 +126,7 @@ function sendHtml (res, targetPath) {
 
 const SPA_ROUTE_OVERRIDES = ['/admin', '/admin/'];
 
-app.get(SPA_ROUTE_OVERRIDES, (req, res, next) => {
+app.get(SPA_ROUTE_OVERRIDES, limiter, (req, res, next) => {
   const resolved = safeResolve('index.html');
   if (!resolved || !existsSync(resolved)) {
     next();
