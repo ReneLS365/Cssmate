@@ -53,6 +53,12 @@ I Auth0-appen skal callback/logout-URLs inkludere:
 4. Hvis email matcher `VITE_ADMIN_EMAIL`, vises admin-linket.
 5. Åbn `/admin.html` for at verificere admin-guard.
 
+### Skip auth gate (CI/Lighthouse)
+
+Til CI/Lighthouse kan login-gate springes over ved at tilføje query-parametret
+`?skipAuthGate=1` (eller `?skipAuthGate=true`) til app-URL’en. Brug denne
+parameter i testmiljøer fremfor miljøflags.
+
 ## Netlify production env vars
 
 Følgende keys skal være sat i Netlify (production) for at auth, invites og DB virker korrekt:

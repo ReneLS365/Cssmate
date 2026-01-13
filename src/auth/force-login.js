@@ -49,6 +49,10 @@ export async function forceLoginOnce () {
   if (shouldSkipAutoLogin()) return
   if (isAuthCallbackUrl()) return
 
+  try {
+    sessionStorage.removeItem(KEY)
+  } catch {}
+
   const auth = getAuthDeps()
   const overlay = getOverlayDeps()
 
@@ -84,7 +88,7 @@ export async function forceLoginOnce () {
   } catch (error) {
     console.warn('Auto login failed', error)
     const message = error?.message || 'Auto login fejlede. Prøv at logge ind manuelt.'
-    overlay.showLoginOverlay({ error: message })
+    overlay.showLoginOverlay({ message: 'Log ind for at fortsætte.', error: message })
     overlay.startLoginOverlayWatcher()
 
     if (!loginAttempted) {
