@@ -1,11 +1,18 @@
-import bcrypt from 'bcryptjs'
 import { db } from './_db.mjs'
-import { generateToken, hashToken, signToken, verifyToken } from './_auth.mjs'
-import { ensureActiveOwnerGuard } from './owner-guards.mjs'
+import { generateToken, hashToken, secureCompare, verifyToken } from './_auth.mjs'
+import { ensureActiveAdminGuard } from './owner-guards.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 const BOOTSTRAP_ADMIN_EMAIL = process.env.BOOTSTRAP_ADMIN_EMAIL || 'mr.lion1995@gmail.com'
 const DEFAULT_TEAM_SLUG = process.env.DEFAULT_TEAM_SLUG || 'hulmose'
+const EMAIL_FROM = process.env.EMAIL_FROM || ''
+const EMAIL_PROVIDER_API_KEY = process.env.EMAIL_PROVIDER_API_KEY || ''
+const APP_ORIGIN = process.env.APP_ORIGIN || ''
+const INVITE_TTL_DAYS = 7
+const INVITE_RATE_LIMIT = 20
+const INVITE_RATE_WINDOW_MS = 60 * 60 * 1000
+const ACCEPT_RATE_LIMIT = 30
+const ACCEPT_RATE_WINDOW_MS = 60 * 60 * 1000
 
 function isMissingRelationError (error) {
   const message = error?.message || ''
@@ -37,6 +44,11 @@ function normalizeEmail (email) {
   return (email || '').toString().trim().toLowerCase()
 }
 
+function isValidEmail (email) {
+  if (!email) return false
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)
+}
+
 function normalizeTeamSlug (value) {
   const cleaned = (value || '').toString().trim().toLowerCase()
   const normalized = cleaned
@@ -63,7 +75,7 @@ function getAuthHeader (event) {
 }
 
 function resolveAppBaseUrl (event) {
-  const raw = String(process.env.APP_BASE_URL || '').trim()
+  const raw = String(APP_ORIGIN || process.env.APP_BASE_URL || '').trim()
   if (raw && raw.toLowerCase() !== 'base') {
     try {
       const parsed = new URL(raw)
@@ -81,110 +93,119 @@ function resolveAppBaseUrl (event) {
   return `${protocol}://${host}`
 }
 
+function resolveTeamSlugFromRequest (event, body = {}) {
+  const query = event.queryStringParameters || {}
+  return normalizeTeamSlug(body.teamId || body.teamSlug || query.teamId || query.teamSlug || DEFAULT_TEAM_SLUG)
+}
+
+function createError (message, status = 400, extra = {}) {
+  const error = new Error(message)
+  error.status = status
+  Object.assign(error, extra)
+  return error
+}
+
+async function fetchAuth0UserInfo (token) {
+  const domain = process.env.AUTH0_DOMAIN || ''
+  if (!domain) return null
+  const response = await fetch(`https://${domain}/userinfo`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.ok) return null
+  try {
+    return await response.json()
+  } catch {
+    return null
+  }
+}
+
 async function requireAuth (event) {
   const header = getAuthHeader(event)
   if (!header.startsWith('Bearer ')) {
-    const error = new Error('Manglende token')
-    error.status = 401
-    throw error
+    throw createError('Manglende token', 401)
   }
   const token = header.replace('Bearer ', '').trim()
   try {
     const payload = await verifyToken(token)
+    const userInfo = payload.email ? null : await fetchAuth0UserInfo(token)
+    const email = normalizeEmail(payload.email || userInfo?.email || '')
     return {
       id: payload.sub,
-      email: normalizeEmail(payload.email || ''),
+      email,
     }
-  } catch {
-    const error = new Error('Ugyldigt token')
-    error.status = 401
-    throw error
+  } catch (error) {
+    throw createError('Ugyldigt token', 401, { cause: error })
   }
 }
 
-async function findUserByEmail (email) {
-  const result = await db.query('SELECT id, email, password_hash, created_at FROM users WHERE email = $1', [email])
-  return result.rows[0] || null
-}
-
 async function findTeamBySlug (slug) {
-  const result = await db.query('SELECT id, slug, name, created_at FROM teams WHERE slug = $1', [slug])
+  const result = await db.query('SELECT id, slug, name, created_at, created_by_sub FROM teams WHERE slug = $1', [slug])
   return result.rows[0] || null
 }
 
-async function ensureTeam (slug, ownerId = null) {
+async function ensureTeam (slug, ownerSub = null) {
   const normalizedSlug = normalizeTeamSlug(slug)
   const existing = await findTeamBySlug(normalizedSlug)
   if (existing) return existing
   const teamId = crypto.randomUUID()
   const teamName = normalizedSlug
   await db.query(
-    'INSERT INTO teams (id, slug, name, created_at) VALUES ($1, $2, $3, NOW())',
-    [teamId, normalizedSlug, teamName]
+    'INSERT INTO teams (id, slug, name, created_at, created_by_sub) VALUES ($1, $2, $3, NOW(), $4)',
+    [teamId, normalizedSlug, teamName, ownerSub]
   )
-  if (ownerId) {
+  if (ownerSub) {
     await db.query(
-      'INSERT INTO team_members (team_id, user_id, role, status, created_at) VALUES ($1, $2, $3, $4, NOW()) ON CONFLICT (team_id, user_id) DO NOTHING',
-      [teamId, ownerId, 'owner', 'active']
+      'INSERT INTO team_members (team_id, user_sub, email, role, status, joined_at) VALUES ($1, $2, $3, $4, $5, NOW()) ON CONFLICT (team_id, user_sub) DO NOTHING',
+      [teamId, ownerSub, '', 'admin', 'active']
     )
   }
   return { id: teamId, slug: normalizedSlug, name: teamName, created_at: new Date().toISOString() }
 }
 
-async function ensureBootstrapAdmin (userId, email) {
-  if (normalizeEmail(email) !== normalizeEmail(BOOTSTRAP_ADMIN_EMAIL)) return
-  const team = await ensureTeam(DEFAULT_TEAM_SLUG)
-  const existingMember = await getMember(team.id, userId)
-  if (existingMember) return
-  await db.query(
-    `INSERT INTO team_members (team_id, user_id, role, status, created_at)
-     VALUES ($1, $2, $3, $4, NOW())
-     ON CONFLICT (team_id, user_id)
-     DO NOTHING`,
-    [team.id, userId, 'owner', 'active']
-  )
-}
-
-async function getMember (teamId, userId) {
+async function getMember (teamId, userSub) {
   const result = await db.query(
-    'SELECT team_id, user_id, role, status, created_at FROM team_members WHERE team_id = $1 AND user_id = $2',
-    [teamId, userId]
+    'SELECT team_id, user_sub, email, role, status, joined_at FROM team_members WHERE team_id = $1 AND user_sub = $2',
+    [teamId, userSub]
   )
   return result.rows[0] || null
 }
 
-async function requireTeamRole (teamId, userId, roles = ['owner', 'admin']) {
-  const member = await getMember(teamId, userId)
+async function requireTeamRole (teamId, userSub, roles = ['admin']) {
+  const member = await getMember(teamId, userSub)
   if (!member || member.status !== 'active') {
-    const error = new Error('Ingen adgang til teamet')
-    error.status = 403
-    throw error
+    throw createError('Ingen adgang til teamet', 403)
   }
   if (!roles.includes(member.role)) {
-    const error = new Error('Kun admin kan udføre denne handling')
-    error.status = 403
-    throw error
+    throw createError('Kun admin kan udføre denne handling', 403)
   }
   return member
 }
 
+async function requireTeamAdmin (teamId, userSub) {
+  return requireTeamRole(teamId, userSub, ['admin', 'owner'])
+}
+
 function serializeMemberRow (row) {
   return {
-    id: row.user_id,
-    uid: row.user_id,
+    id: row.user_sub,
+    uid: row.user_sub,
     email: row.email || '',
     displayName: row.display_name || '',
     role: row.role || 'member',
-    active: row.status !== 'disabled',
+    active: row.status === 'active',
     assigned: true,
-    createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
+    createdAt: row.joined_at ? new Date(row.joined_at).toISOString() : null,
   }
 }
 
+function resolveInviteStatus (row) {
+  if (row.revoked_at) return 'revoked'
+  if (row.used_at) return 'accepted'
+  if (row.expires_at && new Date(row.expires_at) < new Date()) return 'expired'
+  return 'pending'
+}
+
 function serializeInviteRow (row) {
-  const status = row.status === 'pending' && row.expires_at && new Date(row.expires_at) < new Date()
-    ? 'expired'
-    : row.status
   return {
     id: row.id,
     inviteId: row.id,
@@ -192,10 +213,12 @@ function serializeInviteRow (row) {
     email: row.email || '',
     emailLower: row.email || '',
     role: row.role || 'member',
-    status,
+    status: resolveInviteStatus(row),
+    tokenHint: row.token_hint || '',
     expiresAt: row.expires_at ? new Date(row.expires_at).toISOString() : null,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
-    acceptedAt: row.accepted_at ? new Date(row.accepted_at).toISOString() : null,
+    acceptedAt: row.used_at ? new Date(row.used_at).toISOString() : null,
+    revokedAt: row.revoked_at ? new Date(row.revoked_at).toISOString() : null,
   }
 }
 
@@ -227,46 +250,78 @@ function serializeCaseRow (row) {
   }
 }
 
-async function handleSignup (event) {
-  const body = parseBody(event)
-  const email = normalizeEmail(body.email)
-  const password = body.password || ''
-  if (!email || !password) {
-    return jsonResponse(400, { error: 'Email og adgangskode er påkrævet.' })
-  }
-  const existing = await findUserByEmail(email)
-  if (existing) {
-    return jsonResponse(409, { error: 'Bruger findes allerede.' })
-  }
-  const passwordHash = await bcrypt.hash(password, 10)
-  const userId = crypto.randomUUID()
+async function writeAuditLog ({ teamId, actorSub, action, meta }) {
+  if (!teamId || !action) return
   await db.query(
-    'INSERT INTO users (id, email, password_hash, created_at) VALUES ($1, $2, $3, NOW())',
-    [userId, email, passwordHash]
+    `INSERT INTO audit_log (id, team_id, actor_sub, action, meta, created_at)
+     VALUES ($1, $2, $3, $4, $5::jsonb, NOW())`,
+    [crypto.randomUUID(), teamId, actorSub || null, action, JSON.stringify(meta || {})]
   )
-  await ensureBootstrapAdmin(userId, email)
-  const token = await signToken({ userId, email })
-  return jsonResponse(200, { token })
 }
 
-async function handleLogin (event) {
-  const body = parseBody(event)
-  const email = normalizeEmail(body.email)
-  const password = body.password || ''
-  if (!email || !password) {
-    return jsonResponse(400, { error: 'Email og adgangskode er påkrævet.' })
+async function enforceRateLimit ({ key, limit, windowMs }) {
+  const now = new Date()
+  const windowStart = new Date(now.getTime() - (now.getTime() % windowMs))
+  const result = await db.query(
+    `INSERT INTO rate_limits (key, window_start, count)
+     VALUES ($1, $2, 1)
+     ON CONFLICT (key)
+     DO UPDATE SET
+       count = CASE
+         WHEN rate_limits.window_start + ($3 * interval '1 millisecond') < NOW() THEN 1
+         ELSE rate_limits.count + 1
+       END,
+       window_start = CASE
+         WHEN rate_limits.window_start + ($3 * interval '1 millisecond') < NOW() THEN EXCLUDED.window_start
+         ELSE rate_limits.window_start
+       END
+     RETURNING count, window_start`,
+    [key, windowStart, windowMs]
+  )
+  const count = result.rows[0]?.count || 0
+  if (count > limit) {
+    throw createError('For mange forsøg. Prøv igen senere.', 429)
   }
-  const user = await findUserByEmail(email)
-  if (!user) {
-    return jsonResponse(401, { error: 'Forkert login.' })
+}
+
+async function sendInviteEmail ({ to, role, inviteUrl, expiresAt }) {
+  if (!EMAIL_PROVIDER_API_KEY || !EMAIL_FROM || !to) return
+  const subject = 'Invitation til SSCaff'
+  const expiryLabel = expiresAt ? new Date(expiresAt).toLocaleDateString('da-DK') : 'om 7 dage'
+  const bodyText = `Du er inviteret som ${role}.\n\nÅbn linket for at acceptere invitationen:\n${inviteUrl}\n\nLinket udløber ${expiryLabel}.\nLog ind med den email der er inviteret: ${to}.`
+  const payload = {
+    from: EMAIL_FROM,
+    to,
+    subject,
+    text: bodyText,
   }
-  const ok = await bcrypt.compare(password, user.password_hash || '')
-  if (!ok) {
-    return jsonResponse(401, { error: 'Forkert login.' })
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${EMAIL_PROVIDER_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    const text = await response.text()
+    throw createError(`Email kunne ikke sendes: ${text || response.statusText}`, 502)
   }
-  await ensureBootstrapAdmin(user.id, user.email)
-  const token = await signToken({ userId: user.id, email: user.email })
-  return jsonResponse(200, { token })
+}
+
+async function handleMe (event) {
+  const user = await requireAuth(event)
+  return jsonResponse(200, { sub: user.id, email: user.email })
+}
+
+async function handleTeamGet (event) {
+  const user = await requireAuth(event)
+  const teamSlug = resolveTeamSlugFromRequest(event)
+  const team = await findTeamBySlug(teamSlug)
+  if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
+  const member = await getMember(team.id, user.id)
+  if (!member || member.status !== 'active') return jsonResponse(404, { error: 'Ingen adgang til teamet.' })
+  return jsonResponse(200, { team: { id: team.id, name: team.name, slug: team.slug }, member: { role: member.role } })
 }
 
 async function handleTeamAccess (event, teamSlug) {
@@ -301,96 +356,76 @@ async function handleTeamBootstrap (event, teamSlug) {
   if (normalizeEmail(user.email) !== normalizeEmail(BOOTSTRAP_ADMIN_EMAIL)) {
     return jsonResponse(403, { error: 'Kun admin kan bootstrappe team.' })
   }
-  const team = await ensureTeam(normalizedSlug)
+  const team = await ensureTeam(normalizedSlug, user.id)
   await db.query(
-    `INSERT INTO team_members (team_id, user_id, role, status, created_at)
-     VALUES ($1, $2, $3, $4, NOW())
-     ON CONFLICT (team_id, user_id)
-     DO UPDATE SET role = EXCLUDED.role, status = EXCLUDED.status`,
-    [team.id, user.id, 'owner', 'active']
+    `INSERT INTO team_members (team_id, user_sub, email, role, status, joined_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())
+     ON CONFLICT (team_id, user_sub)
+     DO UPDATE SET role = EXCLUDED.role, status = EXCLUDED.status, email = EXCLUDED.email`,
+    [team.id, user.id, user.email, 'admin', 'active']
   )
-  return jsonResponse(200, { ok: true, teamId: normalizedSlug, role: 'owner' })
-}
-
-async function handleAuthSession (event) {
-  const user = await requireAuth(event)
-  return jsonResponse(200, { user: { id: user.id, email: user.email } })
+  return jsonResponse(200, { ok: true, teamId: normalizedSlug, role: 'admin' })
 }
 
 async function handleTeamMembersList (event, teamSlug) {
   const user = await requireAuth(event)
   const team = await findTeamBySlug(normalizeTeamSlug(teamSlug))
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
-  await requireTeamRole(team.id, user.id, ['owner', 'admin', 'member'])
+  await requireTeamRole(team.id, user.id, ['admin', 'owner', 'member'])
   const result = await db.query(
-    `SELECT m.user_id, m.role, m.status, m.created_at, u.email, u.display_name
-     FROM team_members m
-     LEFT JOIN users u ON u.id = m.user_id
-     WHERE m.team_id = $1
-     ORDER BY m.created_at ASC`,
+    `SELECT user_sub, role, status, joined_at, email
+     FROM team_members
+     WHERE team_id = $1
+     ORDER BY joined_at ASC`,
     [team.id]
   )
   return jsonResponse(200, result.rows.map(serializeMemberRow))
 }
 
-async function handleTeamMemberCreate (event, teamSlug) {
-  const user = await requireAuth(event)
-  const body = parseBody(event)
-  const team = await findTeamBySlug(normalizeTeamSlug(teamSlug))
-  if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
-  await requireTeamRole(team.id, user.id, ['owner', 'admin'])
-  const role = body.role === 'admin' ? 'admin' : (body.role === 'owner' ? 'owner' : 'member')
-  let targetUserId = body.userId
-  if (!targetUserId && body.email) {
-    const target = await findUserByEmail(normalizeEmail(body.email))
-    targetUserId = target?.id || ''
-  }
-  if (!targetUserId) return jsonResponse(400, { error: 'Bruger ikke fundet.' })
-  await db.query(
-    'INSERT INTO team_members (team_id, user_id, role, status, created_at) VALUES ($1, $2, $3, $4, NOW()) ON CONFLICT (team_id, user_id) DO NOTHING',
-    [team.id, targetUserId, role, 'active']
-  )
-  return emptyResponse(204)
+async function handleTeamMembersListRoot (event) {
+  const teamSlug = resolveTeamSlugFromRequest(event)
+  return handleTeamMembersList(event, teamSlug)
 }
 
-async function handleTeamMemberPatch (event, teamSlug, memberId) {
+async function handleTeamMemberPatch (event, teamSlug, memberSub) {
   const user = await requireAuth(event)
   const body = parseBody(event)
   const team = await findTeamBySlug(normalizeTeamSlug(teamSlug))
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
-  await requireTeamRole(team.id, user.id, ['owner', 'admin'])
+  await requireTeamAdmin(team.id, user.id)
   const role = body.role === 'admin' || body.role === 'member' || body.role === 'owner' ? body.role : null
-  const status = body.status === 'disabled' || body.status === 'active' ? body.status : null
+  const status = body.status === 'removed' || body.status === 'active' ? body.status : null
   if (!role && !status) {
     return jsonResponse(400, { error: 'Ingen opdateringer angivet.' })
   }
-  const existing = await getMember(team.id, memberId)
+  const existing = await getMember(team.id, memberSub)
   const nextRole = role || existing?.role || 'member'
   const nextStatus = status || existing?.status || 'active'
   if (!existing) {
     await db.query(
-      'INSERT INTO team_members (team_id, user_id, role, status, created_at) VALUES ($1, $2, $3, $4, NOW())',
-      [team.id, memberId, nextRole, nextStatus]
+      'INSERT INTO team_members (team_id, user_sub, email, role, status, joined_at) VALUES ($1, $2, $3, $4, $5, NOW())',
+      [team.id, memberSub, '', nextRole, nextStatus]
     )
+    await writeAuditLog({ teamId: team.id, actorSub: user.id, action: 'member_added', meta: { memberSub, role: nextRole } })
     return emptyResponse(204)
   }
-  if (existing.role === 'owner') {
+  if (existing.role === 'admin' || existing.role === 'owner') {
     await db.withTransaction(async (client) => {
       const memberResult = await client.query(
-        'SELECT user_id, role, status FROM team_members WHERE team_id = $1 AND user_id = $2 FOR UPDATE',
-        [team.id, memberId]
+        'SELECT user_sub, role, status FROM team_members WHERE team_id = $1 AND user_sub = $2 FOR UPDATE',
+        [team.id, memberSub]
       )
       const current = memberResult.rows[0]
       if (!current) return
       const resolvedRole = role || current.role
       const resolvedStatus = status || current.status
-      const ownersResult = await client.query(
-        'SELECT user_id, status FROM team_members WHERE team_id = $1 AND role = $2 FOR UPDATE',
-        [team.id, 'owner']
+      const adminsResult = await client.query(
+        'SELECT user_sub, role, status FROM team_members WHERE team_id = $1 AND role IN ($2, $3) FOR UPDATE',
+        [team.id, 'admin', 'owner']
       )
-      const allowed = ensureActiveOwnerGuard({
-        owners: ownersResult.rows,
-        targetUserId: memberId,
+      const allowed = ensureActiveAdminGuard({
+        admins: adminsResult.rows,
+        targetUserId: memberSub,
         existingRole: current.role,
         existingStatus: current.status,
         nextRole: resolvedRole,
@@ -398,46 +433,50 @@ async function handleTeamMemberPatch (event, teamSlug, memberId) {
         isDelete: false,
       })
       if (!allowed) {
-        const error = new Error('Teamet skal have mindst én owner.')
-        error.status = 400
-        throw error
+        throw createError('Teamet skal have mindst én admin.', 400)
       }
       await client.query(
-        'UPDATE team_members SET role = $1, status = $2 WHERE team_id = $3 AND user_id = $4',
-        [resolvedRole, resolvedStatus, team.id, memberId]
+        'UPDATE team_members SET role = $1, status = $2 WHERE team_id = $3 AND user_sub = $4',
+        [resolvedRole, resolvedStatus, team.id, memberSub]
       )
     })
   } else {
     await db.query(
-      'UPDATE team_members SET role = $1, status = $2 WHERE team_id = $3 AND user_id = $4',
-      [nextRole, nextStatus, team.id, memberId]
+      'UPDATE team_members SET role = $1, status = $2 WHERE team_id = $3 AND user_sub = $4',
+      [nextRole, nextStatus, team.id, memberSub]
     )
   }
+  await writeAuditLog({ teamId: team.id, actorSub: user.id, action: 'member_updated', meta: { memberSub, role: nextRole, status: nextStatus } })
   return emptyResponse(204)
 }
 
-async function handleTeamMemberDelete (event, teamSlug, memberId) {
+async function handleTeamMemberPatchRoot (event, memberSub) {
+  const teamSlug = resolveTeamSlugFromRequest(event, parseBody(event))
+  return handleTeamMemberPatch(event, teamSlug, memberSub)
+}
+
+async function handleTeamMemberDelete (event, teamSlug, memberSub) {
   const user = await requireAuth(event)
   const team = await findTeamBySlug(normalizeTeamSlug(teamSlug))
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
-  await requireTeamRole(team.id, user.id, ['owner', 'admin'])
-  const existing = await getMember(team.id, memberId)
+  await requireTeamAdmin(team.id, user.id)
+  const existing = await getMember(team.id, memberSub)
   if (!existing) return emptyResponse(204)
-  if (existing.role === 'owner') {
+  if (existing.role === 'admin' || existing.role === 'owner') {
     await db.withTransaction(async (client) => {
       const memberResult = await client.query(
-        'SELECT user_id, role, status FROM team_members WHERE team_id = $1 AND user_id = $2 FOR UPDATE',
-        [team.id, memberId]
+        'SELECT user_sub, role, status FROM team_members WHERE team_id = $1 AND user_sub = $2 FOR UPDATE',
+        [team.id, memberSub]
       )
       const current = memberResult.rows[0]
       if (!current) return
-      const ownersResult = await client.query(
-        'SELECT user_id, status FROM team_members WHERE team_id = $1 AND role = $2 FOR UPDATE',
-        [team.id, 'owner']
+      const adminsResult = await client.query(
+        'SELECT user_sub, role, status FROM team_members WHERE team_id = $1 AND role IN ($2, $3) FOR UPDATE',
+        [team.id, 'admin', 'owner']
       )
-      const allowed = ensureActiveOwnerGuard({
-        owners: ownersResult.rows,
-        targetUserId: memberId,
+      const allowed = ensureActiveAdminGuard({
+        admins: adminsResult.rows,
+        targetUserId: memberSub,
         existingRole: current.role,
         existingStatus: current.status,
         nextRole: current.role,
@@ -445,38 +484,60 @@ async function handleTeamMemberDelete (event, teamSlug, memberId) {
         isDelete: true,
       })
       if (!allowed) {
-        const error = new Error('Teamet skal have mindst én owner.')
-        error.status = 400
-        throw error
+        throw createError('Teamet skal have mindst én admin.', 400)
       }
-      await client.query('DELETE FROM team_members WHERE team_id = $1 AND user_id = $2', [team.id, memberId])
+      await client.query('DELETE FROM team_members WHERE team_id = $1 AND user_sub = $2', [team.id, memberSub])
     })
-    return emptyResponse(204)
+  } else {
+    await db.query('DELETE FROM team_members WHERE team_id = $1 AND user_sub = $2', [team.id, memberSub])
   }
-  await db.query('DELETE FROM team_members WHERE team_id = $1 AND user_id = $2', [team.id, memberId])
+  await writeAuditLog({ teamId: team.id, actorSub: user.id, action: 'member_removed', meta: { memberSub } })
   return emptyResponse(204)
+}
+
+async function handleTeamMemberDeleteRoot (event, memberSub) {
+  const teamSlug = resolveTeamSlugFromRequest(event, parseBody(event))
+  return handleTeamMemberDelete(event, teamSlug, memberSub)
 }
 
 async function handleInviteCreate (event, teamSlug) {
   const user = await requireAuth(event)
   const body = parseBody(event)
   const role = body.role === 'admin' ? 'admin' : 'member'
-  const email = normalizeEmail(body.email || '') || null
+  const email = normalizeEmail(body.email || '')
+  if (!isValidEmail(email)) return jsonResponse(400, { error: 'Ugyldig email.' })
   const team = await findTeamBySlug(normalizeTeamSlug(teamSlug))
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
-  await requireTeamRole(team.id, user.id, ['owner', 'admin'])
+  await requireTeamAdmin(team.id, user.id)
+  await enforceRateLimit({ key: `invite:${user.id}`, limit: INVITE_RATE_LIMIT, windowMs: INVITE_RATE_WINDOW_MS })
+  await enforceRateLimit({ key: `invite-ip:${event.headers?.['x-forwarded-for'] || 'unknown'}`, limit: INVITE_RATE_LIMIT, windowMs: INVITE_RATE_WINDOW_MS })
+
+  const existing = await db.query(
+    `SELECT id FROM team_invites
+     WHERE team_id = $1 AND email = $2 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > NOW()`,
+    [team.id, email]
+  )
+  if (existing.rowCount > 0) {
+    return jsonResponse(409, { error: 'Der findes allerede en aktiv invitation til denne email.' })
+  }
+
   const rawToken = generateToken()
   const tokenHash = hashToken(rawToken)
+  const tokenHint = rawToken.slice(-6)
   const inviteId = crypto.randomUUID()
   const result = await db.query(
-    `INSERT INTO team_invites (id, team_id, email, role, token_hash, status, expires_at, created_by, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, NOW() + interval '7 days', $7, NOW())
+    `INSERT INTO team_invites (id, team_id, email, role, token_hash, token_hint, created_by_sub, created_at, expires_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW() + interval '${INVITE_TTL_DAYS} days')
      RETURNING id, expires_at`,
-    [inviteId, team.id, email, role, tokenHash, 'pending', user.id]
+    [inviteId, team.id, email, role, tokenHash, tokenHint, user.id]
   )
+
   const baseUrl = resolveAppBaseUrl(event)
-  const invitePath = `/accept-invite?inviteId=${inviteId}&token=${rawToken}`
+  const invitePath = `/invite?token=${rawToken}`
   const inviteUrl = baseUrl ? `${baseUrl}${invitePath}` : invitePath
+  await sendInviteEmail({ to: email, role, inviteUrl, expiresAt: result.rows[0]?.expires_at })
+  await writeAuditLog({ teamId: team.id, actorSub: user.id, action: 'invite_created', meta: { inviteId, email, role, tokenHint } })
+
   return jsonResponse(200, {
     inviteId,
     expiresAt: result.rows[0]?.expires_at ? new Date(result.rows[0].expires_at).toISOString() : null,
@@ -488,12 +549,12 @@ async function handleInviteList (event, teamSlug) {
   const user = await requireAuth(event)
   const team = await findTeamBySlug(normalizeTeamSlug(teamSlug))
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
-  await requireTeamRole(team.id, user.id, ['owner', 'admin'])
+  await requireTeamAdmin(team.id, user.id)
   const result = await db.query(
-    `SELECT i.id, i.email, i.role, i.status, i.expires_at, i.created_at, i.accepted_at, t.slug as team_slug
+    `SELECT i.id, i.email, i.role, i.token_hint, i.expires_at, i.created_at, i.used_at, i.revoked_at, t.slug as team_slug
      FROM team_invites i
      JOIN teams t ON t.id = i.team_id
-     WHERE i.team_id = $1
+     WHERE i.team_id = $1 AND i.used_at IS NULL AND i.revoked_at IS NULL
      ORDER BY i.created_at DESC`,
     [team.id]
   )
@@ -502,55 +563,106 @@ async function handleInviteList (event, teamSlug) {
 
 async function handleInviteRevoke (event, inviteId) {
   const user = await requireAuth(event)
-  const inviteResult = await db.query('SELECT id, team_id FROM team_invites WHERE id = $1', [inviteId])
+  const inviteResult = await db.query('SELECT id, team_id, email FROM team_invites WHERE id = $1', [inviteId])
   const invite = inviteResult.rows[0]
   if (!invite) return jsonResponse(404, { error: 'Invitation findes ikke.' })
-  await requireTeamRole(invite.team_id, user.id, ['owner', 'admin'])
-  await db.query('UPDATE team_invites SET status = $1 WHERE id = $2', ['revoked', inviteId])
+  await requireTeamAdmin(invite.team_id, user.id)
+  await db.query('UPDATE team_invites SET revoked_at = NOW() WHERE id = $1', [inviteId])
+  await writeAuditLog({ teamId: invite.team_id, actorSub: user.id, action: 'invite_revoked', meta: { inviteId, email: invite.email } })
   return emptyResponse(204)
 }
 
-async function handleInviteAccept (event) {
+async function handleInviteResend (event, inviteId) {
   const user = await requireAuth(event)
-  const body = parseBody(event)
-  const inviteId = body.inviteId
-  const token = body.token
-  if (!inviteId || !token) {
-    return jsonResponse(400, { error: 'InviteId og token er påkrævet.' })
-  }
-  const tokenHash = hashToken(token)
-  const result = await db.query(
-    `SELECT i.id, i.team_id, i.role, i.status, i.expires_at, t.slug as team_slug
+  const inviteResult = await db.query(
+    `SELECT i.id, i.team_id, i.email, i.role, i.expires_at, t.slug as team_slug
      FROM team_invites i
      JOIN teams t ON t.id = i.team_id
      WHERE i.id = $1`,
     [inviteId]
   )
-  const invite = result.rows[0]
+  const invite = inviteResult.rows[0]
   if (!invite) return jsonResponse(404, { error: 'Invitation findes ikke.' })
-  if (invite.status !== 'pending') return jsonResponse(400, { error: 'Invitationen er ikke aktiv.' })
+  await requireTeamAdmin(invite.team_id, user.id)
   if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
-    await db.query('UPDATE team_invites SET status = $1 WHERE id = $2', ['expired', inviteId])
     return jsonResponse(400, { error: 'Invitationen er udløbet.' })
   }
-  const tokenResult = await db.query('SELECT token_hash FROM team_invites WHERE id = $1', [inviteId])
-  const storedHash = tokenResult.rows[0]?.token_hash
-  if (!storedHash || storedHash !== tokenHash) {
+  await enforceRateLimit({ key: `invite:${user.id}`, limit: INVITE_RATE_LIMIT, windowMs: INVITE_RATE_WINDOW_MS })
+
+  const rawToken = generateToken()
+  const tokenHash = hashToken(rawToken)
+  const tokenHint = rawToken.slice(-6)
+  const result = await db.query(
+    `UPDATE team_invites
+     SET token_hash = $1, token_hint = $2, created_at = NOW(), expires_at = NOW() + interval '${INVITE_TTL_DAYS} days'
+     WHERE id = $3
+     RETURNING expires_at`,
+    [tokenHash, tokenHint, inviteId]
+  )
+  const baseUrl = resolveAppBaseUrl(event)
+  const invitePath = `/invite?token=${rawToken}`
+  const inviteUrl = baseUrl ? `${baseUrl}${invitePath}` : invitePath
+  await sendInviteEmail({ to: invite.email, role: invite.role, inviteUrl, expiresAt: result.rows[0]?.expires_at })
+  await writeAuditLog({ teamId: invite.team_id, actorSub: user.id, action: 'invite_resent', meta: { inviteId, email: invite.email, tokenHint } })
+
+  return jsonResponse(200, {
+    inviteId,
+    inviteUrl,
+    expiresAt: result.rows[0]?.expires_at ? new Date(result.rows[0].expires_at).toISOString() : null,
+  })
+}
+
+async function handleInviteAccept (event) {
+  const user = await requireAuth(event)
+  const body = parseBody(event)
+  const token = body.token
+  if (!token) {
+    return jsonResponse(400, { error: 'Token er påkrævet.' })
+  }
+  await enforceRateLimit({ key: `accept:${user.id}`, limit: ACCEPT_RATE_LIMIT, windowMs: ACCEPT_RATE_WINDOW_MS })
+  await enforceRateLimit({ key: `accept-ip:${event.headers?.['x-forwarded-for'] || 'unknown'}`, limit: ACCEPT_RATE_LIMIT, windowMs: ACCEPT_RATE_WINDOW_MS })
+
+  const tokenHash = hashToken(token)
+  const result = await db.query(
+    `SELECT i.id, i.team_id, i.email, i.role, i.token_hash, i.expires_at, i.used_at, i.revoked_at, t.slug as team_slug
+     FROM team_invites i
+     JOIN teams t ON t.id = i.team_id
+     WHERE i.token_hash = $1`,
+    [tokenHash]
+  )
+  const invite = result.rows[0]
+  if (!invite) return jsonResponse(404, { error: 'Invitation findes ikke.' })
+  if (!secureCompare(invite.token_hash, tokenHash)) {
     return jsonResponse(400, { error: 'Ugyldig invitation.' })
   }
+  if (invite.revoked_at) return jsonResponse(400, { error: 'Invitationen er tilbagekaldt.' })
+  if (invite.used_at) return jsonResponse(400, { error: 'Invitationen er allerede brugt.' })
+  if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
+    return jsonResponse(400, { error: 'Invitationen er udløbet.' })
+  }
+  const inviteEmail = normalizeEmail(invite.email)
+  if (inviteEmail && inviteEmail !== normalizeEmail(user.email)) {
+    return jsonResponse(403, {
+      error: 'Email matcher ikke invitationen.',
+      invitedEmail: invite.email,
+      loginEmail: user.email,
+    })
+  }
+
   await db.query(
-    `INSERT INTO team_members (team_id, user_id, role, status, created_at)
-     VALUES ($1, $2, $3, $4, NOW())
-     ON CONFLICT (team_id, user_id)
-     DO UPDATE SET role = EXCLUDED.role, status = EXCLUDED.status`,
-    [invite.team_id, user.id, invite.role, 'active']
+    `INSERT INTO team_members (team_id, user_sub, email, role, status, joined_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())
+     ON CONFLICT (team_id, user_sub)
+     DO UPDATE SET role = EXCLUDED.role, status = EXCLUDED.status, email = EXCLUDED.email`,
+    [invite.team_id, user.id, user.email, invite.role, 'active']
   )
   await db.query(
-    `UPDATE team_invites SET status = $1, accepted_by = $2, accepted_at = NOW()
-     WHERE id = $3`,
-    ['accepted', user.id, inviteId]
+    `UPDATE team_invites SET used_at = NOW(), accepted_by_sub = $2, accept_ip = $3, accept_ua = $4
+     WHERE id = $1`,
+    [invite.id, user.id, event.headers?.['x-forwarded-for'] || '', event.headers?.['user-agent'] || '']
   )
-  return jsonResponse(200, { teamId: invite.team_slug, role: invite.role })
+  await writeAuditLog({ teamId: invite.team_id, actorSub: user.id, action: 'invite_accepted', meta: { inviteId: invite.id, email: invite.email } })
+  return jsonResponse(200, { ok: true, teamId: invite.team_slug })
 }
 
 async function handleCaseCreate (event, teamSlug) {
@@ -797,15 +909,26 @@ async function handleBackupImport (event, teamSlug) {
 export async function handler (event) {
   const method = event.httpMethod || 'GET'
   const path = getRoutePath(event)
-  const action = String(event.queryStringParameters?.action || '').toLowerCase()
 
   try {
-    if (method === 'POST' && action === 'signup') return await handleSignup(event)
-    if (method === 'POST' && action === 'login') return await handleLogin(event)
+    if (method === 'GET' && path === '/me') return await handleMe(event)
+    if (method === 'GET' && path === '/team') return await handleTeamGet(event)
+    if (method === 'GET' && path === '/team/members') return await handleTeamMembersListRoot(event)
+    if (method === 'PATCH' && path.startsWith('/team/members/')) {
+      const memberSub = decodeURIComponent(path.replace('/team/members/', ''))
+      return await handleTeamMemberPatchRoot(event, memberSub)
+    }
 
-    if (method === 'POST' && path === '/auth/signup') return await handleSignup(event)
-    if (method === 'POST' && path === '/auth/login') return await handleLogin(event)
-    if (method === 'GET' && path === '/auth/session') return await handleAuthSession(event)
+    if (method === 'POST' && path === '/invites') return await handleInviteCreate(event, resolveTeamSlugFromRequest(event, parseBody(event)))
+    if (method === 'GET' && path === '/invites') return await handleInviteList(event, resolveTeamSlugFromRequest(event))
+
+    const inviteRevokeMatch = path.match(/^\/invites\/([^/]+)\/revoke$/)
+    if (inviteRevokeMatch && method === 'POST') return await handleInviteRevoke(event, inviteRevokeMatch[1])
+
+    const inviteResendMatch = path.match(/^\/invites\/([^/]+)\/resend$/)
+    if (inviteResendMatch && method === 'POST') return await handleInviteResend(event, inviteResendMatch[1])
+
+    if (method === 'POST' && path === '/invites/accept') return await handleInviteAccept(event)
 
     const teamAccessMatch = path.match(/^\/teams\/([^/]+)\/access$/)
     if (teamAccessMatch && method === 'GET') return await handleTeamAccess(event, teamAccessMatch[1])
@@ -815,24 +938,18 @@ export async function handler (event) {
 
     const teamMembersMatch = path.match(/^\/teams\/([^/]+)\/members$/)
     if (teamMembersMatch && method === 'GET') return await handleTeamMembersList(event, teamMembersMatch[1])
-    if (teamMembersMatch && method === 'POST') return await handleTeamMemberCreate(event, teamMembersMatch[1])
 
     const teamMemberPatchMatch = path.match(/^\/teams\/([^/]+)\/members\/([^/]+)$/)
     if (teamMemberPatchMatch && method === 'PATCH') {
-      return await handleTeamMemberPatch(event, teamMemberPatchMatch[1], teamMemberPatchMatch[2])
+      return await handleTeamMemberPatch(event, teamMemberPatchMatch[1], decodeURIComponent(teamMemberPatchMatch[2]))
     }
     if (teamMemberPatchMatch && method === 'DELETE') {
-      return await handleTeamMemberDelete(event, teamMemberPatchMatch[1], teamMemberPatchMatch[2])
+      return await handleTeamMemberDelete(event, teamMemberPatchMatch[1], decodeURIComponent(teamMemberPatchMatch[2]))
     }
 
     const inviteCreateMatch = path.match(/^\/teams\/([^/]+)\/invites$/)
     if (inviteCreateMatch && method === 'POST') return await handleInviteCreate(event, inviteCreateMatch[1])
     if (inviteCreateMatch && method === 'GET') return await handleInviteList(event, inviteCreateMatch[1])
-
-    const inviteRevokeMatch = path.match(/^\/invites\/([^/]+)\/revoke$/)
-    if (inviteRevokeMatch && method === 'POST') return await handleInviteRevoke(event, inviteRevokeMatch[1])
-
-    if (method === 'POST' && path === '/invites/accept') return await handleInviteAccept(event)
 
     const caseListMatch = path.match(/^\/teams\/([^/]+)\/cases$/)
     if (caseListMatch && method === 'GET') return await handleCaseList(event, caseListMatch[1])
@@ -853,8 +970,8 @@ export async function handler (event) {
   } catch (error) {
     const status = error?.status || 500
     const message = isMissingRelationError(error)
-      ? 'DB er ikke migreret. Kør migrations/001_init.sql og migrations/002_add_team_slug.sql mod Neon.'
+      ? 'DB er ikke migreret. Kør migrations/001_init.sql, migrations/002_add_team_slug.sql og migrations/003_auth0_invites.sql mod Neon.'
       : (error?.message || 'Serverfejl')
-    return jsonResponse(status, { error: message })
+    return jsonResponse(status, { error: message, ...(error?.invitedEmail ? { invitedEmail: error.invitedEmail } : {}) })
   }
 }

@@ -12,13 +12,14 @@ importScripts('/js/version.js')
 const BUILD_META = (typeof self !== 'undefined' && self.CSSMATE_BUILD_META) ? self.CSSMATE_BUILD_META : {}
 const APP_VERSION = BUILD_META.cacheKey || self.CSSMATE_APP_VERSION || BUILD_META.appVersion || 'dev'
 // Replaced at build time by scripts/bump-sw-version.js
-const SW_BUILD_ID = "202601131744-9ae863c"
+const SW_BUILD_ID = "202601131923-c33599d"
 const CACHE_VERSION = `sscaff-${APP_VERSION}-${SW_BUILD_ID}`
 const CACHE_NAME = CACHE_VERSION
 const PRECACHE_URLS = [
   '/',
   '/index.html',
   '/accept-invite.html',
+  '/invite.html',
   '/admin.html',
   '/reset.html',
   '/main.js',

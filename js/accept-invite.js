@@ -1,5 +1,5 @@
-import { apiJson } from '../src/api/client.js'
 import { initAuth0, isAuthenticated, login } from '../src/auth/auth0-client.js'
+import { apiJson } from '../src/api/client.js'
 import { persistTeamId } from '../src/services/team-ids.js'
 
 export const PENDING_INVITE_KEY = 'cssmate:pendingInvite'
@@ -8,93 +8,125 @@ const statusEl = document.getElementById('inviteStatus')
 const loginButton = document.getElementById('inviteLogin')
 const retryButton = document.getElementById('inviteRetry')
 
-function setStatus (message, variant = '') {
-  if (!statusEl) return
-  statusEl.textContent = message
-  statusEl.dataset.variant = variant
-}
-
 function readInviteParams () {
   const params = new URLSearchParams(window.location.search)
   return {
-    inviteId: params.get('inviteId') || '',
     token: params.get('token') || '',
   }
 }
 
-function storePendingInvite (inviteId, token) {
+function storePendingInvite (token) {
+  if (!token) return
   try {
-    window.localStorage?.setItem(PENDING_INVITE_KEY, JSON.stringify({ inviteId, token }))
+    window.localStorage?.setItem(PENDING_INVITE_KEY, JSON.stringify({ token }))
   } catch {
-    // ignore
+    // ignore storage errors
   }
 }
 
-export async function acceptInvite (inviteId, token) {
-  setStatus('Accepterer invitation…')
+function clearPendingInvite () {
+  try {
+    window.localStorage?.removeItem(PENDING_INVITE_KEY)
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function setStatus (message, variant = '') {
+  if (!statusEl) return
+  statusEl.textContent = message || ''
+  statusEl.dataset.variant = variant || ''
+}
+
+export async function acceptInvite (token) {
   try {
     const result = await apiJson('/api/invites/accept', {
       method: 'POST',
-      body: JSON.stringify({ inviteId, token }),
+      body: JSON.stringify({ token }),
     })
     if (result?.teamId) {
       persistTeamId(result.teamId)
     }
-    setStatus('Invitation accepteret. Sender dig videre…', 'success')
-    setTimeout(() => {
-      window.location.href = '/index.html'
-    }, 800)
+    clearPendingInvite()
+    return result
   } catch (error) {
     if (error?.status === 401) {
-      storePendingInvite(inviteId, token)
-      setStatus('Sessionen er udløbet. Log ind igen for at acceptere invitationen.', 'error')
+      storePendingInvite(token)
       if (loginButton) loginButton.hidden = false
-      return
+      setStatus('Sessionen er udløbet. Log ind for at acceptere invitationen.', 'error')
+      return null
     }
-    setStatus(error?.message || 'Ugyldig/udløbet invitation.', 'error')
-    if (retryButton) retryButton.hidden = false
+    if (error?.status === 403) {
+      const invitedEmail = error?.payload?.invitedEmail || ''
+      const loginEmail = error?.payload?.loginEmail || ''
+      if (invitedEmail || loginEmail) {
+        setStatus(`Email matcher ikke invitationen. Inviteret: ${invitedEmail}. Logget ind: ${loginEmail}.`, 'error')
+        if (loginButton) loginButton.hidden = false
+        return null
+      }
+    }
+    throw error
   }
 }
 
 function handleLoginRedirect () {
-  const { inviteId, token } = readInviteParams()
-  if (!inviteId || !token) return
-  storePendingInvite(inviteId, token)
-  login({ inviteId, token }).catch(() => {})
+  const { token } = readInviteParams()
+  if (!token) return
+  login({ token }).catch(() => {})
 }
 
-async function init () {
-  const { inviteId, token } = readInviteParams()
-  if (!inviteId || !token) {
+async function handleInvite () {
+  const { token } = readInviteParams()
+  if (!token) {
     setStatus('Invite-link mangler oplysninger.', 'error')
     return
   }
+  setStatus('Accepterer invitation…')
   try {
-    await initAuth0()
-    const authed = await isAuthenticated()
-    if (!authed) {
-      setStatus('Log ind for at acceptere invitationen.')
-      if (loginButton) loginButton.hidden = false
+    const response = await acceptInvite(token)
+    if (response?.ok) {
+      setStatus('Invitation accepteret. Du sendes videre…', 'success')
+      setTimeout(() => {
+        window.location.href = '/'
+      }, 1200)
       return
     }
+    setStatus('Kunne ikke acceptere invitationen.', 'error')
   } catch (error) {
-    setStatus(error?.message || 'Auth0 kunne ikke initialiseres.', 'error')
-    if (loginButton) loginButton.hidden = false
-    return
+    setStatus(error?.message || 'Kunne ikke acceptere invitationen.', 'error')
+    if (retryButton) retryButton.hidden = false
   }
-  await acceptInvite(inviteId, token)
+}
+
+function storeFromRedirect () {
+  const { token } = readInviteParams()
+  if (!token) return
+  storePendingInvite(token)
+  login({ token }).catch(() => {})
+}
+
+async function init () {
+  try {
+    await initAuth0()
+    const authenticated = await isAuthenticated()
+    if (!authenticated) {
+      storeFromRedirect()
+      return
+    }
+    await handleInvite()
+  } catch (error) {
+    setStatus(error?.message || 'Kunne ikke initialisere login.', 'error')
+    if (retryButton) retryButton.hidden = false
+  }
 }
 
 if (loginButton) {
   loginButton.addEventListener('click', handleLoginRedirect)
 }
+
 if (retryButton) {
   retryButton.addEventListener('click', () => {
-    retryButton.hidden = true
-    const { inviteId, token } = readInviteParams()
-    if (inviteId && token) {
-      acceptInvite(inviteId, token)
-    }
+    handleInvite().catch(() => {})
   })
 }
 

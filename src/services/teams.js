@@ -120,4 +120,3 @@ export {
   formatTeamId,
   normalizeTeamId,
 }
-

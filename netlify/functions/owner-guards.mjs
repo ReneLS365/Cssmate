@@ -1,20 +1,20 @@
-export function isRemovingActiveOwner ({
+export function isRemovingActiveAdmin ({
   existingRole,
   existingStatus,
   nextRole,
   nextStatus,
   isDelete = false,
 }) {
-  if (existingRole !== 'owner') return false
+  if (existingRole !== 'admin' && existingRole !== 'owner') return false
   if (existingStatus !== 'active') return false
   if (isDelete) return true
   const resolvedRole = nextRole ?? existingRole
   const resolvedStatus = nextStatus ?? existingStatus
-  return resolvedRole !== 'owner' || resolvedStatus !== 'active'
+  return (resolvedRole !== 'admin' && resolvedRole !== 'owner') || resolvedStatus !== 'active'
 }
 
-export function ensureActiveOwnerGuard ({
-  owners,
+export function ensureActiveAdminGuard ({
+  admins,
   targetUserId,
   existingRole,
   existingStatus,
@@ -22,11 +22,11 @@ export function ensureActiveOwnerGuard ({
   nextStatus,
   isDelete = false,
 }) {
-  if (!isRemovingActiveOwner({ existingRole, existingStatus, nextRole, nextStatus, isDelete })) {
+  if (!isRemovingActiveAdmin({ existingRole, existingStatus, nextRole, nextStatus, isDelete })) {
     return true
   }
-  const activeOwners = owners.filter((owner) => owner.status === 'active')
-  if (activeOwners.length === 0) return false
-  if (activeOwners.length > 1) return true
-  return activeOwners[0]?.user_id !== targetUserId
+  const activeAdmins = admins.filter((admin) => admin.status === 'active')
+  if (activeAdmins.length === 0) return false
+  if (activeAdmins.length > 1) return true
+  return activeAdmins[0]?.user_sub !== targetUserId
 }
