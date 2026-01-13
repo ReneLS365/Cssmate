@@ -7,6 +7,7 @@ import {
   onAuthStateChange,
   waitForAuthReady,
 } from '../../js/shared-auth.js'
+import { onAuthBootstrap } from './bootstrap.js'
 import { updateAuthDebugState } from '../state/debug.js'
 
 let authState = null
@@ -122,6 +123,7 @@ function notify () {
 export function initAuthProvider () {
   if (initialized) return getAuthProviderApi()
   initialized = true
+  onAuthBootstrap({ onAuthStateChange })
   onAuthStateChange((context) => {
     authState = normalizeState(context)
     notify()
