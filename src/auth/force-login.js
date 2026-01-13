@@ -49,10 +49,6 @@ export async function forceLoginOnce () {
   if (shouldSkipAutoLogin()) return
   if (isAuthCallbackUrl()) return
 
-  try {
-    sessionStorage.removeItem(KEY)
-  } catch {}
-
   const auth = getAuthDeps()
   const overlay = getOverlayDeps()
 
