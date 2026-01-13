@@ -124,6 +124,17 @@ function sendHtml (res, targetPath) {
   res.type('html').send(injectCiFlag(html));
 }
 
+const SPA_ROUTE_OVERRIDES = ['/admin', '/admin/'];
+
+app.get(SPA_ROUTE_OVERRIDES, (req, res, next) => {
+  const resolved = safeResolve('index.html');
+  if (!resolved || !existsSync(resolved)) {
+    next();
+    return;
+  }
+  sendHtml(res, resolved);
+});
+
 if (IS_CI) {
   app.get('/', (req, res) => {
     const resolved = safeResolve(normalizeRelPath(req.path));
