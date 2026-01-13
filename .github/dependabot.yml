@@ -12,11 +12,9 @@ updates:
       dev-tooling:
         applies-to: "version-updates"
         patterns:
-          - "@firebase/rules-unit-testing"
           - "@playwright/*"
           - "@size-limit/*"
           - "express"
-          - "firebase-tools"
           - "html-validate"
           - "http-server"
           - "jszip"

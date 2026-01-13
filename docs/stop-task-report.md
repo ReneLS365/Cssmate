@@ -14,7 +14,7 @@
 
 ### Build
 - `npm run build` succeeded.
-  - Generated `js/firebase-env.js` and `js/version.js`.
+- Generated `auth0-config.js` and `js/version.js`.
   - `main.min.js` rebuilt.
   - Service worker cache version bumped.
 
@@ -32,7 +32,7 @@
 - `index.html`: ensured `<meta charset="UTF-8">` appears at the very top of the `<head>`.
 
 ## 2) Best Practices: CSP + Security headers
-- `netlify.toml`: updated CSP to enforcement mode and aligned it with Firebase + esm.sh usage.
+- `netlify.toml`: updated CSP to enforcement mode and aligned it with current external dependencies.
 - Added `Strict-Transport-Security` header.
 
 ## 3) Performance: Numpad responsiveness

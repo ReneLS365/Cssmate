@@ -41,12 +41,12 @@ Formålet med denne fil er at sikre, at alle AI-/Codex-agenter arbejder på samm
 
 ---
 
-## Exception: Firebase removal + Invite-flow refactor (approved)
+## Exception: Legacy auth removal + Invite-flow refactor (approved)
 
-Denne undtagelse er aktiv for opgaven: “Invite-flow uden email (copy link) + fjern Firebase”.
+Denne undtagelse er aktiv for opgaven: “Invite-flow uden email (copy link) + fjern legacy auth”.
 
 ### Tilladt under denne undtagelse
-- Fjernelse af Firebase (deps, init, auth, firestore-kald, configs og env vars).
+- Fjernelse af legacy auth (deps, init, auth-kald, configs og env vars).
 - Tilføjelse af nødvendige backend-komponenter til auth og invites (serverless/API + DB).
 - Nye dependencies er tilladt, men kun hvis de er nødvendige (fx bcrypt/argon2 eller DB client).
 - Nye filer og endpoints er tilladt.

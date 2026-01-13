@@ -24,7 +24,6 @@ import { isDiagnosticsEnabled, mountDiagnostics } from './src/ui/auth-diagnostic
 import { initAuth0Ui } from './src/auth/auth0-ui.js'
 import { getClient as getAuth0Client, getUser, isAuthenticated, login, signup } from './src/auth/auth0-client.js'
 import { forceLoginOnce } from './src/auth/force-login.js'
-import { shouldSkipAuthGate } from './src/auth/skip-auth-gate.js'
 
 function readCiFlag () {
   if (typeof document !== 'undefined') {
@@ -5958,30 +5957,24 @@ export async function bootstrapApp () {
   configureBootstrap()
   initDebugOverlayLazy()
 
-  const skipAuthGate = shouldSkipAuthGate()
-  if (!skipAuthGate) {
-    forceLoginOnce().catch(() => {})
-  }
-  if (!skipAuthGate) {
-    const authGateState = await ensureAuthGateAccess()
-    if (!authGateState.allowed) {
-      markAppReady()
-      return
-    }
+  forceLoginOnce().catch(() => {})
+  const authGateState = await ensureAuthGateAccess()
+  if (!authGateState.allowed) {
+    markAppReady()
+    return
   }
 
   scheduleAuthBootstrap()
 
   let authGatePromise = null
-  if (!skipAuthGate) {
-    authGatePromise = initAuthGateLazy().catch(error => {
-      console.warn('Kunne ikke indlæse auth-gate', error)
-      return null
-    })
-    initAppGuardLazy()
-  }
+  authGatePromise = initAuthGateLazy().catch(error => {
+    console.warn('Kunne ikke indlæse auth-gate', error)
+    return null
+  })
+  initAppGuardLazy()
   try {
     if (!IS_CI) {
+      await authGatePromise
       await initApp()
       await restoreDraftOnLoad()
     }

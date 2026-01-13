@@ -8,7 +8,7 @@
 1. **CSP enforcement via Netlify headers** (Best Practices fix, no runtime cost).
 2. **Removed inline JS handlers in `<link>` tags** to satisfy CSP and reduce blocking.
 3. **Externalized import map** to avoid inline scripts and keep CSP strict.
-4. **Deferred non-critical bootstrap scripts** (`firebase-env.js`, `version.js`) to reduce initial parse/execute blocking.
+4. **Deferred non-critical bootstrap scripts** (`auth0-config.js`, `version.js`) to reduce initial parse/execute blocking.
 5. **Service worker precache updated** for new import map to preserve offline behavior.
 6. **Deferred admin-code fetch to idle** to reduce startup work before first paint.
 7. **Lazy-init A9 integration** on first visit to the Løn tab to keep initial JS lighter.

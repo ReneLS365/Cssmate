@@ -103,7 +103,6 @@ async function scanCodePatterns(fileList, reportDir) {
     { key: "eval(", regex: /\beval\(/g },
     { key: "dangerouslySetInnerHTML", regex: /\bdangerouslySetInnerHTML\b/g },
     { key: "apiKey", regex: /\bapiKey\b/gi },
-    { key: "FIREBASE", regex: /\bFIREBASE\b/gi },
   ];
 
   const results = [];

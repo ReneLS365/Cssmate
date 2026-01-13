@@ -1,6 +1,6 @@
 # Repo scan findings
 
-Last updated: 2026-01-06T00:09:08Z
+Last updated: 2026-01-13T17:46:30Z
 
 ## How to run
 
@@ -13,8 +13,5 @@ Last updated: 2026-01-06T00:09:08Z
 
 | ID | Category | Summary | File(s) | Command | Status | Fix commit |
 | --- | --- | --- | --- | --- | --- | --- |
-| RS-001 | Build | Missing Firebase env vars for build. | `tools/verify-firebase-env.mjs` | `npm run build` | OPEN | - |
-| RS-002 | Tests | Missing dev dependency during tests (`pdf-lib`). | `tests/export-files.test.js` | `npm test` | OPEN | - |
-| RS-003 | Lint | Missing dev dependency (`html-validate`). | `package.json` | `npm run lint` | OPEN | - |
-| RS-004 | Perf | Missing dev dependency (`size-limit`). | `package.json` | `npm run perf:bundle` | OPEN | - |
-| RS-005 | Lighthouse | Missing dev dependency (`lighthouse`). | `package.json` | `npm run lh:mobile` | OPEN | - |
+| RS-001 | Perf | `perf:bundle` failed (CSS bundle over limit). | `package.json` | `npm run perf:bundle` | RESOLVED | - |
+| RS-002 | Lighthouse | `lh:mobile` failed due to missing Chrome/Chromium. | `.lighthouserc.json` | `npm run lh:mobile` | OPEN | - |
