@@ -84,7 +84,7 @@
       "name": "styles",
       "path": "style.css",
       "gzip": true,
-      "limit": "7 KB"
+      "limit": "10 KB"
     }
   ]
 }

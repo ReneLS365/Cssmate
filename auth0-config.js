@@ -4,7 +4,8 @@
   "VITE_AUTH0_DOMAIN": "",
   "VITE_AUTH0_CLIENT_ID": "",
   "VITE_AUTH0_AUDIENCE": "",
-  "VITE_ADMIN_EMAIL": ""
+  "VITE_ADMIN_EMAIL": "",
+  "VITE_AUTH0_REDIRECT_URI": ""
 }
   if (typeof window !== 'undefined') {
     window.__ENV__ = Object.assign({}, window.__ENV__ || {}, config)

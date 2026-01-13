@@ -1,10 +1,15 @@
 export function resolveBaseUrl () {
   const metaEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {}
+  const windowEnv = typeof window !== 'undefined' ? window : {}
+  const embeddedEnv = windowEnv.__ENV__ || {}
   const candidates = [
+    metaEnv.VITE_AUTH0_REDIRECT_URI,
+    embeddedEnv.VITE_AUTH0_REDIRECT_URI,
+    windowEnv.VITE_AUTH0_REDIRECT_URI,
     metaEnv.VITE_APP_BASE_URL,
     metaEnv.APP_BASE_URL,
-    typeof window !== 'undefined' ? window.APP_BASE_URL : undefined,
-    typeof window !== 'undefined' ? window.location.origin : undefined,
+    windowEnv.APP_BASE_URL,
+    windowEnv.location?.origin,
   ]
 
   const resolved = candidates

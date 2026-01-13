@@ -1,15 +1,7 @@
 # Auth setup (sscaff)
 
-## Firebase (legacy)
-### Authorized domains
-Firebase Auth → **Authorized domains** must include:
-- `sscaff.netlify.app`
-- Optional for local dev: `localhost`
-
-If deploy previews are used, add the specific Netlify preview domain(s) you rely on.
-
 ## Notes
-- Login config is read from `import.meta.env` in the client.
+- Login config is read from `import.meta.env` in the client and `window.__ENV__` at runtime.
 - Netlify environment variables remain the single source of truth.
 
 ## Auth0 setup (SSCaff)
@@ -19,6 +11,7 @@ Auth0 is the canonical auth provider in SSCaff. Configuration is embedded in the
 - `VITE_AUTH0_CLIENT_ID`
 - `VITE_AUTH0_AUDIENCE`
 - `VITE_ADMIN_EMAIL`
+- `VITE_AUTH0_REDIRECT_URI`
 
 The app loads these values from `window.__ENV__` on startup.
 
@@ -37,6 +30,7 @@ Auth0 Dashboard → Applications → **SSCaff**:
   `https://sscaff.netlify.app/`
 
 Remove localhost entries from production apps. Add only the exact domains you intend to support.
+Wildcards are **not** allowed for callback URLs. Keep callback URLs fully enumerated.
 
 ## Auth gate behavior
 Auth gate runs before the app bootstraps. The UI overlay is shown until the user is authenticated.
