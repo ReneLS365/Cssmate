@@ -96,6 +96,7 @@ psql "$DATABASE_URL" -f migrations/002_add_team_slug.sql
    - Signup/login fungerer.
    - Team access og bootstrap-claim fungerer på default-teamet.
 5. Ryd op i Netlify env vars: fjern evt. gamle `VITE_FIREBASE_*` værdier.
+6. Prerendering håndteres via Netlify Prerender‑udvidelsen (se `docs/PRERENDERING.md`).
 
 ## Guardrails (kort)
 
