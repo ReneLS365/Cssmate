@@ -5958,10 +5958,8 @@ export async function bootstrapApp () {
   configureBootstrap()
   initDebugOverlayLazy()
 
-  const skipAuthGate = shouldSkipAuthGate() || IS_CI || IS_LIGHTHOUSE
-  if (!skipAuthGate) {
-    forceLoginOnce().catch(() => {})
-  }
+  forceLoginOnce().catch(() => {})
+  const skipAuthGate = shouldSkipAuthGate()
   if (!skipAuthGate) {
     const authGateState = await ensureAuthGateAccess()
     if (!authGateState.allowed) {
