@@ -1,6 +1,5 @@
 import { getAuthContext, waitForAuthReady } from './shared-auth.js'
 import { apiJson } from '../src/api/client.js'
-import { normalizeEmail } from '../src/auth/roles.js'
 import { updateTeamDebugState } from '../src/state/debug.js'
 import {
   DEFAULT_TEAM_ID,
@@ -131,8 +130,8 @@ async function guardTeamAccess(teamIdInput, user, { allowBootstrap = false } = {
     const baseMember = access.memberDoc || {
       uid: user.uid,
       teamId: access.teamId || resolvedTeamId,
-      email: normalizeEmail(user.email),
-      emailLower: normalizeEmail(user.email),
+      email: (user.email || '').toLowerCase(),
+      emailLower: (user.email || '').toLowerCase(),
       role: access.role || (access.owner ? 'owner' : 'member'),
       active: access.active !== false,
       assigned: access.assigned !== false,
@@ -141,8 +140,8 @@ async function guardTeamAccess(teamIdInput, user, { allowBootstrap = false } = {
       ...baseMember,
       uid: baseMember.uid || user.uid,
       teamId: access.teamId || resolvedTeamId,
-      email: baseMember.email || normalizeEmail(user.email),
-      emailLower: normalizeEmail(baseMember.emailLower || baseMember.email || user.email),
+      email: baseMember.email || (user.email || '').toLowerCase(),
+      emailLower: (baseMember.emailLower || baseMember.email || user.email || '').toLowerCase(),
       role: baseMember.role === 'owner' ? 'owner' : (baseMember.role === 'admin' ? 'admin' : 'member'),
       active: baseMember.active !== false,
       assigned: baseMember.assigned !== false,
@@ -333,6 +332,11 @@ export async function revokeTeamInvite(inviteId) {
   return true
 }
 
+export async function resendTeamInvite(inviteId) {
+  if (!inviteId) throw new PermissionDeniedError('Invite-id mangler')
+  return await apiJson(`/api/invites/${inviteId}/resend`, { method: 'POST' })
+}
+
 export async function listTeamMembers(teamId) {
   const { teamId: resolvedTeamId } = await getTeamContext(teamId)
   return await apiJson(`/api/teams/${resolvedTeamId}/members`)
@@ -340,44 +344,37 @@ export async function listTeamMembers(teamId) {
 
 export async function saveTeamMember(teamId, member) {
   const { teamId: resolvedTeamId } = await getTeamContext(teamId, { requireAdmin: true })
-  await apiJson(`/api/teams/${resolvedTeamId}/members/${member.uid || member.id}`, {
+  const memberId = encodeURIComponent(member.uid || member.id || '')
+  await apiJson(`/api/teams/${resolvedTeamId}/members/${memberId}`, {
     method: 'PATCH',
-    body: JSON.stringify({ role: member.role, status: member.active === false ? 'disabled' : 'active' }),
+    body: JSON.stringify({ role: member.role, status: member.active === false ? 'removed' : 'active' }),
   })
   return true
 }
 
 export async function removeTeamMember(teamId, memberId) {
   const { teamId: resolvedTeamId } = await getTeamContext(teamId, { requireAdmin: true })
-  await apiJson(`/api/teams/${resolvedTeamId}/members/${memberId}`, { method: 'DELETE' })
+  const encodedId = encodeURIComponent(memberId || '')
+  await apiJson(`/api/teams/${resolvedTeamId}/members/${encodedId}`, { method: 'DELETE' })
   return true
 }
 
 export async function setMemberActive(teamId, memberId, active) {
   const { teamId: resolvedTeamId } = await getTeamContext(teamId, { requireAdmin: true })
-  await apiJson(`/api/teams/${resolvedTeamId}/members/${memberId}`, {
+  const encodedId = encodeURIComponent(memberId || '')
+  await apiJson(`/api/teams/${resolvedTeamId}/members/${encodedId}`, {
     method: 'PATCH',
-    body: JSON.stringify({ status: active ? 'active' : 'disabled' }),
+    body: JSON.stringify({ status: active ? 'active' : 'removed' }),
   })
   return true
 }
 
 export async function addTeamMemberByUid(teamId, uid, role = 'member') {
   const { teamId: resolvedTeamId } = await getTeamContext(teamId, { requireAdmin: true })
-  await apiJson(`/api/teams/${resolvedTeamId}/members`, {
-    method: 'POST',
-    body: JSON.stringify({ userId: uid, role }),
-  })
-  return true
-}
-
-export async function addTeamMemberByEmail(teamId, emailInput, role = 'member') {
-  const { teamId: resolvedTeamId } = await getTeamContext(teamId, { requireAdmin: true })
-  const email = normalizeEmail(emailInput)
-  if (!email) throw new PermissionDeniedError('Email mangler')
-  await apiJson(`/api/teams/${resolvedTeamId}/members`, {
-    method: 'POST',
-    body: JSON.stringify({ email, role }),
+  const encodedId = encodeURIComponent(uid || '')
+  await apiJson(`/api/team/members/${encodedId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ teamId: resolvedTeamId, role, status: 'active' }),
   })
   return true
 }
@@ -399,3 +396,5 @@ export {
   resolvePreferredTeamId,
   buildMemberDocPath,
 }
+
+export const __ledgerVersion = LEDGER_VERSION

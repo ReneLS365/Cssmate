@@ -1,52 +1,52 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { ensureActiveOwnerGuard } from '../netlify/functions/owner-guards.mjs'
+import { ensureActiveAdminGuard } from '../netlify/functions/owner-guards.mjs'
 
-test('ensureActiveOwnerGuard blocks disabling the last active owner', () => {
-  const owners = [{ user_id: 'owner-1', status: 'active' }]
-  const allowed = ensureActiveOwnerGuard({
-    owners,
-    targetUserId: 'owner-1',
-    existingRole: 'owner',
+test('ensureActiveAdminGuard blocks disabling the last active admin', () => {
+  const admins = [{ user_sub: 'admin-1', status: 'active' }]
+  const allowed = ensureActiveAdminGuard({
+    admins,
+    targetUserId: 'admin-1',
+    existingRole: 'admin',
     existingStatus: 'active',
-    nextRole: 'owner',
-    nextStatus: 'disabled',
+    nextRole: 'member',
+    nextStatus: 'active',
     isDelete: false,
   })
 
   assert.equal(allowed, false)
 })
 
-test('ensureActiveOwnerGuard allows disabling when another active owner exists', () => {
-  const owners = [
-    { user_id: 'owner-1', status: 'active' },
-    { user_id: 'owner-2', status: 'active' },
+test('ensureActiveAdminGuard allows disabling when another active admin exists', () => {
+  const admins = [
+    { user_sub: 'admin-1', status: 'active' },
+    { user_sub: 'admin-2', status: 'active' },
   ]
-  const allowed = ensureActiveOwnerGuard({
-    owners,
-    targetUserId: 'owner-1',
-    existingRole: 'owner',
+  const allowed = ensureActiveAdminGuard({
+    admins,
+    targetUserId: 'admin-1',
+    existingRole: 'admin',
     existingStatus: 'active',
-    nextRole: 'owner',
-    nextStatus: 'disabled',
+    nextRole: 'member',
+    nextStatus: 'active',
     isDelete: false,
   })
 
   assert.equal(allowed, true)
 })
 
-test('ensureActiveOwnerGuard blocks deleting the last active owner if others are disabled', () => {
-  const owners = [
-    { user_id: 'owner-1', status: 'active' },
-    { user_id: 'owner-2', status: 'disabled' },
+test('ensureActiveAdminGuard blocks deleting the last active admin', () => {
+  const admins = [
+    { user_sub: 'admin-1', status: 'active' },
+    { user_sub: 'admin-2', status: 'removed' },
   ]
-  const allowed = ensureActiveOwnerGuard({
-    owners,
-    targetUserId: 'owner-1',
-    existingRole: 'owner',
+  const allowed = ensureActiveAdminGuard({
+    admins,
+    targetUserId: 'admin-1',
+    existingRole: 'admin',
     existingStatus: 'active',
-    nextRole: 'owner',
+    nextRole: 'admin',
     nextStatus: 'active',
     isDelete: true,
   })
@@ -54,12 +54,12 @@ test('ensureActiveOwnerGuard blocks deleting the last active owner if others are
   assert.equal(allowed, false)
 })
 
-test('ensureActiveOwnerGuard allows demoting a disabled owner', () => {
-  const owners = [{ user_id: 'owner-1', status: 'active' }]
-  const allowed = ensureActiveOwnerGuard({
-    owners,
-    targetUserId: 'owner-2',
-    existingRole: 'owner',
+test('ensureActiveAdminGuard allows demoting a disabled admin', () => {
+  const admins = [{ user_sub: 'admin-1', status: 'active' }]
+  const allowed = ensureActiveAdminGuard({
+    admins,
+    targetUserId: 'admin-2',
+    existingRole: 'admin',
     existingStatus: 'disabled',
     nextRole: 'member',
     nextStatus: 'disabled',

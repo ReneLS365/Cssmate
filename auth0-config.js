@@ -5,6 +5,7 @@
   "VITE_AUTH0_CLIENT_ID": "",
   "VITE_AUTH0_AUDIENCE": "",
   "VITE_ADMIN_EMAIL": "",
+  "VITE_ADMIN_EMAILS": "",
   "VITE_AUTH0_REDIRECT_URI": ""
 }
   if (typeof window !== 'undefined') {

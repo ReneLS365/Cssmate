@@ -30,7 +30,13 @@ async function ensureMigrations () {
          WHERE table_schema = 'public' AND table_name = 'teams' AND column_name = 'slug'`
       )
       const hasTeamSlug = slugResult.rowCount > 0
-      if (hasUsersTable && hasTeamSlug) {
+      const inviteTokenHintResult = await client.query(
+        `SELECT 1
+         FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'team_invites' AND column_name = 'token_hint'`
+      )
+      const hasInviteTokenHint = inviteTokenHintResult.rowCount > 0
+      if (hasUsersTable && hasTeamSlug && hasInviteTokenHint) {
         migrationsEnsured = true
         return
       }
@@ -38,6 +44,7 @@ async function ensureMigrations () {
       const migrations = await Promise.all([
         readMigrationFile('../../migrations/001_init.sql'),
         readMigrationFile('../../migrations/002_add_team_slug.sql'),
+        readMigrationFile('../../migrations/003_auth0_invites.sql'),
       ])
       await client.query('BEGIN')
       for (const sql of migrations) {

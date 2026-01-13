@@ -5,30 +5,33 @@ function normalizeEmail (email) {
 }
 
 function parseAdminEmails (input) {
-  if (!input) return []
   if (Array.isArray(input)) return input.map(normalizeEmail).filter(Boolean)
-  if (typeof input === 'string') {
-    return input.split(',').map(normalizeEmail).filter(Boolean)
-  }
-  return []
+  if (!input) return []
+  return input.split(',').map(normalizeEmail).filter(Boolean)
 }
 
 function getAdminEmails () {
+  const metaEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {}
+  const windowEnv = typeof window !== 'undefined' ? window : {}
+  const env = (windowEnv && windowEnv.__ENV__) ? windowEnv.__ENV__ : {}
+
+  const candidates = metaEnv.VITE_ADMIN_EMAILS
+    || env.VITE_ADMIN_EMAILS
+    || windowEnv.VITE_ADMIN_EMAILS
+    || env.SHARED_ADMIN_EMAILS
+    || windowEnv.SHARED_ADMIN_EMAILS
+    || metaEnv.SHARED_ADMIN_EMAILS
+    || ''
+  const legacy = metaEnv.VITE_ADMIN_EMAIL || env.VITE_ADMIN_EMAIL || windowEnv.VITE_ADMIN_EMAIL || ''
   const defaultList = DEFAULT_ADMIN_EMAILS.map(normalizeEmail)
-  if (typeof window === 'undefined') return defaultList
-  const candidates = window.SHARED_ADMIN_EMAILS
-    || window.ADMIN_EMAILS
-    || window.VITE_ADMIN_EMAILS
-    || window.VITE_ADMIN_EMAIL
-    || []
   const parsed = parseAdminEmails(candidates)
-  if (!parsed.length) return defaultList
-  return Array.from(new Set(parsed))
+  const legacyParsed = parseAdminEmails(legacy)
+  const combined = [...parsed, ...legacyParsed].filter(Boolean)
+  return combined.length ? combined : defaultList
 }
 
 function isAdminEmail (email) {
   const normalized = normalizeEmail(email)
-  if (!normalized) return false
   return getAdminEmails().includes(normalized)
 }
 

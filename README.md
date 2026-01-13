@@ -18,10 +18,14 @@ Set these environment variables when running the Netlify functions locally or in
 
 - `DATABASE_URL` (primær, anbefalet). Til Neon: inkluder `sslmode=require`.
 - Fallback: `NETLIFY_DATABASE_URL` eller `NETLIFY_DATABASE_URL_UNPOOLED`
-- `JWT_SECRET`
-- `APP_BASE_URL` (fx `https://sscaff.netlify.app`)
+- `AUTH0_DOMAIN` (fx `sscaff.eu.auth0.com`)
+- `AUTH0_AUDIENCE` (Auth0 API identifier)
+- `AUTH0_ISSUER` (fx `https://sscaff.eu.auth0.com`)
+- `APP_ORIGIN` (fx `https://sscaff.netlify.app`)
 - `BOOTSTRAP_ADMIN_EMAIL` (optional, default: `mr.lion1995@gmail.com`)
 - `DEFAULT_TEAM_SLUG` (optional, default: `hulmose`)
+- `EMAIL_PROVIDER_API_KEY` (Resend)
+- `EMAIL_FROM` (fx `SSCaff <noreply@sscaff.dk>`)
 
 **Netlify UI:** Site settings → Build & deploy → Environment → Environment variables.
 
@@ -32,7 +36,8 @@ Sæt følgende miljøvariabler til Auth0-login i klienten:
 - `VITE_AUTH0_DOMAIN`
 - `VITE_AUTH0_CLIENT_ID`
 - `VITE_AUTH0_AUDIENCE` (valgfri, kun hvis du kalder en API)
-- `VITE_ADMIN_EMAIL` (én email der får admin-adgang)
+- `VITE_ADMIN_EMAIL` (legacy – én email der får admin-link)
+- `VITE_ADMIN_EMAILS` (ny – kommasepareret liste til admin-rollen)
 
 Lokalt: opret en `.env` i repo-roden med ovenstående værdier og kør `npm run preview`.
 Universal Login kører via redirect-flow, så **ingen client secret må bruges i frontend**.
@@ -67,12 +72,17 @@ Følgende keys skal være sat i Netlify (production) for at auth, invites og DB 
 - `VITE_AUTH0_CLIENT_ID`
 - `VITE_AUTH0_AUDIENCE` (optional)
 - `VITE_ADMIN_EMAIL`
-- `JWT_SECRET`
+- `VITE_ADMIN_EMAILS`
+- `AUTH0_DOMAIN`
+- `AUTH0_AUDIENCE`
+- `AUTH0_ISSUER`
 - `NETLIFY_DATABASE_URL`
 - `NETLIFY_DATABASE_URL_UNPOOLED`
 - `BOOTSTRAP_ADMIN_EMAIL`
 - `DEFAULT_TEAM_SLUG` (optional)
-- `APP_BASE_URL`
+- `APP_ORIGIN`
+- `EMAIL_PROVIDER_API_KEY`
+- `EMAIL_FROM`
 
 Bemærk: Ændringer til disse værdier kræver et fresh deploy, så `auth0-config.js` bliver regenereret via `npm run build:auth0-config`.
 
@@ -83,6 +93,7 @@ Kør migrations manuelt mod Neon/Postgres (idempotent):
 ```bash
 psql "$DATABASE_URL" -f migrations/001_init.sql
 psql "$DATABASE_URL" -f migrations/002_add_team_slug.sql
+psql "$DATABASE_URL" -f migrations/003_auth0_invites.sql
 ```
 
 ## MIGRATION + DEPLOY CHECKLIST
@@ -92,6 +103,7 @@ psql "$DATABASE_URL" -f migrations/002_add_team_slug.sql
 3. Kør migrations i rækkefølge:
    - `migrations/001_init.sql`
    - `migrations/002_add_team_slug.sql`
+   - `migrations/003_auth0_invites.sql`
 4. Deploy og verificér:
    - Signup/login fungerer.
    - Team access og bootstrap-claim fungerer på default-teamet.

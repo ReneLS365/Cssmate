@@ -53,7 +53,7 @@ test('acceptInvite clears token and shows login on 401', async () => {
     assert.equal(exportedKey, PENDING_INVITE_KEY)
     loginButton.hidden = true
 
-    await acceptInvite('invite-1', 'token-1')
+    await acceptInvite('token-1')
 
     const stored = storage.getItem(PENDING_INVITE_KEY)
     assert.ok(stored)

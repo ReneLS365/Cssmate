@@ -32,6 +32,16 @@
   status = 200
 
 [[redirects]]
+  from = "/invite"
+  to = "/invite.html"
+  status = 200
+
+[[redirects]]
+  from = "/accept-invite"
+  to = "/accept-invite.html"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
