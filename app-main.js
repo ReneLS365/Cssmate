@@ -5956,6 +5956,7 @@ export async function bootstrapApp () {
   bootstrapStarted = true
   configureBootstrap()
   initDebugOverlayLazy()
+  initTabs()
 
   forceLoginOnce().catch(() => {})
   const authGateState = await ensureAuthGateAccess()
