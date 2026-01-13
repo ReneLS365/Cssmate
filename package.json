@@ -54,7 +54,7 @@
     "partykit:deploy": "partykit deploy"
   },
   "dependencies": {
-    "@auth0/auth0-spa-js": "^2.11.1",
+    "@auth0/auth0-spa-js": "^2.11.2",
     "bcryptjs": "^2.4.3",
     "jose": "^5.9.6",
     "pg": "^8.14.1"
