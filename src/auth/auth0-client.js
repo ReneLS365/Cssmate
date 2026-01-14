@@ -2,6 +2,12 @@ import { resolveBaseUrl } from './resolve-base-url.js'
 
 let clientPromise = null
 let auth0ModulePromise = null
+const BYPASS_USER = {
+  sub: 'e2e|local',
+  email: 'e2e@cssmate.local',
+  name: 'E2E Test User',
+  nickname: 'E2E',
+}
 
 function resolveAuth0ModulePath () {
   if (typeof window === 'undefined') {
@@ -35,6 +41,22 @@ function readEnvValue (value) {
   return normalized
 }
 
+function readEnvFlag (value) {
+  const normalized = readEnvValue(value).toLowerCase()
+  return normalized === '1' || normalized === 'true'
+}
+
+function isE2eBypassEnabled () {
+  const metaEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {}
+  const windowEnv = typeof window !== 'undefined' ? window : {}
+  const env = windowEnv.__ENV__ ? windowEnv.__ENV__ : {}
+  return readEnvFlag(
+    metaEnv.VITE_E2E_BYPASS_AUTH
+      || env.VITE_E2E_BYPASS_AUTH
+      || windowEnv.VITE_E2E_BYPASS_AUTH
+  )
+}
+
 function resolveConfig () {
   const metaEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {}
   const windowEnv = typeof window !== 'undefined' ? window : {}
@@ -59,6 +81,16 @@ export async function getClient () {
   if (clientPromise) return clientPromise
 
   clientPromise = (async () => {
+    if (isE2eBypassEnabled()) {
+      return {
+        isAuthenticated: async () => true,
+        loginWithRedirect: async () => {},
+        logout: async () => {},
+        getUser: async () => BYPASS_USER,
+        getTokenSilently: async () => 'e2e-token',
+        handleRedirectCallback: async () => {},
+      }
+    }
     try {
       const { createAuth0Client } = await loadAuth0Module()
       const { domain, clientId, audience } = resolveConfig()

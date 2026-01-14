@@ -1,6 +1,6 @@
 # Repo scan findings
 
-Last updated: 2026-01-13T19:21:55Z
+Last updated: 2026-01-14T01:33:40Z
 
 ## How to run
 
@@ -14,4 +14,4 @@ Last updated: 2026-01-13T19:21:55Z
 | ID | Category | Summary | File(s) | Command | Status | Fix commit |
 | --- | --- | --- | --- | --- | --- | --- |
 | RS-001 | Perf | `perf:bundle` failed (CSS bundle over limit). | `package.json` | `npm run perf:bundle` | RESOLVED | - |
-| RS-002 | Lighthouse | `lh:mobile` failed (browser dependencies missing). | `.lighthouserc.json` | `npm run lh:mobile` | OPEN | - |
+| RS-002 | Lighthouse | `lh:mobile` failed (non-zero exit during repo scan). | `.lighthouserc.json` | `npm run lh:mobile` | OPEN | - |
