@@ -11,6 +11,7 @@ import { buildAkkordData as buildSharedAkkordData } from './js/akkord-data.js'
 import { buildExportModel as buildSharedExportModel } from './js/export-model.js'
 import { initClickGuard } from './src/ui/guards/clickguard.js'
 import { setAdminOk, restoreAdminState, isAdminUnlocked } from './src/state/admin.js'
+import { shouldSkipAuthGate } from './src/auth/skip-auth-gate.js'
 import { setActiveJob } from './src/state/jobs.js'
 import { saveDraft, loadDraft, clearDraft } from './js/storageDraft.js'
 import { appendHistoryEntry, loadHistory as loadHistoryEntries, deleteHistoryEntry, migrateHistory, buildHistoryKey as computeHistoryKey } from './js/storageHistory.js'
@@ -450,6 +451,7 @@ let materialsUiReadyPromise = null
 let materialsWarmupScheduled = false
 let tabPanelHeightLocked = false
 let a9IntegrationInitialized = false
+let tabDiagnosticsPromise = null
 
 function ensureMaterialsDataLoad () {
   if (!materialsDataPromise) {
@@ -676,6 +678,23 @@ function logTabDebug (...args) {
   console.log('[tabs:debug]', ...args)
 }
 
+function shouldInitTabDiagnostics () {
+  const devFlag = Boolean(typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV)
+  if (typeof window === 'undefined') return devFlag
+  return devFlag || Boolean(window.__TAB_DEBUG__)
+}
+
+function initTabDiagnosticsLazy () {
+  if (!shouldInitTabDiagnostics()) return
+  if (tabDiagnosticsPromise) return
+  tabDiagnosticsPromise = import('./src/dev/tab-diagnostics.js')
+    .then(mod => mod?.initTabDiagnostics?.())
+    .catch(error => {
+      tabDiagnosticsPromise = null
+      console.warn('Tab diagnostics init fejlede', error)
+    })
+}
+
 function refreshTabCollections() {
   if (typeof document === 'undefined') {
     tabButtons = []
@@ -703,13 +722,21 @@ function ensureTabsBound () {
     const tabId = button.dataset.tabId
     const isSelected = button.getAttribute('aria-selected') === 'true'
     button.tabIndex = isSelected ? 0 : -1
-    button.addEventListener('click', () => setActiveTab(tabId))
+    button.addEventListener('click', () => {
+      if (typeof window !== 'undefined') {
+        window.__tabDebug?.onTabClick?.(tabId)
+      }
+      setActiveTab(tabId)
+    })
     button.addEventListener('keydown', event => {
       const index = tabButtons.indexOf(button)
       handleTabKeydown(event, index >= 0 ? index : 0)
     })
     button.dataset.tabBound = '1'
     logTabDebug('bound tab', tabId)
+    if (typeof window !== 'undefined') {
+      window.__tabDebug?.registerTabBinding?.(tabId, button)
+    }
   })
 
   const optaellingButton = tabButtons.find(button => button.dataset.tabId === 'optaelling')
@@ -864,6 +891,9 @@ function setActiveTab(tabId, { focus = false } = {}) {
 
   currentTabId = nextTabId;
   updateCurrentView(nextTabId)
+  if (typeof window !== 'undefined') {
+    window.__tabDebug?.setActiveTab?.(nextTabId)
+  }
   if (typeof document !== 'undefined') {
     document.dispatchEvent(new CustomEvent('cssmate:tab-change', { detail: { tabId: nextTabId } }))
   }
@@ -5748,6 +5778,11 @@ function hideLoginOverlay (elements) {
 async function ensureAuthGateAccess () {
   const elements = getAuthGateElements()
   if (!elements.gate) return { allowed: true, user: null }
+  if (shouldSkipAuthGate()) {
+    hideLoginOverlay(elements)
+    ensureTabsBound()
+    return { allowed: true, user: null, skipped: true }
+  }
 
   showLoginOverlay(elements)
   setAuthGateSection(elements, 'loading')
@@ -5965,6 +6000,7 @@ function configureBootstrap () {
   exposeDebugHooks()
   exposeExportHelpers()
   initBootInline()
+  initTabDiagnosticsLazy()
   if (isDiagnosticsEnabled()) {
     mountDiagnostics({ forceVisible: true, allowSwReset: true })
   }

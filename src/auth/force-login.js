@@ -1,4 +1,5 @@
 import { initAuth0, isAuthenticated, login } from './auth0-client.js'
+import { shouldSkipAuthGate } from './skip-auth-gate.js'
 import { hideLoginOverlay, showLoginOverlay, startLoginOverlayWatcher } from '../ui/login-overlay.js'
 
 const KEY = 'cssmate_autologin_attempted'
@@ -47,6 +48,7 @@ export function resetForceLoginDependencies () {
 export async function forceLoginOnce () {
   if (typeof window === 'undefined') return
   if (shouldSkipAutoLogin()) return
+  if (shouldSkipAuthGate()) return
   if (isAuthCallbackUrl()) return
 
   const auth = getAuthDeps()
