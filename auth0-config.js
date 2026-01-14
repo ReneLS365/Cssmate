@@ -6,7 +6,8 @@
   "VITE_AUTH0_AUDIENCE": "",
   "VITE_ADMIN_EMAIL": "",
   "VITE_ADMIN_EMAILS": "",
-  "VITE_AUTH0_REDIRECT_URI": ""
+  "VITE_AUTH0_REDIRECT_URI": "",
+  "VITE_E2E_BYPASS_AUTH": ""
 }
   if (typeof window !== 'undefined') {
     window.__ENV__ = Object.assign({}, window.__ENV__ || {}, config)

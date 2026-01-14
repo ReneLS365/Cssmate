@@ -670,6 +670,12 @@ function handleTabKeydown(event, index) {
   }
 }
 
+function logTabDebug (...args) {
+  if (!isDevBuild()) return
+  if (typeof window === 'undefined' || !window.__TAB_DEBUG__) return
+  console.log('[tabs:debug]', ...args)
+}
+
 function refreshTabCollections() {
   if (typeof document === 'undefined') {
     tabButtons = []
@@ -687,6 +693,53 @@ function ensureTabCollections() {
     refreshTabCollections()
   }
   return tabButtons.length && tabPanels.length
+}
+
+function ensureTabsBound () {
+  if (!ensureTabCollections()) return false
+
+  tabButtons.forEach(button => {
+    if (button.dataset.tabBound === '1') return
+    const tabId = button.dataset.tabId
+    const isSelected = button.getAttribute('aria-selected') === 'true'
+    button.tabIndex = isSelected ? 0 : -1
+    button.addEventListener('click', () => setActiveTab(tabId))
+    button.addEventListener('keydown', event => {
+      const index = tabButtons.indexOf(button)
+      handleTabKeydown(event, index >= 0 ? index : 0)
+    })
+    button.dataset.tabBound = '1'
+    logTabDebug('bound tab', tabId)
+  })
+
+  const optaellingButton = tabButtons.find(button => button.dataset.tabId === 'optaelling')
+  if (optaellingButton && optaellingButton.dataset.tabWarmup !== '1') {
+    optaellingButton.dataset.tabWarmup = '1'
+    const scheduleWarmup = () => warmupMaterialsDataLoad()
+    ;['pointerenter', 'touchstart', 'focusin'].forEach(eventName => {
+      optaellingButton.addEventListener(eventName, scheduleWarmup, { once: true, passive: true })
+    })
+  }
+
+  const sharedCasesButton = tabButtons.find(button => button.dataset.tabId === 'delte-sager')
+  if (sharedCasesButton && sharedCasesButton.dataset.tabWarmup !== '1') {
+    sharedCasesButton.dataset.tabWarmup = '1'
+    const warmupSharedCases = () => ensureSharedCasesPanelLazy().catch(() => {})
+    ;['pointerenter', 'touchstart', 'focusin'].forEach(eventName => {
+      sharedCasesButton.addEventListener(eventName, warmupSharedCases, { once: true, passive: true })
+    })
+  }
+
+  const teamButton = tabButtons.find(button => button.dataset.tabId === 'team')
+  if (teamButton && teamButton.dataset.tabWarmup !== '1') {
+    teamButton.dataset.tabWarmup = '1'
+    const warmupTeamAdmin = () => ensureTeamAdminPageLazy().catch(() => {})
+    ;['pointerenter', 'touchstart', 'focusin'].forEach(eventName => {
+      teamButton.addEventListener(eventName, warmupTeamAdmin, { once: true, passive: true })
+    })
+  }
+
+  return true
 }
 
 function setupTabPanelsStability () {
@@ -859,7 +912,10 @@ function setActiveTab(tabId, { focus = false } = {}) {
 
 // Initier faner og tastaturnavigation
 function initTabs() {
-  if (tabsInitialized) return
+  if (tabsInitialized) {
+    ensureTabsBound()
+    return
+  }
 
   if (typeof document !== 'undefined' && document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => initTabs(), { once: true })
@@ -870,38 +926,7 @@ function initTabs() {
 
   const bindTabs = () => {
     if (tabsInitialized) return
-    tabButtons.forEach((button, index) => {
-      const tabId = button.dataset.tabId
-      const isSelected = button.getAttribute('aria-selected') === 'true'
-      button.tabIndex = isSelected ? 0 : -1
-      button.addEventListener('click', () => setActiveTab(tabId))
-      button.addEventListener('keydown', event => handleTabKeydown(event, index))
-    })
-
-    const optaellingButton = tabButtons.find(button => button.dataset.tabId === 'optaelling')
-    if (optaellingButton) {
-      const scheduleWarmup = () => warmupMaterialsDataLoad()
-      ;['pointerenter', 'touchstart', 'focusin'].forEach(eventName => {
-        optaellingButton.addEventListener(eventName, scheduleWarmup, { once: true, passive: true })
-      })
-    }
-
-    const sharedCasesButton = tabButtons.find(button => button.dataset.tabId === 'delte-sager')
-    if (sharedCasesButton) {
-      const warmupSharedCases = () => ensureSharedCasesPanelLazy().catch(() => {})
-      ;['pointerenter', 'touchstart', 'focusin'].forEach(eventName => {
-        sharedCasesButton.addEventListener(eventName, warmupSharedCases, { once: true, passive: true })
-      })
-    }
-
-    const teamButton = tabButtons.find(button => button.dataset.tabId === 'team')
-    if (teamButton) {
-      const warmupTeamAdmin = () => ensureTeamAdminPageLazy().catch(() => {})
-      ;['pointerenter', 'touchstart', 'focusin'].forEach(eventName => {
-        teamButton.addEventListener(eventName, warmupTeamAdmin, { once: true, passive: true })
-      })
-    }
-
+    if (!ensureTabsBound()) return
     const storedTabId = getStoredTabId();
     const initialTabId = tabButtons.some(button => button.dataset.tabId === storedTabId)
       ? storedTabId
@@ -5744,6 +5769,7 @@ async function ensureAuthGateAccess () {
 
     const user = await getUser()
     hideLoginOverlay(elements)
+    ensureTabsBound()
     return { allowed: true, user }
   } catch (error) {
     const message = error?.message || 'Auth0 kunne ikke initialiseres.'
