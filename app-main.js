@@ -25,6 +25,7 @@ import { isDiagnosticsEnabled, mountDiagnostics } from './src/ui/auth-diagnostic
 import { initAuth0Ui } from './src/auth/auth0-ui.js'
 import { getClient as getAuth0Client, getUser, isAuthenticated, login, signup } from './src/auth/auth0-client.js'
 import { forceLoginOnce } from './src/auth/force-login.js'
+import { hardClearUiLocks } from './src/auth/ui-locks.js'
 
 function readCiFlag () {
   if (typeof document !== 'undefined') {
@@ -5805,6 +5806,7 @@ async function ensureAuthGateAccess () {
     const user = await getUser()
     hideLoginOverlay(elements)
     ensureTabsBound()
+    hardClearUiLocks()
     return { allowed: true, user }
   } catch (error) {
     const message = error?.message || 'Auth0 kunne ikke initialiseres.'

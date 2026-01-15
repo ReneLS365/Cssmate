@@ -8,6 +8,7 @@ import {
   waitForAuthReady,
 } from '../../js/shared-auth.js'
 import { onAuthBootstrap } from './bootstrap.js'
+import { hardClearUiLocks } from './ui-locks.js'
 import { updateAuthDebugState } from '../state/debug.js'
 
 let authState = null
@@ -19,6 +20,20 @@ let initialized = false
 let authInitStarted = false
 let authInitPromise = null
 const AUTH_INIT_TIMEOUT_MS = 15000
+
+function readEnvFlag (value) {
+  if (value == null) return false
+  const normalized = String(value).trim().toLowerCase()
+  return normalized === '1' || normalized === 'true'
+}
+
+function isAuthDebugEnvEnabled () {
+  const metaEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {}
+  if (readEnvFlag(metaEnv.VITE_DEBUG_AUTH)) return true
+  if (typeof window === 'undefined') return false
+  const windowEnv = window.__ENV__ || {}
+  return readEnvFlag(windowEnv.VITE_DEBUG_AUTH || window.VITE_DEBUG_AUTH)
+}
 
 function ensureVerifiedPromise () {
   if (verifiedPromise) return verifiedPromise
@@ -102,6 +117,19 @@ function normalizeState (context) {
 function notify () {
   const state = authState || normalizeState(getAuthContext())
   updateAuthDebugState(state)
+  if (state.isReady && state.isAuthenticated) {
+    hardClearUiLocks()
+  }
+  if (isAuthDebugEnvEnabled()) {
+    console.info('[auth:debug]', {
+      ready: state.isReady,
+      authenticated: state.isAuthenticated,
+      requiresVerification: state.requiresVerification,
+      uid: state.user?.uid || '',
+      email: state.user?.email || '',
+      error: state.error?.code || state.error?.message || '',
+    })
+  }
   listeners.forEach((listener) => {
     try {
       listener(state)

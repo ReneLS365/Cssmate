@@ -19,6 +19,22 @@ test('admin route allows tab switching after auth', async ({ page }) => {
   expect(authState.bodyClass).not.toContain('auth-overlay-open')
   expect(authState.gateHidden).toBeTruthy()
 
+  const hitTest = await page.evaluate(() => {
+    const tab = document.querySelector('[role="tab"][data-tab-id="optaelling"]')
+    if (!tab) return null
+    const rect = tab.getBoundingClientRect()
+    const x = rect.left + rect.width / 2
+    const y = rect.top + rect.height / 2
+    const topEl = document.elementFromPoint(x, y)
+    const resolved = topEl?.closest?.('[role="tab"][data-tab-id]') || topEl
+    return {
+      tag: resolved?.tagName?.toLowerCase() || '',
+      tabId: resolved?.dataset?.tabId || '',
+      id: resolved?.id || '',
+    }
+  })
+  expect(hitTest?.tabId || hitTest?.id).toBe('optaelling')
+
   const optaellingTab = page.locator('[role="tab"][data-tab-id="optaelling"]')
   await expect(optaellingTab).toBeVisible()
   await optaellingTab.click()
