@@ -30,6 +30,28 @@ function setWindowForTest({ search = '', pathname = '/' } = {}) {
   globalThis.sessionStorage = globalThis.window.sessionStorage
 }
 
+function setDocumentForTest() {
+  const classes = new Set()
+  const bodyClasses = new Set()
+  globalThis.document = {
+    documentElement: {
+      classList: {
+        add: (...tokens) => tokens.forEach(token => classes.add(token)),
+        remove: (...tokens) => tokens.forEach(token => classes.delete(token)),
+        contains: token => classes.has(token),
+      },
+    },
+    body: {
+      classList: {
+        add: (...tokens) => tokens.forEach(token => bodyClasses.add(token)),
+        remove: (...tokens) => tokens.forEach(token => bodyClasses.delete(token)),
+        contains: token => bodyClasses.has(token),
+      },
+    },
+    querySelector: () => null,
+  }
+}
+
 test('forceLoginOnce attempts auto-login once per session when unauthenticated', async t => {
   const originalWindow = globalThis.window
   const originalSessionStorage = globalThis.sessionStorage
@@ -123,11 +145,15 @@ test('forceLoginOnce clears guard when authenticated', async t => {
   )
 })
 
-test('forceLoginOnce skips callback URLs', async t => {
+test('forceLoginOnce handles callback URLs and clears locks', async t => {
   const originalWindow = globalThis.window
   const originalSessionStorage = globalThis.sessionStorage
+  const originalDocument = globalThis.document
 
   setWindowForTest({ search: '?code=abc&state=123', pathname: '/callback' })
+  setDocumentForTest()
+  document.documentElement.classList.add('auth-locked')
+  document.body.classList.add('auth-overlay-open')
 
   const { forceLoginOnce, setForceLoginDependencies, resetForceLoginDependencies } = await import('../src/auth/force-login.js')
 
@@ -138,6 +164,8 @@ test('forceLoginOnce skips callback URLs', async t => {
     if (originalWindow === undefined) delete globalThis.window
     globalThis.sessionStorage = originalSessionStorage
     if (originalSessionStorage === undefined) delete globalThis.sessionStorage
+    globalThis.document = originalDocument
+    if (originalDocument === undefined) delete globalThis.document
   })
 
   const initAuth0Mock = mock.fn(async () => {})
@@ -160,8 +188,10 @@ test('forceLoginOnce skips callback URLs', async t => {
 
   await forceLoginOnce()
 
-  assert.equal(initAuth0Mock.mock.calls.length, 0, 'initAuth0 not called on callback')
+  assert.equal(initAuth0Mock.mock.calls.length, 1, 'initAuth0 called on callback')
   assert.equal(isAuthenticatedMock.mock.calls.length, 0, 'auth check not called on callback')
   assert.equal(loginMock.mock.calls.length, 0, 'login not called on callback')
   assert.equal(hideOverlayMock.mock.calls.length, 1, 'overlay cleared on callback')
+  assert.equal(document.documentElement.classList.contains('auth-locked'), false)
+  assert.equal(document.body.classList.contains('auth-overlay-open'), false)
 })
