@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
-import test, { before } from 'node:test'
+import test, { before, mock } from 'node:test'
 import { chromium } from 'playwright'
 
 import { SESSION_STATUS } from '../src/auth/session.js'
 import { __test__ as authGateTest } from '../src/auth/auth-gate.js'
+import { login, __test__ as auth0ClientTest } from '../src/auth/auth0-client.js'
+import { clearSavedOrgId, saveOrgId } from '../src/auth/org-store.js'
 
 const BASE_URL = process.env.AUTH_FLOW_BASE_URL || 'https://sscaff.netlify.app'
 const LOGIN_USER = process.env.AUTH0_E2E_USERNAME || ''
@@ -245,4 +247,76 @@ test('auth gate hard cleanup clears overlay locks after auth', () => {
     globalThis.document = originalDocument
     if (originalDocument === undefined) delete globalThis.document
   }
+})
+
+function createMockStorage () {
+  const store = new Map()
+  return {
+    getItem (key) {
+      return store.has(key) ? store.get(key) : null
+    },
+    setItem (key, value) {
+      store.set(key, String(value))
+    },
+    removeItem (key) {
+      store.delete(key)
+    },
+  }
+}
+
+async function withMockWindow ({ origin = 'http://localhost:5173', pathname = '/admin' } = {}, fn) {
+  const storage = createMockStorage()
+  globalThis.window = {
+    location: { origin, pathname, search: '' },
+    localStorage: storage,
+  }
+  try {
+    return await fn(storage)
+  } finally {
+    delete globalThis.window
+  }
+}
+
+test('loginWithRedirect includes stored organization on login', async (t) => {
+  const originalWindow = globalThis.window
+  const loginWithRedirect = mock.fn(async () => {})
+
+  auth0ClientTest.setClient({ loginWithRedirect })
+
+  t.after(() => {
+    auth0ClientTest.resetClient()
+    mock.restoreAll()
+    globalThis.window = originalWindow
+    if (originalWindow === undefined) delete globalThis.window
+  })
+
+  await withMockWindow({ pathname: '/admin' }, async () => {
+    saveOrgId('org_123')
+    await login()
+  })
+
+  const options = loginWithRedirect.mock.calls[0]?.arguments?.[0]
+  assert.equal(options?.authorizationParams?.organization, 'org_123')
+})
+
+test('loginWithRedirect omits organization when none stored', async (t) => {
+  const originalWindow = globalThis.window
+  const loginWithRedirect = mock.fn(async () => {})
+
+  auth0ClientTest.setClient({ loginWithRedirect })
+
+  t.after(() => {
+    auth0ClientTest.resetClient()
+    mock.restoreAll()
+    globalThis.window = originalWindow
+    if (originalWindow === undefined) delete globalThis.window
+  })
+
+  await withMockWindow({ pathname: '/admin' }, async () => {
+    clearSavedOrgId()
+    await login()
+  })
+
+  const options = loginWithRedirect.mock.calls[0]?.arguments?.[0]
+  assert.equal('organization' in (options?.authorizationParams || {}), false)
 })
