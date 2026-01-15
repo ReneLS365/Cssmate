@@ -2,6 +2,9 @@ import assert from 'node:assert/strict'
 import test, { before } from 'node:test'
 import { chromium } from 'playwright'
 
+import { SESSION_STATUS } from '../src/auth/session.js'
+import { __test__ as authGateTest } from '../src/auth/auth-gate.js'
+
 const BASE_URL = process.env.AUTH_FLOW_BASE_URL || 'https://sscaff.netlify.app'
 const LOGIN_USER = process.env.AUTH0_E2E_USERNAME || ''
 const LOGIN_PASS = process.env.AUTH0_E2E_PASSWORD || ''
@@ -31,6 +34,121 @@ async function assertAuthGateVisible(page) {
   await gate.waitFor({ state: 'visible', timeout: 15000 })
   const text = await gate.textContent()
   assert.ok(text?.includes('Log ind'))
+}
+
+class MockClassList {
+  constructor() {
+    this.entries = new Set()
+  }
+
+  add(...tokens) {
+    tokens.forEach(token => this.entries.add(token))
+  }
+
+  remove(...tokens) {
+    tokens.forEach(token => this.entries.delete(token))
+  }
+
+  contains(token) {
+    return this.entries.has(token)
+  }
+
+  toggle(token, force) {
+    if (typeof force === 'boolean') {
+      if (force) this.entries.add(token)
+      else this.entries.delete(token)
+      return force
+    }
+    if (this.entries.has(token)) {
+      this.entries.delete(token)
+      return false
+    }
+    this.entries.add(token)
+    return true
+  }
+}
+
+class MockElement {
+  constructor(id = '') {
+    this.id = id
+    this.attributes = new Map()
+    this.dataset = {}
+    this.classList = new MockClassList()
+    this.listeners = new Map()
+    this.textContent = ''
+  }
+
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value ?? ''))
+  }
+
+  removeAttribute(name) {
+    this.attributes.delete(name)
+  }
+
+  hasAttribute(name) {
+    return this.attributes.has(name)
+  }
+
+  toggleAttribute(name, force) {
+    const shouldSet = typeof force === 'boolean' ? force : !this.attributes.has(name)
+    if (shouldSet) {
+      this.attributes.set(name, '')
+      return true
+    }
+    this.attributes.delete(name)
+    return false
+  }
+
+  addEventListener(type, handler) {
+    if (!this.listeners.has(type)) this.listeners.set(type, [])
+    this.listeners.get(type).push(handler)
+  }
+}
+
+function setupAuthGateFixture() {
+  const gate = new MockElement('authGate')
+  const loadingScreen = new MockElement('authLoadingScreen')
+  const loginScreen = new MockElement('authLoginScreen')
+  const verifyScreen = new MockElement('authVerifyScreen')
+  const messageEl = new MockElement('authMessage')
+  const loginButton = new MockElement('authLogin')
+  const logoutButton = new MockElement('authLogout')
+  const repairButton = new MockElement('authRepair')
+  const body = new MockElement('body')
+  const documentElement = new MockElement('html')
+  const elements = new Map([
+    ['authGate', gate],
+    ['authLoadingScreen', loadingScreen],
+    ['authLoginScreen', loginScreen],
+    ['authVerifyScreen', verifyScreen],
+    ['authMessage', messageEl],
+    ['authLogin', loginButton],
+    ['authLogout', logoutButton],
+    ['authRepair', repairButton],
+  ])
+
+  const mockDocument = {
+    body,
+    documentElement,
+    getElementById: (id) => elements.get(id) || null,
+  }
+
+  return {
+    mockDocument,
+    elements: {
+      gate,
+      loadingScreen,
+      loginScreen,
+      verifyScreen,
+      messageEl,
+      loginButton,
+      logoutButton,
+      repairButton,
+      body,
+      documentElement,
+    },
+  }
 }
 
 test('unauthenticated users sees login overlay', { timeout: 120000 }, async (t) => {
@@ -87,5 +205,44 @@ test('authenticated users reach app after login', {
     await page.locator('#authGate').waitFor({ state: 'hidden', timeout: 60000 })
   } finally {
     await browser.close()
+  }
+})
+
+test('auth gate hard cleanup clears overlay locks after auth', () => {
+  const originalDocument = globalThis.document
+  const { mockDocument, elements } = setupAuthGateFixture()
+
+  try {
+    globalThis.document = mockDocument
+    authGateTest.setElements({
+      gate: elements.gate,
+      loadingScreen: elements.loadingScreen,
+      loginScreen: elements.loginScreen,
+      verifyScreen: elements.verifyScreen,
+      messageEl: elements.messageEl,
+      loginButton: elements.loginButton,
+      logoutButton: elements.logoutButton,
+      repairButton: elements.repairButton,
+    })
+
+    elements.documentElement.classList.add('auth-locked')
+    elements.body.classList.add('auth-overlay-open')
+    elements.gate.setAttribute('data-locked', 'true')
+    elements.gate.removeAttribute('hidden')
+
+    authGateTest.handleAuthChange({
+      status: SESSION_STATUS.MEMBER,
+      authReady: true,
+      requiresVerification: false,
+      user: { uid: 'user-1' },
+    })
+
+    assert.equal(elements.documentElement.classList.contains('auth-locked'), false)
+    assert.equal(elements.body.classList.contains('auth-overlay-open'), false)
+    assert.equal(elements.gate.hasAttribute('hidden'), true)
+    assert.equal(elements.gate.hasAttribute('data-locked'), false)
+  } finally {
+    globalThis.document = originalDocument
+    if (originalDocument === undefined) delete globalThis.document
   }
 })
