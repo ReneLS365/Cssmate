@@ -8,7 +8,13 @@ let overlayOverrides = {}
 
 function isAuthCallbackUrl () {
   const params = new URLSearchParams(window.location.search)
-  return params.has('code') && params.has('state')
+  if (!params.has('state')) return false
+  if (params.has('code')) return true
+  if (params.has('error') || params.has('error_description') || params.has('error_uri')) {
+    return true
+  }
+  // Treat any remaining state-only callbacks as Auth0 responses to avoid login loops.
+  return true
 }
 
 function shouldSkipAutoLogin () {
