@@ -43,7 +43,7 @@
 
 [[redirects]]
   from = "/"
-  to = "/admin"
+  to = "/admin.html"
   status = 302
   force = true
 
