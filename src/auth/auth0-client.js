@@ -1,6 +1,6 @@
 import { resolveAuthRedirectUri, resolveBaseUrl } from './resolve-base-url.js'
 import { isAuthCallbackUrl } from './auth-callback.js'
-import { getSavedOrgId, installOrgDebugHooks, saveOrgId } from './org-store.js'
+import { installOrgDebugHooks, saveOrgId } from './org-store.js'
 import { hardClearUiLocks } from './ui-locks.js'
 
 let clientPromise = null
@@ -72,6 +72,34 @@ function resolveConfig () {
     clientId: readEnvValue(metaEnv.VITE_AUTH0_CLIENT_ID || env.VITE_AUTH0_CLIENT_ID || windowEnv.VITE_AUTH0_CLIENT_ID),
     audience: readEnvValue(metaEnv.VITE_AUTH0_AUDIENCE || env.VITE_AUTH0_AUDIENCE || windowEnv.VITE_AUTH0_AUDIENCE),
   }
+}
+
+function resolveOrgConfig () {
+  const metaEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {}
+  const windowEnv = typeof window !== 'undefined' ? window : {}
+  const env = (windowEnv && windowEnv.__ENV__) ? windowEnv.__ENV__ : {}
+  const orgId = readEnvValue(metaEnv.VITE_AUTH0_ORG_ID || env.VITE_AUTH0_ORG_ID || windowEnv.VITE_AUTH0_ORG_ID)
+  const orgSlug = readEnvValue(metaEnv.VITE_AUTH0_ORG_SLUG || env.VITE_AUTH0_ORG_SLUG || windowEnv.VITE_AUTH0_ORG_SLUG)
+  const organization = orgId || orgSlug
+  const source = orgId ? 'id' : (orgSlug ? 'slug' : '')
+  return {
+    orgId,
+    orgSlug,
+    organization,
+    source,
+    isConfigured: Boolean(organization),
+  }
+}
+
+function requireOrganization () {
+  const orgConfig = resolveOrgConfig()
+  if (!orgConfig.isConfigured) {
+    const error = new Error('Auth0 organisation mangler. Sæt VITE_AUTH0_ORG_ID eller VITE_AUTH0_ORG_SLUG.')
+    error.code = 'auth0/missing-org'
+    console.error(error.message)
+    throw error
+  }
+  return orgConfig.organization
 }
 
 function buildAuthParams ({ redirectUri, audience }) {
@@ -174,6 +202,7 @@ export async function getClient () {
       installOrgDebugHooks()
       const { createAuth0Client } = await loadAuth0Module()
       const { domain, clientId, audience, redirectUri, isConfigured } = resolveAuth0Config()
+      const orgConfig = resolveOrgConfig()
       logAuth0ConfigStatus(isConfigured)
       if (!isConfigured) {
         if (typeof window !== 'undefined') {
@@ -186,6 +215,7 @@ export async function getClient () {
         clientId: clientId || 'test',
         authorizationParams: {
           ...buildAuthParams({ redirectUri, audience }),
+          ...(orgConfig.organization ? { organization: orgConfig.organization } : {}),
         },
         cacheLocation: 'localstorage',
         useRefreshTokens: true,
@@ -215,30 +245,28 @@ export async function initAuth0 () {
   return getClient()
 }
 
-export async function login (appState) {
+async function startLogin ({ appState, authorizationParams = {} } = {}) {
   const client = await getClient()
   const { audience, redirectUri } = resolveAuth0Config()
-  const organization = getSavedOrgId()
+  const organization = requireOrganization()
   await client.loginWithRedirect({
     appState: resolveAppState(appState),
     authorizationParams: {
       ...buildAuthParams({ redirectUri, audience }),
+      ...authorizationParams,
       ...(organization ? { organization } : {}),
     },
   })
 }
 
+export async function login (appState) {
+  return startLogin({ appState })
+}
+
 export async function signup (appState) {
-  const client = await getClient()
-  const { audience, redirectUri } = resolveAuth0Config()
-  const organization = getSavedOrgId()
-  await client.loginWithRedirect({
-    appState: resolveAppState(appState),
-    authorizationParams: {
-      ...buildAuthParams({ redirectUri, audience }),
-      ...(organization ? { organization } : {}),
-      screen_hint: 'signup',
-    },
+  return startLogin({
+    appState,
+    authorizationParams: { screen_hint: 'signup' },
   })
 }
 
@@ -271,9 +299,16 @@ export const __test__ = {
     clientOverride = client
     clientPromise = Promise.resolve(client)
   },
+  getOrgConfig () {
+    return resolveOrgConfig()
+  },
   resetClient () {
     clientOverride = null
     clientPromise = null
     auth0ModulePromise = null
   },
+}
+
+export function getOrganizationConfig () {
+  return resolveOrgConfig()
 }

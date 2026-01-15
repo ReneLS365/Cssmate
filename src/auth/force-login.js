@@ -49,8 +49,17 @@ export async function forceLoginOnce () {
   if (isAuthCallbackUrl()) {
     // If we are returning from Auth0, ensure any overlays/locks are cleared.
     // Otherwise the UI can stay unclickable due to stale overlay state.
+    const auth = getAuthDeps()
     const overlay = getOverlayDeps()
     try { overlay.hideLoginOverlay?.() } catch {}
+    try {
+      await auth.initAuth0()
+    } catch (error) {
+      console.warn('Auth callback init failed', error)
+    }
+    try {
+      sessionStorage.removeItem(KEY)
+    } catch {}
     hardClearUiLocks()
     return
   }
