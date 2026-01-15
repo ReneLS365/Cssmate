@@ -168,6 +168,10 @@ export function showLoginOverlay ({ message, error } = {}) {
     setText(nodes.error, '')
     setHidden(nodes.error, true)
   }
+  if (nodes.container?.style) {
+    nodes.container.style.display = 'flex'
+    nodes.container.style.pointerEvents = 'auto'
+  }
   setHidden(nodes.container, false)
 }
 
@@ -175,6 +179,12 @@ export function hideLoginOverlay () {
   const nodes = ensureOverlay()
   if (!nodes) return
   setHidden(nodes.container, true)
+  document.body?.classList?.remove('auth-overlay-open')
+  if (nodes.container?.style) {
+    nodes.container.style.display = 'none'
+    nodes.container.style.pointerEvents = 'none'
+  }
+  stopLoginOverlayWatcher()
 }
 
 async function checkAuthAndHide () {

@@ -49,7 +49,15 @@ export async function forceLoginOnce () {
   if (typeof window === 'undefined') return
   if (shouldSkipAutoLogin()) return
   if (shouldSkipAuthGate()) return
-  if (isAuthCallbackUrl()) return
+  if (isAuthCallbackUrl()) {
+    // If we are returning from Auth0, ensure any overlays/locks are cleared.
+    // Otherwise the UI can stay unclickable due to stale overlay state.
+    const overlay = getOverlayDeps()
+    try { overlay.hideLoginOverlay?.() } catch {}
+    try { document.body?.classList?.remove('auth-overlay-open') } catch {}
+    try { document.documentElement?.classList?.remove('auth-locked', 'data-locked') } catch {}
+    return
+  }
 
   const auth = getAuthDeps()
   const overlay = getOverlayDeps()

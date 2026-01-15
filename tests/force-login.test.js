@@ -143,6 +143,7 @@ test('forceLoginOnce skips callback URLs', async t => {
   const initAuth0Mock = mock.fn(async () => {})
   const isAuthenticatedMock = mock.fn(async () => false)
   const loginMock = mock.fn(async () => {})
+  const hideOverlayMock = mock.fn(() => {})
 
   setForceLoginDependencies({
     auth: {
@@ -153,7 +154,7 @@ test('forceLoginOnce skips callback URLs', async t => {
     overlay: {
       showLoginOverlay: mock.fn(() => {}),
       startLoginOverlayWatcher: mock.fn(() => {}),
-      hideLoginOverlay: mock.fn(() => {}),
+      hideLoginOverlay: hideOverlayMock,
     },
   })
 
@@ -162,4 +163,5 @@ test('forceLoginOnce skips callback URLs', async t => {
   assert.equal(initAuth0Mock.mock.calls.length, 0, 'initAuth0 not called on callback')
   assert.equal(isAuthenticatedMock.mock.calls.length, 0, 'auth check not called on callback')
   assert.equal(loginMock.mock.calls.length, 0, 'login not called on callback')
+  assert.equal(hideOverlayMock.mock.calls.length, 1, 'overlay cleared on callback')
 })
