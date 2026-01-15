@@ -24,7 +24,7 @@
 [[plugins]]
   package = "@netlify/plugin-lighthouse"
   [plugins.inputs]
-    auditPaths = ["/index.html"]
+    audits = [{ path = "/index.html" }]
 
 [[redirects]]
   from = "/api/*"
