@@ -26,7 +26,7 @@
     "build": "npm run build:version && npm run build:auth0-config && npm run bump:sw && npm run build:min-js && npm run stage:netlify && npm run verify:publish-root",
     "build:auth0-config": "node scripts/generate-auth0-config.mjs",
     "build:min-js": "npx terser main.js -c -m -o main.min.js",
-    "prebuild": "npm run guard:secrets && npm run guard:html",
+    "prebuild": "node tools/verify-functions-no-import-meta.mjs && npm run guard:secrets && npm run guard:html",
     "postbuild": "node tools/scan-dist-no-keys.mjs",
     "preview": "node scripts/serve-with-headers.js 4173 ./",
     "lh:mobile": "mkdir -p ./reports/lighthouse && CHROME_BIN=$(command -v google-chrome-stable || command -v google-chrome || command -v chromium-browser || command -v chromium || true) && CHROME_PATH=${CHROME_PATH:-$CHROME_BIN} lighthouse http://127.0.0.1:4173 --form-factor=mobile --only-categories=performance,best-practices,accessibility,seo --output=json --output-path=${LH_OUTPUT_PATH:-./reports/lighthouse/mobile.json} --chrome-flags=\"--headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu --remote-debugging-port=0\" --max-wait-for-load=45000 --throttling-method=provided --no-enable-error-reporting",

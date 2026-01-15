@@ -111,6 +111,12 @@ Følgende keys skal være sat i Netlify (production) for at auth, invites og DB 
 
 Bemærk: Ændringer til disse værdier kræver et fresh deploy, så `auth0-config.js` bliver regenereret via `npm run build:auth0-config`.
 
+## Netlify build notes
+
+- Lighthouse audits er sat til `/index.html` for at undgå 404 efter root-redirect til `/admin.html`.
+- Netlify Functions undgår `import.meta` så bundling til CJS ikke advarer.
+- `MaxListenersExceededWarning` og `wasm streaming compile failed` fra Netlify tooling/redirector er kendt build-noise og påvirker ikke runtime.
+
 ## Database migrations
 
 Kør migrations manuelt mod Neon/Postgres (idempotent):

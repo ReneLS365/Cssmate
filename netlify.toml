@@ -21,6 +21,11 @@
     checkPaths = []
     resultMode = "warn"
 
+[[plugins]]
+  package = "@netlify/plugin-lighthouse"
+  [plugins.inputs]
+    audits = [{ path = "/index.html" }]
+
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
