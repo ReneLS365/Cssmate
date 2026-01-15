@@ -94,6 +94,30 @@ function deriveSessionReady (state) {
   )
 }
 
+function readEnvFlag (value) {
+  if (value == null) return false
+  const normalized = String(value).trim().toLowerCase()
+  return normalized === '1' || normalized === 'true'
+}
+
+function hasDebugQueryFlag () {
+  if (typeof window === 'undefined') return false
+  try {
+    const params = new URLSearchParams(window.location.search || '')
+    return params.get('debug') === '1'
+  } catch {
+    return false
+  }
+}
+
+function hasDebugEnvFlag () {
+  const metaEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {}
+  if (readEnvFlag(metaEnv.VITE_DEBUG_AUTH)) return true
+  if (typeof window === 'undefined') return false
+  const windowEnv = window.__ENV__ || {}
+  return readEnvFlag(windowEnv.VITE_DEBUG_AUTH || window.VITE_DEBUG_AUTH)
+}
+
 export function onDebugChange (callback) {
   if (typeof callback !== 'function') return () => {}
   listeners.add(callback)
@@ -111,9 +135,9 @@ export function isDebugOverlayEnabled () {
   try {
     const legacyFlag = window.localStorage?.getItem(DEBUG_STORAGE_KEY) === '1'
     const debugFlag = window.localStorage?.getItem('debug') === '1'
-    return devFlag || legacyFlag || debugFlag
+    return devFlag || legacyFlag || debugFlag || hasDebugQueryFlag() || hasDebugEnvFlag()
   } catch {
-    return devFlag
+    return devFlag || hasDebugQueryFlag() || hasDebugEnvFlag()
   }
 }
 

@@ -12,7 +12,7 @@ importScripts('/js/version.js')
 const BUILD_META = (typeof self !== 'undefined' && self.CSSMATE_BUILD_META) ? self.CSSMATE_BUILD_META : {}
 const APP_VERSION = BUILD_META.cacheKey || self.CSSMATE_APP_VERSION || BUILD_META.appVersion || 'dev'
 // Replaced at build time by scripts/bump-sw-version.js
-const SW_BUILD_ID = "202601151712-34b1e8d"
+const SW_BUILD_ID = "202601221030-5d3a7f4"
 const CACHE_VERSION = `sscaff-${APP_VERSION}-${SW_BUILD_ID}`
 const CACHE_NAME = CACHE_VERSION
 const PRECACHE_URLS = [

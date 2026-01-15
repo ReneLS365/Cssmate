@@ -40,6 +40,29 @@ Sæt følgende miljøvariabler til Auth0-login i klienten:
 - `VITE_ADMIN_EMAIL` (legacy – én email der får admin-link)
 - `VITE_ADMIN_EMAILS` (ny – kommasepareret liste til admin-rollen)
 
+## Auth debug overlay (mobil)
+
+Aktivér overlay uden DevTools:
+
+- Tilføj `?debug=1` til URL’en, **eller**
+- Sæt `VITE_DEBUG_AUTH=1` (fx via `window.VITE_DEBUG_AUTH = '1'` før appen loader).
+
+Overlayet viser auth/team-state, UI-låse og sidste hit-test. Brug **Copy debug** til at kopiere en JSON-dump. Det er især nyttigt hvis UI virker “død” efter login.
+
+## Repro af “UI låst efter login”
+
+1. Log ind via Auth0 som normalt.
+2. Hvis tabs ikke reagerer, åbnes samme URL med `?debug=1` for at se auth- og hit-test status.
+3. Brug **Copy debug** og del dumpen i fejlopfølgning.
+
+## E2E regression (tabs klikbare efter auth)
+
+Kør Playwright-testen der sikrer klikbare tabs i authenticated state:
+
+```bash
+VITE_E2E_BYPASS_AUTH=1 npm run test:e2e -- tests/e2e/admin-tabs-unlocked.spec.ts
+```
+
 Lokalt: opret en `.env` i repo-roden med ovenstående værdier og kør `npm run preview`.
 Universal Login kører via redirect-flow, så **ingen client secret må bruges i frontend**.
 I Auth0-appen skal callback/logout-URLs inkludere:
