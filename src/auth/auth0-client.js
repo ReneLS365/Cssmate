@@ -1,4 +1,4 @@
-import { resolveBaseUrl } from './resolve-base-url.js'
+import { resolveAuthRedirectUri, resolveBaseUrl } from './resolve-base-url.js'
 
 let clientPromise = null
 let auth0ModulePromise = null
@@ -77,6 +77,35 @@ function buildAuthParams ({ redirectUri, audience }) {
   return params
 }
 
+function resolveAuth0Config () {
+  const { domain, clientId, audience } = resolveConfig()
+  return {
+    domain,
+    clientId,
+    audience,
+    redirectUri: resolveAuthRedirectUri(),
+    isConfigured: Boolean(domain && clientId),
+  }
+}
+
+function logAuth0ConfigStatus (isConfigured) {
+  if (typeof window === 'undefined') return
+  const metaEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {}
+  const isProd = Boolean(metaEnv.PROD)
+  const message = `Auth0 configured: ${isConfigured ? 'yes' : 'no'}`
+  if (isProd || !isProd) {
+    console.info(message)
+  }
+}
+
+function resolveAppState (appState) {
+  if (appState) return appState
+  if (typeof window === 'undefined') return appState
+  const path = window.location?.pathname || '/'
+  const returnTo = path === '/callback' ? '/' : path
+  return { returnTo }
+}
+
 export async function getClient () {
   if (clientPromise) return clientPromise
 
@@ -93,14 +122,14 @@ export async function getClient () {
     }
     try {
       const { createAuth0Client } = await loadAuth0Module()
-      const { domain, clientId, audience } = resolveConfig()
-      if (!domain || !clientId) {
+      const { domain, clientId, audience, redirectUri, isConfigured } = resolveAuth0Config()
+      logAuth0ConfigStatus(isConfigured)
+      if (!isConfigured) {
         if (typeof window !== 'undefined') {
           throw new Error('Auth0 config mangler. Tjek VITE_AUTH0_DOMAIN og VITE_AUTH0_CLIENT_ID.')
         }
       }
 
-      const redirectUri = resolveBaseUrl()
       const client = await createAuth0Client({
         domain: domain || 'test.local',
         clientId: clientId || 'test',
@@ -114,8 +143,9 @@ export async function getClient () {
       if (typeof window !== 'undefined') {
         const params = new URLSearchParams(window.location.search)
         if (params.has('code') && params.has('state')) {
-          await client.handleRedirectCallback()
-          window.history.replaceState({}, document.title, window.location.pathname)
+          const { appState } = await client.handleRedirectCallback()
+          const returnTo = appState?.returnTo || window.location.pathname
+          window.history.replaceState({}, document.title, returnTo)
         }
       }
 
@@ -135,19 +165,19 @@ export async function initAuth0 () {
 
 export async function login (appState) {
   const client = await getClient()
-  const { audience } = resolveConfig()
+  const { audience, redirectUri } = resolveAuth0Config()
   await client.loginWithRedirect({
-    appState,
-    authorizationParams: buildAuthParams({ redirectUri: resolveBaseUrl(), audience }),
+    appState: resolveAppState(appState),
+    authorizationParams: buildAuthParams({ redirectUri, audience }),
   })
 }
 
 export async function signup (appState) {
   const client = await getClient()
-  const { audience } = resolveConfig()
+  const { audience, redirectUri } = resolveAuth0Config()
   await client.loginWithRedirect({
-    appState,
-    authorizationParams: { ...buildAuthParams({ redirectUri: resolveBaseUrl(), audience }), screen_hint: 'signup' },
+    appState: resolveAppState(appState),
+    authorizationParams: { ...buildAuthParams({ redirectUri, audience }), screen_hint: 'signup' },
   })
 }
 
