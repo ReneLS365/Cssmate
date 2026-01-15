@@ -15,6 +15,7 @@ let logoutButton
 let repairButton
 let authProvider
 let isSubmitting = false
+let hasLoggedUnlock = false
 
 function shouldShowRepair (message, errorCode, variant) {
   if (variant !== 'error') return false
@@ -62,6 +63,12 @@ function showSection (section) {
   document.documentElement.classList.toggle('auth-locked', section !== 'hidden')
 }
 
+function hardClearUiLocks () {
+  try { document.body?.classList?.remove('auth-overlay-open') } catch {}
+  try { document.documentElement?.classList?.remove('auth-locked', 'data-locked') } catch {}
+  try { document.querySelector('#app')?.removeAttribute('inert') } catch {}
+}
+
 function setGateVisible (visible) {
   if (!gate) return
   if (visible) {
@@ -73,6 +80,7 @@ function setGateVisible (visible) {
     document.documentElement?.classList?.remove('auth-locked')
     gate.removeAttribute('data-locked')
     setMessage('')
+    hardClearUiLocks()
   }
 }
 
@@ -137,6 +145,15 @@ function handleAuthChange (state) {
     setGateVisible(false)
     setMessage('')
     updateAuthGateReason('')
+    if (!hasLoggedUnlock) {
+      hasLoggedUnlock = true
+      console.info('[auth] unlocked', {
+        html: document.documentElement?.className || '',
+        body: document.body?.className || '',
+      })
+      const el = document.elementFromPoint?.(20, 20) ?? null
+      console.info('[ui] elementFromPoint(20,20)=', el)
+    }
     return
   }
 

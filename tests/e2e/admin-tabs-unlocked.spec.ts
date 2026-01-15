@@ -9,6 +9,16 @@ test('admin route allows tab switching after auth', async ({ page }) => {
   await page.goto('/admin', { waitUntil: 'domcontentloaded' })
   await page.waitForLoadState('networkidle')
 
+  const authState = await page.evaluate(() => ({
+    htmlClass: document.documentElement.className,
+    bodyClass: document.body.className,
+    gateHidden: document.getElementById('authGate')?.hasAttribute('hidden'),
+  }))
+  expect(authState.htmlClass).not.toContain('auth-locked')
+  expect(authState.htmlClass).not.toContain('data-locked')
+  expect(authState.bodyClass).not.toContain('auth-overlay-open')
+  expect(authState.gateHidden).toBeTruthy()
+
   const optaellingTab = page.locator('[role="tab"][data-tab-id="optaelling"]')
   await expect(optaellingTab).toBeVisible()
   await optaellingTab.click()
