@@ -26,6 +26,7 @@ import { initAuth0Ui } from './src/auth/auth0-ui.js'
 import { getClient as getAuth0Client, getUser, isAuthenticated, login, signup } from './src/auth/auth0-client.js'
 import { forceLoginOnce } from './src/auth/force-login.js'
 import { hardClearUiLocks } from './src/auth/ui-locks.js'
+import { ensureUiInteractive, installTabClickRecovery } from './src/ui/guards/ui-unlock.js'
 
 function readCiFlag () {
   if (typeof document !== 'undefined') {
@@ -715,7 +716,7 @@ function ensureTabCollections() {
   return tabButtons.length && tabPanels.length
 }
 
-function ensureTabsBound () {
+export function ensureTabsBound () {
   if (!ensureTabCollections()) return false
 
   tabButtons.forEach(button => {
@@ -968,6 +969,7 @@ function initTabs() {
 
     if (typeof window !== 'undefined') {
       window.__cssmateSetActiveTab = (tabId, options) => setActiveTab(tabId, options)
+      window.__cssmateEnsureTabsBound = () => ensureTabsBound()
     }
   }
 
@@ -6001,8 +6003,12 @@ function configureBootstrap () {
   }
   exposeDebugHooks()
   exposeExportHelpers()
+  if (typeof window !== 'undefined') {
+    window.__cssmateEnsureTabsBound = () => ensureTabsBound()
+  }
   initBootInline()
   initTabDiagnosticsLazy()
+  installTabClickRecovery()
   if (isDiagnosticsEnabled()) {
     mountDiagnostics({ forceVisible: true, allowSwReset: true })
   }
@@ -6021,6 +6027,7 @@ export async function bootstrapApp () {
   configureBootstrap()
   initDebugOverlayLazy()
   initTabs()
+  installTabClickRecovery()
 
   forceLoginOnce().catch(() => {})
   const authGateState = await ensureAuthGateAccess()
@@ -6029,6 +6036,7 @@ export async function bootstrapApp () {
     return
   }
 
+  ensureUiInteractive('post-auth-allowed')
   scheduleAuthBootstrap()
 
   let authGatePromise = null
@@ -6048,6 +6056,7 @@ export async function bootstrapApp () {
     const message = error?.message || 'Kunne ikke initialisere appen. Opdater siden for at prøve igen.'
     updateActionHint(message, 'error')
   } finally {
+    ensureUiInteractive('bootstrap-final')
     markAppReady()
   }
 

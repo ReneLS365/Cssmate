@@ -12,7 +12,7 @@ importScripts('/js/version.js')
 const BUILD_META = (typeof self !== 'undefined' && self.CSSMATE_BUILD_META) ? self.CSSMATE_BUILD_META : {}
 const APP_VERSION = BUILD_META.cacheKey || self.CSSMATE_APP_VERSION || BUILD_META.appVersion || 'dev'
 // Replaced at build time by scripts/bump-sw-version.js
-const SW_BUILD_ID = "202601221030-5d3a7f4"
+const SW_BUILD_ID = "202601152246-39f8b11"
 const CACHE_VERSION = `sscaff-${APP_VERSION}-${SW_BUILD_ID}`
 const CACHE_NAME = CACHE_VERSION
 const PRECACHE_URLS = [
@@ -52,6 +52,7 @@ const PRECACHE_URLS = [
   '/src/ui/debug-overlay.js',
   '/src/ui/login-overlay.js',
   '/src/ui/app-guard.js',
+  '/src/ui/guards/ui-unlock.js',
   '/src/ui/team-admin-page.js',
   '/src/services/team-ids.js',
   '/src/services/team-access.js',

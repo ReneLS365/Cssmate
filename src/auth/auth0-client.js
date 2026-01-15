@@ -2,6 +2,7 @@ import { resolveAuthRedirectUri, resolveBaseUrl } from './resolve-base-url.js'
 import { isAuthCallbackUrl } from './auth-callback.js'
 import { installOrgDebugHooks, saveOrgId } from './org-store.js'
 import { hardClearUiLocks } from './ui-locks.js'
+import { ensureUiInteractive } from '../ui/guards/ui-unlock.js'
 
 let clientPromise = null
 let auth0ModulePromise = null
@@ -226,6 +227,9 @@ export async function getClient () {
           const { appState } = await client.handleRedirectCallback()
           await captureOrgId(client)
           hardClearUiLocks()
+          if (typeof document !== 'undefined') {
+            ensureUiInteractive('post-callback')
+          }
           const returnTo = appState?.returnTo || window.location.pathname
           window.history.replaceState({}, document.title, returnTo)
         }
