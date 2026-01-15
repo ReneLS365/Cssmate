@@ -70,6 +70,8 @@ function setGateVisible (visible) {
   } else {
     gate.setAttribute('hidden', '')
     document.body?.classList?.remove('auth-overlay-open')
+    document.documentElement?.classList?.remove('auth-locked')
+    gate.removeAttribute('data-locked')
     setMessage('')
   }
 }
@@ -221,4 +223,19 @@ export function initAuthGate () {
     waitForAuthReady: () => waitForAuth(),
     prefetchAuth: () => authProvider?.prefetchAuth?.(),
   }
+}
+
+export const __test__ = {
+  setElements (elements = {}) {
+    gate = elements.gate ?? gate
+    loadingScreen = elements.loadingScreen ?? loadingScreen
+    loginScreen = elements.loginScreen ?? loginScreen
+    verifyScreen = elements.verifyScreen ?? verifyScreen
+    messageEl = elements.messageEl ?? messageEl
+    loginButton = elements.loginButton ?? loginButton
+    logoutButton = elements.logoutButton ?? logoutButton
+    repairButton = elements.repairButton ?? repairButton
+  },
+  handleAuthChange,
+  setGateVisible,
 }
