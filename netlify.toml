@@ -42,6 +42,12 @@
   status = 200
 
 [[redirects]]
+  from = "/"
+  to = "/admin"
+  status = 302
+  force = true
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

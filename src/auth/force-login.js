@@ -1,15 +1,12 @@
 import { initAuth0, isAuthenticated, login } from './auth0-client.js'
+import { isAuthCallbackUrl } from './auth-callback.js'
 import { shouldSkipAuthGate } from './skip-auth-gate.js'
+import { hardClearUiLocks } from './ui-locks.js'
 import { hideLoginOverlay, showLoginOverlay, startLoginOverlayWatcher } from '../ui/login-overlay.js'
 
 const KEY = 'cssmate_autologin_attempted'
 let authOverrides = {}
 let overlayOverrides = {}
-
-function isAuthCallbackUrl () {
-  const params = new URLSearchParams(window.location.search)
-  return params.has('code') && params.has('state')
-}
 
 function shouldSkipAutoLogin () {
   if (typeof window === 'undefined') return false
@@ -54,8 +51,7 @@ export async function forceLoginOnce () {
     // Otherwise the UI can stay unclickable due to stale overlay state.
     const overlay = getOverlayDeps()
     try { overlay.hideLoginOverlay?.() } catch {}
-    try { document.body?.classList?.remove('auth-overlay-open') } catch {}
-    try { document.documentElement?.classList?.remove('auth-locked', 'data-locked') } catch {}
+    hardClearUiLocks()
     return
   }
 

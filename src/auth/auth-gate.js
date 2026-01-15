@@ -4,6 +4,7 @@ import { initAuthSession, onChange as onSessionChange, getState as getSessionSta
 import { isLighthouseMode } from '../config/lighthouse-mode.js'
 import { hardRepairClient } from '../utils/reset-app.js'
 import { updateAuthGateReason } from '../state/debug.js'
+import { hardClearUiLocks } from './ui-locks.js'
 
 let gate
 let loadingScreen
@@ -61,12 +62,6 @@ function showSection (section) {
     }
   }
   document.documentElement.classList.toggle('auth-locked', section !== 'hidden')
-}
-
-function hardClearUiLocks () {
-  try { document.body?.classList?.remove('auth-overlay-open') } catch {}
-  try { document.documentElement?.classList?.remove('auth-locked', 'data-locked') } catch {}
-  try { document.querySelector('#app')?.removeAttribute('inert') } catch {}
 }
 
 function setGateVisible (visible) {

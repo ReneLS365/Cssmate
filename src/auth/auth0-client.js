@@ -1,7 +1,11 @@
 import { resolveAuthRedirectUri, resolveBaseUrl } from './resolve-base-url.js'
+import { isAuthCallbackUrl } from './auth-callback.js'
+import { getSavedOrgId, installOrgDebugHooks, saveOrgId } from './org-store.js'
+import { hardClearUiLocks } from './ui-locks.js'
 
 let clientPromise = null
 let auth0ModulePromise = null
+let clientOverride = null
 const BYPASS_USER = {
   sub: 'e2e|local',
   email: 'e2e@cssmate.local',
@@ -25,6 +29,7 @@ async function loadAuth0Module () {
         logout: async () => {},
         getUser: async () => null,
         getTokenSilently: async () => '',
+        getIdTokenClaims: async () => ({}),
         handleRedirectCallback: async () => {},
       }),
     }
@@ -77,6 +82,49 @@ function buildAuthParams ({ redirectUri, audience }) {
   return params
 }
 
+function decodeBase64 (value) {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
+  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), '=')
+  if (typeof atob === 'function') {
+    return atob(padded)
+  }
+  return Buffer.from(padded, 'base64').toString('utf-8')
+}
+
+function parseJwtPayload (token) {
+  if (!token || typeof token !== 'string') return null
+  const parts = token.split('.')
+  if (parts.length < 2) return null
+  try {
+    return JSON.parse(decodeBase64(parts[1]))
+  } catch {
+    return null
+  }
+}
+
+async function captureOrgId (client) {
+  if (!client) return
+  let orgId = ''
+  if (typeof client.getIdTokenClaims === 'function') {
+    try {
+      const claims = await client.getIdTokenClaims()
+      orgId = claims?.org_id || ''
+    } catch {}
+  }
+
+  if (!orgId && typeof client.getTokenSilently === 'function') {
+    try {
+      const accessToken = await client.getTokenSilently()
+      const payload = parseJwtPayload(accessToken)
+      orgId = payload?.org_id || ''
+    } catch {}
+  }
+
+  if (orgId) {
+    saveOrgId(orgId)
+  }
+}
+
 function resolveAuth0Config () {
   const { domain, clientId, audience } = resolveConfig()
   return {
@@ -107,6 +155,7 @@ function resolveAppState (appState) {
 }
 
 export async function getClient () {
+  if (clientOverride) return clientOverride
   if (clientPromise) return clientPromise
 
   clientPromise = (async () => {
@@ -117,10 +166,12 @@ export async function getClient () {
         logout: async () => {},
         getUser: async () => BYPASS_USER,
         getTokenSilently: async () => 'e2e-token',
+        getIdTokenClaims: async () => ({}),
         handleRedirectCallback: async () => {},
       }
     }
     try {
+      installOrgDebugHooks()
       const { createAuth0Client } = await loadAuth0Module()
       const { domain, clientId, audience, redirectUri, isConfigured } = resolveAuth0Config()
       logAuth0ConfigStatus(isConfigured)
@@ -141,9 +192,10 @@ export async function getClient () {
       })
 
       if (typeof window !== 'undefined') {
-        const params = new URLSearchParams(window.location.search)
-        if (params.has('code') && params.has('state')) {
+        if (isAuthCallbackUrl()) {
           const { appState } = await client.handleRedirectCallback()
+          await captureOrgId(client)
+          hardClearUiLocks()
           const returnTo = appState?.returnTo || window.location.pathname
           window.history.replaceState({}, document.title, returnTo)
         }
@@ -166,18 +218,27 @@ export async function initAuth0 () {
 export async function login (appState) {
   const client = await getClient()
   const { audience, redirectUri } = resolveAuth0Config()
+  const organization = getSavedOrgId()
   await client.loginWithRedirect({
     appState: resolveAppState(appState),
-    authorizationParams: buildAuthParams({ redirectUri, audience }),
+    authorizationParams: {
+      ...buildAuthParams({ redirectUri, audience }),
+      ...(organization ? { organization } : {}),
+    },
   })
 }
 
 export async function signup (appState) {
   const client = await getClient()
   const { audience, redirectUri } = resolveAuth0Config()
+  const organization = getSavedOrgId()
   await client.loginWithRedirect({
     appState: resolveAppState(appState),
-    authorizationParams: { ...buildAuthParams({ redirectUri, audience }), screen_hint: 'signup' },
+    authorizationParams: {
+      ...buildAuthParams({ redirectUri, audience }),
+      ...(organization ? { organization } : {}),
+      screen_hint: 'signup',
+    },
   })
 }
 
@@ -203,4 +264,16 @@ export async function getToken () {
     return client.getTokenSilently({ authorizationParams: { audience } })
   }
   return client.getTokenSilently()
+}
+
+export const __test__ = {
+  setClient (client) {
+    clientOverride = client
+    clientPromise = Promise.resolve(client)
+  },
+  resetClient () {
+    clientOverride = null
+    clientPromise = null
+    auth0ModulePromise = null
+  },
 }

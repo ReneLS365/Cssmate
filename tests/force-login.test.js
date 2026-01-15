@@ -127,7 +127,7 @@ test('forceLoginOnce skips callback URLs', async t => {
   const originalWindow = globalThis.window
   const originalSessionStorage = globalThis.sessionStorage
 
-  setWindowForTest({ search: '?code=abc&state=123' })
+  setWindowForTest({ search: '?code=abc&state=123', pathname: '/callback' })
 
   const { forceLoginOnce, setForceLoginDependencies, resetForceLoginDependencies } = await import('../src/auth/force-login.js')
 
