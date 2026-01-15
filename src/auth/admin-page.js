@@ -1,6 +1,7 @@
 import { isAdmin } from './admin.js'
 import {
   getUser,
+  getOrganizationConfig,
   initAuth0,
   isAuthenticated,
   login,
@@ -33,6 +34,15 @@ async function guardAdminPage () {
   logoutBtn?.addEventListener('click', () => logout().catch(() => {}))
 
   try {
+    const orgConfig = getOrganizationConfig()
+    if (!orgConfig?.isConfigured) {
+      console.error('Auth0 org config mangler. Sæt VITE_AUTH0_ORG_ID eller VITE_AUTH0_ORG_SLUG.')
+      setText(message, 'Auth0 organisation mangler. Sæt VITE_AUTH0_ORG_ID eller VITE_AUTH0_ORG_SLUG.')
+      setHidden(loginBtn, true)
+      setHidden(logoutBtn, true)
+      setHidden(content, true)
+      return
+    }
     await initAuth0()
   } catch (error) {
     setText(message, error?.message || 'Auth0 kunne ikke initialiseres.')

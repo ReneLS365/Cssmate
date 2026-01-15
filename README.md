@@ -36,6 +36,7 @@ Sæt følgende miljøvariabler til Auth0-login i klienten:
 - `VITE_AUTH0_DOMAIN`
 - `VITE_AUTH0_CLIENT_ID`
 - `VITE_AUTH0_AUDIENCE` (valgfri, kun hvis du kalder en API)
+- `VITE_AUTH0_ORG_ID` (foretrukken) **eller** `VITE_AUTH0_ORG_SLUG` (fallback) – bruges til at tvinge korrekt organisation uden prompt
 - `VITE_ADMIN_EMAIL` (legacy – én email der får admin-link)
 - `VITE_ADMIN_EMAILS` (ny – kommasepareret liste til admin-rollen)
 
@@ -71,6 +72,7 @@ Følgende keys skal være sat i Netlify (production) for at auth, invites og DB 
 - `VITE_AUTH0_DOMAIN`
 - `VITE_AUTH0_CLIENT_ID`
 - `VITE_AUTH0_AUDIENCE` (optional)
+- `VITE_AUTH0_ORG_ID` eller `VITE_AUTH0_ORG_SLUG`
 - `VITE_ADMIN_EMAIL`
 - `VITE_ADMIN_EMAILS`
 - `AUTH0_DOMAIN`
