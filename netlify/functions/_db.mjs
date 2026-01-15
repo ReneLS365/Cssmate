@@ -1,5 +1,6 @@
 import { readFile } from 'fs/promises'
 import { Pool } from 'pg'
+import { resolveLocalPath } from './_path.mjs'
 
 const DATABASE_SSL = process.env.DATABASE_SSL
 const DATABASE_URL_CANDIDATES = [
@@ -12,9 +13,9 @@ let pool = null
 let migrationPromise = null
 let migrationsEnsured = false
 
-async function readMigrationFile (relativePath) {
-  const fileUrl = new URL(relativePath, import.meta.url)
-  return readFile(fileUrl, 'utf8')
+async function readMigrationFile (...pathParts) {
+  const filePath = resolveLocalPath(...pathParts)
+  return readFile(filePath, 'utf8')
 }
 
 async function ensureMigrations () {
@@ -42,9 +43,9 @@ async function ensureMigrations () {
       }
 
       const migrations = await Promise.all([
-        readMigrationFile('../../migrations/001_init.sql'),
-        readMigrationFile('../../migrations/002_add_team_slug.sql'),
-        readMigrationFile('../../migrations/003_auth0_invites.sql'),
+        readMigrationFile('migrations', '001_init.sql'),
+        readMigrationFile('migrations', '002_add_team_slug.sql'),
+        readMigrationFile('migrations', '003_auth0_invites.sql'),
       ])
       await client.query('BEGIN')
       for (const sql of migrations) {
