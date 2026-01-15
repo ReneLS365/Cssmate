@@ -66,6 +66,7 @@ export function diagnoseInputBlockers ({ documentRef = document, windowRef = win
     if (!visuallyHidden) return
 
     blockers.push({
+      element,
       path: buildElementPath(element),
       rect: {
         top: rect.top,

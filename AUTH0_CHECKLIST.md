@@ -15,6 +15,16 @@ Set these values on the Auth0 application that powers **sscaff.netlify.app**:
 
 > Tip: keep these URLs exact (no wildcards) to avoid Auth0 redirect errors.
 
+## Auth0 Dashboard (Connections → “Use Auth0 dev keys” warning)
+This warning is **not** fixable in frontend code. It must be handled in the Auth0 Dashboard:
+
+1. Go to **Auth0 Dashboard → Authentication → Social** (or **Connections** for the relevant provider).
+2. Open the provider connection (Google, Microsoft, etc.).
+3. Disable **“Use Auth0 dev keys”**.
+4. Paste your own **Client ID** + **Client Secret** from that provider.
+5. Save the connection.
+6. Reload the Auth0 warning page to confirm the warning disappears.
+
 ## Netlify / Local environment variables
 Required (no secrets in repo):
 
