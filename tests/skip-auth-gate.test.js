@@ -9,6 +9,9 @@ function setWindowLocation(searchValue) {
       search: searchValue,
       pathname: '/',
     },
+    __ENV__: {
+      VITE_E2E_BYPASS_AUTH: '1',
+    },
   }
 }
 

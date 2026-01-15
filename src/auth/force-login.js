@@ -8,7 +8,7 @@ let overlayOverrides = {}
 
 function isAuthCallbackUrl () {
   const params = new URLSearchParams(window.location.search)
-  return params.has('code') || params.has('state') || params.has('error')
+  return params.has('code') && params.has('state')
 }
 
 function shouldSkipAutoLogin () {
