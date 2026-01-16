@@ -100,6 +100,7 @@ export async function forceLoginOnce () {
         sessionStorage.removeItem(KEY)
       } catch {}
       overlay.hideLoginOverlay()
+      hardClearUiLocks()
       return
     }
 
@@ -119,6 +120,7 @@ export async function forceLoginOnce () {
     const message = error?.message || 'Auto login fejlede. Prøv at logge ind manuelt.'
     overlay.showLoginOverlay({ message: 'Log ind for at fortsætte.', error: message })
     overlay.startLoginOverlayWatcher()
+    hardClearUiLocks()
 
     if (!loginAttempted) {
       try {

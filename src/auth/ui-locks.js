@@ -1,7 +1,11 @@
 export function hardClearUiLocks () {
   try { document.documentElement?.classList?.remove('auth-locked') } catch {}
   try { document.body?.classList?.remove('auth-overlay-open') } catch {}
-  try { document.querySelector('#app')?.removeAttribute('inert') } catch {}
+  try {
+    const app = document.querySelector('#app')
+    app?.removeAttribute('inert')
+    app?.removeAttribute('aria-hidden')
+  } catch {}
   try {
     const authGate = document.getElementById('authGate')
     if (authGate) {
