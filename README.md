@@ -40,6 +40,16 @@ npm test
 - `https://sscaff.netlify.app`
 - `http://localhost:5173`
 
+### Invite links (organization + invitation)
+
+Invite links understøtter Auth0-parametre:
+
+- `organization=org_...`
+- `invitation=inv_...`
+- `returnTo=/sti` (valgfri, kun relative paths)
+
+Disse forwardes til Auth0 login, så accept-flowet kan gennemføres uden hardcoded org.
+
 ## Auth env vars (frontend + backend)
 
 Hold det kort – kun det relevante for login:
@@ -48,10 +58,12 @@ Hold det kort – kun det relevante for login:
 - `VITE_AUTH0_DOMAIN`
 - `VITE_AUTH0_CLIENT_ID`
 - `VITE_AUTH0_AUDIENCE` (valgfri, anbefales hvis API er oprettet)
-- `VITE_AUTH0_ORG_ID` **eller** `VITE_AUTH0_ORG_SLUG` (valgfri – kun hvis org skal tvinges)
+- `VITE_AUTH0_ORG_ID` (alias: `VITE_AUTH0_ORGANIZATION_ID`) **eller** `VITE_AUTH0_ORG_SLUG` (alias: `VITE_AUTH0_ORGANIZATION_SLUG`) (valgfri – kun hvis org skal tvinges)
 - `VITE_AUTH0_REDIRECT_URI` (valgfri; hvis den kun er origin, tilføjes `/callback` automatisk)
 - `VITE_APP_BASE_URL` (valgfri; default = `window.location.origin`)
 - `VITE_ADMIN_EMAILS` (legacy fallback; **deprecated** når roles virker)
+
+Hvis `VITE_AUTH0_DOMAIN` mangler, stopper appen i login-overlay og logger en tydelig fejl i konsollen. Hvis domænet ikke matcher `*.auth0.com`, logges en advarsel så tenant/custom domain kan verificeres.
 
 **Backend (Netlify Functions / API):**
 - `AUTH0_DOMAIN`
@@ -102,7 +114,8 @@ I Auth0-appen skal callback/logout-URLs matche checklisten øverst:
 
 Til CI/Lighthouse kan login-gate springes over ved at tilføje query-parametret
 `?skipAuthGate=1` (eller `?skipAuthGate=true`) til app-URL’en. Brug denne
-parameter i testmiljøer fremfor miljøflags.
+parameter i testmiljøer fremfor miljøflags. I production builds ignoreres
+`skipAuthGate` uanset query-parametre.
 
 ## Netlify production env vars (auth only)
 
@@ -111,7 +124,7 @@ Sæt minimum disse auth-keys i Netlify (production):
 - `VITE_AUTH0_DOMAIN`
 - `VITE_AUTH0_CLIENT_ID`
 - `VITE_AUTH0_AUDIENCE` (optional)
-- `VITE_AUTH0_ORG_ID` eller `VITE_AUTH0_ORG_SLUG` (optional)
+- `VITE_AUTH0_ORG_ID`/`VITE_AUTH0_ORGANIZATION_ID` eller `VITE_AUTH0_ORG_SLUG`/`VITE_AUTH0_ORGANIZATION_SLUG` (optional)
 - `VITE_AUTH0_REDIRECT_URI` (optional)
 - `VITE_APP_BASE_URL` (optional)
 - `VITE_ADMIN_EMAILS` (legacy fallback)

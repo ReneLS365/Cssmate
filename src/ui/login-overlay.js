@@ -7,6 +7,7 @@ const ERROR_ID = 'cssmate-login-overlay-error'
 const BUTTON_ID = 'cssmate-login-overlay-button'
 const DEFAULT_MESSAGE = 'Log ind for at fortsætte.'
 const DEFAULT_ERROR = 'Login fejlede. Prøv igen.'
+const DEFAULT_BUTTON_LABEL = 'Log ind'
 
 let overlayNodes = null
 let authWatchTimer = null
@@ -24,6 +25,12 @@ function setHidden (element, hidden) {
 function setText (element, value) {
   if (!element) return
   element.textContent = value
+}
+
+function setButtonLabel (value) {
+  if (!overlayNodes?.button) return
+  const label = typeof value === 'string' && value.trim() ? value : DEFAULT_BUTTON_LABEL
+  setText(overlayNodes.button, label)
 }
 
 function ensureOverlayStyles () {
@@ -119,7 +126,7 @@ function buildOverlay () {
   button.id = BUTTON_ID
   button.type = 'button'
   button.className = 'cssmate-login-overlay__button'
-  button.textContent = 'Log ind'
+  button.textContent = DEFAULT_BUTTON_LABEL
   button.addEventListener('click', () => {
     login().catch(loginError => {
       console.warn('Login redirect failed', loginError)
@@ -156,7 +163,7 @@ function ensureOverlay () {
   return overlayNodes
 }
 
-export function showLoginOverlay ({ message, error } = {}) {
+export function showLoginOverlay ({ message, error, buttonLabel } = {}) {
   const nodes = ensureOverlay()
   if (!nodes) return
   const messageValue = typeof message === 'string' && message.trim() ? message : DEFAULT_MESSAGE
@@ -164,9 +171,11 @@ export function showLoginOverlay ({ message, error } = {}) {
   if (error) {
     setText(nodes.error, error)
     setHidden(nodes.error, false)
+    setButtonLabel(buttonLabel || 'Prøv igen')
   } else {
     setText(nodes.error, '')
     setHidden(nodes.error, true)
+    setButtonLabel(buttonLabel)
   }
   if (nodes.container?.style) {
     nodes.container.style.display = 'flex'

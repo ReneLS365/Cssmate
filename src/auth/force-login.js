@@ -1,5 +1,5 @@
 import { initAuth0, isAuthenticated, login } from './auth0-client.js'
-import { isAuthCallbackUrl } from './auth-callback.js'
+import { getAuthCallbackError, isAuthCallbackUrl } from './auth-callback.js'
 import { shouldSkipAuthGate } from './skip-auth-gate.js'
 import { hardClearUiLocks } from './ui-locks.js'
 import { hideLoginOverlay, showLoginOverlay, startLoginOverlayWatcher } from '../ui/login-overlay.js'
@@ -46,6 +46,24 @@ export async function forceLoginOnce () {
   if (typeof window === 'undefined') return
   if (shouldSkipAutoLogin()) return
   if (shouldSkipAuthGate()) return
+  const callbackError = getAuthCallbackError()
+  if (callbackError) {
+    const overlay = getOverlayDeps()
+    const message = callbackError.description
+      ? `Login fejlede: ${callbackError.description}`
+      : `Login fejlede: ${callbackError.error}`
+    overlay.showLoginOverlay({
+      message: 'Login fejlede. Prøv igen.',
+      error: message,
+      buttonLabel: 'Prøv igen',
+    })
+    overlay.startLoginOverlayWatcher()
+    try {
+      sessionStorage.removeItem(KEY)
+    } catch {}
+    hardClearUiLocks()
+    return
+  }
   if (isAuthCallbackUrl()) {
     // If we are returning from Auth0, ensure any overlays/locks are cleared.
     // Otherwise the UI can stay unclickable due to stale overlay state.

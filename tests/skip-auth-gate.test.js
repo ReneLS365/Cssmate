@@ -32,3 +32,25 @@ test('shouldSkipAuthGate returns true for skipAuthGate flags only', () => {
     if (originalWindow === undefined) delete globalThis.window
   }
 })
+
+test('shouldSkipAuthGate ignores query flags in production context', () => {
+  const originalWindow = globalThis.window
+
+  try {
+    globalThis.window = {
+      location: {
+        search: '?skipAuthGate=1',
+        pathname: '/',
+      },
+      __ENV__: {
+        CONTEXT: 'production',
+        VITE_E2E_BYPASS_AUTH: '1',
+      },
+    }
+
+    assert.equal(shouldSkipAuthGate(), false)
+  } finally {
+    globalThis.window = originalWindow
+    if (originalWindow === undefined) delete globalThis.window
+  }
+})

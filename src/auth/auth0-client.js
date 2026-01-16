@@ -14,6 +14,11 @@ const BYPASS_USER = {
   nickname: 'E2E',
 }
 
+const ORG_ID_PATTERN = /^org_[A-Za-z0-9]+$/
+const ORG_SLUG_PATTERN = /^[a-z0-9][a-z0-9-_]{1,62}$/i
+const AUTH0_DOMAIN_PATTERN = /\.auth0\.com$/i
+const INVITATION_PATTERN = /^inv_[A-Za-z0-9]+$/i
+
 function resolveAuth0ModulePath () {
   if (typeof window === 'undefined') {
     return new URL('../../js/vendor/auth0-spa-js.js', import.meta.url).href
@@ -63,6 +68,18 @@ function isE2eBypassEnabled () {
   )
 }
 
+function normalizeAuth0Domain (domain) {
+  if (!domain) return ''
+  const stripped = domain.replace(/^https?:\/\//i, '').trim()
+  return stripped.replace(/\/.*$/, '')
+}
+
+function warnIfUnexpectedDomain (domain) {
+  if (!domain) return
+  if (AUTH0_DOMAIN_PATTERN.test(domain)) return
+  console.warn(`[auth0] Domain "${domain}" matcher ikke *.auth0.com. Kontroller tenant eller custom domain.`)
+}
+
 function resolveConfig () {
   const metaEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {}
   const windowEnv = typeof window !== 'undefined' ? window : {}
@@ -79,16 +96,64 @@ function resolveOrgConfig () {
   const metaEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {}
   const windowEnv = typeof window !== 'undefined' ? window : {}
   const env = (windowEnv && windowEnv.__ENV__) ? windowEnv.__ENV__ : {}
-  const orgId = readEnvValue(metaEnv.VITE_AUTH0_ORG_ID || env.VITE_AUTH0_ORG_ID || windowEnv.VITE_AUTH0_ORG_ID)
-  const orgSlug = readEnvValue(metaEnv.VITE_AUTH0_ORG_SLUG || env.VITE_AUTH0_ORG_SLUG || windowEnv.VITE_AUTH0_ORG_SLUG)
-  const organization = orgId || orgSlug
-  const source = orgId ? 'id' : (orgSlug ? 'slug' : '')
+  const orgId = readEnvValue(
+    metaEnv.VITE_AUTH0_ORG_ID
+      || metaEnv.VITE_AUTH0_ORGANIZATION_ID
+      || env.VITE_AUTH0_ORG_ID
+      || env.VITE_AUTH0_ORGANIZATION_ID
+      || windowEnv.VITE_AUTH0_ORG_ID
+      || windowEnv.VITE_AUTH0_ORGANIZATION_ID
+  )
+  const orgSlug = readEnvValue(
+    metaEnv.VITE_AUTH0_ORG_SLUG
+      || metaEnv.VITE_AUTH0_ORGANIZATION_SLUG
+      || env.VITE_AUTH0_ORG_SLUG
+      || env.VITE_AUTH0_ORGANIZATION_SLUG
+      || windowEnv.VITE_AUTH0_ORG_SLUG
+      || windowEnv.VITE_AUTH0_ORGANIZATION_SLUG
+  )
+  const orgIdValid = ORG_ID_PATTERN.test(orgId)
+  const orgSlugValid = ORG_SLUG_PATTERN.test(orgSlug)
+  const organization = orgIdValid ? orgId : (orgSlugValid ? orgSlug : '')
+  const source = orgIdValid ? 'id' : (orgSlugValid ? 'slug' : '')
+  if (orgId && !orgIdValid) {
+    console.warn(`[auth0] VITE_AUTH0_ORG_ID matcher ikke org_ format: "${orgId}".`)
+  }
+  if (orgSlug && !orgSlugValid) {
+    console.warn(`[auth0] VITE_AUTH0_ORG_SLUG matcher ikke forventet slug-format: "${orgSlug}".`)
+  }
   return {
     orgId,
     orgSlug,
     organization,
     source,
     isConfigured: Boolean(organization),
+  }
+}
+
+function normalizeOrganizationParam (value) {
+  const normalized = readEnvValue(value)
+  if (!normalized) return ''
+  if (ORG_ID_PATTERN.test(normalized)) return normalized
+  if (ORG_SLUG_PATTERN.test(normalized)) return normalized
+  console.warn(`[auth0] Ignorerer organization-param "${normalized}" (ugyldigt format).`)
+  return ''
+}
+
+function getInviteAuthorizationParams () {
+  if (typeof window === 'undefined') return {}
+  const params = new URLSearchParams(window.location.search || '')
+  const invitationRaw = readEnvValue(params.get('invitation'))
+  const invitation = INVITATION_PATTERN.test(invitationRaw) ? invitationRaw : ''
+  if (invitationRaw && !invitation) {
+    console.warn(`[auth0] Ignorerer invitation-param "${invitationRaw}" (ugyldigt format).`)
+  }
+  const organization = normalizeOrganizationParam(params.get('organization'))
+  const returnTo = readEnvValue(params.get('returnTo'))
+  return {
+    invitation,
+    organization,
+    returnTo,
   }
 }
 
@@ -151,12 +216,14 @@ async function captureOrgId (client) {
 
 function resolveAuth0Config () {
   const { domain, clientId, audience } = resolveConfig()
+  const normalizedDomain = normalizeAuth0Domain(domain)
+  warnIfUnexpectedDomain(normalizedDomain)
   return {
-    domain,
+    domain: normalizedDomain,
     clientId,
     audience,
     redirectUri: resolveAuthRedirectUri(),
-    isConfigured: Boolean(domain && clientId),
+    isConfigured: Boolean(normalizedDomain && clientId),
   }
 }
 
@@ -173,9 +240,12 @@ function logAuth0ConfigStatus (isConfigured) {
 function resolveAppState (appState) {
   if (appState) return appState
   if (typeof window === 'undefined') return appState
+  const { returnTo } = getInviteAuthorizationParams()
   const path = window.location?.pathname || '/'
-  const returnTo = path === '/callback' ? '/' : path
-  return { returnTo }
+  const returnTarget = returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')
+    ? returnTo
+    : (path === '/callback' ? '/' : path)
+  return { returnTo: returnTarget }
 }
 
 export async function getClient () {
@@ -202,6 +272,7 @@ export async function getClient () {
       logAuth0ConfigStatus(isConfigured)
       if (!isConfigured) {
         if (typeof window !== 'undefined') {
+          console.error('[auth0] Mangler domain eller client id. Tjek VITE_AUTH0_DOMAIN og VITE_AUTH0_CLIENT_ID.')
           throw new Error('Auth0 config mangler. Tjek VITE_AUTH0_DOMAIN og VITE_AUTH0_CLIENT_ID.')
         }
       }
@@ -247,13 +318,15 @@ export async function initAuth0 () {
 async function startLogin ({ appState, authorizationParams = {} } = {}) {
   const client = await getClient()
   const { audience, redirectUri } = resolveAuth0Config()
-  const organization = resolveOrganizationForLogin()
+  const inviteParams = getInviteAuthorizationParams()
+  const organization = inviteParams.organization || resolveOrganizationForLogin()
   await client.loginWithRedirect({
     appState: resolveAppState(appState),
     authorizationParams: {
       ...buildAuthParams({ redirectUri, audience }),
       ...authorizationParams,
       ...(organization ? { organization } : {}),
+      ...(inviteParams.invitation ? { invitation: inviteParams.invitation } : {}),
     },
   })
 }

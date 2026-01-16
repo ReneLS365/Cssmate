@@ -6,6 +6,7 @@ import {
   login,
   logout,
 } from './auth0-client.js'
+import { getAuthCallbackError } from './auth-callback.js'
 import { hideLoginOverlay, showLoginOverlay, startLoginOverlayWatcher } from '../ui/login-overlay.js'
 
 const AUTOLOGIN_GUARD_KEY = 'cssmate_autologin_attempted'
@@ -22,9 +23,24 @@ function shouldSkipAutoLogin () {
   return path.startsWith('/diag') || path.startsWith('/_diag')
 }
 
+function formatAuthCallbackError (errorInfo) {
+  if (!errorInfo) return ''
+  if (errorInfo.description) return `Login fejlede: ${errorInfo.description}`
+  return `Login fejlede: ${errorInfo.error}`
+}
+
 async function forceLoginIfNeeded () {
   if (typeof window === 'undefined') return
   if (shouldSkipAutoLogin()) return
+  const callbackError = getAuthCallbackError()
+  if (callbackError) {
+    showLoginOverlay({
+      message: 'Login fejlede. Prøv igen.',
+      error: formatAuthCallbackError(callbackError),
+      buttonLabel: 'Prøv igen',
+    })
+    return
+  }
   if (isAuthCallbackUrl()) return
 
   try {
@@ -111,6 +127,17 @@ async function updateAuth0Ui (nodes) {
 
 export async function initAuth0Ui () {
   if (typeof document === 'undefined') return
+
+  const callbackError = getAuthCallbackError()
+  if (callbackError) {
+    showLoginOverlay({
+      message: 'Login fejlede. Prøv igen.',
+      error: formatAuthCallbackError(callbackError),
+      buttonLabel: 'Prøv igen',
+    })
+    startLoginOverlayWatcher()
+    return
+  }
 
   const nodes = {
     loginBtn: document.getElementById('loginBtn'),
