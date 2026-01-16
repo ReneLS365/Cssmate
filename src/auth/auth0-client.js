@@ -1,6 +1,6 @@
 import { resolveAuthRedirectUri, resolveBaseUrl } from './resolve-base-url.js'
 import { isAuthCallbackUrl } from './auth-callback.js'
-import { installOrgDebugHooks, saveOrgId } from './org-store.js'
+import { getSavedOrgId, installOrgDebugHooks, saveOrgId } from './org-store.js'
 import { hardClearUiLocks } from './ui-locks.js'
 import { ensureUiInteractive } from '../ui/guards/ui-unlock.js'
 
@@ -92,15 +92,10 @@ function resolveOrgConfig () {
   }
 }
 
-function requireOrganization () {
+function resolveOrganizationForLogin () {
   const orgConfig = resolveOrgConfig()
-  if (!orgConfig.isConfigured) {
-    const error = new Error('Auth0 organisation mangler. Sæt VITE_AUTH0_ORG_ID eller VITE_AUTH0_ORG_SLUG.')
-    error.code = 'auth0/missing-org'
-    console.error(error.message)
-    throw error
-  }
-  return orgConfig.organization
+  if (orgConfig.organization) return orgConfig.organization
+  return getSavedOrgId() || ''
 }
 
 function buildAuthParams ({ redirectUri, audience }) {
@@ -252,7 +247,7 @@ export async function initAuth0 () {
 async function startLogin ({ appState, authorizationParams = {} } = {}) {
   const client = await getClient()
   const { audience, redirectUri } = resolveAuth0Config()
-  const organization = requireOrganization()
+  const organization = resolveOrganizationForLogin()
   await client.loginWithRedirect({
     appState: resolveAppState(appState),
     authorizationParams: {

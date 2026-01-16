@@ -11,7 +11,7 @@ import {
 } from '../../js/shared-ledger.js'
 import { getAuthDiagnostics } from '../../js/shared-auth.js'
 import { assertAdmin } from '../auth/admin.js'
-import { isAdminEmail, normalizeEmail } from '../auth/roles.js'
+import { isAdminUser, normalizeEmail } from '../auth/roles.js'
 import { getState as getSessionState, onChange as onSessionChange, refreshAccess, requestBootstrapAccess } from '../auth/session.js'
 import { getDebugState } from '../state/debug.js'
 import { resetAppState } from '../utils/reset-app.js'
@@ -69,7 +69,7 @@ function isAdminRole (role) {
 function getSessionRole (session) {
   const role = session?.member?.role || session?.role || ''
   if (role === 'owner' || role === 'admin') return role
-  if (isAdminEmail(session?.user?.email)) return 'admin'
+  if (isAdminUser(session?.user)) return 'admin'
   return role
 }
 

@@ -12,6 +12,22 @@ function resolveFirstValue (values) {
     .find(value => value.length > 0)
 }
 
+function appendCallbackIfNeeded (urlValue) {
+  if (!urlValue) return urlValue
+  if (urlValue.endsWith('/callback')) return urlValue
+  let parsed
+  try {
+    parsed = new URL(urlValue)
+  } catch {
+    return urlValue
+  }
+  const isOriginOnly = parsed.origin === urlValue && (parsed.pathname === '/' || parsed.pathname === '')
+  if (isOriginOnly) {
+    return `${urlValue}/callback`
+  }
+  return urlValue
+}
+
 export function resolveBaseUrl () {
   const metaEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {}
   const windowEnv = typeof window !== 'undefined' ? window : {}
@@ -39,7 +55,8 @@ export function resolveAuthRedirectUri () {
   ])
 
   if (resolved) {
-    return normalizeUrl(resolved, 'Invalid Auth0 redirect URI')
+    const normalized = normalizeUrl(resolved, 'Invalid Auth0 redirect URI')
+    return appendCallbackIfNeeded(normalized)
   }
 
   const baseUrl = resolveBaseUrl()

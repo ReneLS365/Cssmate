@@ -305,7 +305,7 @@ test('loginWithRedirect includes configured organization on login', async (t) =>
   assert.equal(options?.authorizationParams?.organization, 'org_123')
 })
 
-test('loginWithRedirect fails when org config is missing', async (t) => {
+test('loginWithRedirect omits organization when org config is missing', async (t) => {
   const originalWindow = globalThis.window
   const loginWithRedirect = mock.fn(async () => {})
 
@@ -319,10 +319,9 @@ test('loginWithRedirect fails when org config is missing', async (t) => {
   })
 
   await withMockWindow({ pathname: '/admin' }, async () => {
-    await assert.rejects(async () => {
-      await login()
-    }, /Auth0 organisation mangler/)
+    await login()
   })
 
-  assert.equal(loginWithRedirect.mock.calls.length, 0)
+  const options = loginWithRedirect.mock.calls[0]?.arguments?.[0]
+  assert.equal(options?.authorizationParams?.organization, undefined)
 })
