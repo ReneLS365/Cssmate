@@ -9,6 +9,23 @@ Formålet med denne fil er at sikre, at alle AI-/Codex-agenter arbejder på samm
 
 ---
 
+## AUTH-ONLY MODE (NYT)
+
+Fra nu af er **kun** Auth0-login/adgangsstyring tilladt. Ingen andre refactors, UX-ændringer eller feature-tilføjelser.
+
+**Allowed files/folders for changes:**
+- `src/auth/**`
+- `js/shared-auth.js`
+- `docs/auth0-setup.md` (optional)
+- `README.md`, `AGENTS.md`
+
+**Auth acceptance criteria checklist:**
+1. Inkognito → `https://sscaff.netlify.app` redirecter til Auth0 Universal Login (eller viser login-overlay hvis redirect fejler).
+2. `/callback` fungerer på mobil (ingen UI lock, tabs klikbare).
+3. Roles/Permissions/Org-claims er læsbare i appen til admin-gates uden email-hardcode.
+
+---
+
 ## Project Guardrails (Frozen areas + Never change)
 
 **Frosne faner (må aldrig ændres direkte eller indirekte):**

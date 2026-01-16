@@ -2,6 +2,7 @@ import { normalizeEmail } from '../src/auth/roles.js'
 import { clearAuthToken } from '../src/api/client.js'
 import {
   getUser,
+  getToken,
   initAuth as initAuth0,
   isAuthenticated,
   login,
@@ -27,6 +28,12 @@ function decodeJwt (token) {
   } catch {
     return null
   }
+}
+
+function normalizeClaimList (value) {
+  if (Array.isArray(value)) return value.filter(Boolean)
+  if (typeof value === 'string' && value.trim()) return [value.trim()]
+  return []
 }
 
 export function buildUserFromToken (token) {
@@ -136,9 +143,23 @@ export async function initSharedAuth () {
           return
         }
         const user = normalizeAuth0User(await getUser())
+        let enrichedUser = user
+        try {
+          const accessToken = await getToken()
+          const payload = decodeJwt(accessToken) || {}
+          const permissions = normalizeClaimList(payload.permissions)
+          const roles = normalizeClaimList(payload['https://sscaff.app/roles'])
+          const orgId = payload['https://sscaff.app/org_id'] || payload.org_id || ''
+          enrichedUser = {
+            ...user,
+            permissions,
+            roles,
+            orgId,
+          }
+        } catch {}
         clearTimeout(timer)
-        setAuthState({ user, error: null })
-        resolve(user)
+        setAuthState({ user: enrichedUser, error: null })
+        resolve(enrichedUser)
       })
       .catch((error) => {
         clearTimeout(timer)

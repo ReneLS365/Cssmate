@@ -35,10 +35,20 @@ function isAdminEmail (email) {
   return getAdminEmails().includes(normalized)
 }
 
+function isAdminUser (user) {
+  if (!user) return false
+  const permissions = Array.isArray(user.permissions) ? user.permissions : []
+  if (permissions.includes('admin:app') || permissions.includes('admin:all')) return true
+  const roles = Array.isArray(user.roles) ? user.roles : []
+  if (roles.includes('sscaff_admin')) return true
+  return isAdminEmail(user.email)
+}
+
 export {
   DEFAULT_ADMIN_EMAILS,
   getAdminEmails,
   isAdminEmail,
+  isAdminUser,
   normalizeEmail,
   parseAdminEmails,
 }

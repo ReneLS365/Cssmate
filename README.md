@@ -2,6 +2,8 @@
 
 Cssmate er en mobil-first, statisk PWA til stilladsmontører. Appen kører i ren HTML/CSS/Vanilla JS og er optimeret til hurtig brug på telefon.
 
+**Scope (AUTH-only):** Fremover er **kun** Auth0-login + adgangsstyring tilladt. Ingen andre ændringer, refactors eller UX-justeringer. Appen skal fungere uændret efter login.
+
 ## Quick start
 
 ```bash
@@ -11,34 +13,51 @@ npm run build
 npm test
 ```
 
-## Required env vars (backend)
+## Auth0 setup checklist (Tenant → Application → API → Organizations → Roles)
 
-Set these environment variables when running the Netlify functions locally or in production.
-**Ingen dummy-fallbacks** som `base` må bruges i DB-konfigurationen.
+1. **Application (SPA)**: Type = SPA. Grant Types: Authorization Code (+ Refresh Token hvis nødvendigt).
+2. **API (Resource Server)**: Stabil Identifier (fx `https://api.sscaff.app`), RBAC = ON, “Add Permissions in the Access Token” = ON.
+3. **Roles/Permissions**:
+   - `sscaff_admin` → `admin:app`, `admin:all`, `read:all`, `write:app`, `read:jobs`, `write:jobs`, `read:profile`
+   - `sscaff_member` → `read:app`, `read:jobs`, `read:profile`
+4. **Organizations**: Opret org (fx `hulmose`), invitér medlemmer, tildel roller (tenant roles).
+5. **Token claims (Action)**: Tilføj namespaced claims i **ID + Access Token**:
+   - `https://sscaff.app/roles`
+   - `https://sscaff.app/org_id`
+   - `https://sscaff.app/org_name`
 
-- `DATABASE_URL` (primær, anbefalet). Til Neon: inkluder `sslmode=require`.
-- Fallback: `NETLIFY_DATABASE_URL` eller `NETLIFY_DATABASE_URL_UNPOOLED`
-- `AUTH0_DOMAIN` (fx `sscaff.eu.auth0.com`)
-- `AUTH0_AUDIENCE` (Auth0 API identifier)
-- `AUTH0_ISSUER` (fx `https://sscaff.eu.auth0.com`)
-- `APP_ORIGIN` (fx `https://sscaff.netlify.app`)
-- `BOOTSTRAP_ADMIN_EMAIL` (optional, default: `mr.lion1995@gmail.com`)
-- `DEFAULT_TEAM_SLUG` (optional, default: `hulmose`)
-- `EMAIL_PROVIDER_API_KEY` (Resend)
-- `EMAIL_FROM` (fx `SSCaff <noreply@sscaff.dk>`)
+### Auth0 application URLs
 
-**Netlify UI:** Site settings → Build & deploy → Environment → Environment variables.
+**Allowed Callback URLs:**
+- `https://sscaff.netlify.app/callback`
+- `http://localhost:5173/callback`
 
-## Auth0 (frontend)
+**Allowed Logout URLs:**
+- `https://sscaff.netlify.app`
+- `http://localhost:5173`
 
-Sæt følgende miljøvariabler til Auth0-login i klienten:
+**Allowed Web Origins:**
+- `https://sscaff.netlify.app`
+- `http://localhost:5173`
 
+## Auth env vars (frontend + backend)
+
+Hold det kort – kun det relevante for login:
+
+**Frontend (Vite):**
 - `VITE_AUTH0_DOMAIN`
 - `VITE_AUTH0_CLIENT_ID`
-- `VITE_AUTH0_AUDIENCE` (valgfri, kun hvis du kalder en API)
-- `VITE_AUTH0_ORG_ID` (foretrukken) **eller** `VITE_AUTH0_ORG_SLUG` (fallback) – bruges til at tvinge korrekt organisation uden prompt
-- `VITE_ADMIN_EMAIL` (legacy – én email der får admin-link)
-- `VITE_ADMIN_EMAILS` (ny – kommasepareret liste til admin-rollen)
+- `VITE_AUTH0_AUDIENCE` (valgfri, anbefales hvis API er oprettet)
+- `VITE_AUTH0_ORG_ID` **eller** `VITE_AUTH0_ORG_SLUG` (valgfri – kun hvis org skal tvinges)
+- `VITE_AUTH0_REDIRECT_URI` (valgfri; hvis den kun er origin, tilføjes `/callback` automatisk)
+- `VITE_APP_BASE_URL` (valgfri; default = `window.location.origin`)
+- `VITE_ADMIN_EMAILS` (legacy fallback; **deprecated** når roles virker)
+
+**Backend (Netlify Functions / API):**
+- `AUTH0_DOMAIN`
+- `AUTH0_AUDIENCE`
+- `AUTH0_ISSUER`
+- `APP_ORIGIN`
 
 ## Auth debug overlay (mobil)
 
@@ -65,21 +84,18 @@ VITE_E2E_BYPASS_AUTH=1 npm run test:e2e -- tests/e2e/admin-tabs-unlocked.spec.ts
 
 Lokalt: opret en `.env` i repo-roden med ovenstående værdier og kør `npm run preview`.
 Universal Login kører via redirect-flow, så **ingen client secret må bruges i frontend**.
-I Auth0-appen skal callback/logout-URLs inkludere:
+I Auth0-appen skal callback/logout-URLs matche checklisten øverst:
 
-- `http://127.0.0.1:4173`
-- `http://127.0.0.1:4173/admin.html`
-- `https://sscaff.netlify.app`
-- `https://sscaff.netlify.app/admin.html`
-
-**Allowed Web Origins** skal også inkludere `https://sscaff.netlify.app` (én s).
+- `http://localhost:5173/callback`
+- `https://sscaff.netlify.app/callback`
+- Logout/Web Origins skal være `http://localhost:5173` og `https://sscaff.netlify.app`.
 
 **Test lokalt:**
 
 1. `npm run preview`
 2. Åbn appen → klik **Log ind** → log ind via Auth0.
 3. Bekræft at email vises og **Log ud** er synlig.
-4. Hvis email matcher `VITE_ADMIN_EMAIL`, vises admin-linket.
+4. Hvis brugeren har admin-permission/rolle, vises admin-linket.
 5. Åbn `/admin.html` for at verificere admin-guard.
 
 ### Skip auth gate (CI/Lighthouse)
@@ -88,26 +104,21 @@ Til CI/Lighthouse kan login-gate springes over ved at tilføje query-parametret
 `?skipAuthGate=1` (eller `?skipAuthGate=true`) til app-URL’en. Brug denne
 parameter i testmiljøer fremfor miljøflags.
 
-## Netlify production env vars
+## Netlify production env vars (auth only)
 
-Følgende keys skal være sat i Netlify (production) for at auth, invites og DB virker korrekt:
+Sæt minimum disse auth-keys i Netlify (production):
 
 - `VITE_AUTH0_DOMAIN`
 - `VITE_AUTH0_CLIENT_ID`
 - `VITE_AUTH0_AUDIENCE` (optional)
-- `VITE_AUTH0_ORG_ID` eller `VITE_AUTH0_ORG_SLUG`
-- `VITE_ADMIN_EMAIL`
-- `VITE_ADMIN_EMAILS`
+- `VITE_AUTH0_ORG_ID` eller `VITE_AUTH0_ORG_SLUG` (optional)
+- `VITE_AUTH0_REDIRECT_URI` (optional)
+- `VITE_APP_BASE_URL` (optional)
+- `VITE_ADMIN_EMAILS` (legacy fallback)
 - `AUTH0_DOMAIN`
 - `AUTH0_AUDIENCE`
 - `AUTH0_ISSUER`
-- `NETLIFY_DATABASE_URL`
-- `NETLIFY_DATABASE_URL_UNPOOLED`
-- `BOOTSTRAP_ADMIN_EMAIL`
-- `DEFAULT_TEAM_SLUG` (optional)
 - `APP_ORIGIN`
-- `EMAIL_PROVIDER_API_KEY`
-- `EMAIL_FROM`
 
 Bemærk: Ændringer til disse værdier kræver et fresh deploy, så `auth0-config.js` bliver regenereret via `npm run build:auth0-config`.
 
@@ -148,13 +159,13 @@ psql "$DATABASE_URL" -f migrations/003_auth0_invites.sql
 
 ## Contribution flow + verification
 
-1. Hold ændringer isoleret til Historik/Team/Hjælp eller dokumenterede, sikre forbedringer.
+1. **Auth-only**: Hold ændringer strengt til Auth0-login/adgangsstyring og dokumentation.
 2. Kør minimum:
    - `npm run build`
    - `npm test`
 3. Manuel mobil-smoke (dokumenteres):
    - Sagsinfo, Optælling, Løn, Delt sager: uændret og fejlfrie.
-   - Historik/Team/Hjælp: ændringer fungerer.
+   - Auth0 login, redirect og admin-roller/permissions fungerer.
 4. Bekræft “freeze compliance” i PR.
 
 ## Repo scan (lokal)

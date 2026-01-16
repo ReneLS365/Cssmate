@@ -1,5 +1,5 @@
 import { onChange as onSessionChange, refreshAccess, requestBootstrapAccess, getState as getSessionState, setPreferredTeamId, SESSION_STATUS } from '../auth/session.js'
-import { isAdminEmail } from '../auth/roles.js'
+import { isAdminUser } from '../auth/roles.js'
 import { APP_VERSION, GIT_SHA } from '../version.js'
 import { DEFAULT_TEAM_SLUG, formatTeamId, getDisplayTeamId } from '../services/team-ids.js'
 import { migrateMemberDocIfNeeded } from '../services/teams.js'
@@ -143,7 +143,7 @@ async function triggerBootstrap () {
 }
 
 async function maybeMigrateMemberDoc (state) {
-  if (!state?.user?.uid || !isAdminEmail(state.user.email)) return
+  if (!state?.user?.uid || !isAdminUser(state.user)) return
   if (state.membershipStatus !== 'not_member') return
   const fallbackTeamId = formatTeamId(state?.membershipCheckTeamId || state?.teamId || DEFAULT_TEAM_SLUG)
   const key = `${state.user.uid}:${fallbackTeamId}`
