@@ -304,6 +304,10 @@ export async function getClient () {
       return client
     } catch (error) {
       clientPromise = null
+      hardClearUiLocks()
+      if (typeof document !== 'undefined') {
+        ensureUiInteractive('auth0-init-error')
+      }
       throw error
     }
   })()
@@ -349,7 +353,14 @@ export async function logout () {
 
 export async function isAuthenticated () {
   const client = await getClient()
-  return client.isAuthenticated()
+  const authed = await client.isAuthenticated()
+  if (authed) {
+    hardClearUiLocks()
+    if (typeof document !== 'undefined') {
+      ensureUiInteractive('auth0-is-authenticated')
+    }
+  }
+  return authed
 }
 
 export async function getUser () {

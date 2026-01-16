@@ -8,6 +8,7 @@ import {
 } from './auth0-client.js'
 import { getAuthCallbackError } from './auth-callback.js'
 import { hideLoginOverlay, showLoginOverlay, startLoginOverlayWatcher } from '../ui/login-overlay.js'
+import { hardClearUiLocks } from './ui-locks.js'
 
 const AUTOLOGIN_GUARD_KEY = 'cssmate_autologin_attempted'
 
@@ -114,6 +115,7 @@ async function updateAuth0Ui (nodes) {
     setHidden(adminLink, !isAdmin(user?.email))
     setText(statusMessage, '')
     hideLoginOverlay()
+    hardClearUiLocks()
   } catch (error) {
     setHidden(loginBtn, false)
     setHidden(logoutBtn, true)
@@ -122,6 +124,7 @@ async function updateAuth0Ui (nodes) {
     setText(statusMessage, error?.message || 'Auth0 kunne ikke initialiseres.')
     showLoginOverlay({ error: error?.message || 'Auth0 kunne ikke initialiseres.' })
     startLoginOverlayWatcher()
+    hardClearUiLocks()
   }
 }
 
