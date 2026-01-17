@@ -27,7 +27,7 @@ function tryRebindTabs () {
 export function ensureUiInteractive (reason = 'ui-unlock') {
   if (typeof document === 'undefined' || typeof window === 'undefined') return
 
-  hardClearUiLocks()
+  hardClearUiLocks(reason)
 
   try {
     document.documentElement?.classList?.remove('auth-locked')

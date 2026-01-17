@@ -63,6 +63,8 @@ let handleImportAkkordImpl = handleImportAkkord;
 let buildJobSnapshotImpl = buildJobSnapshot;
 let publishSharedCaseFn = publishSharedCase;
 
+const sagsinfoFieldIds = ['sagsnummer', 'sagsnavn', 'sagsadresse', 'sagskunde', 'sagsdato', 'sagsmontoer'];
+
 export function initExportPanel() {
   bind('#btn-print-akkord', handlePrintAkkord);
     bind('#btn-export-akkord-pdf', handleExportAkkordPDF);
@@ -136,7 +138,43 @@ function saveExportHistory(context) {
   }
 }
 
+function computeSagsinfoValidity() {
+  let ok = true;
+  const missing = [];
+  sagsinfoFieldIds.forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const rawValue = (el.value || '').trim();
+    let fieldValid = rawValue.length > 0;
+    if (id === 'sagsdato') {
+      const parsed = Date.parse(rawValue);
+      fieldValid = rawValue.length > 0 && !Number.isNaN(parsed);
+    }
+    if (!fieldValid) {
+      ok = false;
+      missing.push(id);
+    }
+  });
+  return { ok, missing };
+}
+
+function requireSagsinfoForSharing() {
+  if (typeof document === 'undefined') return true;
+  const validity = computeSagsinfoValidity();
+  if (validity.ok) return true;
+  if (typeof window !== 'undefined') {
+    window.__cssmateSetActiveTab?.('sagsinfo');
+    window.cssmateUpdateActionHint?.('Udfyld Sagsinfo før du kan oprette en delt sag.', 'error');
+  }
+  const firstMissing = validity.missing?.[0];
+  if (firstMissing) {
+    document.getElementById(firstMissing)?.focus?.();
+  }
+  return false;
+}
+
 export async function exportAkkordJsonAndPdf(options = {}) {
+  if (!requireSagsinfoForSharing()) return null;
   const button = options?.button || options?.currentTarget;
   const done = setBusy(button, true, { busyText: 'Publicerer…', doneText: 'Publiceret' });
   const exportErrors = [];

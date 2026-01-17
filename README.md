@@ -167,19 +167,19 @@ psql "$DATABASE_URL" -f migrations/003_auth0_invites.sql
 
 ## Guardrails (kort)
 
-**Frosne faner:** Sagsinfo, Optælling, Løn, Delt sager.  
-**Never change:** priser/datasæt, beregningslogik, materialeliste-logik/layout, eksport/offline-semantik og global/shared CSS der kan påvirke de frosne faner.
+**Tilladt UI/navigation/gating:** `src/auth/**`, `src/ui/**`, `src/app/**`, `src/pages/**`, `src/state/**`, `js/shared-auth.js`.  
+**Never change:** priser/datasæt, beregningslogik, materialeliste-logik/layout, eksport/offline-semantik og global/shared CSS der kan påvirke beregnings- og dataflow.
 
 ## Contribution flow + verification
 
-1. **Auth-only**: Hold ændringer strengt til Auth0-login/adgangsstyring og dokumentation.
+1. Hold ændringer til UI/navigation/gating og dokumentation.
 2. Kør minimum:
    - `npm run build`
    - `npm test`
 3. Manuel mobil-smoke (dokumenteres):
-   - Sagsinfo, Optælling, Løn, Delt sager: uændret og fejlfrie.
+   - Sagsinfo, Optælling, Løn, Delt sager: fejlfrie og beregninger uændrede.
    - Auth0 login, redirect og admin-roller/permissions fungerer.
-4. Bekræft “freeze compliance” i PR.
+4. Bekræft “business-logic compliance” i PR.
 
 ## Repo scan (lokal)
 

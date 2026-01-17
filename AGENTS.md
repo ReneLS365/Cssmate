@@ -9,37 +9,28 @@ Formålet med denne fil er at sikre, at alle AI-/Codex-agenter arbejder på samm
 
 ---
 
-## AUTH-ONLY MODE (NYT)
+## NY POLICY (UI navigation + auth gating)
 
-Fra nu af er **kun** Auth0-login/adgangsstyring tilladt. Ingen andre refactors, UX-ændringer eller feature-tilføjelser.
-
-**Allowed files/folders for changes:**
+**Tilladt at ændre UI/navigation/gating i:**
 - `src/auth/**`
+- `src/ui/**`
+- `src/app/**`
+- `src/pages/**`
+- `src/state/**`
 - `js/shared-auth.js`
-- `docs/auth0-setup.md` (optional)
-- `README.md`, `AGENTS.md`
 
-**Auth acceptance criteria checklist:**
-1. Inkognito → `https://sscaff.netlify.app` redirecter til Auth0 Universal Login (eller viser login-overlay hvis redirect fejler).
-2. `/callback` fungerer på mobil (ingen UI lock, tabs klikbare).
-3. Roles/Permissions/Org-claims er læsbare i appen til admin-gates uden email-hardcode.
+**Forbudt at ændre forretningslogik i:**
+- `src/prices/**`
+- `src/calc/**`
+- `src/export/**`
+- `src/import/**`
+- `src/counting/**`
+- `src/scaffold/**`
+- alt der ændrer output af beregninger/priser
 
----
-
-## Project Guardrails (Frozen areas + Never change)
-
-**Frosne faner (må aldrig ændres direkte eller indirekte):**
-- Sagsinfo
-- Optælling
-- Løn
-- Delt sager
-
-**NEVER change:**
-- Priser, prislister, datasæt eller prisformatering.
-- Løn/akkord-beregninger, afrundinger, totaler, parsing eller nummerformattering.
-- Materialeliste-logik, ordering, row-layout, input-adfærd, eksport-mapping eller beregningslogik.
-- Offline/eksport-semantik der bruges af de frosne faner.
-- Global CSS eller shared komponent-CSS, hvis der er risiko for layout-ændringer i frosne faner.
+**Policy:**
+- Frozen tabs må fjernes, men beregnings- og dataflow må ikke ændres.
+- Ingen ændringer i bundle-filer i `dist/` eller genererede assets.
 
 ---
 
@@ -54,7 +45,7 @@ Fra nu af er **kun** Auth0-login/adgangsstyring tilladt. Ingen andre refactors, 
 **Ikke tilladt:**
 - Store refactors.
 - Nye dependencies uden eksplicit godkendelse.
-- Ændringer i delte utilities/komponenter, hvis der er risiko for regression i frosne faner.
+- Ændringer i delte utilities/komponenter, hvis der er risiko for regression i beregnings- og dataflow.
 
 ---
 
@@ -70,39 +61,37 @@ Denne undtagelse er aktiv for opgaven: “Invite-flow uden email (copy link) + f
 - Ændringer i Team-fanen er tilladt (UI + flows).
 
 ### Stadig IKKE tilladt
-- Direkte eller indirekte ændringer i frosne faner:
-  - Sagsinfo, Optælling, Løn, Delt sager
 - Ændringer i priser, datasæt, løn-/akkord-beregninger, materialeliste-logik, eksport-mapping eller import/eksport-kontrakter.
-- Global CSS eller shared komponent-CSS der kan påvirke frosne faner.
+- Global CSS eller shared komponent-CSS der kan påvirke beregnings- og dataflow.
 
 ### Isolation-krav
-- Nye auth/invite ændringer må ikke ændre adfærd i frosne faner.
+- Nye auth/invite ændringer må ikke ændre adfærd i beregnings- og dataflow.
 - Routing må udvides (fx /accept-invite, /login) men må ikke ændre eksisterende faners URL/filnavne.
 - Hvis der findes shared auth-state, skal den ændres på en måde der er bagudkompatibel for eksisterende faner.
 
 ### Dokumentation (krævet i PR)
 - Liste over alle fjernede Firebase-filer/afhængigheder.
 - Liste over nye endpoints og DB-tabeller.
-- Manuel mobil smoke-test af alle frosne faner (samme checklist som før).
+- Manuel mobil smoke-test af core flows (samme checklist som før).
 
 ---
 
-## Verification checklist (build/tests + manual mobile smoke for frozen tabs)
+## Verification checklist (build/tests + manual mobile smoke)
 
 **Automatiserede checks:**
 - `npm run build`
 - `npm test` (og øvrige relevante scripts, hvis de findes)
 
 **Manuel mobil-smoke (skal dokumenteres):**
-- Sagsinfo: uændret, ingen errors.
-- Optælling: uændret, totals/inputs uændrede.
-- Løn: uændret, beregninger uændrede.
-- Delt sager: uændret, ingen errors.
+- Sagsinfo: ingen errors.
+- Optælling: totals/inputs uændrede.
+- Løn: beregninger uændrede.
+- Delt sager: ingen errors.
 - Historik/Team/Hjælp: forbedringer fungerer og er fejlfrie.
 
 **Compliance:**
 - Ingen ændringer i pris-/calc-/data-filer.
-- Ingen layout-ændringer i frosne faner.
+- Ingen ændringer i beregnings- og dataflow.
 
 ---
 
@@ -115,13 +104,13 @@ Denne undtagelse er aktiv for opgaven: “Invite-flow uden email (copy link) + f
 
 ---
 
-## PR checklist (freeze compliance statement required)
+## PR checklist (business-logic compliance statement required)
 
 - [ ] Beskriv **hvad** der ændrede sig og **hvorfor**.
 - [ ] List alle berørte filer.
 - [ ] List kommandoer der er kørt (build/tests).
 - [ ] Notér manuelle smoke-tests.
-- [ ] **Freeze compliance:** eksplicit erklæring om at frosne faner ikke er ændret.
+- [ ] **Business-logic compliance:** eksplicit erklæring om at beregnings-/dataflow ikke er ændret.
 
 ---
 
