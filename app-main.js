@@ -3617,7 +3617,7 @@ function validateSagsinfo() {
 
   if (validity.isValid) {
     updateActionHint('');
-  } else {
+  } else if (currentTabId === 'sagsinfo') {
     updateActionHint(DEFAULT_ACTION_HINT, 'error');
   }
 
@@ -5784,6 +5784,8 @@ async function ensureAuthGateAccess () {
   if (shouldSkipAuthGate()) {
     hideLoginOverlay(elements)
     ensureTabsBound()
+    try { hardClearUiLocks('auth-skip') } catch {}
+    try { ensureUiInteractive('auth-skip') } catch {}
     return { allowed: true, user: null, skipped: true }
   }
 
@@ -5808,7 +5810,8 @@ async function ensureAuthGateAccess () {
     const user = await getUser()
     hideLoginOverlay(elements)
     ensureTabsBound()
-    hardClearUiLocks()
+    hardClearUiLocks('post-auth-success')
+    ensureUiInteractive('post-auth-success')
     return { allowed: true, user }
   } catch (error) {
     const message = error?.message || 'Auth0 kunne ikke initialiseres.'
@@ -5820,6 +5823,9 @@ async function ensureAuthGateAccess () {
     if (elements.signupButton) {
       elements.signupButton.onclick = () => signup().catch(() => {})
     }
+    try { hideLoginOverlay(elements) } catch {}
+    try { hardClearUiLocks('auth-error') } catch {}
+    try { ensureUiInteractive('auth-error') } catch {}
     return { allowed: false, user: null, error }
   }
 }
@@ -6032,6 +6038,8 @@ export async function bootstrapApp () {
   forceLoginOnce().catch(() => {})
   const authGateState = await ensureAuthGateAccess()
   if (!authGateState.allowed) {
+    try { hardClearUiLocks('auth-not-allowed') } catch {}
+    try { ensureUiInteractive('auth-not-allowed') } catch {}
     markAppReady()
     return
   }

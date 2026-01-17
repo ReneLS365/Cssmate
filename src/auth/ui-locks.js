@@ -1,5 +1,6 @@
-export function hardClearUiLocks () {
+export function hardClearUiLocks (reason = '') {
   try { document.documentElement?.classList?.remove('auth-locked') } catch {}
+  try { document.documentElement?.classList?.remove('tabs-frozen', 'ui-frozen', 'no-click') } catch {}
   try { document.body?.classList?.remove('auth-overlay-open') } catch {}
   try {
     const app = document.querySelector('#app')
@@ -14,10 +15,12 @@ export function hardClearUiLocks () {
     }
   } catch {}
   try {
-    const overlay = document.querySelector('[data-auth-overlay], #auth-overlay, .auth-overlay')
+    const overlay = document.querySelector('[data-auth-overlay], #auth-overlay, .auth-overlay, #cssmate-login-overlay')
     if (overlay) {
       overlay.style.pointerEvents = 'none'
       overlay.style.display = 'none'
+      overlay.setAttribute('aria-hidden', 'true')
     }
   } catch {}
+  void reason
 }
