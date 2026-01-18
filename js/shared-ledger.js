@@ -35,15 +35,6 @@ class MembershipMissingError extends PermissionDeniedError {
   }
 }
 
-class InviteMissingError extends PermissionDeniedError {
-  constructor(teamId, email, message) {
-    super(message || 'Ingen aktiv invitation fundet.')
-    this.code = 'invite-missing'
-    this.teamId = teamId
-    this.email = email
-  }
-}
-
 class InactiveMemberError extends PermissionDeniedError {
   constructor(teamId, uid, message) {
     super(message || 'Medlemmet er deaktiveret.')
@@ -105,7 +96,7 @@ export function resolveTeamId(rawTeamId) {
   return resolvePreferredTeamId(provided)
 }
 
-async function guardTeamAccess(teamIdInput, user, { allowBootstrap = false } = {}) {
+async function guardTeamAccess(teamIdInput, user) {
   if (!user?.uid) throw new PermissionDeniedError('Log ind for at fortsætte.')
   const preferredTeam = normalizeTeamId(teamIdInput || getStoredTeamId() || DEFAULT_TEAM_SLUG)
   const resolvedTeamId = formatTeamId(preferredTeam)
@@ -152,10 +143,7 @@ async function guardTeamAccess(teamIdInput, user, { allowBootstrap = false } = {
     return { teamId: normalizedMembership.teamId, membership: normalizedMembership, invite: null, role: accessRole }
   }
   if (access.status === TEAM_ACCESS_STATUS.NO_TEAM || access.status === TEAM_ACCESS_STATUS.NEED_CREATE) {
-    const message = allowBootstrap
-      ? `Team ${getDisplayTeamId(resolvedTeamId)} findes ikke. Opret det via bootstrap-knappen.`
-      : `Team ${getDisplayTeamId(resolvedTeamId)} findes ikke.`
-    throw new MembershipMissingError(resolvedTeamId, user.uid, message)
+    throw new MembershipMissingError(resolvedTeamId, user.uid, `Team ${getDisplayTeamId(resolvedTeamId)} findes ikke.`)
   }
   if (access.status === TEAM_ACCESS_STATUS.NO_ACCESS) {
     const reason = access?.reason || access?.error?.code || ''
@@ -167,10 +155,10 @@ async function guardTeamAccess(teamIdInput, user, { allowBootstrap = false } = {
   throw new PermissionDeniedError(access?.error?.message || 'Kunne ikke kontrollere team-adgang.')
 }
 
-export async function getTeamMembership(teamId, { allowBootstrap = false } = {}) {
+export async function getTeamMembership(teamId) {
   const user = await ensureAuthUser()
   const resolvedTeamId = formatTeamId(teamId || resolveTeamId(teamId))
-  const access = await guardTeamAccess(resolvedTeamId, user, { allowBootstrap })
+  const access = await guardTeamAccess(resolvedTeamId, user)
   if (access?.membership) {
     cacheTeamResolution(user.uid, resolvedTeamId, access.membership)
     return { ...access.membership, teamId: resolvedTeamId, role: access.role, invite: access.invite || null }
@@ -178,10 +166,10 @@ export async function getTeamMembership(teamId, { allowBootstrap = false } = {})
   throw new MembershipMissingError(resolvedTeamId, user.uid, 'Medlem ikke fundet for valgt team.')
 }
 
-async function getTeamContext(teamId, { allowBootstrap = false, requireAdmin = false } = {}) {
+async function getTeamContext(teamId, { requireAdmin = false } = {}) {
   const user = await ensureAuthUser()
   const resolvedTeamId = formatTeamId(teamId || resolveTeamId(teamId))
-  const access = await guardTeamAccess(resolvedTeamId, user, { allowBootstrap })
+  const access = await guardTeamAccess(resolvedTeamId, user)
   if (!access?.membership) throw new PermissionDeniedError('Du er ikke medlem af dette team.')
   if (requireAdmin && access.role !== 'admin' && access.role !== 'owner') {
     throw new PermissionDeniedError('Kun admin kan udføre denne handling.')
@@ -208,7 +196,7 @@ export async function getTeamDocument(teamId) {
 }
 
 export async function publishSharedCase({ teamId, jobNumber, caseKind, system, totals, status = 'kladde', jsonContent }) {
-  const { teamId: resolvedTeamId, membership, actor } = await getTeamContext(teamId, { allowBootstrap: true })
+  const { teamId: resolvedTeamId, membership, actor } = await getTeamContext(teamId)
   const payload = await apiJson(`/api/teams/${resolvedTeamId}/cases`, {
     method: 'POST',
     body: JSON.stringify({
@@ -312,77 +300,14 @@ export async function importSharedBackup(teamId, payload) {
   return true
 }
 
-export async function listTeamInvites(teamId) {
-  const { teamId: resolvedTeamId } = await getTeamContext(teamId, { requireAdmin: true })
-  return await apiJson(`/api/teams/${resolvedTeamId}/invites`)
-}
-
-export async function saveTeamInvite(teamId, invite) {
-  const { teamId: resolvedTeamId } = await getTeamContext(teamId, { requireAdmin: true })
-  const payload = await apiJson(`/api/teams/${resolvedTeamId}/invites`, {
-    method: 'POST',
-    body: JSON.stringify({ email: invite.email || '', role: invite.role || 'member' }),
-  })
-  return payload
-}
-
-export async function revokeTeamInvite(inviteId) {
-  if (!inviteId) throw new PermissionDeniedError('Invite-id mangler')
-  await apiJson(`/api/invites/${inviteId}/revoke`, { method: 'POST' })
-  return true
-}
-
-export async function resendTeamInvite(inviteId) {
-  if (!inviteId) throw new PermissionDeniedError('Invite-id mangler')
-  return await apiJson(`/api/invites/${inviteId}/resend`, { method: 'POST' })
-}
-
 export async function listTeamMembers(teamId) {
   const { teamId: resolvedTeamId } = await getTeamContext(teamId)
   return await apiJson(`/api/teams/${resolvedTeamId}/members`)
 }
 
-export async function saveTeamMember(teamId, member) {
-  const { teamId: resolvedTeamId } = await getTeamContext(teamId, { requireAdmin: true })
-  const memberId = encodeURIComponent(member.uid || member.id || '')
-  await apiJson(`/api/teams/${resolvedTeamId}/members/${memberId}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ role: member.role, status: member.active === false ? 'removed' : 'active' }),
-  })
-  return true
-}
-
-export async function removeTeamMember(teamId, memberId) {
-  const { teamId: resolvedTeamId } = await getTeamContext(teamId, { requireAdmin: true })
-  const encodedId = encodeURIComponent(memberId || '')
-  await apiJson(`/api/teams/${resolvedTeamId}/members/${encodedId}`, { method: 'DELETE' })
-  return true
-}
-
-export async function setMemberActive(teamId, memberId, active) {
-  const { teamId: resolvedTeamId } = await getTeamContext(teamId, { requireAdmin: true })
-  const encodedId = encodeURIComponent(memberId || '')
-  await apiJson(`/api/teams/${resolvedTeamId}/members/${encodedId}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ status: active ? 'active' : 'removed' }),
-  })
-  return true
-}
-
-export async function addTeamMemberByUid(teamId, uid, role = 'member') {
-  const { teamId: resolvedTeamId } = await getTeamContext(teamId, { requireAdmin: true })
-  const encodedId = encodeURIComponent(uid || '')
-  await apiJson(`/api/team/members/${encodedId}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ teamId: resolvedTeamId, role, status: 'active' }),
-  })
-  return true
-}
-
 export {
   PermissionDeniedError,
   MembershipMissingError,
-  InviteMissingError,
   InactiveMemberError,
   DEFAULT_TEAM_ID,
   DEFAULT_TEAM_SLUG,

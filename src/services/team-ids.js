@@ -1,10 +1,9 @@
-import { normalizeEmail } from '../auth/roles.js'
+import { isTeamDebugEnabled } from '../utils/team-debug.js'
 
 const LEDGER_TEAM_PREFIX = 'sscaff-team-'
 const DEFAULT_TEAM_SLUG = 'hulmose'
 const DEFAULT_TEAM_ID = DEFAULT_TEAM_SLUG
 const TEAM_STORAGE_KEY = 'sscaff.teamId'
-const BOOTSTRAP_ADMIN_EMAIL = 'mr.lion1995@gmail.com'
 
 function normalizeTeamId (rawTeamId) {
   const cleaned = (rawTeamId || '').toString().trim().toLowerCase()
@@ -25,6 +24,7 @@ function getDisplayTeamId (rawTeamId) {
 }
 
 function getStoredTeamId () {
+  if (!isTeamDebugEnabled()) return ''
   if (typeof window === 'undefined') return ''
   try {
     return window.localStorage?.getItem(TEAM_STORAGE_KEY) || ''
@@ -35,6 +35,7 @@ function getStoredTeamId () {
 }
 
 function persistTeamId (value) {
+  if (!isTeamDebugEnabled()) return
   if (typeof window === 'undefined') return
   try {
     window.localStorage?.setItem(TEAM_STORAGE_KEY, normalizeTeamId(value))
@@ -44,12 +45,9 @@ function persistTeamId (value) {
 }
 
 function resolvePreferredTeamId (rawTeamId) {
+  if (!isTeamDebugEnabled()) return DEFAULT_TEAM_SLUG
   const stored = normalizeTeamId(rawTeamId || getStoredTeamId() || DEFAULT_TEAM_SLUG)
   return formatTeamId(stored)
-}
-
-function isBootstrapAdminEmail (emailLower) {
-  return normalizeEmail(emailLower) === normalizeEmail(BOOTSTRAP_ADMIN_EMAIL)
 }
 
 export {
@@ -57,11 +55,9 @@ export {
   DEFAULT_TEAM_SLUG,
   LEDGER_TEAM_PREFIX,
   TEAM_STORAGE_KEY,
-  BOOTSTRAP_ADMIN_EMAIL,
   formatTeamId,
   getDisplayTeamId,
   getStoredTeamId,
-  isBootstrapAdminEmail,
   normalizeTeamId,
   persistTeamId,
   resolvePreferredTeamId,

@@ -1,20 +1,14 @@
 import { onChange as onSessionChange, refreshAccess, getState as getSessionState, SESSION_STATUS } from '../auth/session.js'
-import { isAdminUser } from '../auth/roles.js'
 import { APP_VERSION, GIT_SHA } from '../version.js'
 import { DEFAULT_TEAM_SLUG, formatTeamId, getDisplayTeamId } from '../services/team-ids.js'
-import { migrateMemberDocIfNeeded } from '../services/teams.js'
 import { resetAppState } from '../utils/reset-app.js'
 import { logoutUser } from '../../js/shared-auth.js'
 import { TEAM_ACCESS_STATUS } from '../services/team-access.js'
 
 const RETRY_DEBOUNCE_MS = 350
-const migrationAttempts = new Set()
-
 let guardEl
 let statusEl
 let messageEl
-let teamEl
-let uidEl
 let emailEl
 let retryButton
 let logoutButton
@@ -38,8 +32,6 @@ function ensureElements () {
     <div class="app-guard__status" id="appGuardStatus" aria-live="polite"></div>
     <p class="app-guard__message" id="appGuardMessage"></p>
     <dl class="app-guard__details">
-      <div><dt>Team</dt><dd id="appGuardTeam"></dd></div>
-      <div><dt>UID</dt><dd id="appGuardUid"></dd></div>
       <div><dt>Email</dt><dd id="appGuardEmail"></dd></div>
     </dl>
     <div class="app-guard__actions">
@@ -54,8 +46,6 @@ function ensureElements () {
   mountEl.appendChild(guardEl)
   statusEl = guardEl.querySelector('#appGuardStatus')
   messageEl = guardEl.querySelector('#appGuardMessage')
-  teamEl = guardEl.querySelector('#appGuardTeam')
-  uidEl = guardEl.querySelector('#appGuardUid')
   emailEl = guardEl.querySelector('#appGuardEmail')
   retryButton = guardEl.querySelector('#appGuardRetry')
   logoutButton = guardEl.querySelector('#appGuardLogout')
@@ -88,23 +78,6 @@ function scheduleRetry () {
       console.warn('Membership refresh fejlede', error)
     })
   }, RETRY_DEBOUNCE_MS)
-}
-
-async function maybeMigrateMemberDoc (state) {
-  if (!state?.user?.uid || !isAdminUser(state.user)) return
-  if (state.membershipStatus !== 'not_member') return
-  const fallbackTeamId = formatTeamId(state?.membershipCheckTeamId || state?.teamId || DEFAULT_TEAM_SLUG)
-  const key = `${state.user.uid}:${fallbackTeamId}`
-  if (migrationAttempts.has(key)) return
-  migrationAttempts.add(key)
-  try {
-    const result = await migrateMemberDocIfNeeded(fallbackTeamId, state.user)
-    if (result?.created) {
-      scheduleRetry()
-    }
-  } catch (error) {
-    console.warn('Kunne ikke migrere medlemsdoc', error)
-  }
 }
 
 function updateGuardContent (state) {
@@ -141,8 +114,6 @@ function updateGuardContent (state) {
     messageEl.textContent = combined
   }
 
-  teamEl.textContent = displayTeam
-  uidEl.textContent = state?.user?.uid || '–'
   emailEl.textContent = userEmail || '–'
   if (retryButton) retryButton.disabled = isLoading
   if (debugEl) {
@@ -175,7 +146,6 @@ function updateView (state) {
   // Show guard in Team tab only, but don't block other tabs
   setVisible(true)
   updateGuardContent(state)
-  maybeMigrateMemberDoc(state)
 }
 
 export function initAppGuard () {

@@ -1,6 +1,7 @@
-import { getAuthContext, getAuthDiagnostics } from '../../js/shared-auth.js'
+import { getAuthContext } from '../../js/shared-auth.js'
 import { getToken } from '../auth/auth0-client.js'
 import { getState as getSessionState, onChange as onSessionChange, refreshAccess } from '../auth/session.js'
+import { DEFAULT_TEAM_SLUG, formatTeamId } from '../services/team-ids.js'
 import { resetAppState } from '../utils/reset-app.js'
 
 // Auth0-first:
@@ -19,13 +20,6 @@ function setHidden (el, hidden = true) {
   el.setAttribute('aria-hidden', hidden ? 'true' : 'false')
 }
 
-function roleLabel (role) {
-  if (role === 'sscaff_owner') return 'Owner'
-  if (role === 'sscaff_admin') return 'Admin'
-  if (role === 'sscaff_user') return 'Bruger'
-  return 'Ukendt'
-}
-
 function resolveAuthRole (user) {
   const roles = Array.isArray(user?.roles) ? user.roles : []
   if (roles.includes('sscaff_owner')) return 'sscaff_owner'
@@ -36,41 +30,6 @@ function resolveAuthRole (user) {
 
 function isPrivilegedRole (role) {
   return role === 'sscaff_owner' || role === 'sscaff_admin'
-}
-
-function renderDiagnostics (isAdmin) {
-  const diagnosticsCard = document.getElementById('teamDiagnostics')
-  const diagnosticsList = document.getElementById('teamDiagnosticsList')
-  const diagnosticsWarning = document.getElementById('teamDiagnosticsWarning')
-  if (!diagnosticsCard || !diagnosticsList) return
-
-  setHidden(diagnosticsCard, !isAdmin)
-  if (!isAdmin) return
-
-  const authContext = getAuthContext()
-  const authDiagnostics = getAuthDiagnostics()
-  const user = authContext?.user || {}
-  const roles = Array.isArray(user.roles) ? user.roles : []
-  const permissions = Array.isArray(user.permissions) ? user.permissions : []
-
-  diagnosticsList.textContent = ''
-  if (diagnosticsWarning) diagnosticsWarning.textContent = ''
-
-  const lines = [
-    ['authReady', authDiagnostics?.authReady ? 'yes' : 'no'],
-    ['isAuthenticated', authDiagnostics?.isAuthenticated ? 'yes' : 'no'],
-    ['userEmail', authDiagnostics?.userEmail || user.email || '—'],
-    ['uid', user.uid || '—'],
-    ['orgId', user.orgId || user.org_id || '—'],
-    ['roles', roles.join(', ') || '—'],
-    ['permissions', permissions.join(', ') || '—'],
-  ]
-
-  lines.forEach(([label, value]) => {
-    const item = document.createElement('li')
-    item.textContent = `${label}: ${value ?? '—'}`
-    diagnosticsList.appendChild(item)
-  })
 }
 
 function buildMemberRow (member) {
@@ -93,9 +52,9 @@ function normalizeMembersPayload (payload) {
   return []
 }
 
-async function fetchOrgMembers () {
+async function fetchTeamMembers (teamId) {
   const token = await getToken()
-  const response = await fetch('/api/org-members', {
+  const response = await fetch(`/api/teams/${encodeURIComponent(teamId)}/members`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   const payload = await response.json().catch(() => ({}))
@@ -112,7 +71,9 @@ async function renderMembers (membersListEl, statusEl, baseStatus = '') {
   if (!membersListEl) return
   membersListEl.textContent = ''
   if (!membersPromise) {
-    membersPromise = fetchOrgMembers().finally(() => {
+    const state = getSessionState()
+    const resolvedTeamId = formatTeamId(state?.teamId || DEFAULT_TEAM_SLUG)
+    membersPromise = fetchTeamMembers(resolvedTeamId).finally(() => {
       membersPromise = null
     })
   }
@@ -146,55 +107,28 @@ async function renderMembers (membersListEl, statusEl, baseStatus = '') {
 
 function render () {
   const state = getSessionState()
-  const teamNameEl = document.getElementById('teamName')
-  const teamIdEl = document.getElementById('teamId')
   const statusEl = document.getElementById('teamAdminStatus')
 
-  const teamIdInputContainer = document.getElementById('teamIdInputContainer')
-  const teamMemberOverview = document.getElementById('teamMemberOverview')
-  const claimOwnerContainer = document.getElementById('teamClaimOwnerContainer')
-  const adminActions = document.querySelector('.team-admin__actions')
   const adminLists = document.querySelector('.team-admin__lists')
   const refreshButton = document.getElementById('teamRefresh')
   const resetButton = document.getElementById('teamResetApp')
-  const sharedLogout = document.getElementById('sharedLogout')
   const teamMembersList = document.getElementById('teamMembersListTeamPage')
-  const invitesCard = document.getElementById('teamInvitesListTeamPage')?.closest('.team-admin__card')
   const teamStatusSection = document.querySelector('.team-status-controls')
   const teamAdminSection = document.querySelector('.team-admin')
-  const statusLoggedIn = document.getElementById('sharedStatusLoggedIn')
   const statusUser = document.getElementById('sharedStatusUser')
-  const statusUid = document.getElementById('sharedStatusUid')
-  const statusTeam = document.getElementById('sharedStatusTeam')
-  const statusRole = document.getElementById('sharedStatusRole')
+  const statusEmail = document.getElementById('sharedStatusEmail')
 
-  setHidden(teamIdInputContainer, true)
-  setHidden(teamMemberOverview, true)
-  setHidden(claimOwnerContainer, true)
-  setHidden(adminActions, true)
   setHidden(refreshButton, false)
   setHidden(resetButton, false)
-  setHidden(sharedLogout, true)
 
   if (teamStatusSection) setHidden(teamStatusSection, false)
-  if (teamAdminSection) setHidden(teamAdminSection, false)
   if (adminLists) setHidden(adminLists, true)
-  if (invitesCard) setHidden(invitesCard, true)
 
   const authContext = getAuthContext()
   const user = authContext?.user || {}
-  const displayTeam = user?.orgId || state?.displayTeamId || state?.teamId || '—'
   const role = resolveAuthRole(user)
-  const roleText = roleLabel(role)
-
-  setText(statusLoggedIn, authContext?.isAuthenticated ? 'Ja' : 'Nej')
-  setText(statusUser, user?.displayName || user?.email || '—')
-  setText(statusUid, user?.uid || '—')
-  setText(statusTeam, displayTeam)
-  setText(statusRole, roleText || '—')
-
-  setText(teamNameEl, displayTeam)
-  setText(teamIdEl, displayTeam)
+  setText(statusUser, user?.displayName || user?.name || user?.email || '—')
+  setText(statusEmail, user?.email || '—')
 
   if (!statusEl) return
   let baseStatus = ''
@@ -203,19 +137,14 @@ function render () {
   } else if (!authContext?.isAuthenticated) {
     baseStatus = 'Log ind for at se teaminformation.'
   } else {
-    baseStatus = `Auth0 klar • Rolle: ${roleText}`
+    baseStatus = 'Auth0 klar'
   }
   setText(statusEl, baseStatus)
 
   const isAdmin = isPrivilegedRole(role)
-  renderDiagnostics(isAdmin)
-
-  if (adminLists) {
-    setHidden(adminLists, !isAdmin)
-  }
-  if (isAdmin) {
-    renderMembers(teamMembersList, statusEl, baseStatus)
-  }
+  if (adminLists) setHidden(adminLists, !isAdmin)
+  if (teamAdminSection) setHidden(teamAdminSection, !isAdmin)
+  if (isAdmin) renderMembers(teamMembersList, statusEl, baseStatus)
 }
 
 export async function initTeamAdminPage () {

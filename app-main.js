@@ -39,9 +39,6 @@ function readCiFlag () {
 let IS_CI = false
 let IS_LIGHTHOUSE = false
 let IS_AUTOMATED = false
-const INVITE_TOKEN_KEY = 'cssmate:inviteToken'
-const INVITE_NOTICE_KEY = 'cssmate:inviteNoticeShown'
-
 function isDevBuild () {
   try {
     return Boolean(typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV)
@@ -51,7 +48,7 @@ function isDevBuild () {
 }
 
 if (isDevBuild()) {
-  console.log('[auth:diagnostics]', 'auth bootstrap enabled')
+  console.log('[auth:diagnostics]', 'auth init ready')
 }
 
 function setupServiceWorkerAutoReload () {
@@ -157,26 +154,6 @@ function showUpdateBanner (currentVersion, previousVersion) {
   }
 }
 
-function maybeShowInviteNotice () {
-  if (typeof window === 'undefined') return
-  let token = ''
-  let noticeShown = ''
-  try {
-    token = window.sessionStorage?.getItem(INVITE_TOKEN_KEY) || ''
-    noticeShown = window.sessionStorage?.getItem(INVITE_NOTICE_KEY) || ''
-  } catch {
-    token = ''
-    noticeShown = ''
-  }
-  if (!token || noticeShown === '1') return
-  updateActionHint('Invitation registreret. Åbn Team for at fuldføre.', 'success')
-  try {
-    window.sessionStorage?.setItem(INVITE_NOTICE_KEY, '1')
-  } catch {
-    // ignore
-  }
-}
-
 function setupVersionCheck () {
   if (typeof window === 'undefined') return
 
@@ -211,7 +188,6 @@ let authGateModulePromise = null
 let authProviderModulePromise = null
 let appGuardModulePromise = null
 let debugOverlayModulePromise = null
-let authBootstrapModulePromise = null
 let authProviderSubscribed = false
 let cachedAuthIdentity = null
 
@@ -241,13 +217,6 @@ function ensureDebugOverlayModule () {
     debugOverlayModulePromise = import('./src/debug/tools.js')
   }
   return debugOverlayModulePromise
-}
-
-function ensureAuthBootstrapModule () {
-  if (!authBootstrapModulePromise) {
-    authBootstrapModulePromise = import('./src/auth/bootstrap.js')
-  }
-  return authBootstrapModulePromise
 }
 
 async function initAuthGateLazy () {
@@ -5984,17 +5953,6 @@ async function restoreDraftOnLoad() {
   }
 }
 
-function scheduleAuthBootstrap () {
-  if (IS_AUTOMATED || IS_CI || IS_LIGHTHOUSE) return
-  runWhenIdle(() => {
-    ensureAuthBootstrapModule()
-      .then(mod => mod?.initAuth?.())
-      .catch(error => {
-        console.warn('Auth bootstrap fejlede', error)
-      })
-  })
-}
-
 function configureBootstrap () {
   if (bootstrapConfigured) return
   bootstrapConfigured = true
@@ -6047,7 +6005,6 @@ export async function bootstrapApp () {
   }
 
   ensureUiInteractive('post-auth-allowed')
-  scheduleAuthBootstrap()
 
   let authGatePromise = null
   authGatePromise = initAuthGateLazy().catch(error => {
