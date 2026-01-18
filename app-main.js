@@ -15,7 +15,7 @@ import { shouldSkipAuthGate } from './src/auth/skip-auth-gate.js'
 import { setActiveJob } from './src/state/jobs.js'
 import { saveDraft, loadDraft, clearDraft } from './js/storageDraft.js'
 import { appendHistoryEntry, loadHistory as loadHistoryEntries, deleteHistoryEntry, migrateHistory, buildHistoryKey as computeHistoryKey } from './js/storageHistory.js'
-import { normalizeHistoryEntry as baseNormalizeHistoryEntry, normalizeHistoryList, formatDateLabel, normalizeSearchValue } from './js/history-normalizer.js'
+import { normalizeHistoryEntry as baseNormalizeHistoryEntry, normalizeHistoryList, formatDateLabel, normalizeSearchValue, formatHistoryRate } from './js/history-normalizer.js'
 import { downloadBlob } from './js/utils/downloadBlob.js'
 import { applyBuildMetadata, isDebugOverlayEnabled, updateCurrentView } from './src/state/debug.js'
 import { resetAppState, resetOfflineCache } from './src/utils/reset-app.js'
@@ -2810,14 +2810,13 @@ function renderJobHistorySummary(entry) {
     tbody.appendChild(row);
     return;
   }
-  const formatRate = value => (value > 0 ? `${formatCurrency(value)} kr` : '–');
   const values = [
     summary.date || '–',
     summary.displayHours || (summary.timer > 0 ? formatNumber(summary.timer) : '–'),
-    summary.display?.base || formatRate(summary.hourlyBase),
-    summary.display?.udd1 || formatRate(summary.hourlyUdd1),
-    summary.display?.udd2 || formatRate(summary.hourlyUdd2),
-    summary.display?.udd2Mentor || formatRate(summary.hourlyUdd2Mentor),
+    summary.display?.base || formatHistoryRate('base', summary.hourlyBase),
+    summary.display?.udd1 || formatHistoryRate('udd1', summary.hourlyUdd1),
+    summary.display?.udd2 || formatHistoryRate('udd2', summary.hourlyUdd2),
+    summary.display?.udd2Mentor || formatHistoryRate('udd2Mentor', summary.hourlyUdd2Mentor),
   ];
   const row = document.createElement('tr');
   values.forEach(text => {

@@ -39,6 +39,24 @@ function formatCurrency (value) {
   return new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value || 0)
 }
 
+const RATE_FORMATTER_INT = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+const RATE_FORMATTER_DEC = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+function formatHistoryRate (category, value) {
+  const num = toNumber(value)
+  if (!(num > 0)) return '–'
+  if (category === 'udd1') {
+    return `${RATE_FORMATTER_INT.format(Math.round(num))} kr/t`
+  }
+  if (category === 'udd2') {
+    return `${RATE_FORMATTER_INT.format(Math.floor(num))} kr/t`
+  }
+  if (category === 'udd2Mentor') {
+    return `${RATE_FORMATTER_INT.format(Math.ceil(num))} kr/t`
+  }
+  return `${RATE_FORMATTER_DEC.format(num)} kr/t`
+}
+
 function formatHours (value) {
   return new Intl.NumberFormat('da-DK', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(value || 0)
 }
@@ -328,16 +346,12 @@ function normalizeHistoryEntry (entry, options = {}) {
   }
 
   // Override formatted display strings to use a single value instead of a range.
-  const formatRate = val => {
-    const num = Number.isFinite(val) && val > 0 ? val : 0
-    return `${formatCurrency(num)} kr/t`
-  }
-  normalized.displayBaseWage = formatRate(baseValue)
+  normalized.displayBaseWage = formatHistoryRate('base', baseValue)
   normalized.display = {
-    base: formatRate(baseValue),
-    udd1: formatRate(udd1Value),
-    udd2: formatRate(udd2Value),
-    udd2Mentor: formatRate(udd2MentorValue),
+    base: formatHistoryRate('base', baseValue),
+    udd1: formatHistoryRate('udd1', udd1Value),
+    udd2: formatHistoryRate('udd2', udd2Value),
+    udd2Mentor: formatHistoryRate('udd2Mentor', udd2MentorValue),
   }
 
   const searchValues = [meta.sagsnummer, meta.navn, meta.kunde, meta.adresse, meta.montoer]
@@ -374,6 +388,7 @@ export {
   normalizeHistoryList,
   formatDateLabel,
   normalizeSearchValue,
+  formatHistoryRate,
   DEFAULT_TILLAEG_UDD1,
   DEFAULT_TILLAEG_UDD2,
   DEFAULT_MENTOR_RATE,
