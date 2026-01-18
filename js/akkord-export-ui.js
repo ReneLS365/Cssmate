@@ -209,7 +209,7 @@ export async function exportAkkordJsonAndPdf(options = {}) {
 
     const resolvedTeamId = getSessionState()?.teamId || resolveTeamId(typeof window !== 'undefined' ? window.TEAM_ID : undefined);
 
-    await publishSharedCaseFn({
+    const publishResult = await publishSharedCaseFn({
       teamId: resolvedTeamId,
       jobNumber: context.meta?.sagsnummer || context.model?.meta?.caseNumber,
       caseKind: (context.model?.meta?.jobType || 'montage').toLowerCase(),
@@ -224,7 +224,10 @@ export async function exportAkkordJsonAndPdf(options = {}) {
       jsonContent: jsonResult.content,
     });
 
-    notifyAction('Sag publiceret til fælles sager.', 'success');
+    const sharedMessage = publishResult?.queued
+      ? 'Sag gemt offline og synkroniseres, når du er online.'
+      : 'Sag publiceret til fælles sager.';
+    notifyAction(sharedMessage, 'success');
     return { jsonFileName: jsonResult.fileName };
   } catch (error) {
     console.error('Export failed', error);

@@ -52,6 +52,10 @@ function isValidEmail (email) {
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)
 }
 
+function isValidUuid (value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test((value || '').toString())
+}
+
 function normalizeTeamSlug (value) {
   const cleaned = (value || '').toString().trim().toLowerCase()
   const normalized = cleaned
@@ -655,13 +659,25 @@ async function handleInviteAccept (event) {
 async function handleCaseCreate (event, teamSlug) {
   const { user, team } = await requireTeamContext(event, teamSlug)
   const body = parseBody(event)
-  const caseId = crypto.randomUUID()
+  const caseId = isValidUuid(body.caseId) ? body.caseId : crypto.randomUUID()
   const totals = body.totals || { materials: 0, montage: 0, demontage: 0, total: 0 }
   await db.query(
     `INSERT INTO team_cases
       (case_id, team_id, job_number, case_kind, system, totals, status, created_at, updated_at, last_updated_at,
        created_by, created_by_email, created_by_name, updated_by, json_content)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, NOW(), NOW(), NOW(), $8, $9, $10, $8, $11)`,
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, NOW(), NOW(), NOW(), $8, $9, $10, $8, $11)
+     ON CONFLICT (case_id) DO UPDATE SET
+       job_number = EXCLUDED.job_number,
+       case_kind = EXCLUDED.case_kind,
+       system = EXCLUDED.system,
+       totals = EXCLUDED.totals,
+       status = EXCLUDED.status,
+       updated_at = NOW(),
+       last_updated_at = NOW(),
+       updated_by = EXCLUDED.updated_by,
+       json_content = EXCLUDED.json_content,
+       deleted_at = NULL,
+       deleted_by = NULL`,
     [
       caseId,
       team.id,

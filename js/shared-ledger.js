@@ -1,6 +1,7 @@
 import { getAuthContext, waitForAuthReady } from './shared-auth.js'
 import { apiJson } from '../src/api/client.js'
 import { updateTeamDebugState } from '../src/state/debug.js'
+import { sha256Hex } from '../src/lib/sha256.js'
 import {
   DEFAULT_TEAM_ID,
   DEFAULT_TEAM_SLUG,
@@ -17,6 +18,11 @@ import { getTeamAccessWithTimeout, TEAM_ACCESS_STATUS } from '../src/services/te
 
 const LEDGER_VERSION = 1
 const BACKUP_SCHEMA_VERSION = 2
+const SHARED_CASES_QUEUE_KEY = 'cssmate:shared-cases:queue:v1'
+const SHARED_CASES_QUEUE_MAX = 30
+
+const CASE_ID_NAMESPACE = 'cssmate:shared-case'
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 class PermissionDeniedError extends Error {
   constructor(message) {
@@ -48,6 +54,74 @@ const teamCache = {
   uid: null,
   teamId: null,
   membership: null,
+}
+
+let queueListenerBound = false
+let queueFlushInFlight = false
+
+function readQueueStorage () {
+  if (typeof window === 'undefined' || !window.localStorage) return []
+  try {
+    const raw = window.localStorage.getItem(SHARED_CASES_QUEUE_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function writeQueueStorage (entries) {
+  if (typeof window === 'undefined' || !window.localStorage) return
+  try {
+    window.localStorage.setItem(SHARED_CASES_QUEUE_KEY, JSON.stringify(entries))
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function isOnline () {
+  if (typeof navigator === 'undefined') return true
+  return navigator.onLine !== false
+}
+
+function normalizeQueuedEntry (entry) {
+  if (!entry || !entry.caseId) return null
+  return {
+    caseId: entry.caseId,
+    teamId: entry.teamId,
+    jobNumber: entry.jobNumber || 'UKENDT',
+    caseKind: entry.caseKind || '',
+    system: entry.system || '',
+    totals: entry.totals || { materials: 0, montage: 0, demontage: 0, total: 0 },
+    status: entry.status || 'kladde',
+    jsonContent: entry.jsonContent || '',
+    createdByName: entry.createdByName || '',
+    actorRole: entry.actorRole || null,
+    queuedAt: entry.queuedAt || Date.now(),
+    retries: entry.retries || 0,
+  }
+}
+
+function upsertQueueEntry (entry) {
+  const normalized = normalizeQueuedEntry(entry)
+  if (!normalized) return
+  const current = readQueueStorage()
+  const index = current.findIndex(item => item?.caseId === normalized.caseId)
+  if (index >= 0) {
+    current[index] = { ...current[index], ...normalized, queuedAt: current[index].queuedAt || normalized.queuedAt }
+  } else {
+    current.unshift(normalized)
+  }
+  if (current.length > SHARED_CASES_QUEUE_MAX) {
+    current.length = SHARED_CASES_QUEUE_MAX
+  }
+  writeQueueStorage(current)
+}
+
+function removeQueueEntry (caseId) {
+  if (!caseId) return
+  const current = readQueueStorage().filter(item => item?.caseId !== caseId)
+  writeQueueStorage(current)
 }
 
 async function ensureAuthUser() {
@@ -86,6 +160,24 @@ function normalizeActor(actor, membership) {
     providerId: base.providerId || base.provider || 'custom',
     role: membership?.role || base.role || null,
   }
+}
+
+function isValidUuid (value) {
+  return UUID_PATTERN.test((value || '').toString())
+}
+
+function formatUuidFromHex (hex) {
+  const cleaned = (hex || '').toString().replace(/[^a-f0-9]/gi, '').padEnd(32, '0').slice(0, 32)
+  return `${cleaned.slice(0, 8)}-${cleaned.slice(8, 12)}-${cleaned.slice(12, 16)}-${cleaned.slice(16, 20)}-${cleaned.slice(20, 32)}`.toLowerCase()
+}
+
+async function buildStableCaseId ({ teamId, jobNumber, jsonContent }) {
+  const normalizedJob = normalizeJobNumber(jobNumber)
+  const payload = normalizedJob && normalizedJob !== 'UKENDT'
+    ? `${CASE_ID_NAMESPACE}|team:${teamId}|job:${normalizedJob}`
+    : `${CASE_ID_NAMESPACE}|team:${teamId}|payload:${jsonContent || ''}`
+  const hex = await sha256Hex(payload)
+  return formatUuidFromHex(hex)
 }
 
 export function resolveTeamId(rawTeamId) {
@@ -197,21 +289,101 @@ export async function getTeamDocument(teamId) {
 
 export async function publishSharedCase({ teamId, jobNumber, caseKind, system, totals, status = 'kladde', jsonContent }) {
   const { teamId: resolvedTeamId, membership, actor } = await getTeamContext(teamId)
-  const payload = await apiJson(`/api/teams/${resolvedTeamId}/cases`, {
-    method: 'POST',
-    body: JSON.stringify({
-      jobNumber: normalizeJobNumber(jobNumber),
-      caseKind,
-      system,
-      totals: totals || { materials: 0, montage: 0, demontage: 0, total: 0 },
-      status,
-      jsonContent,
-      createdByName: actor.name || actor.displayName || '',
-      actorRole: membership?.role || null,
-    }),
-  })
-  return payload
+  const normalizedJobNumber = normalizeJobNumber(jobNumber)
+  const caseId = await buildStableCaseId({ teamId: resolvedTeamId, jobNumber: normalizedJobNumber, jsonContent })
+  const requestPayload = {
+    caseId,
+    jobNumber: normalizedJobNumber,
+    caseKind,
+    system,
+    totals: totals || { materials: 0, montage: 0, demontage: 0, total: 0 },
+    status,
+    jsonContent,
+    createdByName: actor.name || actor.displayName || '',
+    actorRole: membership?.role || null,
+  }
+  if (!isOnline()) {
+    upsertQueueEntry({ ...requestPayload, teamId: resolvedTeamId })
+    return { queued: true, caseId }
+  }
+  try {
+    const payload = await apiJson(`/api/teams/${resolvedTeamId}/cases`, {
+      method: 'POST',
+      body: JSON.stringify(requestPayload),
+    })
+    removeQueueEntry(caseId)
+    return { ...payload, queued: false, caseId: payload?.caseId || caseId }
+  } catch (error) {
+    const isNetworkError = error instanceof TypeError || /network|offline|failed to fetch/i.test(error?.message || '')
+    if (isNetworkError) {
+      upsertQueueEntry({ ...requestPayload, teamId: resolvedTeamId })
+      return { queued: true, caseId }
+    }
+    throw error
+  }
 }
+
+async function publishQueuedEntry (entry) {
+  const normalized = normalizeQueuedEntry(entry)
+  if (!normalized) return false
+  const { teamId: resolvedTeamId } = await getTeamContext(normalized.teamId)
+  const payload = {
+    caseId: isValidUuid(normalized.caseId) ? normalized.caseId : await buildStableCaseId({
+      teamId: resolvedTeamId,
+      jobNumber: normalized.jobNumber,
+      jsonContent: normalized.jsonContent,
+    }),
+    jobNumber: normalized.jobNumber,
+    caseKind: normalized.caseKind,
+    system: normalized.system,
+    totals: normalized.totals,
+    status: normalized.status,
+    jsonContent: normalized.jsonContent,
+    createdByName: normalized.createdByName || '',
+    actorRole: normalized.actorRole || null,
+  }
+  await apiJson(`/api/teams/${resolvedTeamId}/cases`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return true
+}
+
+export async function flushSharedCasesQueue () {
+  if (queueFlushInFlight) return { flushed: 0, pending: readQueueStorage().length }
+  if (!isOnline()) return { flushed: 0, pending: readQueueStorage().length }
+  queueFlushInFlight = true
+  const queue = readQueueStorage()
+  let flushed = 0
+  const remaining = []
+  for (const entry of queue) {
+    try {
+      await publishQueuedEntry(entry)
+      flushed += 1
+    } catch (error) {
+      const isNetworkError = error instanceof TypeError || /network|offline|failed to fetch/i.test(error?.message || '')
+      const updated = { ...entry, retries: (entry?.retries || 0) + 1 }
+      remaining.push(updated)
+      if (isNetworkError) break
+    }
+  }
+  writeQueueStorage(remaining)
+  queueFlushInFlight = false
+  return { flushed, pending: remaining.length }
+}
+
+function bindQueueListeners () {
+  if (queueListenerBound || typeof window === 'undefined') return
+  queueListenerBound = true
+  window.addEventListener('online', () => {
+    flushSharedCasesQueue().catch(() => {})
+  })
+  if (isOnline()) {
+    flushSharedCasesQueue().catch(() => {})
+  }
+}
+
+bindQueueListeners()
 
 export async function listSharedGroups(teamId) {
   const { teamId: resolvedTeamId } = await getTeamContext(teamId)
