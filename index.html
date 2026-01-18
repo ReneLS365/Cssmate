@@ -444,20 +444,8 @@
     <!-- Team status and controls (moved from Delt sager) -->
     <section class="card team-status-controls no-print" aria-live="polite" hidden>
       <div class="shared-status-card" aria-live="polite">
-        <div class="shared-status-row"><span>Logget ind:</span><strong id="sharedStatusLoggedIn">Nej</strong></div>
-        <div class="shared-status-row"><span>Bruger:</span><strong id="sharedStatusUser">–</strong></div>
-        <div class="shared-status-row shared-status-row--uid">
-          <span>UID:</span>
-          <div class="shared-status-uid">
-            <strong id="sharedStatusUid">–</strong>
-            <button id="sharedUidCopy" type="button">Kopiér</button>
-          </div>
-        </div>
-        <div class="shared-status-row"><span>Team ID:</span><strong id="sharedStatusTeam">–</strong></div>
-        <div class="shared-status-row"><span>Rolle:</span><strong id="sharedStatusRole">ikke medlem</strong></div>
-      </div>
-      <div class="shared-auth-controls" aria-live="polite">
-        <button id="sharedLogout" type="button" class="shared-logout" hidden>Log ud</button>
+        <div class="shared-status-row"><span>Navn:</span><strong id="sharedStatusUser">–</strong></div>
+        <div class="shared-status-row"><span>Email:</span><strong id="sharedStatusEmail">–</strong></div>
       </div>
       <div class="shared-auth-controls" aria-live="polite">
         <div class="shared-status-row"><span>Auth0 bruger:</span><strong id="authUserEmail">–</strong></div>
@@ -466,87 +454,16 @@
         <a id="adminLink" href="/admin.html" hidden>Admin</a>
         <p id="authStatusMessage" class="status-message" aria-live="polite"></p>
       </div>
-      <div id="teamIdInputContainer" class="team-id-input">
-        <label for="teamIdInput">Team ID:</label>
-        <input id="teamIdInput" type="text" placeholder="f.eks. hulmose">
-        <button id="saveTeamId" type="button">Gem</button>
-        <button id="sharedBootstrapTeam" type="button" class="shared-bootstrap" hidden>Opret team + tilføj mig</button>
-      </div>
-      <div class="shared-admin-actions">
-        <button id="sharedBackupExport" type="button" disabled>Eksporter backup</button>
-        <label class="sr-only" for="sharedBackupImport">Importer backup</label>
-        <input id="sharedBackupImport" type="file" accept="application/json" disabled>
-      </div>
-    </section>
-
-    <section class="card team-member-overview no-print" id="teamMemberOverview" aria-live="polite" hidden>
-      <header class="card-header">
-        <h2>Medlemmer</h2>
-        <p>Du er medlem af teamet. Listen er skrivebeskyttet.</p>
-      </header>
-      <div id="teamMembersListReadOnly" class="team-admin__list"></div>
     </section>
 
     <section class="card team-admin no-print" aria-live="polite" hidden>
       <header class="card-header">
-        <h2>Team administration</h2>
-        <p>Se teaminfo og medlemmer. Admin/owner kan se medlemslisten.</p>
+        <h2>Medlemmer</h2>
+        <p>Admin/owner kan se medlemslisten.</p>
       </header>
-      <div class="team-admin__meta">
-        <div>
-          <span>Team navn</span>
-          <div class="field-with-icon">
-            <strong id="teamName">–</strong>
-            <button id="teamCopyName" type="button">Kopiér</button>
-          </div>
-        </div>
-        <div>
-          <span>Team ID</span>
-          <div class="field-with-icon">
-            <strong id="teamId">–</strong>
-            <button id="teamCopyId" type="button">Kopiér</button>
-          </div>
-        </div>
-      </div>
-      <div class="team-admin__claim" id="teamClaimOwnerContainer" hidden>
-        <p class="hint">Du er logget ind som bootstrap-admin, men mangler adgang til hulmose.</p>
-        <button id="teamClaimOwner" type="button">Claim owner (hulmose)</button>
-      </div>
-      <div class="team-admin__actions" hidden>
-        <div class="team-admin__invite">
-          <label for="teamInviteEmailTeamPage">Email (valgfri)</label>
-          <input id="teamInviteEmailTeamPage" type="email" autocomplete="email" placeholder="bruger@firma.dk">
-          <label for="teamInviteRoleTeamPage">Rolle</label>
-          <select id="teamInviteRoleTeamPage">
-            <option value="member">Medlem</option>
-            <option value="admin">Admin</option>
-          </select>
-          <button id="teamInviteSubmitTeamPage" type="button">Invitér</button>
-          <div class="team-admin__invite-link" id="teamInviteLinkContainer" hidden>
-            <label for="teamInviteLink">Invite-link</label>
-            <input id="teamInviteLink" type="text" readonly>
-            <button id="teamInviteCopy" type="button">Kopiér link</button>
-          </div>
-        </div>
-        <div class="team-admin__invite">
-          <label for="teamUidInput">Tilføj via UID</label>
-          <input id="teamUidInput" type="text" placeholder="UID">
-          <label for="teamUidRole">Rolle</label>
-          <select id="teamUidRole">
-            <option value="member">Medlem</option>
-            <option value="admin">Admin</option>
-          </select>
-          <button id="teamUidSubmit" type="button">Tilføj medlem</button>
-        </div>
-      </div>
       <div class="team-admin__lists" hidden>
         <div class="team-admin__card">
-          <h4>Medlemmer</h4>
           <div id="teamMembersListTeamPage" class="team-admin__list"></div>
-        </div>
-        <div class="team-admin__card">
-          <h4>Invitationer</h4>
-          <div id="teamInvitesListTeamPage" class="team-admin__list"></div>
         </div>
       </div>
       <div class="btn-group">
@@ -554,15 +471,6 @@
         <button id="teamResetApp" type="button">Nulstil app</button>
       </div>
       <p id="teamAdminStatus" class="status-message" aria-live="polite"></p>
-    </section>
-
-    <section class="card team-diagnostics no-print" id="teamDiagnostics" aria-live="polite" hidden>
-      <header class="card-header">
-        <h2>Admin diagnostic</h2>
-        <p>Viser login- og teamstatus. Kun admin kan se denne blok.</p>
-      </header>
-      <ul class="diagnostic-list" id="teamDiagnosticsList"></ul>
-      <p id="teamDiagnosticsWarning" class="status-message" aria-live="polite"></p>
     </section>
   </section>
 

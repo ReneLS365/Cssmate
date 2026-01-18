@@ -18,8 +18,6 @@ const CACHE_NAME = CACHE_VERSION
 const PRECACHE_URLS = [
   '/',
   '/index.html',
-  '/accept-invite.html',
-  '/invite.html',
   '/admin.html',
   '/main.js',
   '/main.min.js',
@@ -60,7 +58,6 @@ const PRECACHE_URLS = [
   '/src/utils/reset-app.js',
   '/js/akkord-export.js',
   '/js/akkord-export-ui.js',
-  '/js/accept-invite.js',
   '/js/shared-ledger.js',
   '/js/shared-cases-panel.js',
   '/js/storageDraft.js',
@@ -105,7 +102,7 @@ async function cacheFirst(request) {
 async function handleNavigation(request) {
   const url = new URL(request.url)
   if (url.pathname === '/reset' || url.pathname === '/reset.html') {
-    return fetch(request)
+    return fetch(request, { cache: 'no-store' })
   }
   const cache = await caches.open(CACHE_NAME)
   try {

@@ -1,38 +1,24 @@
-import { listSharedGroups, downloadCaseJson, importCasePayload, updateCaseStatus, deleteSharedCase, formatTeamId, exportSharedBackup, importSharedBackup, PermissionDeniedError, normalizeTeamId, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG } from './shared-ledger.js';
+import { listSharedGroups, downloadCaseJson, importCasePayload, updateCaseStatus, deleteSharedCase, formatTeamId, PermissionDeniedError, normalizeTeamId, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG } from './shared-ledger.js';
 import { exportPDFBlob } from './export-pdf.js';
 import { buildExportModel } from './export-model.js';
 import { downloadBlob } from './utils/downloadBlob.js';
-import { getUserDisplay, logoutUser } from './shared-auth.js';
-import { initAuthSession, onChange as onSessionChange, getState as getSessionState, waitForAccess, setPreferredTeamId, requestBootstrapAccess, SESSION_STATUS } from '../src/auth/session.js';
+import { getUserDisplay } from './shared-auth.js';
+import { initAuthSession, onChange as onSessionChange, getState as getSessionState, SESSION_STATUS } from '../src/auth/session.js';
 import { TEAM_ACCESS_STATUS } from '../src/services/team-access.js';
 
 let sharedCasesPanelInitialized = false;
 let refreshBtn;
 let sessionState = {};
 let sharedCard;
-let logoutButton;
-let backupActionsBound = false;
 let teamId = '';
 let displayTeamId = '';
 let membershipRole = '';
 let teamError = '';
 let membershipError = null;
-let roleStatus;
-let accessStatus;
 let statusBox;
-let authStatusBox;
-let adminNoticeBox;
 let errorBanner;
-let teamIdInput;
-let teamIdSaveButton;
-let statusLoggedIn;
 let statusUser;
-let statusUid;
-let statusTeam;
-let statusRole;
-let uidCopyButton;
-let bootstrapButton;
-let membershipHint;
+let statusEmail;
 let debugPanel;
 let debugLogOutput;
 let hasDebugEntries = false;
@@ -84,15 +70,6 @@ function clearInlineError () {
   setInlineError('');
 }
 
-function hideLegacyStatus () {
-  [authStatusBox, roleStatus, accessStatus, adminNoticeBox].forEach(element => {
-    if (element) {
-      element.textContent = '';
-      element.hidden = true;
-    }
-  });
-}
-
 function getAccessLabel () {
   const status = sessionState?.accessStatus || TEAM_ACCESS_STATUS.CHECKING;
   const message = teamError || sessionState?.message || '';
@@ -112,16 +89,12 @@ function renderStatusSummary (primaryMessage = '') {
     statusBox.textContent = summaryParts.join(' — ');
     statusBox.hidden = false;
   }
-  hideLegacyStatus();
 }
 
 function updateStatusCard() {
   const loggedIn = Boolean(sessionState?.user);
-  if (statusLoggedIn) statusLoggedIn.textContent = loggedIn ? 'Ja' : 'Nej';
-  if (statusUser) statusUser.textContent = loggedIn ? (sessionState?.user?.email || getUserDisplay(sessionState?.user)) : '–';
-  if (statusUid) statusUid.textContent = sessionState?.user?.uid || '–';
-  if (statusTeam) statusTeam.textContent = displayTeamId || DEFAULT_TEAM_SLUG;
-  if (statusRole) statusRole.textContent = membershipRole || (loggedIn ? 'ikke medlem' : 'ikke logget ind');
+  if (statusUser) statusUser.textContent = loggedIn ? getUserDisplay(sessionState?.user) : '–';
+  if (statusEmail) statusEmail.textContent = loggedIn ? (sessionState?.user?.email || '–') : '–';
 }
 
 function isAdminUser () {
@@ -135,13 +108,6 @@ function handleActionError (error, fallbackMessage, { teamContext } = {}) {
   setInlineError(message);
 }
 
-function setTeamSelection(nextTeamId) {
-  teamId = nextTeamId || '';
-  displayTeamId = nextTeamId ? getDisplayTeamId(nextTeamId) : displayTeamId;
-  updateTeamAccessState();
-  updateStatusCard();
-}
-
 function setMembershipError(error, fallbackTeamId) {
   membershipError = error;
   const uid = sessionState?.user?.uid || 'uid';
@@ -150,7 +116,6 @@ function setMembershipError(error, fallbackTeamId) {
   setInlineError(message);
   renderStatusSummary(teamError);
   updateStatusCard();
-  updateTeamAccessState();
 }
 
 function appendDebug(message) {
@@ -165,14 +130,6 @@ function appendDebug(message) {
     const existing = debugLogOutput.textContent ? debugLogOutput.textContent.split('\n') : [];
     existing.unshift(entry);
     debugLogOutput.textContent = existing.slice(0, 10).join('\n');
-  }
-}
-
-async function syncTeamContext(preferredTeamId) {
-  try {
-    return preferredTeamId || null;
-  } catch {
-    return null;
   }
 }
 
@@ -206,21 +163,6 @@ function requireAuth() {
 }
 
 function bindSessionControls(onAuthenticated, onAccessReady) {
-  logoutButton = document.getElementById('sharedLogout');
-  if (logoutButton) {
-    logoutButton.hidden = false;
-    logoutButton.addEventListener('click', async () => {
-      logoutButton.disabled = true;
-      try {
-        await logoutUser();
-      } catch (error) {
-        console.warn('Logout fejlede', error);
-      } finally {
-        logoutButton.disabled = false;
-      }
-    });
-  }
-
   initAuthSession();
   let lastStatus = '';
   onSessionChange((state) => {
@@ -246,12 +188,9 @@ function bindSessionControls(onAuthenticated, onAccessReady) {
     const hasAccess = Boolean(state?.sessionReady);
     setPanelVisibility(Boolean(state?.sessionReady));
     updateSharedStatus();
-    updateTeamAccessState();
     updateStatusCard();
-    if (logoutButton) logoutButton.hidden = !sessionState?.user;
 
     if (hasAccess && lastStatus !== state.status) {
-      bindBackupActions();
       if (typeof onAccessReady === 'function') onAccessReady();
     }
 
@@ -456,113 +395,6 @@ function updateSharedStatus(message) {
   const summaryMessage = message || '';
   setSharedStatus(summaryMessage);
   updateStatusCard();
-  updateTeamAccessState();
-}
-
-function initTeamIdInput() {
-  const container = document.getElementById('teamIdInputContainer');
-  if (!container) return;
-  container.hidden = true;
-  container.setAttribute('aria-hidden', 'true');
-  teamIdInput = document.getElementById('teamIdInput');
-  teamIdSaveButton = document.getElementById('saveTeamId');
-  if (teamIdInput) {
-    teamIdInput.disabled = true;
-    teamIdInput.readOnly = true;
-  }
-  if (teamIdSaveButton) teamIdSaveButton.disabled = true;
-}
-
-async function handleBootstrapTeam() {
-  const targetTeam = teamId || formatTeamId(displayTeamId || DEFAULT_TEAM_SLUG);
-  if (!targetTeam) return;
-  if (bootstrapButton) bootstrapButton.disabled = true;
-  try {
-    await requestBootstrapAccess();
-    membershipError = null;
-    teamError = '';
-    appendDebug(`Bootstrap færdig for ${targetTeam}`);
-    clearInlineError();
-  } catch (error) {
-    console.error('Bootstrap fejlede', error);
-    handleActionError(error, 'Kunne ikke oprette team', { teamContext: targetTeam });
-    appendDebug(`Bootstrap fejl: ${error?.message || error}`);
-  } finally {
-    if (bootstrapButton) bootstrapButton.disabled = false;
-  }
-}
-
-function bindBackupActions() {
-  const exportBtn = document.getElementById('sharedBackupExport');
-  const importInput = document.getElementById('sharedBackupImport');
-  const admin = membershipRole === 'admin';
-  if (adminNoticeBox) {
-    adminNoticeBox.textContent = '';
-    adminNoticeBox.hidden = true;
-  }
-  if (exportBtn) exportBtn.disabled = !admin;
-  if (importInput) importInput.disabled = !admin;
-  if (!admin || backupActionsBound) return;
-
-  if (exportBtn) {
-    exportBtn.addEventListener('click', async () => {
-      exportBtn.disabled = true;
-      try {
-        const backup = await exportSharedBackup(ensureTeamSelected());
-        const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
-        downloadBlob(blob, `shared-backup-${teamId}-${Date.now()}.json`);
-      } catch (error) {
-        console.error('Backup export fejlede', error);
-        setInlineError(describePermissionError(error, teamId) || 'Kunne ikke eksportere backup');
-      } finally {
-        exportBtn.disabled = false;
-      }
-    });
-  }
-
-  if (importInput) {
-    importInput.addEventListener('change', async (event) => {
-      const file = event?.target?.files?.[0];
-      if (!file) return;
-      importInput.disabled = true;
-      try {
-        const text = await file.text();
-        const payload = JSON.parse(text);
-        await importSharedBackup(ensureTeamSelected(), payload);
-        clearInlineError();
-      } catch (error) {
-        console.error('Backup import fejlede', error);
-        setInlineError(describePermissionError(error, teamId) || error?.message || 'Kunne ikke importere backup');
-      } finally {
-        importInput.value = '';
-        importInput.disabled = false;
-      }
-    });
-  }
-  backupActionsBound = true;
-}
-
-function updateTeamAccessState () {
-  const allowTeamChange = false;
-  if (teamIdInput) {
-    if (!teamIdInput.value) teamIdInput.value = displayTeamId || '';
-    teamIdInput.disabled = !allowTeamChange;
-    teamIdInput.readOnly = !allowTeamChange;
-    teamIdInput.placeholder = allowTeamChange ? 'f.eks. hulmose' : 'Team låst';
-  }
-  if (teamIdSaveButton) {
-    teamIdSaveButton.disabled = !allowTeamChange;
-  }
-  if (bootstrapButton) {
-    const showBootstrap = Boolean(sessionState?.bootstrapAvailable);
-    bootstrapButton.hidden = !showBootstrap;
-    bootstrapButton.disabled = bootstrapButton.hidden;
-  }
-  if (membershipHint) {
-    const showHint = Boolean(sessionState?.bootstrapAvailable);
-    membershipHint.hidden = !showHint;
-    membershipHint.textContent = showHint ? 'Du kan oprette teamet og tilføje dig selv som admin.' : '';
-  }
 }
 
 export function initSharedCasesPanel() {
@@ -575,44 +407,18 @@ export function initSharedCasesPanel() {
   membershipRole = sessionState.role || membershipRole;
   sharedCasesPanelInitialized = true;
   sharedCard = document.querySelector('#panel-delte-sager .shared-cases');
-  roleStatus = document.getElementById('sharedRoleStatus');
-  accessStatus = document.getElementById('sharedAccessStatus');
   statusBox = document.getElementById('sharedStatus');
-  authStatusBox = document.getElementById('sharedAuthStatus');
-  adminNoticeBox = document.getElementById('sharedAdminNotice');
   errorBanner = document.getElementById('sharedInlineError');
-  statusLoggedIn = document.getElementById('sharedStatusLoggedIn');
   statusUser = document.getElementById('sharedStatusUser');
-  statusUid = document.getElementById('sharedStatusUid');
-  uidCopyButton = document.getElementById('sharedUidCopy');
-  statusTeam = document.getElementById('sharedStatusTeam');
-  statusRole = document.getElementById('sharedStatusRole');
-  bootstrapButton = document.getElementById('sharedBootstrapTeam');
-  membershipHint = document.getElementById('sharedMembershipHint');
+  statusEmail = document.getElementById('sharedStatusEmail');
   debugPanel = document.getElementById('sharedDebugPanel');
   debugLogOutput = document.getElementById('sharedDebugLog');
-  if (uidCopyButton) {
-    uidCopyButton.addEventListener('click', async () => {
-      if (!sessionState?.user?.uid || !navigator?.clipboard) return;
-      try {
-        await navigator.clipboard.writeText(sessionState.user.uid);
-        appendDebug('UID kopieret');
-      } catch (error) {
-        console.warn('Kunne ikke kopiere UID', error);
-      }
-    });
-  }
-  if (bootstrapButton) {
-    bootstrapButton.addEventListener('click', handleBootstrapTeam);
-  }
-  hideLegacyStatus();
   setPanelVisibility(false);
   refreshBtn = document.getElementById('refreshSharedCases');
   const filters = ['sharedFilterJob', 'sharedFilterStatus', 'sharedFilterKind']
     .map(id => document.getElementById(id))
     .filter(Boolean);
   updateSharedStatus();
-  initTeamIdInput();
   updateStatusCard();
 
   const refresh = async () => {
@@ -666,7 +472,6 @@ export function initSharedCasesPanel() {
       setRefreshState('idle');
       return;
     }
-    bindBackupActions();
     refresh();
   });
 }

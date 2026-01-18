@@ -78,8 +78,6 @@ function buildState (overrides = {}) {
     sessionReady: false,
     canChangeTeam: false,
     teamLocked: teamLockedFlag,
-    bootstrapAvailable: false,
-    bootstrapAdminEmail: '',
     hasAccess: false,
     ...overrides,
   }
@@ -204,7 +202,6 @@ async function evaluateAccess () {
     teamId: formattedTeam,
     displayTeamId,
     error: null,
-    bootstrapAvailable: false,
     teamResolved: false,
     memberExists: false,
     memberActive: null,
@@ -264,8 +261,6 @@ async function evaluateAccess () {
         role: '',
       })
     }
-    const bootstrapAdminEmail = ''
-    const bootstrapAvailable = false
     const nextState = setState({
       status: sessionStatus,
       role: role || (isAdmin ? 'admin' : null),
@@ -280,8 +275,6 @@ async function evaluateAccess () {
       // Brugere skal ikke kunne skrive/skyde teamId lokalt.
       canChangeTeam: false,
       teamLocked: teamLockedFlag,
-      bootstrapAvailable,
-      bootstrapAdminEmail,
       teamResolved: true,
       memberExists,
       memberActive,
