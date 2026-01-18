@@ -10,13 +10,12 @@ import {
   saveTeamInvite,
 } from '../../js/shared-ledger.js'
 import { getAuthDiagnostics } from '../../js/shared-auth.js'
-import { assertAdmin } from '../auth/admin.js'
 import { isAdminUser, normalizeEmail } from '../auth/roles.js'
 import { getState as getSessionState, onChange as onSessionChange, refreshAccess, requestBootstrapAccess } from '../auth/session.js'
 import { getDebugState } from '../state/debug.js'
 import { resetAppState } from '../utils/reset-app.js'
-import { createTeamWithMembership, TEAM_ACCESS_STATUS } from '../services/team-access.js'
-import { BOOTSTRAP_ADMIN_EMAIL, DEFAULT_TEAM_SLUG, formatTeamId } from '../services/team-ids.js'
+import { TEAM_ACCESS_STATUS } from '../services/team-access.js'
+import { formatTeamId } from '../services/team-ids.js'
 
 let initialized = false
 let teamPanel
@@ -42,8 +41,6 @@ let inviteSubmitButton
 let inviteLinkContainer
 let inviteLinkInput
 let inviteLinkCopyButton
-let claimOwnerContainer
-let claimOwnerButton
 let uidInput
 let uidRoleSelect
 let uidSubmitButton
@@ -99,7 +96,6 @@ function setLoading (isLoading) {
     inviteRoleSelect,
     uidInput,
     uidRoleSelect,
-    claimOwnerButton,
   ].forEach(btn => {
     if (btn) btn.disabled = disabled
   })
@@ -181,23 +177,6 @@ async function handleAccessBootstrap () {
   }
 }
 
-async function handleClaimOwner () {
-  const session = lastSessionState || getSessionState()
-  const user = session?.user
-  if (!user) return
-  setStatus('Claim owner på hulmose…')
-  if (claimOwnerButton) claimOwnerButton.disabled = true
-  try {
-    await createTeamWithMembership({ teamId: DEFAULT_TEAM_SLUG, user })
-    await refreshAccess()
-    setStatus('Owner-rolle oprettet.', 'success')
-  } catch (error) {
-    console.warn('Claim owner failed', error)
-    setStatus(error?.message || 'Kunne ikke claim owner.', 'error')
-  } finally {
-    if (claimOwnerButton) claimOwnerButton.disabled = false
-  }
-}
 
 function handleAccessReset () {
   setStatus('Nulstiller app…')
@@ -540,8 +519,6 @@ export function initTeamAdminPage () {
   inviteLinkContainer = document.getElementById('teamInviteLinkContainer')
   inviteLinkInput = document.getElementById('teamInviteLink')
   inviteLinkCopyButton = document.getElementById('teamInviteCopy')
-  claimOwnerContainer = document.getElementById('teamClaimOwnerContainer')
-  claimOwnerButton = document.getElementById('teamClaimOwner')
   uidInput = document.getElementById('teamUidInput')
   uidRoleSelect = document.getElementById('teamUidRole')
   uidSubmitButton = document.getElementById('teamUidSubmit')
@@ -553,7 +530,6 @@ export function initTeamAdminPage () {
   }
   if (uidSubmitButton) uidSubmitButton.addEventListener('click', handleUidSubmit)
   if (refreshButton) refreshButton.addEventListener('click', handleRefreshClick)
-  if (claimOwnerButton) claimOwnerButton.addEventListener('click', handleClaimOwner)
   if (accessRetryButton) accessRetryButton.addEventListener('click', handleAccessRetry)
   if (accessBootstrapButton) accessBootstrapButton.addEventListener('click', handleAccessBootstrap)
   if (accessResetButton) accessResetButton.addEventListener('click', handleAccessReset)
@@ -583,17 +559,10 @@ export function initTeamAdminPage () {
     } else {
       updateAccessActions({ accessStatus: 'ok', canBootstrapAction: false, isChecking: false })
     }
-    if (claimOwnerContainer) {
-      const bootstrapEmail = normalizeEmail(state?.bootstrapAdminEmail || BOOTSTRAP_ADMIN_EMAIL || '')
-      const isBootstrapAdmin = normalizeEmail(state?.user?.email) === bootstrapEmail
-      claimOwnerContainer.hidden = !(isBootstrapAdmin && state?.accessStatus === TEAM_ACCESS_STATUS.NO_ACCESS)
-      setAriaHidden(claimOwnerContainer, claimOwnerContainer.hidden)
-    }
     if (teamPanel && teamTabButton?.getAttribute('aria-selected') === 'true') {
       loadTeamData(state).catch(() => {})
     }
     ensureDiagnostics().catch(() => {})
   })
 
-  assertAdmin().catch(() => {})
 }

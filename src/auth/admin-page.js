@@ -1,4 +1,4 @@
-import { isAdmin } from './admin.js'
+import { isAdminUser } from './roles.js'
 import {
   getUser,
   getOrganizationConfig,
@@ -63,7 +63,7 @@ async function guardAdminPage () {
   const user = await getUser()
   setText(userEmail, user?.email || '–')
 
-  if (!isAdmin(user?.email)) {
+  if (!isAdminUser(user)) {
     setText(message, 'Adgang nægtet. Din konto er ikke admin.')
     setHidden(content, true)
     return

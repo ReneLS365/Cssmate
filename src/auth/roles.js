@@ -40,8 +40,10 @@ function isAdminUser (user) {
   const permissions = Array.isArray(user.permissions) ? user.permissions : []
   if (permissions.includes('admin:app') || permissions.includes('admin:all')) return true
   const roles = Array.isArray(user.roles) ? user.roles : []
+  if (roles.includes('sscaff_owner')) return true
   if (roles.includes('sscaff_admin')) return true
-  return isAdminEmail(user.email)
+  // Auth0 is source of truth. Email fallback is disabled to avoid split-brain access.
+  return false
 }
 
 export {
