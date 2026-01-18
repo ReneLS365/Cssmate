@@ -1,11 +1,9 @@
 import { getAuthContext, onAuthStateChange, waitForAuthReady } from '../../js/shared-auth.js'
-import { normalizeEmail } from './roles.js'
 import { isLighthouseMode } from '../config/lighthouse-mode.js'
 import { updateSessionDebugState } from '../state/debug.js'
 import { markUserLoading, resetUserState, setUserLoadedState } from '../state/user-store.js'
 import { resolveMembershipStatus, resolveSessionStatus, SESSION_STATUS } from './access-state.js'
 import {
-  BOOTSTRAP_ADMIN_EMAIL,
   DEFAULT_TEAM_SLUG,
   formatTeamId,
   getDisplayTeamId,
@@ -13,8 +11,7 @@ import {
   normalizeTeamId,
   persistTeamId,
 } from '../services/team-ids.js'
-import { buildMemberDocPath, ensureUserDoc } from '../services/teams.js'
-import { TEAM_ACCESS_STATUS, clearTeamAccessCache, createTeamWithMembership, getTeamAccessWithTimeout } from '../services/team-access.js'
+import { TEAM_ACCESS_STATUS, clearTeamAccessCache, getTeamAccessWithTimeout } from '../services/team-access.js'
 import { teamDebug } from '../utils/team-debug.js'
 
 let initialized = false
@@ -25,9 +22,6 @@ const listeners = new Set()
 const waiters = new Set()
 const TEAM_LOCK_KEY = 'sscaff.team.locked'
 let teamLockedFlag = loadTeamLock()
-const BOOTSTRAP_FLAG_PREFIX = 'sscaff.bootstrapDone:'
-const bootstrapMemory = new Set()
-
 function loadTeamLock () {
   if (typeof window === 'undefined') return false
   try {
@@ -42,29 +36,6 @@ function persistTeamLock (locked) {
   try {
     if (locked) window.localStorage?.setItem(TEAM_LOCK_KEY, '1')
     else window.localStorage?.removeItem(TEAM_LOCK_KEY)
-  } catch {}
-}
-
-function hasBootstrapRun (uid) {
-  if (!uid) return false
-  if (bootstrapMemory.has(uid)) return true
-  if (typeof window === 'undefined') return false
-  try {
-    const flag = window.sessionStorage?.getItem(`${BOOTSTRAP_FLAG_PREFIX}${uid}`)
-    if (flag === '1') {
-      bootstrapMemory.add(uid)
-      return true
-    }
-  } catch {}
-  return bootstrapMemory.has(uid)
-}
-
-function markBootstrapRun (uid) {
-  if (!uid) return
-  bootstrapMemory.add(uid)
-  if (typeof window === 'undefined') return
-  try {
-    window.sessionStorage?.setItem(`${BOOTSTRAP_FLAG_PREFIX}${uid}`, '1')
   } catch {}
 }
 
@@ -105,10 +76,10 @@ function buildState (overrides = {}) {
     accessStatus: TEAM_ACCESS_STATUS.NO_AUTH,
     accessError: null,
     sessionReady: false,
-    canChangeTeam: true,
+    canChangeTeam: false,
     teamLocked: teamLockedFlag,
     bootstrapAvailable: false,
-    bootstrapAdminEmail: BOOTSTRAP_ADMIN_EMAIL,
+    bootstrapAdminEmail: '',
     hasAccess: false,
     ...overrides,
   }
@@ -174,11 +145,6 @@ function satisfiesAccess (state, requireAdmin = false) {
   return state.status === SESSION_STATUS.ADMIN || state.status === SESSION_STATUS.MEMBER
 }
 
-function canBootstrap (user, teamId, bootstrapAdminEmail = BOOTSTRAP_ADMIN_EMAIL) {
-  return normalizeEmail(user?.email) === normalizeEmail(bootstrapAdminEmail)
-    && normalizeTeamId(teamId || preferredTeamSlug) === normalizeTeamId(DEFAULT_TEAM_SLUG)
-}
-
 function normalizeMemberDoc (memberDoc, teamId, uid) {
   if (!memberDoc) return null
   const normalizedTeamId = formatTeamId(memberDoc.teamId || teamId || preferredTeamSlug)
@@ -228,15 +194,9 @@ async function evaluateAccess () {
     return null
   }
 
-  try {
-    await ensureUserDoc(auth.user)
-  } catch (error) {
-    console.warn('Kunne ikke oprette brugerprofil', error)
-  }
-
   const formattedTeam = formatTeamId(preferredTeamSlug)
   const displayTeamId = getDisplayTeamId(formattedTeam)
-  const membershipPath = auth.user?.uid ? buildMemberDocPath(formattedTeam, auth.user.uid) : ''
+  const membershipPath = ''
 
   setState({
     status: SESSION_STATUS.SIGNING_IN,
@@ -279,7 +239,7 @@ async function evaluateAccess () {
     const errorObject = accessStatus === TEAM_ACCESS_STATUS.OK
       ? null
       : (accessError ? Object.assign(new Error(accessError.message || 'Ingen adgang'), { code: accessError.code }) : null)
-    const memberPath = currentUser?.uid ? buildMemberDocPath(resolvedTeamId, currentUser.uid) : ''
+    const memberPath = ''
     if (accessError?.code) {
     }
     const lockTeam = accessStatus === TEAM_ACCESS_STATUS.OK ? !isAdmin : false
@@ -304,10 +264,8 @@ async function evaluateAccess () {
         role: '',
       })
     }
-    const bootstrapAdminEmail = accessResult?.bootstrapAdminEmail || sessionState.bootstrapAdminEmail || BOOTSTRAP_ADMIN_EMAIL
-    const bootstrapAvailable = (accessStatus === TEAM_ACCESS_STATUS.NO_TEAM || accessStatus === TEAM_ACCESS_STATUS.NEED_CREATE)
-      && canBootstrap(currentUser, resolvedTeamId, bootstrapAdminEmail)
-      && !hasBootstrapRun(currentUser?.uid)
+    const bootstrapAdminEmail = ''
+    const bootstrapAvailable = false
     const nextState = setState({
       status: sessionStatus,
       role: role || (isAdmin ? 'admin' : null),
@@ -318,7 +276,9 @@ async function evaluateAccess () {
       hasAccess: membershipStatus === 'member' && memberActive !== false && memberAssigned !== false,
       teamId: resolvedTeamId,
       displayTeamId: resolvedDisplayTeamId,
-      canChangeTeam: !lockTeam || isAdmin,
+      // Auth0-first: Team vælges via Auth0 organization ved login.
+      // Brugere skal ikke kunne skrive/skyde teamId lokalt.
+      canChangeTeam: false,
       teamLocked: teamLockedFlag,
       bootstrapAvailable,
       bootstrapAdminEmail,
@@ -445,7 +405,7 @@ function handleAuthChange (context) {
     memberActive: null,
     memberAssigned: null,
     membershipStatus: 'loading',
-    membershipCheckPath: buildMemberDocPath(formatTeamId(preferredTeamSlug), context.user?.uid || ''),
+    membershipCheckPath: '',
     membershipCheckTeamId: formatTeamId(preferredTeamSlug),
     accessStatus: TEAM_ACCESS_STATUS.CHECKING,
     accessError: null,
@@ -523,7 +483,7 @@ function setPreferredTeamId (nextTeamId) {
   clearTeamAccessCache()
   preferredTeamSlug = normalized
   persistTeamId(preferredTeamSlug)
-  const memberPath = sessionState.user?.uid ? buildMemberDocPath(formatted, sessionState.user.uid) : ''
+  const memberPath = ''
   setState({
     teamId: formatted,
     displayTeamId: getDisplayTeamId(formatted),
@@ -577,15 +537,7 @@ function waitForAccess ({ requireAdmin = false } = {}) {
 }
 
 async function requestBootstrapAccess () {
-  const auth = getAuthContext()
-  const targetTeamId = formatTeamId(sessionState.teamId || preferredTeamSlug)
-  if (!canBootstrap(auth?.user, targetTeamId, sessionState.bootstrapAdminEmail || BOOTSTRAP_ADMIN_EMAIL)) {
-    throw new Error('Bootstrap er ikke tilladt for denne bruger.')
-  }
-  await createTeamWithMembership({ teamId: targetTeamId, user: auth.user })
-  markBootstrapRun(auth?.user?.uid)
-  teamDebug('bootstrap-request', { teamId: targetTeamId, uid: auth?.user?.uid })
-  return refreshAccess()
+  throw new Error('Bootstrap er slået fra. Team/rolle styres i Auth0.')
 }
 
 function refreshAccess () {

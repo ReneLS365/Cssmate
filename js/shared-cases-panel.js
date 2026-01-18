@@ -462,31 +462,15 @@ function updateSharedStatus(message) {
 function initTeamIdInput() {
   const container = document.getElementById('teamIdInputContainer');
   if (!container) return;
+  container.hidden = true;
+  container.setAttribute('aria-hidden', 'true');
   teamIdInput = document.getElementById('teamIdInput');
   teamIdSaveButton = document.getElementById('saveTeamId');
-  if (teamIdInput && typeof teamIdInput.value === 'string') teamIdInput.value = displayTeamId;
-  if (!teamIdSaveButton) return;
-  teamIdSaveButton.addEventListener('click', async () => {
-    const value = normalizeTeamId(teamIdInput?.value || '');
-    if (!value) {
-      setInlineError('Angiv et Team ID først.');
-      return;
-    }
-    teamIdSaveButton.disabled = true;
-    try {
-      const formatted = formatTeamId(value);
-      setPreferredTeamId(value);
-      setTeamSelection(formatted);
-      await waitForAccess();
-      updateSharedStatus();
-      clearInlineError();
-    } catch (error) {
-      console.warn('Kunne ikke sætte Team ID', error);
-      setInlineError(error?.message || 'Ingen adgang til valgt team');
-    } finally {
-      teamIdSaveButton.disabled = false;
-    }
-  });
+  if (teamIdInput) {
+    teamIdInput.disabled = true;
+    teamIdInput.readOnly = true;
+  }
+  if (teamIdSaveButton) teamIdSaveButton.disabled = true;
 }
 
 async function handleBootstrapTeam() {
@@ -559,10 +543,7 @@ function bindBackupActions() {
 }
 
 function updateTeamAccessState () {
-  const admin = isAdminUser();
-  const loggedIn = Boolean(sessionState?.user);
-  const locked = Boolean(sessionState?.teamLocked && !admin);
-  const allowTeamChange = admin || (!locked && !loggedIn);
+  const allowTeamChange = false;
   if (teamIdInput) {
     if (!teamIdInput.value) teamIdInput.value = displayTeamId || '';
     teamIdInput.disabled = !allowTeamChange;

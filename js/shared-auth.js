@@ -43,12 +43,18 @@ export function buildUserFromToken (token) {
     clearAuthToken()
     return null
   }
+  const permissions = normalizeClaimList(payload.permissions || payload['https://sscaff.app/permissions'])
+  const roles = normalizeClaimList(payload['https://sscaff.app/roles'] || payload.roles)
+  const orgId = payload['https://sscaff.app/org_id'] || payload.org_id || ''
   return {
     uid: payload.sub,
     email: normalizeEmail(payload.email || ''),
     displayName: payload.name || '',
     providerId: 'password',
     emailVerified: true,
+    permissions,
+    roles,
+    orgId,
   }
 }
 

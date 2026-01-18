@@ -1,9 +1,17 @@
-import { apiJson } from '../api/client.js'
 import { formatTeamId, normalizeTeamId } from './team-ids.js'
 import { isTeamDebugEnabled, teamDebug } from '../utils/team-debug.js'
 
 const TEAM_ACCESS_TIMEOUT_MS = 8000
 const TEAM_ACCESS_CACHE_MS = 30000
+
+// Auth0-first setup:
+// Team + rolle kommer udelukkende fra Auth0 token claims.
+// DB/Firestore må IKKE være kilde til medlemskab/roller.
+// Vi låser drift til DEFAULT_TEAM_SLUG ("hulmose") indtil multi-org mapping tilføjes.
+const DEFAULT_TEAM_SLUG = 'hulmose'
+const OWNER_ROLES = new Set(['sscaff_owner'])
+const ADMIN_ROLES = new Set(['sscaff_admin'])
+const ADMIN_PERMISSIONS = new Set(['admin:app', 'admin:all'])
 
 const STATUS_VALUES = {
   LOADING: 'loading',
@@ -97,92 +105,52 @@ function logAccessState (source, payload) {
 async function readTeamAccess ({ teamId, user, source = 'resolveTeamAccess' }) {
   const initial = baseResult({ teamId, user, source })
   if (!user?.uid) {
-    return { ...initial, status: TEAM_ACCESS_STATUS.NO_AUTH, reason: 'no-auth' }
+    return { ...initial, status: TEAM_ACCESS_STATUS.NO_AUTH, reason: 'missing_uid' }
   }
-  const normalizedTeamId = formatTeamId(teamId)
-  if (!normalizedTeamId) {
+  // Team styres af Auth0 org. teamId input ignoreres i drift.
+  const normalizedTeamId = normalizeTeamId(DEFAULT_TEAM_SLUG)
+
+  // Org gating:
+  // Hvis orgId mangler, behandler vi brugeren som default-team (som ønsket).
+  // Hvis du senere vil kræve org, så ændr allowByOrg til: Boolean(user.orgId)
+  const allowByOrg = true
+  if (!allowByOrg) {
     return {
       ...initial,
-      status: TEAM_ACCESS_STATUS.NO_TEAM,
-      reason: 'missing-team',
-      error: { code: 'missing-team', message: 'TeamId mangler' },
+      status: TEAM_ACCESS_STATUS.NO_ACCESS,
+      reason: 'org_required',
+      teamId: normalizedTeamId,
     }
   }
 
-  try {
-    const response = await apiJson(`/api/teams/${normalizedTeamId}/access`)
-    if (!response) {
-      return { ...initial, status: TEAM_ACCESS_STATUS.ERROR, reason: 'empty-response' }
-    }
-    if (response.status === 'no-team') {
-      return {
-        ...initial,
-        status: TEAM_ACCESS_STATUS.NO_TEAM,
-        teamId: normalizedTeamId,
-        reason: 'missing-team',
-        error: { code: 'missing-team', message: 'Team mangler. Opret det eller vælg et andet team.' },
-        bootstrapAdminEmail: response.bootstrapAdminEmail || '',
-        raw: response,
-      }
-    }
-    if (response.status === 'no-access') {
-      return {
-        ...initial,
-        status: TEAM_ACCESS_STATUS.NO_ACCESS,
-        teamId: normalizedTeamId,
-        reason: response.reason || 'not-member',
-        error: { code: response.reason || 'not-member', message: 'Ingen adgang til dette team.' },
-        bootstrapAdminEmail: response.bootstrapAdminEmail || '',
-        raw: response,
-      }
-    }
-    if (response.status !== 'ok') {
-      return {
-        ...initial,
-        status: TEAM_ACCESS_STATUS.ERROR,
-        teamId: normalizedTeamId,
-        reason: response.reason || 'error',
-        error: { code: response.reason || 'error', message: 'Kunne ikke kontrollere team-adgang.' },
-        bootstrapAdminEmail: response.bootstrapAdminEmail || '',
-        raw: response,
-      }
-    }
-    const role = response.member?.role || 'member'
-    return {
-      ...initial,
-      status: TEAM_ACCESS_STATUS.OK,
-      teamId: normalizedTeamId,
+  const permissions = Array.isArray(user?.permissions) ? user.permissions : []
+  const roles = Array.isArray(user?.roles) ? user.roles : []
+
+  const isOwner = roles.some(role => OWNER_ROLES.has(role))
+    || permissions.some(permission => ADMIN_PERMISSIONS.has(permission))
+  const isAdmin = isOwner || roles.some(role => ADMIN_ROLES.has(role))
+  const role = isOwner ? 'owner' : (isAdmin ? 'admin' : 'member')
+
+  return {
+    ...initial,
+    status: TEAM_ACCESS_STATUS.OK,
+    teamId: normalizedTeamId,
+    role,
+    owner: isOwner,
+    member: true,
+    active: true,
+    assigned: true,
+    // Minimal docs to keep existing callers stable (NO DB lookup)
+    teamDoc: { id: normalizedTeamId, slug: normalizedTeamId, name: normalizedTeamId },
+    memberDoc: {
+      uid: user.uid,
+      email: user.email || '',
       role,
-      bootstrapAdminEmail: response.bootstrapAdminEmail || '',
-      owner: role === 'owner',
-      member: true,
       active: true,
       assigned: true,
-      teamDoc: response.team || null,
-      memberDoc: {
-        uid: user.uid,
-        email: user.email || '',
-        role,
-        active: true,
-        assigned: true,
-        teamId: normalizedTeamId,
-      },
-      raw: response,
-    }
-  } catch (error) {
-    const status = error?.status || 500
-    if (status === 401) {
-      return { ...initial, status: TEAM_ACCESS_STATUS.NO_AUTH, reason: 'no-auth' }
-    }
-    if (status === 403) {
-      return { ...initial, status: TEAM_ACCESS_STATUS.NO_ACCESS, reason: 'no-access' }
-    }
-    return {
-      ...initial,
-      status: TEAM_ACCESS_STATUS.ERROR,
-      reason: 'error',
-      error: { code: 'error', message: error?.message || 'Ukendt fejl' },
-    }
+      teamId: normalizedTeamId,
+    },
+    raw: { source: 'auth0-only', roles, permissions },
   }
 }
 
@@ -209,19 +177,13 @@ export async function resolveTeamAccess ({ teamId, user, timeoutMs = TEAM_ACCESS
 }
 
 export async function bootstrapTeamMembership ({ teamId, user, role = 'admin' }) {
-  return createTeamWithMembership({ teamId, user, role })
+  // Membership/roles are managed in Auth0 now.
+  // Keep function for API compatibility, but do not bootstrap via DB anymore.
+  throw new Error('Bootstrap er slået fra. Team/rolle styres i Auth0.')
 }
 
 export async function createTeamWithMembership ({ teamId, user }) {
-  if (!user?.uid) throw new Error('Auth-bruger mangler')
-  const normalizedTeamId = formatTeamId(teamId)
-  if (!normalizedTeamId) throw new Error('Team ID mangler')
-  await apiJson(`/api/teams/${normalizedTeamId}/bootstrap`, { method: 'POST' })
-  return {
-    teamId: normalizedTeamId,
-    teamDoc: { id: normalizedTeamId, name: normalizedTeamId },
-    memberDoc: { uid: user.uid, role: 'owner', active: true, assigned: true },
-  }
+  throw new Error('Bootstrap er slået fra. Team/rolle styres i Auth0.')
 }
 
 export function getTeamAccessWithTimeout (options) {
