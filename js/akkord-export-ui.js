@@ -139,6 +139,9 @@ function saveExportHistory(context) {
 }
 
 function computeSagsinfoValidity() {
+  if (typeof document === 'undefined' || typeof document.getElementById !== 'function') {
+    return { ok: true, missing: [] };
+  }
   let ok = true;
   const missing = [];
   sagsinfoFieldIds.forEach((id) => {
@@ -159,7 +162,7 @@ function computeSagsinfoValidity() {
 }
 
 function requireSagsinfoForSharing() {
-  if (typeof document === 'undefined') return true;
+  if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return true;
   const validity = computeSagsinfoValidity();
   if (validity.ok) return true;
   if (typeof window !== 'undefined') {
