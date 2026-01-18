@@ -71,6 +71,11 @@ async function guardAdminPage () {
   if (!isAdmin(mergedUser)) {
     setText(message, 'Adgang nægtet. Din konto er ikke admin.')
     setHidden(content, true)
+    setTimeout(() => {
+      if (typeof location !== 'undefined') {
+        location.href = '/'
+      }
+    }, 1500)
     return
   }
 

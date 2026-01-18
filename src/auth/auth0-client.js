@@ -3,6 +3,7 @@ import { isAuthCallbackUrl } from './auth-callback.js'
 import { getSavedOrgId, installOrgDebugHooks, saveOrgId } from './org-store.js'
 import { hardClearUiLocks } from './ui-locks.js'
 import { ensureUiInteractive } from '../ui/guards/ui-unlock.js'
+import { isLighthouseMode } from '../config/lighthouse-mode.js'
 
 let clientPromise = null
 let auth0ModulePromise = null
@@ -253,6 +254,16 @@ export async function getClient () {
   if (clientPromise) return clientPromise
 
   clientPromise = (async () => {
+    if (isLighthouseMode()) {
+      return {
+        isAuthenticated: async () => false,
+        loginWithRedirect: async () => {},
+        logout: async () => {},
+        getUser: async () => null,
+        getTokenSilently: async () => '',
+        getIdTokenClaims: async () => null,
+      }
+    }
     if (isE2eBypassEnabled()) {
       return {
         isAuthenticated: async () => true,
