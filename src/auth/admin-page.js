@@ -1,6 +1,8 @@
-import { isAdminUser } from './roles.js'
+import { buildUserFromToken } from '../../js/shared-auth.js'
+import { isAdmin } from './admin.js'
 import {
   getUser,
+  getToken,
   getOrganizationConfig,
   initAuth0,
   isAuthenticated,
@@ -60,10 +62,13 @@ async function guardAdminPage () {
     return
   }
 
-  const user = await getUser()
-  setText(userEmail, user?.email || '–')
+  const profile = await getUser()
+  const token = await getToken()
+  const claimedUser = buildUserFromToken(token || '') || {}
+  const mergedUser = { ...claimedUser, email: profile?.email || claimedUser?.email || null }
+  setText(userEmail, mergedUser?.email || '–')
 
-  if (!isAdminUser(user)) {
+  if (!isAdmin(mergedUser)) {
     setText(message, 'Adgang nægtet. Din konto er ikke admin.')
     setHidden(content, true)
     return

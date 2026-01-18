@@ -1,8 +1,17 @@
-import { DEFAULT_TEAM_SLUG, formatTeamId, normalizeTeamId } from './team-ids.js'
+import { formatTeamId, normalizeTeamId } from './team-ids.js'
 import { isTeamDebugEnabled, teamDebug } from '../utils/team-debug.js'
 
 const TEAM_ACCESS_TIMEOUT_MS = 8000
 const TEAM_ACCESS_CACHE_MS = 30000
+
+// Auth0-first setup:
+// Team + rolle kommer udelukkende fra Auth0 token claims.
+// DB/Firestore må IKKE være kilde til medlemskab/roller.
+// Vi låser drift til DEFAULT_TEAM_SLUG ("hulmose") indtil multi-org mapping tilføjes.
+const DEFAULT_TEAM_SLUG = 'hulmose'
+const OWNER_ROLES = new Set(['sscaff_owner'])
+const ADMIN_ROLES = new Set(['sscaff_admin'])
+const ADMIN_PERMISSIONS = new Set(['admin:app', 'admin:all'])
 
 const STATUS_VALUES = {
   LOADING: 'loading',
@@ -96,60 +105,30 @@ function logAccessState (source, payload) {
 async function readTeamAccess ({ teamId, user, source = 'resolveTeamAccess' }) {
   const initial = baseResult({ teamId, user, source })
   if (!user?.uid) {
-    return { ...initial, status: TEAM_ACCESS_STATUS.NO_AUTH, reason: 'no-auth' }
+    return { ...initial, status: TEAM_ACCESS_STATUS.NO_AUTH, reason: 'missing_uid' }
   }
-  const normalizedTeamId = formatTeamId(teamId)
-  if (!normalizedTeamId) {
+  // Team styres af Auth0 org. teamId input ignoreres i drift.
+  const normalizedTeamId = normalizeTeamId(DEFAULT_TEAM_SLUG)
+
+  // Org gating:
+  // Hvis orgId mangler, behandler vi brugeren som default-team (som ønsket).
+  // Hvis du senere vil kræve org, så ændr allowByOrg til: Boolean(user.orgId)
+  const allowByOrg = true
+  if (!allowByOrg) {
     return {
       ...initial,
-      status: TEAM_ACCESS_STATUS.NO_TEAM,
-      reason: 'missing-team',
-      error: { code: 'missing-team', message: 'TeamId mangler' },
-    }
-  }
-
-  /**
-   * AUTH0-ONLY TEAM ACCESS (NO DB MEMBERSHIP)
-   *
-   * Source of truth:
-   * - Membership: Auth0 organization on the user (org_id / orgId / organization)
-   * - Role: Auth0 roles + permissions on the user (sscaff_owner / sscaff_admin, admin:* permissions)
-   *
-   * DB (ledger/firestore/postgres) MUST NOT decide team membership or roles anymore.
-   */
-  const rawOrg = user?.org_id || user?.orgId || user?.organization || ''
-  const orgSlug = rawOrg ? formatTeamId(rawOrg) : ''
-
-  // Access rule:
-  // - If org is set: it must match selected team
-  // - If org is not set: allow only default team as member
-  if (orgSlug) {
-    if (orgSlug !== normalizedTeamId) {
-      return {
-        ...initial,
-        status: TEAM_ACCESS_STATUS.NO_ACCESS,
-        teamId: normalizedTeamId,
-        reason: 'not-member',
-        error: { code: 'not-member', message: 'Ingen adgang til dette team.' },
-      }
-    }
-  } else {
-    if (normalizedTeamId !== DEFAULT_TEAM_SLUG) {
-      return {
-        ...initial,
-        status: TEAM_ACCESS_STATUS.NO_ACCESS,
-        teamId: normalizedTeamId,
-        reason: 'missing-org',
-        error: { code: 'missing-org', message: 'Din konto er ikke tilknyttet et team i Auth0.' },
-      }
+      status: TEAM_ACCESS_STATUS.NO_ACCESS,
+      reason: 'org_required',
+      teamId: normalizedTeamId,
     }
   }
 
   const permissions = Array.isArray(user?.permissions) ? user.permissions : []
   const roles = Array.isArray(user?.roles) ? user.roles : []
 
-  const isOwner = roles.includes('sscaff_owner') || permissions.includes('admin:all') || permissions.includes('admin:app')
-  const isAdmin = isOwner || roles.includes('sscaff_admin')
+  const isOwner = roles.some(role => OWNER_ROLES.has(role))
+    || permissions.some(permission => ADMIN_PERMISSIONS.has(permission))
+  const isAdmin = isOwner || roles.some(role => ADMIN_ROLES.has(role))
   const role = isOwner ? 'owner' : (isAdmin ? 'admin' : 'member')
 
   return {
@@ -171,7 +150,7 @@ async function readTeamAccess ({ teamId, user, source = 'resolveTeamAccess' }) {
       assigned: true,
       teamId: normalizedTeamId,
     },
-    raw: { source: 'auth0-only', orgSlug, roles, permissions },
+    raw: { source: 'auth0-only', roles, permissions },
   }
 }
 

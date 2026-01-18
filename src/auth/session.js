@@ -76,7 +76,7 @@ function buildState (overrides = {}) {
     accessStatus: TEAM_ACCESS_STATUS.NO_AUTH,
     accessError: null,
     sessionReady: false,
-    canChangeTeam: true,
+    canChangeTeam: false,
     teamLocked: teamLockedFlag,
     bootstrapAvailable: false,
     bootstrapAdminEmail: '',
@@ -276,7 +276,9 @@ async function evaluateAccess () {
       hasAccess: membershipStatus === 'member' && memberActive !== false && memberAssigned !== false,
       teamId: resolvedTeamId,
       displayTeamId: resolvedDisplayTeamId,
-      canChangeTeam: !lockTeam || isAdmin,
+      // Auth0-first: Team vælges via Auth0 organization ved login.
+      // Brugere skal ikke kunne skrive/skyde teamId lokalt.
+      canChangeTeam: false,
       teamLocked: teamLockedFlag,
       bootstrapAvailable,
       bootstrapAdminEmail,
