@@ -26,7 +26,8 @@ test('normalizeHistoryEntry parses worker rate text into base range', () => {
   assert.ok(normalized.wage.base)
   assert.equal(normalized.wage.base.min.toFixed(2), '267.01')
   assert.equal(normalized.wage.base.max.toFixed(2), '295.67')
-  assert.equal(normalized.displayBaseWage, '267,01–295,67 kr/t')
+  // Display should show a single value (midpoint of min and max) for the base wage.
+  assert.equal(normalized.displayBaseWage, '281,34 kr/t')
 })
 
 test('normalizeHistoryList sorts newest entries first', () => {
