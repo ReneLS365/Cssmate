@@ -86,10 +86,7 @@ export async function resetApp () {
 
   await clearIndexedDb()
 
-  const origin = window.location?.origin || ''
-  const path = window.location?.pathname || ''
-  const target = `${origin}${path}?resetDone=1`
-  window.location?.replace?.(target)
+  window.location.href = `/?fresh=${Date.now()}`
 }
 
 function clearStorage () {

@@ -1,4 +1,4 @@
-import { onChange as onSessionChange, refreshAccess, requestBootstrapAccess, getState as getSessionState, setPreferredTeamId, SESSION_STATUS } from '../auth/session.js'
+import { onChange as onSessionChange, refreshAccess, getState as getSessionState, SESSION_STATUS } from '../auth/session.js'
 import { isAdminUser } from '../auth/roles.js'
 import { APP_VERSION, GIT_SHA } from '../version.js'
 import { DEFAULT_TEAM_SLUG, formatTeamId, getDisplayTeamId } from '../services/team-ids.js'
@@ -17,12 +17,8 @@ let teamEl
 let uidEl
 let emailEl
 let retryButton
-let switchTeamButton
 let logoutButton
-let bootstrapButton
 let resetButton
-let teamInput
-let teamSaveButton
 let debugEl
 let mountEl
 let initialized = false
@@ -46,17 +42,8 @@ function ensureElements () {
       <div><dt>UID</dt><dd id="appGuardUid"></dd></div>
       <div><dt>Email</dt><dd id="appGuardEmail"></dd></div>
     </dl>
-    <div class="app-guard__team">
-      <label for="appGuardTeamInput">Team ID</label>
-      <div class="app-guard__team-row">
-        <input type="text" id="appGuardTeamInput" inputmode="text" autocomplete="organization" placeholder="f.eks. hulmose">
-        <button type="button" id="appGuardTeamSave">Gem</button>
-      </div>
-    </div>
     <div class="app-guard__actions">
       <button type="button" id="appGuardRetry">Opdater adgang</button>
-      <button type="button" id="appGuardSwitch">Skift team</button>
-      <button type="button" id="appGuardBootstrap" data-role="primary">Opret adgang i team</button>
       <button type="button" id="appGuardLogout">Log ud</button>
     </div>
     <div class="app-guard__meta">
@@ -71,38 +58,12 @@ function ensureElements () {
   uidEl = guardEl.querySelector('#appGuardUid')
   emailEl = guardEl.querySelector('#appGuardEmail')
   retryButton = guardEl.querySelector('#appGuardRetry')
-  switchTeamButton = guardEl.querySelector('#appGuardSwitch')
   logoutButton = guardEl.querySelector('#appGuardLogout')
-  bootstrapButton = guardEl.querySelector('#appGuardBootstrap')
   resetButton = guardEl.querySelector('#appGuardReset')
-  teamInput = guardEl.querySelector('#appGuardTeamInput')
-  teamSaveButton = guardEl.querySelector('#appGuardTeamSave')
   debugEl = guardEl.querySelector('#appGuardDebug')
   retryButton?.addEventListener('click', () => scheduleRetry())
-  bootstrapButton?.addEventListener('click', () => triggerBootstrap())
   resetButton?.addEventListener('click', () => resetAppState({ reload: true }))
-  switchTeamButton?.addEventListener('click', () => {
-    setVisible(true)
-    if (typeof window !== 'undefined' && typeof window.__cssmateSetActiveTab === 'function') {
-      window.__cssmateSetActiveTab('team', { focus: true })
-    }
-    teamInput?.focus()
-  })
   logoutButton?.addEventListener('click', () => logoutUser().catch(() => {}))
-  teamSaveButton?.addEventListener('click', async () => {
-    const value = formatTeamId(teamInput?.value || '')
-    if (!value) {
-      messageEl.textContent = 'Angiv et Team ID først.'
-      return
-    }
-    teamSaveButton.disabled = true
-    try {
-      setPreferredTeamId(value)
-      await refreshAccess()
-    } finally {
-      teamSaveButton.disabled = false
-    }
-  })
 }
 
 function isTeamTabActive () {
@@ -127,19 +88,6 @@ function scheduleRetry () {
       console.warn('Membership refresh fejlede', error)
     })
   }, RETRY_DEBOUNCE_MS)
-}
-
-async function triggerBootstrap () {
-  if (!bootstrapButton) return
-  bootstrapButton.disabled = true
-  try {
-    await requestBootstrapAccess()
-    await refreshAccess()
-  } catch (error) {
-    console.warn('Bootstrap fejlede', error)
-  } finally {
-    bootstrapButton.disabled = false
-  }
 }
 
 async function maybeMigrateMemberDoc (state) {
@@ -196,15 +144,7 @@ function updateGuardContent (state) {
   teamEl.textContent = displayTeam
   uidEl.textContent = state?.user?.uid || '–'
   emailEl.textContent = userEmail || '–'
-  if (teamInput) teamInput.value = displayTeam
   if (retryButton) retryButton.disabled = isLoading
-  if (teamSaveButton) teamSaveButton.disabled = isLoading
-  if (switchTeamButton) switchTeamButton.disabled = isLoading
-  if (bootstrapButton) {
-    const showBootstrap = Boolean(state?.bootstrapAvailable && accessStatus === TEAM_ACCESS_STATUS.NO_TEAM)
-    bootstrapButton.hidden = !showBootstrap
-    bootstrapButton.disabled = !showBootstrap || isLoading
-  }
   if (debugEl) {
     const swStatus = (typeof navigator !== 'undefined' && navigator.serviceWorker?.controller) ? 'aktiv' : 'ingen'
     debugEl.textContent = `Version: ${APP_VERSION} ${GIT_SHA} — SW: ${swStatus} — TeamID: ${teamId || 'ukendt'}`

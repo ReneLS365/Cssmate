@@ -27,30 +27,14 @@
     audits = [{ path = "/index.html" }]
 
 [[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/api/:splat"
-  status = 200
-
-[[redirects]]
-  from = "/debug/*"
-  to = "/debug/:splat"
-  status = 200
-
-[[redirects]]
-  from = "/invite"
-  to = "/invite.html"
-  status = 200
-
-[[redirects]]
-  from = "/accept-invite"
-  to = "/accept-invite.html"
-  status = 200
-
-[[redirects]]
-  from = "/"
+  from = "/admin"
   to = "/admin.html"
-  status = 302
-  force = true
+  status = 200
+
+[[redirects]]
+  from = "/reset"
+  to = "/reset.html"
+  status = 200
 
 [[redirects]]
   from = "/*"
@@ -58,32 +42,16 @@
   status = 200
 
 [[headers]]
-  for = "/*"
-  [headers.values]
-    Content-Security-Policy = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; img-src 'self' data: blob: https:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://*.auth0.com; frame-src 'self' https://*.auth0.com; worker-src 'self' blob:; manifest-src 'self'; upgrade-insecure-requests"
-    X-Content-Type-Options = "nosniff"
-    Referrer-Policy = "strict-origin-when-cross-origin"
-    Permissions-Policy = "geolocation=(), microphone=(), camera=()"
-    X-Frame-Options = "DENY"
-    Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
-    Cache-Control = "public, max-age=0, must-revalidate"
-
-[[headers]]
-  for = "/index.html"
+  for = "/reset"
   [headers.values]
     Cache-Control = "no-cache, no-store, must-revalidate"
 
 [[headers]]
-  for = "/service-worker.js"
+  for = "/reset.html"
   [headers.values]
     Cache-Control = "no-cache, no-store, must-revalidate"
 
 [[headers]]
-  for = "/manifest.webmanifest"
+  for = "/api/*"
   [headers.values]
     Cache-Control = "no-cache, no-store, must-revalidate"
-
-[[headers]]
-  for = "/assets/*"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"

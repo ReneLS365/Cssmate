@@ -442,7 +442,7 @@
     <div id="teamGuardMount"></div>
 
     <!-- Team status and controls (moved from Delt sager) -->
-    <section class="card team-status-controls no-print" aria-live="polite">
+    <section class="card team-status-controls no-print" aria-live="polite" hidden>
       <div class="shared-status-card" aria-live="polite">
         <div class="shared-status-row"><span>Logget ind:</span><strong id="sharedStatusLoggedIn">Nej</strong></div>
         <div class="shared-status-row"><span>Bruger:</span><strong id="sharedStatusUser">–</strong></div>
@@ -487,10 +487,10 @@
       <div id="teamMembersListReadOnly" class="team-admin__list"></div>
     </section>
 
-    <section class="card team-admin no-print" aria-live="polite">
+    <section class="card team-admin no-print" aria-live="polite" hidden>
       <header class="card-header">
         <h2>Team administration</h2>
-        <p>Se teaminfo og administrer medlemmer. Medlemmer kan se listen, admin/owner kan redigere.</p>
+        <p>Se teaminfo og medlemmer. Admin/owner kan se medlemslisten.</p>
       </header>
       <div class="team-admin__meta">
         <div>
@@ -512,7 +512,7 @@
         <p class="hint">Du er logget ind som bootstrap-admin, men mangler adgang til hulmose.</p>
         <button id="teamClaimOwner" type="button">Claim owner (hulmose)</button>
       </div>
-      <div class="team-admin__actions">
+      <div class="team-admin__actions" hidden>
         <div class="team-admin__invite">
           <label for="teamInviteEmailTeamPage">Email (valgfri)</label>
           <input id="teamInviteEmailTeamPage" type="email" autocomplete="email" placeholder="bruger@firma.dk">
@@ -539,7 +539,7 @@
           <button id="teamUidSubmit" type="button">Tilføj medlem</button>
         </div>
       </div>
-      <div class="team-admin__lists">
+      <div class="team-admin__lists" hidden>
         <div class="team-admin__card">
           <h4>Medlemmer</h4>
           <div id="teamMembersListTeamPage" class="team-admin__list"></div>
@@ -550,7 +550,8 @@
         </div>
       </div>
       <div class="btn-group">
-        <button id="teamRefresh" type="button">Opdater</button>
+        <button id="teamRefresh" type="button">Opdater adgang</button>
+        <button id="teamResetApp" type="button">Nulstil app</button>
       </div>
       <p id="teamAdminStatus" class="status-message" aria-live="polite"></p>
     </section>

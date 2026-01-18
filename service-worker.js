@@ -21,7 +21,6 @@ const PRECACHE_URLS = [
   '/accept-invite.html',
   '/invite.html',
   '/admin.html',
-  '/reset.html',
   '/main.js',
   '/main.min.js',
   '/auth0-config.js',
@@ -104,6 +103,10 @@ async function cacheFirst(request) {
 }
 
 async function handleNavigation(request) {
+  const url = new URL(request.url)
+  if (url.pathname === '/reset' || url.pathname === '/reset.html') {
+    return fetch(request)
+  }
   const cache = await caches.open(CACHE_NAME)
   try {
     const response = await fetch(request)

@@ -320,8 +320,10 @@ function ensureTeamAdminPageLazy () {
     teamAdminModulePromise = import('./src/ui/team-admin-page.js')
   }
   return teamAdminModulePromise
-    .then(mod => {
-      mod?.initTeamAdminPage?.()
+    .then(async mod => {
+      if (typeof mod?.initTeamAdminPage === 'function') {
+        await mod.initTeamAdminPage()
+      }
       return mod
     })
     .catch(error => {
