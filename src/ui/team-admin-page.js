@@ -86,6 +86,26 @@ async function renderMembers (membersListEl, statusEl, baseStatus = '') {
       email: member?.email || '',
       name: member?.name || '',
     }))
+
+    // Ensure the currently authenticated user is included in the member list.
+    // If the API does not return the current user, we synthesize an entry so
+    // that the UI always reflects at least "me".
+    try {
+      const authCtx = getAuthContext()
+      const currentUser = authCtx?.user || null
+      const currentEmail = currentUser?.email || ''
+      if (currentEmail) {
+        const exists = normalized.some(member => (member.email || '').toLowerCase() === currentEmail.toLowerCase())
+        if (!exists) {
+          normalized.push({
+            user_id: currentUser?.user_id || currentUser?.userId || currentUser?.sub || '',
+            email: currentEmail,
+            name: currentUser?.name || currentUser?.displayName || currentEmail,
+          })
+        }
+      }
+    } catch {}
+
     if (!normalized.length) {
       const empty = document.createElement('p')
       empty.className = 'hint'

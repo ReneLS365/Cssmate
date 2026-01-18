@@ -2772,6 +2772,11 @@ function buildHistorySummary(entry) {
     return null;
   }
   const wage = normalized.wage || {};
+  // Prefer single-value rates computed by history-normalizer. If they are
+  // present we use them; otherwise we fall back to the original min/max
+  // objects. This ensures summaries always align with the single-value
+  // representation requested by the user.
+  const rates = normalized.rates || {};
   const toRateValue = value => {
     if (!value) return 0;
     if (typeof value === 'object' && value != null) {
@@ -2782,10 +2787,10 @@ function buildHistorySummary(entry) {
   return {
     date: normalized.displayDateWithAddress || normalized.displayDate || formatHistoryTimestamp(normalized.createdAt),
     timer: toNumber(normalized.hours),
-    hourlyBase: toRateValue(wage.base),
-    hourlyUdd1: toRateValue(wage.udd1),
-    hourlyUdd2: toRateValue(wage.udd2),
-    hourlyUdd2Mentor: toRateValue(wage.udd2Mentor),
+    hourlyBase: rates.base != null ? toNumber(rates.base) : toRateValue(wage.base),
+    hourlyUdd1: rates.udd1 != null ? toNumber(rates.udd1) : toRateValue(wage.udd1),
+    hourlyUdd2: rates.udd2 != null ? toNumber(rates.udd2) : toRateValue(wage.udd2),
+    hourlyUdd2Mentor: rates.udd2Mentor != null ? toNumber(rates.udd2Mentor) : toRateValue(wage.udd2Mentor),
     display: normalized.display,
     displayHours: normalized.displayHours,
   };

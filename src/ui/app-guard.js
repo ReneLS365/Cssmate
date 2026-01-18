@@ -54,6 +54,13 @@ function ensureElements () {
   retryButton?.addEventListener('click', () => scheduleRetry())
   resetButton?.addEventListener('click', () => resetAppState({ reload: true }))
   logoutButton?.addEventListener('click', () => logoutUser().catch(() => {}))
+
+  // Hide the guard's logout button to avoid showing two logout buttons in the Team tab.
+  // The Team status card elsewhere in the UI already contains the primary logout control.
+  if (logoutButton) {
+    logoutButton.hidden = true
+    logoutButton.setAttribute('aria-hidden', 'true')
+  }
 }
 
 function isTeamTabActive () {

@@ -112,6 +112,24 @@ function formatWageRange (range) {
   return `${formatCurrency(range.min)}–${formatCurrency(range.max)} kr/t`
 }
 
+/**
+ * Calculate the average (midpoint) of a wage range. Returns `null` if the
+ * range is invalid. If both min and max are finite numbers the midpoint is
+ * returned. Otherwise returns null.
+ *
+ * @param {object|null} range
+ * @returns {number|null}
+ */
+function averageRate (range) {
+  if (!range || typeof range !== 'object') return null
+  const min = toNumber(range.min)
+  const max = toNumber(range.max)
+  if (Number.isFinite(min) && Number.isFinite(max) && (min > 0 || max > 0)) {
+    return (min + max) / 2
+  }
+  return null
+}
+
 function deriveMetaFromEntry (entry = {}) {
   const meta = entry.meta || {}
   const info = entry.data?.sagsinfo || entry.payload?.job?.info || entry.payload?.info || entry.payload?.meta || {}
@@ -269,6 +287,57 @@ function normalizeHistoryEntry (entry, options = {}) {
       udd2: formatWageRange(udd2Range),
       udd2Mentor: formatWageRange(udd2MentorRange),
     },
+  }
+
+  // Compute single-value wage rates for display and calculations. The existing
+  // wage ranges expose min/max values which cause UI to render ranges (e.g.
+  // "264,96–293,62 kr/t"). We derive a single representative value by
+  // taking the midpoint of the range if available, otherwise falling back
+  // to numeric totals or allowances. These computed values are stored in
+  // `normalized.rates` and used to override the formatted display values.
+  const averageBase = averageRate(baseRange)
+    || (safeBaseFromWorkers && Number.isFinite(safeBaseFromWorkers.min) && Number.isFinite(safeBaseFromWorkers.max)
+      ? (safeBaseFromWorkers.min + safeBaseFromWorkers.max) / 2
+      : null)
+    || toNumber(totals.hourlyBase)
+    || toNumber(totals.timeprisUdenTillaeg)
+    || toNumber(entry.hourlyBase)
+    || 0
+  const baseValue = Number.isFinite(averageBase) && averageBase > 0 ? averageBase : 0
+
+  const averageUdd1 = averageRate(udd1Range)
+  const averageUdd2 = averageRate(udd2Range)
+  const averageUdd2Mentor = averageRate(udd2MentorRange)
+
+  const udd1Value = Number.isFinite(averageUdd1) && averageUdd1 > 0
+    ? averageUdd1
+    : (baseValue > 0 ? baseValue + tillaegUdd1 : 0)
+  const udd2Value = Number.isFinite(averageUdd2) && averageUdd2 > 0
+    ? averageUdd2
+    : (baseValue > 0 ? baseValue + tillaegUdd2 : 0)
+  const udd2MentorValue = Number.isFinite(averageUdd2Mentor) && averageUdd2Mentor > 0
+    ? averageUdd2Mentor
+    : (baseValue > 0 ? baseValue + tillaegUdd2 + mentorRate : 0)
+
+  // Attach numeric rates for downstream consumers.
+  normalized.rates = {
+    base: baseValue,
+    udd1: udd1Value,
+    udd2: udd2Value,
+    udd2Mentor: udd2MentorValue,
+  }
+
+  // Override formatted display strings to use a single value instead of a range.
+  const formatRate = val => {
+    const num = Number.isFinite(val) && val > 0 ? val : 0
+    return `${formatCurrency(num)} kr/t`
+  }
+  normalized.displayBaseWage = formatRate(baseValue)
+  normalized.display = {
+    base: formatRate(baseValue),
+    udd1: formatRate(udd1Value),
+    udd2: formatRate(udd2Value),
+    udd2Mentor: formatRate(udd2MentorValue),
   }
 
   const searchValues = [meta.sagsnummer, meta.navn, meta.kunde, meta.adresse, meta.montoer]

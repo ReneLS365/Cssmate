@@ -474,6 +474,19 @@ export function initSharedCasesPanel() {
     }
     refresh();
   });
+
+  // Automatically refresh the shared cases list when a case is exported. The
+  // export workflow dispatches a `cssmate:exported` event; listening here
+  // ensures that newly shared cases appear without requiring manual refresh.
+  if (typeof window !== 'undefined') {
+    window.addEventListener('cssmate:exported', () => {
+      try {
+        if (requireAuth()) refresh();
+      } catch (error) {
+        // Ignore errors (likely due to no auth), since refresh will run on next auth change.
+      }
+    });
+  }
 }
 
 export { formatMissingMembershipMessage };
