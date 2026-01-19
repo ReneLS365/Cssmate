@@ -258,6 +258,12 @@ function resolveAppState (appState) {
   return { returnTo: returnTarget }
 }
 
+function createMissingConfigError () {
+  const error = new Error('Auth0 mangler VITE_AUTH0_DOMAIN eller VITE_AUTH0_CLIENT_ID.')
+  error.code = 'AUTH0_CONFIG_MISSING'
+  return error
+}
+
 export async function getClient () {
   if (clientOverride) return clientOverride
   if (clientPromise) return clientPromise
@@ -288,7 +294,7 @@ export async function getClient () {
             ensureUiInteractive('auth0-missing-config')
           }
         }
-        return createFallbackClient()
+        throw createMissingConfigError()
       }
 
       const client = await createAuth0Client({
@@ -318,6 +324,9 @@ export async function getClient () {
       return client
     } catch (error) {
       clientPromise = null
+      if (error?.code === 'AUTH0_CONFIG_MISSING') {
+        throw error
+      }
       hardClearUiLocks()
       if (typeof document !== 'undefined') {
         ensureUiInteractive('auth0-init-error')
