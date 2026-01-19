@@ -1,57 +1,89 @@
-[build]
-  command = "npm run build"
-  publish = ".netlify_publish"
-  [build.environment]
-    NODE_VERSION = "22"
-
 [functions]
-  included_files = ["migrations/*.sql"]
 
- [context.deploy-preview]
+  [functions.emails]
+  included_files = [
+    "./emails/**"
+  ]
+
+[build]
+command = "npm run build"
+publish = ".netlify_publish"
+
+  [build.environment]
+  NODE_VERSION = "22"
+
+[[plugins]]
+package = "netlify-plugin-a11y"
+
+  [plugins.inputs]
+  checkPaths = []
+  resultMode = "warn"
+
+[[plugins]]
+package = "@netlify/plugin-lighthouse"
+
+  [plugins.inputs]
+
+    [[plugins.inputs.audits]]
+    path = "/"
+
+[[headers]]
+for = "/reset"
+
+  [headers.values]
+  Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+for = "/reset.html"
+
+  [headers.values]
+  Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+for = "/api/*"
+
+  [headers.values]
+  Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[redirects]]
+from = "/admin"
+to = "/admin.html"
+status = 200
+
+[[redirects]]
+from = "/reset"
+to = "/reset.html"
+status = 200
+
+[[redirects]]
+from = "/*"
+to = "/index.html"
+status = 200
+
+[context]
+
+  [context.deploy-preview]
   command = "npm run build"
   publish = ".netlify_publish"
 
-[context.branch-deploy]
+  [context.branch-deploy]
   command = "npm run build"
   publish = ".netlify_publish"
 
-[[plugins]]
-  package = "netlify-plugin-a11y"
-  [plugins.inputs]
-    checkPaths = []
-    resultMode = "warn"
+  [context.production]
 
-[[plugins]]
-  package = "@netlify/plugin-lighthouse"
-  [plugins.inputs]
-    audits = [{ path = "/index.html" }]
+    [context.production.functions]
 
-[[redirects]]
-  from = "/admin"
-  to = "/admin.html"
-  status = 200
+      [context.production.functions.emails]
+      included_files = [
+        "./emails/**"
+      ]
 
-[[redirects]]
-  from = "/reset"
-  to = "/reset.html"
-  status = 200
+  [context.main]
 
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+    [context.main.functions]
 
-[[headers]]
-  for = "/reset"
-  [headers.values]
-    Cache-Control = "no-cache, no-store, must-revalidate"
-
-[[headers]]
-  for = "/reset.html"
-  [headers.values]
-    Cache-Control = "no-cache, no-store, must-revalidate"
-
-[[headers]]
-  for = "/api/*"
-  [headers.values]
-    Cache-Control = "no-cache, no-store, must-revalidate"
+      [context.main.functions.emails]
+      included_files = [
+        "./emails/**"
+      ]
