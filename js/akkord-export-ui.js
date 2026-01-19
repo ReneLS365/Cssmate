@@ -207,11 +207,12 @@ export async function exportAkkordJsonAndPdf(options = {}) {
       throw exportErrors[0] || new Error('Eksport mislykkedes');
     }
 
+    const jobNumber = context.meta?.sagsnummer || context.model?.meta?.caseNumber;
     const resolvedTeamId = getSessionState()?.teamId || resolveTeamId(typeof window !== 'undefined' ? window.TEAM_ID : undefined);
 
     const publishResult = await publishSharedCaseFn({
       teamId: resolvedTeamId,
-      jobNumber: context.meta?.sagsnummer || context.model?.meta?.caseNumber,
+      jobNumber,
       caseKind: (context.model?.meta?.jobType || 'montage').toLowerCase(),
       system: context.model?.meta?.system || (context.model?.meta?.systems || [])[0] || '',
       status: 'kladde',
@@ -224,9 +225,15 @@ export async function exportAkkordJsonAndPdf(options = {}) {
       jsonContent: jsonResult.content,
     });
 
+    notifyHistory('shared', {
+      caseId: publishResult?.caseId || '',
+      jobNumber: jobNumber || '',
+      queued: Boolean(publishResult?.queued),
+      historySaved: context.historySaved,
+    });
     const sharedMessage = publishResult?.queued
-      ? 'Sag gemt offline og synkroniseres, når du er online.'
-      : 'Sag publiceret til fælles sager.';
+      ? 'Eksporteret (Historik + Delt sager). Gemt offline og synkroniseres, når du er online.'
+      : 'Eksporteret (Historik + Delt sager).';
     notifyAction(sharedMessage, 'success');
     return { jsonFileName: jsonResult.fileName };
   } catch (error) {
