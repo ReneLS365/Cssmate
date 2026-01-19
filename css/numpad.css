@@ -23,6 +23,7 @@
 .numpad-panel {
   position: relative;
   width: min(420px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   max-height: calc(100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   max-width: 420px;
   margin: 0;
