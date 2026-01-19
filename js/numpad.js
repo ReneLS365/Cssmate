@@ -20,10 +20,7 @@ const NUMPAD_COMMIT_READY_CLASS = 'numpad-commit--ready'
 const NUMPAD_COMMITTED_CLASS = 'numpad-committed'
 let initialFieldValue = ''
 let displayUpdateFrame = null
-let positionUpdateFrame = null
-let positionListenersActive = false
 let keyboardBlockActive = false
-const NUMPAD_MARGIN = 8
 const DEBUG_NUMPAD = Boolean(
   (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV) ||
   (typeof import.meta !== 'undefined' && import.meta.env && String(import.meta.env.VITE_DEBUG_NUMPAD ?? '') === '1')
@@ -60,32 +57,6 @@ function shouldHandleKeyPress (key, source) {
   keyPressGuardRef.key = key
   keyPressGuardRef.source = source
   return true
-}
-
-function clamp (value, min, max) {
-  return Math.max(min, Math.min(max, value))
-}
-
-function getNumpadPosition (anchorRect, panelRect) {
-  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0
-  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0
-
-  let left = anchorRect.left
-  let top = anchorRect.bottom + NUMPAD_MARGIN
-
-  const spaceBelow = viewportHeight - anchorRect.bottom
-  const spaceAbove = anchorRect.top
-  const panelWidth = panelRect.width || 0
-  const panelHeight = panelRect.height || 0
-
-  if (spaceBelow < panelHeight + NUMPAD_MARGIN && spaceAbove >= panelHeight + NUMPAD_MARGIN) {
-    top = anchorRect.top - panelHeight - NUMPAD_MARGIN
-  }
-
-  left = clamp(left, NUMPAD_MARGIN, viewportWidth - panelWidth - NUMPAD_MARGIN)
-  top = clamp(top, NUMPAD_MARGIN, viewportHeight - panelHeight - NUMPAD_MARGIN)
-
-  return { left, top }
 }
 
 function isNumpadOpen () {
@@ -162,41 +133,6 @@ function initNumpad () {
   observeNumpadInputs()
 }
 
-function scheduleNumpadPosition () {
-  if (!overlay || !dialog || !activeInput || !isNumpadOpen()) return
-  if (positionUpdateFrame) return
-  positionUpdateFrame = requestAnimationFrame(() => {
-    positionUpdateFrame = null
-    positionNumpad()
-  })
-}
-
-function positionNumpad () {
-  if (!dialog || !activeInput) return
-  const anchorRect = activeInput.getBoundingClientRect()
-  const panelRect = dialog.getBoundingClientRect()
-  const next = getNumpadPosition(anchorRect, panelRect)
-
-  dialog.style.left = `${next.left}px`
-  dialog.style.top = `${next.top}px`
-  dialog.style.opacity = '1'
-  dialog.style.transform = 'translate3d(0, 0, 0)'
-}
-
-function startPositionListeners () {
-  if (positionListenersActive) return
-  window.addEventListener('scroll', scheduleNumpadPosition, true)
-  window.addEventListener('resize', scheduleNumpadPosition)
-  positionListenersActive = true
-}
-
-function stopPositionListeners () {
-  if (!positionListenersActive) return
-  window.removeEventListener('scroll', scheduleNumpadPosition, true)
-  window.removeEventListener('resize', scheduleNumpadPosition)
-  positionListenersActive = false
-}
-
 function handleKeyboardBlock (event) {
   if (!isNumpadOpen()) return
   if (event.key === 'Escape' || event.key === 'Enter') return
@@ -239,7 +175,6 @@ function handleNumpadPointerDown (event) {
   if (!(input instanceof HTMLInputElement)) return
   if (isNumpadOpen()) return
   if (document.activeElement !== input) return
-  event.preventDefault()
   showNumpadForInput(input)
 }
 
@@ -266,7 +201,7 @@ function bindInputElement (input) {
 
   if (wantsNumpad) {
     input.addEventListener('focus', handleNumpadFocus)
-    input.addEventListener('pointerdown', handleNumpadPointerDown)
+    input.addEventListener('click', handleNumpadPointerDown)
     input.addEventListener('beforeinput', blockNativeInput)
   }
 
@@ -351,9 +286,13 @@ function showNumpadForInput (input) {
     dialog.style.opacity = '0'
     dialog.style.transform = 'translate3d(0, 6px, 0)'
   }
-  startPositionListeners()
   startKeyboardBlock()
-  scheduleNumpadPosition()
+  if (dialog) {
+    requestAnimationFrame(() => {
+      dialog.style.opacity = '1'
+      dialog.style.transform = 'translate3d(0, 0, 0)'
+    })
+  }
 }
 
 function hideNumpad ({ commit = false } = {}) {
@@ -394,15 +333,10 @@ function hideNumpad ({ commit = false } = {}) {
   overlay.setAttribute('aria-hidden', 'true')
   overlay.setAttribute('inert', '')
   overlay.setAttribute('hidden', '')
-  stopPositionListeners()
   stopKeyboardBlock()
   if (displayUpdateFrame) {
     cancelAnimationFrame(displayUpdateFrame)
     displayUpdateFrame = null
-  }
-  if (positionUpdateFrame) {
-    cancelAnimationFrame(positionUpdateFrame)
-    positionUpdateFrame = null
   }
   activeInput = null
   initialFieldValue = ''

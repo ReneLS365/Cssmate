@@ -3,10 +3,15 @@
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.55);
-  display: block;
+  display: grid;
+  place-items: center;
   z-index: 9999;
   transition: opacity 0.15s ease-out;
   touch-action: auto;
+  padding: max(8px, env(safe-area-inset-top, 0px))
+    max(8px, env(safe-area-inset-right, 0px))
+    max(8px, env(safe-area-inset-bottom, 0px))
+    max(8px, env(safe-area-inset-left, 0px));
 }
 
 #numpad-overlay.numpad-hidden {
@@ -16,11 +21,9 @@
 
 /* Panel */
 .numpad-panel {
-  position: fixed;
-  top: 0;
-  left: 0;
+  position: relative;
   width: min(420px, calc(100vw - 16px));
-  max-height: calc(100vh - 16px);
+  max-height: calc(100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   max-width: 420px;
   margin: 0;
   overflow: auto;
