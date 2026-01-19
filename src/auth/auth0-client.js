@@ -15,6 +15,23 @@ const BYPASS_USER = {
   nickname: 'E2E',
 }
 
+function createFallbackClient ({
+  isAuthenticated = false,
+  user = null,
+  token = '',
+  idTokenClaims = null,
+} = {}) {
+  return {
+    isAuthenticated: async () => isAuthenticated,
+    loginWithRedirect: async () => {},
+    logout: async () => {},
+    getUser: async () => user,
+    getTokenSilently: async () => token,
+    getIdTokenClaims: async () => idTokenClaims,
+    handleRedirectCallback: async () => {},
+  }
+}
+
 const ORG_ID_PATTERN = /^org_[A-Za-z0-9]+$/
 const ORG_SLUG_PATTERN = /^[a-z0-9][a-z0-9-_]{1,62}$/i
 const AUTH0_DOMAIN_PATTERN = /\.auth0\.com$/i
@@ -30,15 +47,7 @@ function resolveAuth0ModulePath () {
 async function loadAuth0Module () {
   if (typeof window === 'undefined') {
     return {
-      createAuth0Client: async () => ({
-        isAuthenticated: async () => false,
-        loginWithRedirect: async () => {},
-        logout: async () => {},
-        getUser: async () => null,
-        getTokenSilently: async () => '',
-        getIdTokenClaims: async () => ({}),
-        handleRedirectCallback: async () => {},
-      }),
+      createAuth0Client: async () => createFallbackClient({ idTokenClaims: {} }),
     }
   }
   if (!auth0ModulePromise) {
@@ -255,25 +264,15 @@ export async function getClient () {
 
   clientPromise = (async () => {
     if (isLighthouseMode()) {
-      return {
-        isAuthenticated: async () => false,
-        loginWithRedirect: async () => {},
-        logout: async () => {},
-        getUser: async () => null,
-        getTokenSilently: async () => '',
-        getIdTokenClaims: async () => null,
-      }
+      return createFallbackClient()
     }
     if (isE2eBypassEnabled()) {
-      return {
-        isAuthenticated: async () => true,
-        loginWithRedirect: async () => {},
-        logout: async () => {},
-        getUser: async () => BYPASS_USER,
-        getTokenSilently: async () => 'e2e-token',
-        getIdTokenClaims: async () => ({}),
-        handleRedirectCallback: async () => {},
-      }
+      return createFallbackClient({
+        isAuthenticated: true,
+        user: BYPASS_USER,
+        token: 'e2e-token',
+        idTokenClaims: {},
+      })
     }
     try {
       installOrgDebugHooks()
@@ -283,9 +282,13 @@ export async function getClient () {
       logAuth0ConfigStatus(isConfigured)
       if (!isConfigured) {
         if (typeof window !== 'undefined') {
-          console.error('[auth0] Mangler domain eller client id. Tjek VITE_AUTH0_DOMAIN og VITE_AUTH0_CLIENT_ID.')
-          throw new Error('Auth0 config mangler. Tjek VITE_AUTH0_DOMAIN og VITE_AUTH0_CLIENT_ID.')
+          console.warn('[auth0] Mangler domain eller client id. Tjek VITE_AUTH0_DOMAIN og VITE_AUTH0_CLIENT_ID.')
+          hardClearUiLocks()
+          if (typeof document !== 'undefined') {
+            ensureUiInteractive('auth0-missing-config')
+          }
         }
+        return createFallbackClient()
       }
 
       const client = await createAuth0Client({
