@@ -357,15 +357,12 @@
             <tr>
               <th scope="col">Dato &amp; tid</th>
               <th scope="col">Timer</th>
-              <th scope="col">Uden tillæg</th>
-              <th scope="col">Udd1</th>
-              <th scope="col">Udd2</th>
-              <th scope="col">Udd2 + mentor</th>
+              <th scope="col">Total</th>
             </tr>
           </thead>
           <tbody id="job-history-summary-body">
             <tr>
-              <td colspan="6">Vælg en sag for at se historik.</td>
+              <td colspan="3">Vælg en sag for at se historik.</td>
             </tr>
           </tbody>
         </table>
@@ -438,9 +435,6 @@
     aria-hidden="true"
     hidden
   >
-    <!-- Mount point for app guard (team access checking) -->
-    <div id="teamGuardMount"></div>
-
     <!-- Team status and controls (moved from Delt sager) -->
     <section class="card team-status-controls no-print" aria-live="polite" hidden>
       <div class="shared-status-card" aria-live="polite">
@@ -459,15 +453,23 @@
     <section class="card team-admin no-print" aria-live="polite" hidden>
       <header class="card-header">
         <h2>Medlemmer</h2>
-        <p>Admin/owner kan se medlemslisten.</p>
+        <p>Admin/owner kan se medlemslisten. Andre ser kun sig selv.</p>
       </header>
+      <div class="team-admin__card">
+        <div class="team-admin__meta">
+          <div><span>Connected</span><strong id="teamConnectedState">–</strong></div>
+          <div><span>Auth0</span><strong id="teamConnectedAuth0">–</strong></div>
+          <div><span>Organisation</span><strong id="teamConnectedOrg">–</strong></div>
+          <div><span>TeamID</span><strong id="teamConnectedTeam">–</strong></div>
+          <div><span>Rolle</span><strong id="teamConnectedRole">–</strong></div>
+        </div>
+      </div>
       <div class="team-admin__lists" hidden>
         <div class="team-admin__card">
           <div id="teamMembersListTeamPage" class="team-admin__list"></div>
         </div>
       </div>
-      <div class="btn-group">
-        <button id="teamRefresh" type="button">Opdater adgang</button>
+      <div class="team-admin__actions">
         <button id="teamResetApp" type="button">Nulstil app</button>
       </div>
       <p id="teamAdminStatus" class="status-message" aria-live="polite"></p>
