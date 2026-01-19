@@ -2754,8 +2754,8 @@ function buildHistorySummary(entry) {
   return {
     date: normalized.displayDateWithAddress || normalized.displayDate || formatHistoryTimestamp(normalized.createdAt),
     timer: toNumber(normalized.hours),
-    total: resolveHistoryTotal(normalized),
     displayHours: normalized.displayHours,
+    total: resolveHistoryTotal(normalized),
   };
 }
 
