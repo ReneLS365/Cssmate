@@ -15,7 +15,7 @@ import { shouldSkipAuthGate } from './src/auth/skip-auth-gate.js'
 import { setActiveJob } from './src/state/jobs.js'
 import { saveDraft, loadDraft, clearDraft } from './js/storageDraft.js'
 import { appendHistoryEntry, loadHistory as loadHistoryEntries, deleteHistoryEntry, migrateHistory, buildHistoryKey as computeHistoryKey } from './js/storageHistory.js'
-import { normalizeHistoryEntry as baseNormalizeHistoryEntry, normalizeHistoryList, formatDateLabel, normalizeSearchValue, formatHistoryRate } from './js/history-normalizer.js'
+import { normalizeHistoryEntry as baseNormalizeHistoryEntry, normalizeHistoryList, formatDateLabel, normalizeSearchValue } from './js/history-normalizer.js'
 import { downloadBlob } from './js/utils/downloadBlob.js'
 import { applyBuildMetadata, isDebugOverlayEnabled, updateCurrentView } from './src/state/debug.js'
 import { resetAppState, resetOfflineCache } from './src/utils/reset-app.js'
@@ -2525,25 +2525,6 @@ function buildWorkerRateRows(entry) {
   return container;
 }
 
-function buildWageDetails(entry) {
-  const container = document.createElement('div');
-  container.className = 'history-item__wages';
-  container.appendChild(createHistoryDetailRow('Uden tillæg', entry.display?.base || entry.displayBaseWage || '–'));
-  const hasAllowances = [entry.display?.udd1, entry.display?.udd2, entry.display?.udd2Mentor]
-    .some(value => value && value !== '–');
-  if (hasAllowances) {
-    container.appendChild(createHistoryDetailRow('Udd1', entry.display?.udd1 || '–'));
-    container.appendChild(createHistoryDetailRow('Udd2', entry.display?.udd2 || '–'));
-    container.appendChild(createHistoryDetailRow('Udd2 + mentor', entry.display?.udd2Mentor || '–'));
-  } else {
-    const note = document.createElement('p');
-    note.className = 'history-item__note';
-    note.textContent = 'Tillægs-data mangler';
-    container.appendChild(note);
-  }
-  return container;
-}
-
 const formatHistoryCurrency = value => new Intl.NumberFormat('da-DK', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
@@ -2624,7 +2605,6 @@ function buildHistoryListItem(entry) {
     body.appendChild(infoBlock);
   }
 
-  body.appendChild(buildWageDetails(normalized));
   body.appendChild(buildWorkerRateRows(normalized));
 
   const actions = document.createElement('div');
@@ -2771,27 +2751,10 @@ function buildHistorySummary(entry) {
   if (!normalized) {
     return null;
   }
-  const wage = normalized.wage || {};
-  // Prefer single-value rates computed by history-normalizer. If they are
-  // present we use them; otherwise we fall back to the original min/max
-  // objects. This ensures summaries always align with the single-value
-  // representation requested by the user.
-  const rates = normalized.rates || {};
-  const toRateValue = value => {
-    if (!value) return 0;
-    if (typeof value === 'object' && value != null) {
-      return toNumber(value.max || value.min);
-    }
-    return toNumber(value);
-  };
   return {
     date: normalized.displayDateWithAddress || normalized.displayDate || formatHistoryTimestamp(normalized.createdAt),
     timer: toNumber(normalized.hours),
-    hourlyBase: rates.base != null ? toNumber(rates.base) : toRateValue(wage.base),
-    hourlyUdd1: rates.udd1 != null ? toNumber(rates.udd1) : toRateValue(wage.udd1),
-    hourlyUdd2: rates.udd2 != null ? toNumber(rates.udd2) : toRateValue(wage.udd2),
-    hourlyUdd2Mentor: rates.udd2Mentor != null ? toNumber(rates.udd2Mentor) : toRateValue(wage.udd2Mentor),
-    display: normalized.display,
+    total: resolveHistoryTotal(normalized),
     displayHours: normalized.displayHours,
   };
 }
@@ -2804,7 +2767,7 @@ function renderJobHistorySummary(entry) {
   if (!summary) {
     const row = document.createElement('tr');
     const cell = document.createElement('td');
-    cell.colSpan = 6;
+    cell.colSpan = 3;
     cell.textContent = 'Ingen historik endnu.';
     row.appendChild(cell);
     tbody.appendChild(row);
@@ -2813,10 +2776,7 @@ function renderJobHistorySummary(entry) {
   const values = [
     summary.date || '–',
     summary.displayHours || (summary.timer > 0 ? formatNumber(summary.timer) : '–'),
-    summary.display?.base || formatHistoryRate('base', summary.hourlyBase),
-    summary.display?.udd1 || formatHistoryRate('udd1', summary.hourlyUdd1),
-    summary.display?.udd2 || formatHistoryRate('udd2', summary.hourlyUdd2),
-    summary.display?.udd2Mentor || formatHistoryRate('udd2Mentor', summary.hourlyUdd2Mentor),
+    summary.total > 0 ? `${formatHistoryCurrency(summary.total)} kr` : '–',
   ];
   const row = document.createElement('tr');
   values.forEach(text => {
