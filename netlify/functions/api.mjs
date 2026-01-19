@@ -276,7 +276,7 @@ async function requireTeamContext (event, teamSlug, { requireAdmin = false } = {
 
 async function getMember (teamId, userSub) {
   const result = await db.query(
-    'SELECT team_id, user_sub, email, role, status, joined_at FROM team_members WHERE team_id = $1 AND user_sub = $2',
+    'SELECT team_id, user_sub, email, role, status, joined_at, last_login_at FROM team_members WHERE team_id = $1 AND user_sub = $2',
     [teamId, userSub]
   )
   return result.rows[0] || null
@@ -307,6 +307,7 @@ function serializeMemberRow (row) {
     active: row.status === 'active',
     assigned: true,
     createdAt: row.joined_at ? new Date(row.joined_at).toISOString() : null,
+    lastLoginAt: row.last_login_at ? new Date(row.last_login_at).toISOString() : null,
   }
 }
 
@@ -454,19 +455,20 @@ async function handleTeamBootstrap (event, teamSlug) {
 
 async function handleTeamMembersList (event, teamSlug) {
   const user = await requireAuth(event)
-  if (!user.isPrivileged) {
-    return jsonResponse(403, { error: 'Kun admin kan hente medlemmer.' })
-  }
   const normalizedSlug = normalizeTeamSlug(teamSlug)
-  await ensureTeam(normalizedSlug)
-  if (!user.orgId) {
-    return jsonResponse(501, { error: 'Auth0 org_id mangler for medlemmer.' })
+  const team = await ensureTeam(normalizedSlug)
+  if (!user.isPrivileged) {
+    const member = await getMember(team.id, user.id)
+    return jsonResponse(200, member ? [serializeMemberRow(member)] : [])
   }
-  const members = await listOrganizationMembers(user.orgId)
-  return jsonResponse(200, members.map(member => ({
-    name: member?.name || '',
-    email: member?.email || '',
-  })))
+  const result = await db.query(
+    `SELECT team_id, user_sub, email, role, status, joined_at, last_login_at
+     FROM team_members
+     WHERE team_id = $1 AND status != 'removed'
+     ORDER BY joined_at DESC NULLS LAST`,
+    [team.id]
+  )
+  return jsonResponse(200, result.rows.map(serializeMemberRow))
 }
 
 async function handleTeamMembersListRoot (event) {
@@ -534,6 +536,26 @@ async function handleInviteCreate (event, teamSlug) {
     expiresAt: result.rows[0]?.expires_at ? new Date(result.rows[0].expires_at).toISOString() : null,
     inviteUrl,
   })
+}
+
+async function handleTeamMemberSelfUpsert (event, teamSlug) {
+  const user = await requireAuth(event)
+  const normalizedSlug = normalizeTeamSlug(teamSlug)
+  const team = await ensureTeam(normalizedSlug)
+  const role = user.isOwner ? 'owner' : (user.isAdmin ? 'admin' : 'member')
+  const result = await db.query(
+    `INSERT INTO team_members (team_id, user_sub, email, role, status, joined_at, last_login_at)
+     VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+     ON CONFLICT (team_id, user_sub)
+     DO UPDATE SET
+       email = EXCLUDED.email,
+       role = EXCLUDED.role,
+       status = EXCLUDED.status,
+       last_login_at = NOW()
+     RETURNING team_id, user_sub, email, role, status, joined_at, last_login_at`,
+    [team.id, user.id, user.email, role, 'active']
+  )
+  return jsonResponse(200, { member: serializeMemberRow(result.rows[0]) })
 }
 
 async function handleInviteList (event, teamSlug) {
@@ -893,6 +915,9 @@ export async function handler (event) {
 
     const teamMembersMatch = path.match(/^\/teams\/([^/]+)\/members$/)
     if (teamMembersMatch && method === 'GET') return await handleTeamMembersList(event, teamMembersMatch[1])
+
+    const teamMemberSelfMatch = path.match(/^\/teams\/([^/]+)\/members\/self$/)
+    if (teamMemberSelfMatch && method === 'POST') return await handleTeamMemberSelfUpsert(event, teamMemberSelfMatch[1])
 
     const teamMemberPatchMatch = path.match(/^\/teams\/([^/]+)\/members\/([^/]+)$/)
     if (teamMemberPatchMatch && (method === 'PATCH' || method === 'DELETE')) {

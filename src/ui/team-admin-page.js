@@ -1,6 +1,7 @@
 import { getAuthContext } from '../../js/shared-auth.js'
 import { getToken } from '../auth/auth0-client.js'
-import { getState as getSessionState, onChange as onSessionChange, refreshAccess } from '../auth/session.js'
+import { getState as getSessionState, onChange as onSessionChange } from '../auth/session.js'
+import { registerTeamMemberOnce } from '../services/team-members.js'
 import { DEFAULT_TEAM_SLUG, formatTeamId } from '../services/team-ids.js'
 import { resetAppState } from '../utils/reset-app.js'
 
@@ -66,13 +67,17 @@ async function fetchTeamMembers (teamId) {
 }
 
 let membersPromise = null
+let membersKey = ''
 
-async function renderMembers (membersListEl, statusEl, baseStatus = '') {
+async function renderMembers (membersListEl, statusEl, baseStatus = '', teamId, shouldRefresh = false) {
   if (!membersListEl) return
   membersListEl.textContent = ''
+  if (shouldRefresh) membersPromise = null
   if (!membersPromise) {
-    const state = getSessionState()
-    const resolvedTeamId = formatTeamId(state?.teamId || DEFAULT_TEAM_SLUG)
+    const resolvedTeamId = formatTeamId(teamId || DEFAULT_TEAM_SLUG)
+    const authCtx = getAuthContext()
+    const currentUser = authCtx?.user || null
+    await registerTeamMemberOnce({ teamId: resolvedTeamId, userId: currentUser?.uid || currentUser?.sub || '' })
     membersPromise = fetchTeamMembers(resolvedTeamId).finally(() => {
       membersPromise = null
     })
@@ -84,27 +89,8 @@ async function renderMembers (membersListEl, statusEl, baseStatus = '') {
     const normalized = members.map(member => ({
       user_id: member?.user_id || member?.userId || '',
       email: member?.email || '',
-      name: member?.name || '',
+      name: member?.displayName || member?.name || '',
     }))
-
-    // Ensure the currently authenticated user is included in the member list.
-    // If the API does not return the current user, we synthesize an entry so
-    // that the UI always reflects at least "me".
-    try {
-      const authCtx = getAuthContext()
-      const currentUser = authCtx?.user || null
-      const currentEmail = currentUser?.email || ''
-      if (currentEmail) {
-        const exists = normalized.some(member => (member.email || '').toLowerCase() === currentEmail.toLowerCase())
-        if (!exists) {
-          normalized.push({
-            user_id: currentUser?.user_id || currentUser?.userId || currentUser?.sub || '',
-            email: currentEmail,
-            name: currentUser?.name || currentUser?.displayName || currentEmail,
-          })
-        }
-      }
-    } catch {}
 
     if (!normalized.length) {
       const empty = document.createElement('p')
@@ -130,15 +116,18 @@ function render () {
   const statusEl = document.getElementById('teamAdminStatus')
 
   const adminLists = document.querySelector('.team-admin__lists')
-  const refreshButton = document.getElementById('teamRefresh')
   const resetButton = document.getElementById('teamResetApp')
   const teamMembersList = document.getElementById('teamMembersListTeamPage')
   const teamStatusSection = document.querySelector('.team-status-controls')
   const teamAdminSection = document.querySelector('.team-admin')
   const statusUser = document.getElementById('sharedStatusUser')
   const statusEmail = document.getElementById('sharedStatusEmail')
+  const connectedState = document.getElementById('teamConnectedState')
+  const connectedAuth0 = document.getElementById('teamConnectedAuth0')
+  const connectedOrg = document.getElementById('teamConnectedOrg')
+  const connectedTeam = document.getElementById('teamConnectedTeam')
+  const connectedRole = document.getElementById('teamConnectedRole')
 
-  setHidden(refreshButton, false)
   setHidden(resetButton, false)
 
   if (teamStatusSection) setHidden(teamStatusSection, false)
@@ -147,39 +136,38 @@ function render () {
   const authContext = getAuthContext()
   const user = authContext?.user || {}
   const role = resolveAuthRole(user)
+  const teamId = formatTeamId(state?.teamId || DEFAULT_TEAM_SLUG)
   setText(statusUser, user?.displayName || user?.name || user?.email || '—')
   setText(statusEmail, user?.email || '—')
 
   if (!statusEl) return
   let baseStatus = ''
-  if (!authContext?.isReady) {
-    baseStatus = 'Tjekker login…'
-  } else if (!authContext?.isAuthenticated) {
-    baseStatus = 'Log ind for at se teaminformation.'
-  } else {
-    baseStatus = 'Auth0 klar'
-  }
+  if (!authContext?.isReady) baseStatus = 'Auth0 initialiseres…'
+  else if (!authContext?.isAuthenticated) baseStatus = 'Log ind for at se teaminformation.'
+  else baseStatus = 'Connected til Auth0'
   setText(statusEl, baseStatus)
 
   const isAdmin = isPrivilegedRole(role)
-  if (adminLists) setHidden(adminLists, !isAdmin)
-  if (teamAdminSection) setHidden(teamAdminSection, !isAdmin)
-  if (isAdmin) renderMembers(teamMembersList, statusEl, baseStatus)
+  const isAuthed = Boolean(authContext?.isAuthenticated)
+  if (adminLists) setHidden(adminLists, !isAuthed)
+  if (teamAdminSection) setHidden(teamAdminSection, !isAuthed)
+  setText(connectedState, isAuthed ? 'Ja' : 'Nej')
+  setText(connectedAuth0, authContext?.isReady ? 'klar' : 'venter')
+  setText(connectedOrg, authContext?.user?.orgId || '–')
+  setText(connectedTeam, teamId || '–')
+  const displayRole = isAuthed ? (state?.role || (isAdmin ? 'admin' : 'member')) : ''
+  setText(connectedRole, displayRole || '–')
+
+  if (isAuthed) {
+    const key = `${teamId}:${user?.email || user?.uid || ''}:${isAdmin ? 'admin' : 'member'}`
+    const shouldRefresh = key !== membersKey
+    membersKey = key
+    renderMembers(teamMembersList, statusEl, baseStatus, teamId, shouldRefresh)
+  }
 }
 
 export async function initTeamAdminPage () {
-  const refreshButton = document.getElementById('teamRefresh')
   const resetButton = document.getElementById('teamResetApp')
-
-  refreshButton?.addEventListener('click', async () => {
-    refreshButton.disabled = true
-    try {
-      await refreshAccess()
-      render()
-    } finally {
-      refreshButton.disabled = false
-    }
-  })
 
   resetButton?.addEventListener('click', () => {
     resetAppState({ reload: true })

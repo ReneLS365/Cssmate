@@ -12,6 +12,7 @@ import {
   persistTeamId,
 } from '../services/team-ids.js'
 import { TEAM_ACCESS_STATUS, clearTeamAccessCache, getTeamAccessWithTimeout } from '../services/team-access.js'
+import { registerTeamMemberOnce } from '../services/team-members.js'
 import { teamDebug } from '../utils/team-debug.js'
 
 let initialized = false
@@ -286,6 +287,9 @@ async function evaluateAccess () {
       accessError,
       accessDetail: accessResult || null,
     })
+    if (membershipStatus === 'member') {
+      void registerTeamMemberOnce({ teamId: resolvedTeamId, userId: currentUser?.uid || '' })
+    }
     teamDebug('session-access', {
       status: nextState.status,
       accessStatus,
