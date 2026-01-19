@@ -59,6 +59,15 @@ const teamCache = {
 let queueListenerBound = false
 let queueFlushInFlight = false
 
+function dispatchSharedEvent (detail = {}) {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return
+  const payload = {
+    timestamp: Date.now(),
+    ...detail,
+  }
+  window.dispatchEvent(new CustomEvent('cssmate:exported', { detail: payload }))
+}
+
 function readQueueStorage () {
   if (typeof window === 'undefined' || !window.localStorage) return []
   try {
@@ -369,6 +378,9 @@ export async function flushSharedCasesQueue () {
   }
   writeQueueStorage(remaining)
   queueFlushInFlight = false
+  if (flushed > 0) {
+    dispatchSharedEvent({ type: 'shared-sync', flushed, pending: remaining.length })
+  }
   return { flushed, pending: remaining.length }
 }
 
