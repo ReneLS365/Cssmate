@@ -454,8 +454,12 @@ export function initSharedCasesPanel() {
       console.error('Kunne ikke hente delte sager', error);
       const denied = error?.code === 'permission-denied' || error instanceof PermissionDeniedError;
       const message = describePermissionError(error, teamId) || error?.message || 'Kunne ikke hente delte sager.';
+      const status = typeof error?.status === 'number' ? error.status : 0;
+      const looksLikeAuth = status === 401 || message.includes('"iss"') || message.includes('"aud"');
       if (denied) teamError = message;
-      container.textContent = `${message} ${denied ? '' : 'Tjek netværk eller ret Team ID.'}`.trim();
+      container.textContent = looksLikeAuth
+        ? `${message} (Login token matcher ikke serverens Auth0-konfig. Prøv Log ud → Log ind igen.)`
+        : `${message} ${denied ? '' : 'Tjek netværk eller ret Team ID.'}`.trim();
       setInlineError(message);
       setSharedStatus(`Fejl: ${message}`);
       setRefreshState('error');
