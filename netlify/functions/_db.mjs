@@ -212,6 +212,7 @@ export async function isDbReady () {
 }
 
 export async function ensureDbReady () {
+  await getPoolRaw()
   await ensureMigrations()
   return isDbReady()
 }
