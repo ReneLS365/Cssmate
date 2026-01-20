@@ -5,6 +5,13 @@
 # - Build/publish points to the staged output ".netlify_publish"
 
 [functions]
+  included_files = [
+    "migrations/*.sql",
+    "migrations/**/*.sql",
+    "netlify/functions/migrations/*.sql",
+    "netlify/functions/migrations/**/*.sql",
+    "netlify/functions/_shared/migrations/*.sql"
+  ]
   [functions.emails]
     included_files = ["./emails/**"]
 
@@ -72,9 +79,23 @@
   publish = ".netlify_publish"
 
 [context.production.functions]
+  included_files = [
+    "migrations/*.sql",
+    "migrations/**/*.sql",
+    "netlify/functions/migrations/*.sql",
+    "netlify/functions/migrations/**/*.sql",
+    "netlify/functions/_shared/migrations/*.sql"
+  ]
   [context.production.functions.emails]
     included_files = ["./emails/**"]
 
 [context.main.functions]
+  included_files = [
+    "migrations/*.sql",
+    "migrations/**/*.sql",
+    "netlify/functions/migrations/*.sql",
+    "netlify/functions/migrations/**/*.sql",
+    "netlify/functions/_shared/migrations/*.sql"
+  ]
   [context.main.functions.emails]
     included_files = ["./emails/**"]

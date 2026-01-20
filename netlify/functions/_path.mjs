@@ -1,5 +1,9 @@
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-export function resolveLocalPath (...parts) {
-  return path.join(process.cwd(), ...parts)
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+export function resolveFromHere (...parts) {
+  return path.join(__dirname, ...parts)
 }
