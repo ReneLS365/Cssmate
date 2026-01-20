@@ -1,4 +1,4 @@
-import { db } from './_db.mjs'
+import { db, ensureDbReady } from './_db.mjs'
 import { generateToken, getAuth0Config, hashToken, secureCompare, verifyToken } from './_auth.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
@@ -14,19 +14,22 @@ const ACCEPT_RATE_WINDOW_MS = 60 * 60 * 1000
 const ROLE_CLAIM = 'https://sscaff.app/roles'
 const ORG_CLAIM = 'https://sscaff.app/org_id'
 const ALLOWED_ROLES = new Set(['sscaff_owner', 'sscaff_admin', 'sscaff_user'])
+const DB_NOT_MIGRATED_MESSAGE = 'DB er ikke migreret. Kør migrations/001_init.sql, migrations/002_add_team_slug.sql, migrations/003_auth0_invites.sql og migrations/004_add_team_member_login.sql mod Neon.'
 let cachedMgmtToken = ''
 let cachedMgmtTokenExpiry = 0
-
-function isMissingRelationError (error) {
-  const message = error?.message || ''
-  return /relation .* does not exist/i.test(message) || /column .* does not exist/i.test(message)
-}
 
 function jsonResponse (statusCode, payload) {
   return {
     statusCode,
     headers: JSON_HEADERS,
     body: JSON.stringify(payload ?? {}),
+  }
+}
+
+async function requireDbReady () {
+  const ready = await ensureDbReady()
+  if (!ready) {
+    throw createError(DB_NOT_MIGRATED_MESSAGE, 503, {}, 'DB_NOT_MIGRATED')
   }
 }
 
@@ -432,6 +435,7 @@ async function handleMe (event) {
 }
 
 async function handleTeamGet (event) {
+  await requireDbReady()
   const user = await requireAuth(event)
   const teamSlug = resolveTeamSlugFromRequest(event)
   const team = await ensureTeam(teamSlug)
@@ -440,6 +444,7 @@ async function handleTeamGet (event) {
 }
 
 async function handleTeamAccess (event, teamSlug) {
+  await requireDbReady()
   const user = await requireAuth(event)
   const normalizedSlug = normalizeTeamSlug(teamSlug)
   const team = await ensureTeam(normalizedSlug)
@@ -458,6 +463,7 @@ async function handleTeamBootstrap (event, teamSlug) {
 }
 
 async function handleTeamMembersList (event, teamSlug) {
+  await requireDbReady()
   const user = await requireAuth(event)
   const normalizedSlug = normalizeTeamSlug(teamSlug)
   const team = await ensureTeam(normalizedSlug)
@@ -498,6 +504,7 @@ async function handleTeamMemberDeleteRoot (event, memberSub) {
 }
 
 async function handleInviteCreate (event, teamSlug) {
+  await requireDbReady()
   const user = await requireAuth(event)
   const body = parseBody(event)
   const role = body.role === 'admin' ? 'admin' : 'member'
@@ -543,6 +550,7 @@ async function handleInviteCreate (event, teamSlug) {
 }
 
 async function handleTeamMemberSelfUpsert (event, teamSlug) {
+  await requireDbReady()
   const user = await requireAuth(event)
   const normalizedSlug = normalizeTeamSlug(teamSlug)
   const team = await ensureTeam(normalizedSlug)
@@ -563,6 +571,7 @@ async function handleTeamMemberSelfUpsert (event, teamSlug) {
 }
 
 async function handleInviteList (event, teamSlug) {
+  await requireDbReady()
   const user = await requireAuth(event)
   const team = await findTeamBySlug(normalizeTeamSlug(teamSlug))
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
@@ -579,6 +588,7 @@ async function handleInviteList (event, teamSlug) {
 }
 
 async function handleInviteRevoke (event, inviteId) {
+  await requireDbReady()
   const user = await requireAuth(event)
   const inviteResult = await db.query('SELECT id, team_id, email FROM team_invites WHERE id = $1', [inviteId])
   const invite = inviteResult.rows[0]
@@ -590,6 +600,7 @@ async function handleInviteRevoke (event, inviteId) {
 }
 
 async function handleInviteResend (event, inviteId) {
+  await requireDbReady()
   const user = await requireAuth(event)
   const inviteResult = await db.query(
     `SELECT i.id, i.team_id, i.email, i.role, i.expires_at, t.slug as team_slug
@@ -630,6 +641,7 @@ async function handleInviteResend (event, inviteId) {
 }
 
 async function handleInviteAccept (event) {
+  await requireDbReady()
   const user = await requireAuth(event)
   const body = parseBody(event)
   const token = body.token
@@ -683,6 +695,7 @@ async function handleInviteAccept (event) {
 }
 
 async function handleCaseCreate (event, teamSlug) {
+  await requireDbReady()
   const { user, team } = await requireTeamContext(event, teamSlug)
   const body = parseBody(event)
   const caseId = isValidUuid(body.caseId) ? body.caseId : crypto.randomUUID()
@@ -729,6 +742,7 @@ async function handleCaseCreate (event, teamSlug) {
 }
 
 async function handleCaseList (event, teamSlug) {
+  await requireDbReady()
   const { team } = await requireTeamContext(event, teamSlug)
   const result = await db.query(
     `SELECT c.*, t.slug as team_slug
@@ -741,6 +755,7 @@ async function handleCaseList (event, teamSlug) {
 }
 
 async function handleCaseGet (event, teamSlug, caseId) {
+  await requireDbReady()
   const { team } = await requireTeamContext(event, teamSlug)
   const result = await db.query(
     `SELECT c.*, t.slug as team_slug
@@ -755,6 +770,7 @@ async function handleCaseGet (event, teamSlug, caseId) {
 }
 
 async function handleCaseDelete (event, teamSlug, caseId) {
+  await requireDbReady()
   const { user, team } = await requireTeamContext(event, teamSlug)
   const result = await db.query(
     'SELECT created_by FROM team_cases WHERE team_id = $1 AND case_id = $2',
@@ -781,6 +797,7 @@ async function handleCaseDelete (event, teamSlug, caseId) {
 }
 
 async function handleCaseStatus (event, teamSlug, caseId) {
+  await requireDbReady()
   const { user, team } = await requireTeamContext(event, teamSlug)
   const body = parseBody(event)
   const result = await db.query('SELECT created_by FROM team_cases WHERE team_id = $1 AND case_id = $2', [team.id, caseId])
@@ -805,6 +822,7 @@ async function handleCaseStatus (event, teamSlug, caseId) {
 }
 
 async function handleBackupExport (event, teamSlug) {
+  await requireDbReady()
   const { user, team } = await requireTeamContext(event, teamSlug, { requireAdmin: true })
   const casesResult = await db.query(
     `SELECT c.*, t.slug as team_slug
@@ -848,6 +866,7 @@ async function handleBackupExport (event, teamSlug) {
 }
 
 async function handleBackupImport (event, teamSlug) {
+  await requireDbReady()
   const { user, team } = await requireTeamContext(event, teamSlug, { requireAdmin: true })
   const body = parseBody(event)
   const cases = Array.isArray(body?.cases) ? body.cases : []
@@ -946,9 +965,7 @@ export async function handler (event) {
     return jsonResponse(404, { error: 'Endpoint findes ikke.' })
   } catch (error) {
     const status = error?.status || 500
-    const message = isMissingRelationError(error)
-      ? 'DB er ikke migreret. Kør migrations/001_init.sql, migrations/002_add_team_slug.sql og migrations/003_auth0_invites.sql mod Neon.'
-      : (error?.message || 'Serverfejl')
+    const message = error?.message || 'Serverfejl'
     return jsonResponse(status, {
       error: message,
       ...(error?.code ? { code: error.code } : {}),

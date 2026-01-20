@@ -46,7 +46,13 @@ async function ensureMigrations () {
          WHERE table_schema = 'public' AND table_name = 'team_invites' AND column_name = 'token_hint'`
       )
       const hasInviteTokenHint = inviteTokenHintResult.rowCount > 0
-      if (hasUsersTable && hasTeamSlug && hasInviteTokenHint) {
+      const lastLoginResult = await client.query(
+        `SELECT 1
+         FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'team_members' AND column_name = 'last_login_at'`
+      )
+      const hasMemberLastLogin = lastLoginResult.rowCount > 0
+      if (hasUsersTable && hasTeamSlug && hasInviteTokenHint && hasMemberLastLogin) {
         migrationsEnsured = true
         return
       }
@@ -56,6 +62,7 @@ async function ensureMigrations () {
         readMigrationFile('001_init.sql'),
         readMigrationFile('002_add_team_slug.sql'),
         readMigrationFile('003_auth0_invites.sql'),
+        readMigrationFile('004_add_team_member_login.sql'),
       ])
       await client.query('BEGIN')
       for (const sql of migrations) {
@@ -158,14 +165,55 @@ function buildPoolConfig () {
   }
 }
 
-export async function getPool () {
+export async function getPoolRaw () {
   if (!pool) {
     pool = new Pool(buildPoolConfig())
   }
+  return pool
+}
+
+export async function getPool () {
+  await getPoolRaw()
   if (!migrationsEnsured) {
     await ensureMigrations()
   }
   return pool
+}
+
+export async function isDbReady () {
+  const activePool = await getPoolRaw()
+  const client = await activePool.connect()
+  try {
+    const tableResult = await client.query(
+      `SELECT
+         to_regclass('public.teams') IS NOT NULL AS has_teams,
+         to_regclass('public.team_members') IS NOT NULL AS has_team_members,
+         to_regclass('public.team_invites') IS NOT NULL AS has_team_invites`
+    )
+    const row = tableResult.rows[0]
+    if (!row?.has_teams || !row?.has_team_members || !row?.has_team_invites) {
+      return false
+    }
+    const columnResult = await client.query(
+      `SELECT
+         SUM(CASE WHEN table_name = 'teams' AND column_name = 'slug' THEN 1 ELSE 0 END) > 0 AS has_team_slug,
+         SUM(CASE WHEN table_name = 'team_members' AND column_name = 'last_login_at' THEN 1 ELSE 0 END) > 0 AS has_member_last_login
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND (
+           (table_name = 'teams' AND column_name = 'slug')
+           OR (table_name = 'team_members' AND column_name = 'last_login_at')
+         )`
+    )
+    return Boolean(columnResult.rows[0]?.has_team_slug && columnResult.rows[0]?.has_member_last_login)
+  } finally {
+    client.release()
+  }
+}
+
+export async function ensureDbReady () {
+  await ensureMigrations()
+  return isDbReady()
 }
 
 export async function query (text, params) {
