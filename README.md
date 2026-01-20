@@ -141,7 +141,12 @@ Bemærk: Ændringer til disse værdier kræver et fresh deploy, så `auth0-confi
 - Netlify Functions undgår `import.meta` så bundling til CJS ikke advarer.
 - `MaxListenersExceededWarning` og `wasm streaming compile failed` fra Netlify tooling/redirector er kendt build-noise og påvirker ikke runtime.
 
-## Database migrations
+## DB setup (Neon) + migrations
+
+Sørg for at Netlify Functions har adgang til databasen via env var:
+
+- `DATABASE_URL` (primær)
+- Alternativt: `NETLIFY_DATABASE_URL` / `NETLIFY_DATABASE_URL_UNPOOLED`
 
 Kør migrations manuelt mod Neon/Postgres (idempotent):
 
@@ -149,7 +154,19 @@ Kør migrations manuelt mod Neon/Postgres (idempotent):
 psql "$DATABASE_URL" -f migrations/001_init.sql
 psql "$DATABASE_URL" -f migrations/002_add_team_slug.sql
 psql "$DATABASE_URL" -f migrations/003_auth0_invites.sql
+psql "$DATABASE_URL" -f migrations/004_add_team_member_login.sql
 ```
+
+Valgfri: kør migrations via Netlify Function (one-off):
+
+```bash
+curl -X POST "https://<din-site>/.netlify/functions/migrate" \
+  -H "x-migration-key: $MIGRATION_KEY"
+```
+
+Kræver env var i Netlify:
+
+- `MIGRATION_KEY` (kun til migrations-endpointet)
 
 ## MIGRATION + DEPLOY CHECKLIST
 
@@ -159,6 +176,7 @@ psql "$DATABASE_URL" -f migrations/003_auth0_invites.sql
    - `migrations/001_init.sql`
    - `migrations/002_add_team_slug.sql`
    - `migrations/003_auth0_invites.sql`
+   - `migrations/004_add_team_member_login.sql`
 4. Deploy og verificér:
    - Signup/login fungerer.
    - Team access og bootstrap-claim fungerer på default-teamet.

@@ -61,7 +61,11 @@ async function fetchTeamMembers (teamId) {
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) {
     const message = payload?.error || 'Kunne ikke hente medlemmer'
-    throw new Error(message)
+    const error = new Error(message)
+    if (payload?.code) {
+      error.code = payload.code
+    }
+    throw error
   }
   return normalizeMembersPayload(payload)
 }
@@ -103,11 +107,14 @@ async function renderMembers (membersListEl, statusEl, baseStatus = '', teamId, 
     setText(statusEl, baseStatus)
   } catch (error) {
     membersListEl.textContent = ''
-    const errorEl = document.createElement('p')
-    errorEl.className = 'status-message'
-    errorEl.textContent = error?.message || 'Kunne ikke hente medlemmer.'
-    membersListEl.appendChild(errorEl)
-    setText(statusEl, error?.message || 'Kunne ikke hente medlemmer.')
+    const isDbNotMigrated = error?.code === 'DB_NOT_MIGRATED'
+    if (!isDbNotMigrated) {
+      const errorEl = document.createElement('p')
+      errorEl.className = 'status-message'
+      errorEl.textContent = error?.message || 'Kunne ikke hente medlemmer.'
+      membersListEl.appendChild(errorEl)
+    }
+    setText(statusEl, isDbNotMigrated ? (error?.message || '') : baseStatus)
   }
 }
 
