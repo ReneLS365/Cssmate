@@ -435,8 +435,8 @@ async function handleMe (event) {
 }
 
 async function handleTeamGet (event) {
-  await requireDbReady()
   const user = await requireAuth(event)
+  await requireDbReady()
   const teamSlug = resolveTeamSlugFromRequest(event)
   const team = await ensureTeam(teamSlug)
   const role = user.isOwner ? 'owner' : (user.isAdmin ? 'admin' : 'member')
