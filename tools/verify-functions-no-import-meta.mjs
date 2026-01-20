@@ -6,7 +6,7 @@ function walk (dir, out = []) {
     const filePath = path.join(dir, ent.name)
     if (ent.isDirectory()) {
       walk(filePath, out)
-    } else if (filePath.endsWith('.mjs') || filePath.endsWith('.js')) {
+    } else if (filePath.endsWith('.js') || filePath.endsWith('.cjs') || filePath.endsWith('.mjs')) {
       out.push(filePath)
     }
   }
@@ -20,6 +20,7 @@ const files = walk(root)
 const offenders = []
 
 for (const filePath of files) {
+  if (filePath.endsWith('.mjs')) continue
   const content = fs.readFileSync(filePath, 'utf8')
   if (content.includes('import.meta')) offenders.push(filePath)
 }

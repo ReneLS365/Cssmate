@@ -1,6 +1,7 @@
+import { existsSync } from 'node:fs'
 import { readFile } from 'fs/promises'
 import { Pool } from 'pg'
-import { resolveLocalPath } from './_path.mjs'
+import { resolveFromHere } from './_path.mjs'
 
 const DATABASE_SSL = process.env.DATABASE_SSL
 const DATABASE_URL_CANDIDATES = [
@@ -13,8 +14,15 @@ let pool = null
 let migrationPromise = null
 let migrationsEnsured = false
 
-async function readMigrationFile (...pathParts) {
-  const filePath = resolveLocalPath(...pathParts)
+const MIGRATIONS_DIR = resolveFromHere('..', 'migrations')
+
+async function readMigrationFile (name) {
+  const filePath = resolveFromHere('..', 'migrations', name)
+  if (!existsSync(filePath)) {
+    throw new Error(
+      `Missing migration file: ${filePath}. Ensure netlify.toml functions.included_files includes migrations/*.sql`
+    )
+  }
   return readFile(filePath, 'utf8')
 }
 
@@ -42,10 +50,11 @@ async function ensureMigrations () {
         return
       }
 
+      console.log('[migrations] dir =', MIGRATIONS_DIR)
       const migrations = await Promise.all([
-        readMigrationFile('migrations', '001_init.sql'),
-        readMigrationFile('migrations', '002_add_team_slug.sql'),
-        readMigrationFile('migrations', '003_auth0_invites.sql'),
+        readMigrationFile('001_init.sql'),
+        readMigrationFile('002_add_team_slug.sql'),
+        readMigrationFile('003_auth0_invites.sql'),
       ])
       await client.query('BEGIN')
       for (const sql of migrations) {
