@@ -14,7 +14,7 @@ function resolveAuth0Domain () {
   const issuer = (env('AUTH0_ISSUER') || env('VITE_AUTH0_ISSUER') || '').trim()
   if (issuer) {
     try {
-      const url = new URL(issuer)
+      const url = issuer.startsWith('http') ? new URL(issuer) : new URL(`https://${issuer}`)
       return url.hostname
     } catch {
       return ''
