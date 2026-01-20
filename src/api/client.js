@@ -59,6 +59,7 @@ export async function apiFetch (path, options = {}) {
     const error = new Error(message)
     error.status = response.status
     error.payload = payload || errorText
+    error.code = payload?.code || ''
     throw error
   }
   return response
