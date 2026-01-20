@@ -8,30 +8,13 @@ function env (name) {
   return String(process.env[name] || '').trim()
 }
 
-function resolveAuth0Domain () {
-  const raw = (env('AUTH0_DOMAIN') || env('VITE_AUTH0_DOMAIN') || '').trim()
-  if (raw) return raw.replace(/^https?:\/\//, '').replace(/\/+$/, '')
-  const issuer = (env('AUTH0_ISSUER') || env('VITE_AUTH0_ISSUER') || '').trim()
-  if (issuer) {
-    try {
-      const url = issuer.startsWith('http') ? new URL(issuer) : new URL(`https://${issuer}`)
-      return url.hostname
-    } catch {
-      return ''
-    }
-  }
-  return ''
+function normalizeAuth0Domain (raw) {
+  if (!raw) return ''
+  return raw.replace(/^https?:\/\//, '').replace(/\/+$/, '')
 }
 
-function resolveAuth0Issuer () {
-  const raw =
-    env('AUTH0_ISSUER') ||
-    env('VITE_AUTH0_ISSUER') ||
-    env('AUTH0_DOMAIN') ||
-    env('VITE_AUTH0_DOMAIN') ||
-    ''
+function normalizeAuth0Issuer (raw) {
   if (!raw) return ''
-
   // Accept either full URL or bare domain, but ALWAYS return issuer with exactly one trailing slash.
   try {
     const url = raw.startsWith('http') ? new URL(raw) : new URL(`https://${raw}`)
@@ -41,25 +24,33 @@ function resolveAuth0Issuer () {
   }
 }
 
-function resolveAuth0Audience () {
-  return (env('AUTH0_AUDIENCE') || env('VITE_AUTH0_AUDIENCE') || '').trim()
+export function getAuth0Config () {
+  const rawIssuer = env('AUTH0_ISSUER')
+  const rawDomain = env('AUTH0_DOMAIN')
+  const audience = env('AUTH0_AUDIENCE')
+  const issuer = normalizeAuth0Issuer(rawIssuer || rawDomain)
+  const domain = normalizeAuth0Domain(rawDomain || rawIssuer)
+  return { issuer, audience, domain }
 }
 
 function getJwks () {
   if (jwks) return jwks
-  const domain = resolveAuth0Domain()
+  const { domain } = getAuth0Config()
   if (!domain) {
-    throw new Error('AUTH0_DOMAIN mangler')
+    const error = new Error('AUTH0_DOMAIN mangler')
+    error.code = 'auth_config'
+    throw error
   }
   jwks = createRemoteJWKSet(new URL(`https://${domain}/.well-known/jwks.json`))
   return jwks
 }
 
 export async function verifyToken (token) {
-  const issuer = resolveAuth0Issuer()
-  const audience = resolveAuth0Audience()
+  const { issuer, audience } = getAuth0Config()
   if (!issuer || !audience) {
-    throw new Error('AUTH0_ISSUER eller AUTH0_AUDIENCE mangler')
+    const error = new Error('AUTH0_ISSUER eller AUTH0_AUDIENCE mangler')
+    error.code = 'auth_config'
+    throw error
   }
   try {
     const { payload } = await jwtVerify(token, getJwks(), {
@@ -71,7 +62,14 @@ export async function verifyToken (token) {
     // Friendlier hint for the common issuer/audience mismatch cases
     const msg = String(err?.message || '')
     if (msg.includes('"iss"') || msg.includes('"aud"')) {
-      throw new Error(`${msg} (Tjek at AUTH0_ISSUER/AUTH0_DOMAIN og AUTH0_AUDIENCE matcher din Auth0 tenant og API Identifier)`)
+      const error = new Error(`${msg} (Tjek at AUTH0_ISSUER/AUTH0_DOMAIN og AUTH0_AUDIENCE matcher din Auth0 tenant og API Identifier)`)
+      error.code = 'auth_invalid_claims'
+      throw error
+    }
+    if (err?.code === 'ERR_JWT_EXPIRED') {
+      const error = new Error('Token er udløbet. Log ind igen.')
+      error.code = 'auth_token_expired'
+      throw error
     }
     throw err
   }

@@ -1,4 +1,4 @@
-import { verifyToken } from './_auth.mjs'
+import { getAuth0Config, verifyToken } from './_auth.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 let cachedToken = ''
@@ -17,6 +17,14 @@ function getAuthHeader (event) {
   return headers.authorization || headers.Authorization || ''
 }
 
+async function readJsonSafe (response) {
+  try {
+    return await response.json()
+  } catch {
+    return null
+  }
+}
+
 function normalizeClaimList (value) {
   if (Array.isArray(value)) return value.filter(Boolean)
   if (typeof value === 'string' && value.trim()) return [value.trim()]
@@ -32,16 +40,7 @@ function extractOrgId (payload) {
 }
 
 function resolveAuth0Domain () {
-  const raw = process.env.AUTH0_DOMAIN || process.env.AUTH0_ISSUER || ''
-  if (!raw) return ''
-  if (raw.startsWith('http://') || raw.startsWith('https://')) {
-    try {
-      return new URL(raw).hostname
-    } catch {
-      return ''
-    }
-  }
-  return raw
+  return getAuth0Config().domain || ''
 }
 
 function resolveManagementAudience (domain) {
@@ -60,7 +59,9 @@ async function getManagementToken () {
   const clientId = process.env.AUTH0_MGMT_CLIENT_ID || ''
   const clientSecret = process.env.AUTH0_MGMT_CLIENT_SECRET || ''
   if (!domain || !clientId || !clientSecret) {
-    throw new Error('Auth0 management credentials mangler')
+    const error = new Error('Auth0 management credentials mangler')
+    error.code = 'auth0_mgmt_unconfigured'
+    throw error
   }
   const audience = resolveManagementAudience(domain)
   const response = await fetch(`https://${domain}/oauth/token`, {
@@ -75,10 +76,17 @@ async function getManagementToken () {
   })
 
   if (!response.ok) {
-    throw new Error('Kunne ikke hente Auth0 management token')
+    const error = new Error('Kunne ikke hente Auth0 management token')
+    error.code = 'auth0_mgmt_failed'
+    throw error
   }
 
-  const payload = await response.json()
+  const payload = await readJsonSafe(response)
+  if (!payload) {
+    const error = new Error('Kunne ikke læse Auth0 management token')
+    error.code = 'auth0_mgmt_invalid_json'
+    throw error
+  }
   cachedToken = payload?.access_token || ''
   const expiresIn = Number(payload?.expires_in || 0)
   cachedTokenExpiry = now + expiresIn * 1000
@@ -98,9 +106,11 @@ async function listOrganizationMembers (orgId) {
   })
 
   if (!response.ok) {
-    throw new Error('Kunne ikke hente Auth0 members')
+    const error = new Error('Kunne ikke hente Auth0 members')
+    error.code = 'auth0_mgmt_failed'
+    throw error
   }
-  const members = await response.json()
+  const members = await readJsonSafe(response)
   return Array.isArray(members) ? members : []
 }
 
@@ -111,7 +121,7 @@ export async function handler (event) {
 
   const header = getAuthHeader(event)
   if (!header.startsWith('Bearer ')) {
-    return jsonResponse(401, { error: 'Manglende token' })
+    return jsonResponse(401, { error: 'Manglende token', code: 'auth_missing_token' })
   }
 
   const token = header.replace('Bearer ', '').trim()
@@ -119,18 +129,18 @@ export async function handler (event) {
   try {
     payload = await verifyToken(token)
   } catch (error) {
-    return jsonResponse(401, { error: 'Ugyldigt token' })
+    return jsonResponse(401, { error: error?.message || 'Ugyldigt token', code: error?.code || 'auth_invalid_token' })
   }
 
   const roles = extractRoles(payload)
   const isAdmin = roles.includes('sscaff_owner') || roles.includes('sscaff_admin')
   if (!isAdmin) {
-    return jsonResponse(403, { error: 'Ingen adgang' })
+    return jsonResponse(403, { error: 'Ingen adgang', code: 'auth_forbidden' })
   }
 
   const orgId = extractOrgId(payload)
   if (!orgId) {
-    return jsonResponse(400, { error: 'Mangler org_id' })
+    return jsonResponse(400, { error: 'Mangler org_id', code: 'auth_missing_org' })
   }
 
   try {
@@ -142,6 +152,6 @@ export async function handler (event) {
     }))
     return jsonResponse(200, { members: sanitized })
   } catch (error) {
-    return jsonResponse(500, { error: 'Kunne ikke hente medlemmer' })
+    return jsonResponse(500, { error: 'Kunne ikke hente medlemmer', code: error?.code || 'auth0_mgmt_failed' })
   }
 }
