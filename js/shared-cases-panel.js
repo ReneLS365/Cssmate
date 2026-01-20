@@ -41,9 +41,19 @@ function ensureTeamSelected() {
 function describePermissionError (error, attemptedTeamId) {
   const message = (error?.message || '').toString();
   const normalized = message.toLowerCase();
+  const code = error?.code || '';
   if (error instanceof MembershipMissingError) {
     const uid = sessionState?.user?.uid || 'uid';
     return formatMissingMembershipMessage(error.teamId || attemptedTeamId, uid);
+  }
+  if (code.startsWith('auth_')) {
+    if (code === 'auth_config' || code === 'auth_invalid_claims') {
+      return 'Login token matcher ikke serverens Auth0-konfig. Kontakt admin eller prøv igen.';
+    }
+    if (code === 'auth_token_expired') {
+      return 'Login er udløbet. Log ind igen.';
+    }
+    return 'Kunne ikke validere login. Log ind igen eller kontakt admin.';
   }
   if (error?.code === 'permission-denied' || error instanceof PermissionDeniedError || normalized.includes('missing or insufficient permissions')) {
     const teamLabel = getDisplayTeamId(attemptedTeamId || teamId || displayTeamId);
@@ -459,7 +469,7 @@ export function initSharedCasesPanel() {
       if (denied) teamError = message;
       container.textContent = looksLikeAuth
         ? `${message} (Login token matcher ikke serverens Auth0-konfig. Prøv Log ud → Log ind igen.)`
-        : `${message} ${denied ? '' : 'Tjek netværk eller ret Team ID.'}`.trim();
+        : `${message} ${denied ? '' : 'Tjek netværk eller log ind igen.'}`.trim();
       setInlineError(message);
       setSharedStatus(`Fejl: ${message}`);
       setRefreshState('error');

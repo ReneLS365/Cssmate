@@ -1,5 +1,5 @@
 import { db } from './_db.mjs'
-import { generateToken, hashToken, secureCompare, verifyToken } from './_auth.mjs'
+import { generateToken, getAuth0Config, hashToken, secureCompare, verifyToken } from './_auth.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 const DEFAULT_TEAM_SLUG = process.env.DEFAULT_TEAM_SLUG || 'hulmose'
@@ -81,6 +81,14 @@ function getAuthHeader (event) {
   return headers.authorization || headers.Authorization || ''
 }
 
+async function readJsonSafe (response) {
+  try {
+    return await response.json()
+  } catch {
+    return null
+  }
+}
+
 function normalizeClaimList (value) {
   if (Array.isArray(value)) return value.filter(Boolean)
   if (typeof value === 'string' && value.trim()) return [value.trim()]
@@ -103,16 +111,7 @@ function extractOrgId (payload) {
 }
 
 function resolveAuth0Domain () {
-  const raw = process.env.AUTH0_DOMAIN || process.env.AUTH0_ISSUER || ''
-  if (!raw) return ''
-  if (raw.startsWith('http://') || raw.startsWith('https://')) {
-    try {
-      return new URL(raw).hostname
-    } catch {
-      return ''
-    }
-  }
-  return raw
+  return getAuth0Config().domain || ''
 }
 
 function resolveManagementAudience (domain) {
@@ -130,7 +129,7 @@ async function getManagementToken () {
   const clientId = process.env.AUTH0_MGMT_CLIENT_ID || ''
   const clientSecret = process.env.AUTH0_MGMT_CLIENT_SECRET || ''
   if (!domain || !clientId || !clientSecret) {
-    throw createError('Auth0 management API er ikke konfigureret.', 501)
+    throw createError('Auth0 management API er ikke konfigureret.', 501, {}, 'auth0_mgmt_unconfigured')
   }
   const audience = resolveManagementAudience(domain)
   const response = await fetch(`https://${domain}/oauth/token`, {
@@ -144,9 +143,12 @@ async function getManagementToken () {
     }),
   })
   if (!response.ok) {
-    throw createError('Kunne ikke hente Auth0 management token.', 501)
+    throw createError('Kunne ikke hente Auth0 management token.', 501, {}, 'auth0_mgmt_failed')
   }
-  const payload = await response.json()
+  const payload = await readJsonSafe(response)
+  if (!payload) {
+    throw createError('Kunne ikke læse Auth0 management token.', 502, {}, 'auth0_mgmt_invalid_json')
+  }
   cachedMgmtToken = payload?.access_token || ''
   const expiresIn = Number(payload?.expires_in || 0)
   cachedMgmtTokenExpiry = now + expiresIn * 1000
@@ -165,9 +167,9 @@ async function listOrganizationMembers (orgId) {
     headers: { Authorization: `Bearer ${token}` },
   })
   if (!response.ok) {
-    throw createError('Kunne ikke hente Auth0 medlemmer.', 501)
+    throw createError('Kunne ikke hente Auth0 medlemmer.', 501, {}, 'auth0_mgmt_failed')
   }
-  const members = await response.json()
+  const members = await readJsonSafe(response)
   return Array.isArray(members) ? members : []
 }
 
@@ -195,9 +197,10 @@ function resolveTeamSlugFromRequest (event, body = {}) {
   return normalizeTeamSlug(body.teamId || body.teamSlug || query.teamId || query.teamSlug || DEFAULT_TEAM_SLUG)
 }
 
-function createError (message, status = 400, extra = {}) {
+function createError (message, status = 400, extra = {}, code = '') {
   const error = new Error(message)
   error.status = status
+  if (code) error.code = code
   Object.assign(error, extra)
   return error
 }
@@ -219,14 +222,14 @@ async function fetchAuth0UserInfo (token) {
 async function requireAuth (event) {
   const header = getAuthHeader(event)
   if (!header.startsWith('Bearer ')) {
-    throw createError('Manglende token', 401)
+    throw createError('Manglende token', 401, {}, 'auth_missing_token')
   }
   const token = header.replace('Bearer ', '').trim()
   try {
     const payload = await verifyToken(token)
     const roles = extractRoles(payload).filter(role => ALLOWED_ROLES.has(role))
     if (!roles.length) {
-      throw createError('Manglende rolle i Auth0 token.', 403)
+      throw createError('Manglende rolle i Auth0 token.', 403, {}, 'auth_missing_role')
     }
     const userInfo = payload.email ? null : await fetchAuth0UserInfo(token)
     const email = normalizeEmail(payload.email || userInfo?.email || '')
@@ -243,7 +246,8 @@ async function requireAuth (event) {
     }
   } catch (error) {
     const status = error?.status || 401
-    throw createError(error?.message || 'Ugyldigt token', status, { cause: error })
+    const code = error?.code || (status === 403 ? 'auth_forbidden' : 'auth_invalid_token')
+    throw createError(error?.message || 'Ugyldigt token', status, { cause: error }, code)
   }
 }
 
@@ -945,6 +949,10 @@ export async function handler (event) {
     const message = isMissingRelationError(error)
       ? 'DB er ikke migreret. Kør migrations/001_init.sql, migrations/002_add_team_slug.sql og migrations/003_auth0_invites.sql mod Neon.'
       : (error?.message || 'Serverfejl')
-    return jsonResponse(status, { error: message, ...(error?.invitedEmail ? { invitedEmail: error.invitedEmail } : {}) })
+    return jsonResponse(status, {
+      error: message,
+      ...(error?.code ? { code: error.code } : {}),
+      ...(error?.invitedEmail ? { invitedEmail: error.invitedEmail } : {}),
+    })
   }
 }
