@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { readFile } from 'fs/promises'
 import { Pool } from 'pg'
-import { resolveFromHere } from './_path.mjs'
+import pathHelper from './_path.cjs'
 
 const DATABASE_SSL = process.env.DATABASE_SSL
 const DATABASE_URL_CANDIDATES = [
@@ -14,13 +14,14 @@ let pool = null
 let migrationPromise = null
 let migrationsEnsured = false
 
-const MIGRATIONS_DIR = resolveFromHere('..', 'migrations')
+const { resolveFromFunctionsDir } = pathHelper
+const MIGRATIONS_DIR = resolveFromFunctionsDir('migrations')
 
 async function readMigrationFile (name) {
-  const filePath = resolveFromHere('..', 'migrations', name)
+  const filePath = resolveFromFunctionsDir('migrations', name)
   if (!existsSync(filePath)) {
     throw new Error(
-      `Missing migration file: ${filePath}. Ensure netlify.toml functions.included_files includes migrations/*.sql`
+      `Missing migration file: ${filePath}. Ensure netlify.toml functions.included_files includes netlify/functions/migrations/*.sql`
     )
   }
   return readFile(filePath, 'utf8')
@@ -50,7 +51,7 @@ async function ensureMigrations () {
         return
       }
 
-      console.log('[migrations] dir =', MIGRATIONS_DIR)
+      console.log('[migrations] using dir =', MIGRATIONS_DIR)
       const migrations = await Promise.all([
         readMigrationFile('001_init.sql'),
         readMigrationFile('002_add_team_slug.sql'),
