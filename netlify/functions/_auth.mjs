@@ -4,30 +4,45 @@ import { createRemoteJWKSet, jwtVerify } from 'jose'
 const encoder = new TextEncoder()
 let jwks = null
 
+function env (name) {
+  return String(process.env[name] || '').trim()
+}
+
 function resolveAuth0Domain () {
-  const raw = process.env.AUTH0_DOMAIN || process.env.AUTH0_ISSUER || ''
-  if (!raw) return ''
-  if (raw.startsWith('http://') || raw.startsWith('https://')) {
+  const raw = (env('AUTH0_DOMAIN') || env('VITE_AUTH0_DOMAIN') || '').trim()
+  if (raw) return raw.replace(/^https?:\/\//, '').replace(/\/+$/, '')
+  const issuer = (env('AUTH0_ISSUER') || env('VITE_AUTH0_ISSUER') || '').trim()
+  if (issuer) {
     try {
-      return new URL(raw).hostname
+      const url = new URL(issuer)
+      return url.hostname
     } catch {
       return ''
     }
   }
-  return raw
+  return ''
 }
 
 function resolveAuth0Issuer () {
-  const raw = process.env.AUTH0_ISSUER || process.env.AUTH0_DOMAIN || ''
+  const raw =
+    env('AUTH0_ISSUER') ||
+    env('VITE_AUTH0_ISSUER') ||
+    env('AUTH0_DOMAIN') ||
+    env('VITE_AUTH0_DOMAIN') ||
+    ''
   if (!raw) return ''
-  if (raw.startsWith('http://') || raw.startsWith('https://')) {
-    return raw.replace(/\/+$/, '')
+
+  // Accept either full URL or bare domain, but ALWAYS return issuer with exactly one trailing slash.
+  try {
+    const url = raw.startsWith('http') ? new URL(raw) : new URL(`https://${raw}`)
+    return `${url.origin}/`
+  } catch {
+    return ''
   }
-  return `https://${raw}`
 }
 
 function resolveAuth0Audience () {
-  return String(process.env.AUTH0_AUDIENCE || '').trim()
+  return (env('AUTH0_AUDIENCE') || env('VITE_AUTH0_AUDIENCE') || '').trim()
 }
 
 function getJwks () {
@@ -46,11 +61,20 @@ export async function verifyToken (token) {
   if (!issuer || !audience) {
     throw new Error('AUTH0_ISSUER eller AUTH0_AUDIENCE mangler')
   }
-  const { payload } = await jwtVerify(token, getJwks(), {
-    issuer,
-    audience,
-  })
-  return payload
+  try {
+    const { payload } = await jwtVerify(token, getJwks(), {
+      issuer,
+      audience,
+    })
+    return payload
+  } catch (err) {
+    // Friendlier hint for the common issuer/audience mismatch cases
+    const msg = String(err?.message || '')
+    if (msg.includes('"iss"') || msg.includes('"aud"')) {
+      throw new Error(`${msg} (Tjek at AUTH0_ISSUER/AUTH0_DOMAIN og AUTH0_AUDIENCE matcher din Auth0 tenant og API Identifier)`)
+    }
+    throw err
+  }
 }
 
 export function generateToken () {

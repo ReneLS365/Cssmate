@@ -997,6 +997,9 @@ input.csm-name{
 .team-member-row select{min-width:120px}
 .team-member-row button{min-width:110px}
 .team-admin__meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;align-items:center}
+.team-admin__meta>div{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0}
+.team-admin__meta>div span::after{content:":"}
+.team-admin__meta>div strong{text-align:right;overflow-wrap:anywhere;word-break:break-word;min-width:0}
 .team-admin__meta strong{font-size:1rem}
 .team-admin__actions{display:flex;flex-direction:column;gap:10px}
 .team-admin .status-message[data-variant=error]{color:#fda4a4}
