@@ -1,5 +1,6 @@
 import { MATERIAL_SYSTEMS } from '../dataset.js'
 import { getActiveJob } from '../src/state/jobs.js'
+import { showToast } from '../src/ui/toast.js'
 
 const SYSTEM_LABELS = new Map([
   ['bosta', 'BOSTA'],
@@ -586,7 +587,7 @@ function allocateAkkordAcrossJobs(jobs) {
 export function exportAkkord({ mode = 'current' } = {}) {
   const jobsRaw = getJobsForAkkordExport({ mode })
   if (!jobsRaw || !jobsRaw.length) {
-    alert('Ingen akkordsedler valgt til eksport.')
+    showToast('Ingen akkordsedler valgt til eksport.', { variant: 'error' })
     return
   }
 
@@ -688,7 +689,7 @@ export function exportAkkord({ mode = 'current' } = {}) {
 
   const win = window.open('', '_blank')
   if (!win) {
-    alert('Kunne ikke åbne nyt vindue til print. Tillad pop-ups og prøv igen.')
+    showToast('Kunne ikke åbne nyt vindue til print. Tillad pop-ups og prøv igen.', { variant: 'error' })
     return
   }
   win.document.open()

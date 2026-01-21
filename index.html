@@ -397,18 +397,18 @@
         <h2>Delt sager</h2>
         <p>Fælles sager publiceret fra teamet. Importer, download JSON eller generér PDF on-demand.</p>
       </header>
-      <div class="shared-filters">
+      <div class="shared-controls">
         <label>
-          <span>Jobnummer</span>
-          <input id="sharedFilterJob" type="text" inputmode="search" placeholder="Filtrér jobnummer">
+          <span>Søg</span>
+          <input id="sharedSearchInput" type="search" inputmode="search" placeholder="Søg jobnr, adresse, kunde, montør">
         </label>
         <label>
-          <span>Status</span>
-          <select id="sharedFilterStatus">
-            <option value="">Alle</option>
-            <option value="kladde">Kladde</option>
-            <option value="godkendt">Godkendt</option>
-          </select>
+          <span>Fra</span>
+          <input id="sharedDateFrom" type="date">
+        </label>
+        <label>
+          <span>Til</span>
+          <input id="sharedDateTo" type="date">
         </label>
         <label>
           <span>Type</span>
@@ -418,11 +418,31 @@
             <option value="demontage">Demontage</option>
           </select>
         </label>
+        <label>
+          <span>Status</span>
+          <select id="sharedFilterStatus">
+            <option value="">Alle</option>
+            <option value="kladde">Kladde</option>
+            <option value="klar">Klar til deling</option>
+            <option value="godkendt">Godkendt</option>
+            <option value="demontage">Demontage i gang</option>
+            <option value="afsluttet">Afsluttet</option>
+          </select>
+        </label>
+        <label>
+          <span>Sortér</span>
+          <select id="sharedSort">
+            <option value="newest">Nyeste først</option>
+            <option value="oldest">Ældste først</option>
+            <option value="total-desc">Største total</option>
+            <option value="total-asc">Mindste total</option>
+          </select>
+        </label>
         <div class="shared-filter-actions">
           <button id="refreshSharedCases" type="button">Opdater</button>
         </div>
       </div>
-      <div id="sharedCasesList" class="shared-cases-list" aria-live="polite"></div>
+      <div id="sharedCasesList" class="shared-cases-board" aria-live="polite"></div>
     </section>
   </section>
 

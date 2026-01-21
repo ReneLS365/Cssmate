@@ -5,6 +5,8 @@ import { downloadBlob } from './utils/downloadBlob.js';
 import { getUserDisplay } from './shared-auth.js';
 import { initAuthSession, onChange as onSessionChange, getState as getSessionState, SESSION_STATUS } from '../src/auth/session.js';
 import { TEAM_ACCESS_STATUS } from '../src/services/team-access.js';
+import { normalizeSearchValue, formatDateLabel } from './history-normalizer.js';
+import { showToast } from '../src/ui/toast.js';
 
 let sharedCasesPanelInitialized = false;
 let refreshBtn;
@@ -23,6 +25,18 @@ let debugPanel;
 let debugLogOutput;
 let hasDebugEntries = false;
 let debugMessagesSeen = new Set();
+const UI_STORAGE_KEY = 'cssmate:shared-cases:ui:v1';
+const CASE_META_CACHE = new Map();
+const DATE_INPUT_FORMATTER = new Intl.DateTimeFormat('sv-SE');
+const CURRENCY_FORMATTER = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const BOARD_COLUMNS = [
+  { id: 'kladde', label: 'Kladde', hint: 'Nye eller uafsluttede sager.' },
+  { id: 'klar', label: 'Klar til deling', hint: 'Klar til godkendelse.' },
+  { id: 'godkendt', label: 'Godkendt', hint: 'Montage klar til demontage-hold.' },
+  { id: 'demontage', label: 'Demontage i gang', hint: 'Demontage igangsat.' },
+  { id: 'afsluttet', label: 'Afsluttet', hint: 'Sager der er afsluttet.' },
+  { id: 'andet', label: 'Andet', hint: 'Ukendte statusser.' },
+];
 
 displayTeamId = DEFAULT_TEAM_SLUG;
 
@@ -143,6 +157,159 @@ function appendDebug(message) {
   }
 }
 
+function loadUiState() {
+  if (typeof window === 'undefined' || !window.localStorage) return {};
+  try {
+    const raw = window.localStorage.getItem(UI_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveUiState(state) {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(UI_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function applyStoredFilters() {
+  const state = loadUiState();
+  const searchInput = document.getElementById('sharedSearchInput');
+  const dateFrom = document.getElementById('sharedDateFrom');
+  const dateTo = document.getElementById('sharedDateTo');
+  const status = document.getElementById('sharedFilterStatus');
+  const kind = document.getElementById('sharedFilterKind');
+  const sort = document.getElementById('sharedSort');
+  if (searchInput && typeof state.search === 'string') searchInput.value = state.search;
+  if (dateFrom && typeof state.dateFrom === 'string') dateFrom.value = state.dateFrom;
+  if (dateTo && typeof state.dateTo === 'string') dateTo.value = state.dateTo;
+  if (status && typeof state.status === 'string') status.value = state.status;
+  if (kind && typeof state.kind === 'string') kind.value = state.kind;
+  if (sort && typeof state.sort === 'string') sort.value = state.sort;
+}
+
+function cacheCaseMeta(entry, meta) {
+  if (!entry?.caseId) return;
+  CASE_META_CACHE.set(entry.caseId, meta);
+}
+
+function parseCasePayload(entry) {
+  const raw = entry?.attachments?.json?.data;
+  if (!raw || typeof raw !== 'string') return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function resolveCaseMeta(entry) {
+  if (entry?.caseId && CASE_META_CACHE.has(entry.caseId)) {
+    return CASE_META_CACHE.get(entry.caseId);
+  }
+  const payload = parseCasePayload(entry);
+  const job = payload?.job || payload;
+  const info = job?.info || payload?.info || {};
+  const meta = job?.meta || payload?.meta || {};
+  const wage = job?.wage || payload?.wage || {};
+  const workers = Array.isArray(wage?.workers) ? wage.workers : [];
+  const workerNames = workers.map(worker => worker?.name).filter(Boolean);
+  const jobName = info?.navn || meta?.caseName || meta?.jobName || '';
+  const jobNumber = info?.sagsnummer || meta?.caseNumber || entry?.jobNumber || '';
+  const address = info?.adresse || meta?.address || '';
+  const customer = info?.kunde || meta?.customer || '';
+  const montor = info?.montoer || info?.worker || meta?.montoer || '';
+  const date = info?.dato || meta?.date || job?.exportedAt || entry?.createdAt || '';
+  const system = meta?.system || entry?.system || '';
+  const jobType = meta?.jobType || job?.jobType || entry?.caseKind || '';
+  const totals = job?.totals || payload?.totals || entry?.totals || {};
+  const resolved = {
+    jobName,
+    jobNumber,
+    address,
+    customer,
+    montor,
+    workerNames,
+    date,
+    system,
+    jobType,
+    totals,
+  };
+  cacheCaseMeta(entry, resolved);
+  return resolved;
+}
+
+function formatDateInput(value) {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.valueOf())) return '';
+  return DATE_INPUT_FORMATTER.format(date);
+}
+
+function parseDateInput(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return null;
+  return date;
+}
+
+function resolveCaseTotals(entry, meta) {
+  const totals = meta?.totals || entry?.totals || {};
+  const materials = Number(totals.materials ?? totals.materialsSum ?? totals.materialTotal ?? 0) || 0;
+  const total = Number(totals.total ?? totals.project ?? totals.akkord ?? totals.projectTotal ?? 0) || 0;
+  return { materials, total };
+}
+
+function resolveCaseDate(entry, meta) {
+  const dateValue = meta?.date || entry?.createdAt || entry?.updatedAt || '';
+  const formatted = formatDateLabel(dateValue);
+  const iso = dateValue ? new Date(dateValue).toISOString() : '';
+  return { raw: dateValue, formatted, iso };
+}
+
+function resolveCaseStatusBucket(status) {
+  const value = (status || '').toLowerCase();
+  if (value === 'kladde') return 'kladde';
+  if (['klar', 'klar-til-deling', 'klar_til_deling', 'ready'].includes(value)) return 'klar';
+  if (value === 'godkendt') return 'godkendt';
+  if (['demontage', 'demontage-igang', 'demontage_i_gang', 'i-gang', 'igang', 'in-progress'].includes(value)) return 'demontage';
+  if (['afsluttet', 'done', 'completed', 'complete'].includes(value)) return 'afsluttet';
+  return 'andet';
+}
+
+function buildSearchIndex(entry, meta) {
+  const date = resolveCaseDate(entry, meta);
+  const totals = resolveCaseTotals(entry, meta);
+  const values = [
+    entry?.jobNumber,
+    meta?.jobNumber,
+    meta?.jobName,
+    meta?.address,
+    meta?.customer,
+    meta?.montor,
+    meta?.workerNames?.join(' '),
+    entry?.caseKind,
+    meta?.jobType,
+    entry?.status,
+    meta?.system,
+    entry?.createdByName,
+    entry?.createdByEmail,
+    date.formatted,
+    date.iso?.slice(0, 10),
+    formatDateInput(date.raw),
+    CURRENCY_FORMATTER.format(totals.materials),
+    CURRENCY_FORMATTER.format(totals.total),
+  ]
+    .filter(Boolean)
+    .map(normalizeSearchValue);
+  return Array.from(new Set(values));
+}
+
 function setPanelVisibility(isReady) {
   if (sharedCard) sharedCard.hidden = !isReady;
 }
@@ -213,21 +380,40 @@ function bindSessionControls(onAuthenticated, onAccessReady) {
 }
 
 function getFilters() {
-  const job = document.getElementById('sharedFilterJob');
+  const searchInput = document.getElementById('sharedSearchInput');
+  const dateFrom = document.getElementById('sharedDateFrom');
+  const dateTo = document.getElementById('sharedDateTo');
   const status = document.getElementById('sharedFilterStatus');
   const kind = document.getElementById('sharedFilterKind');
-  return {
-    job: (job?.value || '').toLowerCase().trim(),
+  const sort = document.getElementById('sharedSort');
+  const filters = {
+    search: (searchInput?.value || '').trim(),
+    dateFrom: dateFrom?.value || '',
+    dateTo: dateTo?.value || '',
     status: status?.value || '',
     kind: kind?.value || '',
+    sort: sort?.value || 'newest',
   };
+  saveUiState(filters);
+  return filters;
 }
 
-function matchesFilters(entry, filters) {
-  const jobMatch = !filters.job || (entry.jobNumber || '').toLowerCase().includes(filters.job);
-  const statusMatch = !filters.status || entry.status === filters.status;
-  const kindMatch = !filters.kind || entry.caseKind === filters.kind;
-  return jobMatch && statusMatch && kindMatch;
+function matchesFilters(entry, meta, filters) {
+  const searchValue = normalizeSearchValue(filters.search);
+  const tokens = searchValue ? searchValue.split(' ').filter(Boolean) : [];
+  const searchIndex = buildSearchIndex(entry, meta);
+  const matchesSearch = tokens.length === 0
+    || tokens.every(token => searchIndex.some(value => value.includes(token)));
+  const statusMatch = !filters.status || resolveCaseStatusBucket(entry.status) === filters.status;
+  const kindValue = (entry.caseKind || meta?.jobType || '').toLowerCase();
+  const kindMatch = !filters.kind || kindValue === filters.kind;
+  const date = resolveCaseDate(entry, meta);
+  const dateFrom = parseDateInput(filters.dateFrom);
+  const dateTo = parseDateInput(filters.dateTo);
+  const caseDate = date.raw ? new Date(date.raw) : null;
+  const inRange = (!dateFrom || (caseDate && caseDate >= dateFrom))
+    && (!dateTo || (caseDate && caseDate <= dateTo));
+  return matchesSearch && statusMatch && kindMatch && inRange;
 }
 
 async function handleJsonDownload(caseId) {
@@ -262,6 +448,109 @@ async function handlePdfDownload(entry) {
   downloadBlob(payload.blob, `${entry.jobNumber || 'akkord'}-${entry.caseId}.pdf`);
 }
 
+function openSharedModal({ title, body, actions = [] }) {
+  if (typeof document === 'undefined') return { close: () => {} };
+  const overlay = document.createElement('div');
+  overlay.className = 'shared-modal';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+
+  const card = document.createElement('div');
+  card.className = 'shared-modal__card';
+
+  const heading = document.createElement('h3');
+  heading.className = 'shared-modal__title';
+  heading.textContent = title || 'Besked';
+
+  const bodyEl = document.createElement('div');
+  bodyEl.className = 'shared-modal__body';
+  if (typeof body === 'string') {
+    bodyEl.textContent = body;
+  } else if (body instanceof HTMLElement) {
+    bodyEl.appendChild(body);
+  }
+
+  const actionsEl = document.createElement('div');
+  actionsEl.className = 'shared-modal__actions';
+
+  const close = () => {
+    overlay.remove();
+  };
+
+  actions.forEach(({ label, onClick, autoFocus }) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = label;
+    btn.addEventListener('click', async () => {
+      if (typeof onClick === 'function') {
+        await onClick();
+      }
+      close();
+    });
+    if (autoFocus) btn.autofocus = true;
+    actionsEl.appendChild(btn);
+  });
+
+  card.appendChild(heading);
+  if (bodyEl.childNodes.length) {
+    card.appendChild(bodyEl);
+  }
+  card.appendChild(actionsEl);
+  overlay.appendChild(card);
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) close();
+  });
+  document.body.appendChild(overlay);
+  return { close };
+}
+
+function openConfirmModal({ title, message, confirmLabel = 'OK', cancelLabel = 'Annuller' }) {
+  return new Promise(resolve => {
+    openSharedModal({
+      title,
+      body: message,
+      actions: [
+        {
+          label: cancelLabel,
+          onClick: () => resolve(false),
+        },
+        {
+          label: confirmLabel,
+          onClick: () => resolve(true),
+          autoFocus: true,
+        },
+      ],
+    });
+  });
+}
+
+function renderApprovalSummary(entry) {
+  const meta = resolveCaseMeta(entry);
+  const totals = resolveCaseTotals(entry, meta);
+  const date = resolveCaseDate(entry, meta);
+  const wrapper = document.createElement('div');
+  const rows = [
+    { label: 'Jobnr', value: meta.jobNumber || entry.jobNumber || '–' },
+    { label: 'Type', value: meta.jobType || entry.caseKind || '–' },
+    { label: 'Dato', value: date.formatted || formatDateInput(date.raw) || '–' },
+    { label: 'Kunde', value: meta.customer || '–' },
+    { label: 'Adresse', value: meta.address || '–' },
+    { label: 'Materialer', value: `${CURRENCY_FORMATTER.format(totals.materials)} kr.` },
+    { label: 'Total', value: `${CURRENCY_FORMATTER.format(totals.total)} kr.` },
+  ];
+  rows.forEach(row => {
+    const line = document.createElement('div');
+    const label = document.createElement('span');
+    label.textContent = row.label;
+    const value = document.createElement('strong');
+    value.textContent = row.value;
+    line.appendChild(label);
+    line.appendChild(value);
+    wrapper.appendChild(line);
+  });
+  return wrapper;
+}
+
 function createCaseActions(entry, userId, onChange) {
   const container = document.createElement('div');
   container.className = 'shared-case-actions';
@@ -273,9 +562,11 @@ function createCaseActions(entry, userId, onChange) {
     importBtn.disabled = true;
     try {
       await handleImport(entry.caseId);
+      showToast('Sag importeret til optælling.', { variant: 'success' });
     } catch (error) {
       console.error('Import fejlede', error);
       handleActionError(error, 'Import fejlede', { teamContext: teamId });
+      showToast(error?.message || 'Import fejlede.', { variant: 'error' });
     } finally {
       importBtn.disabled = false;
     }
@@ -289,9 +580,11 @@ function createCaseActions(entry, userId, onChange) {
     jsonBtn.disabled = true;
     try {
       await handleJsonDownload(entry.caseId);
+      showToast('JSON er hentet.', { variant: 'success' });
     } catch (error) {
       console.error('Download fejlede', error);
       handleActionError(error, 'Kunne ikke hente JSON', { teamContext: teamId });
+      showToast(error?.message || 'Kunne ikke hente JSON.', { variant: 'error' });
     } finally {
       jsonBtn.disabled = false;
     }
@@ -305,9 +598,11 @@ function createCaseActions(entry, userId, onChange) {
     pdfBtn.disabled = true;
     try {
       await handlePdfDownload(entry);
+      showToast('PDF er genereret.', { variant: 'success' });
     } catch (error) {
       console.error('PDF fejlede', error);
       handleActionError(error, 'Kunne ikke generere PDF', { teamContext: teamId });
+      showToast(error?.message || 'Kunne ikke generere PDF.', { variant: 'error' });
     } finally {
       pdfBtn.disabled = false;
     }
@@ -322,11 +617,34 @@ function createCaseActions(entry, userId, onChange) {
       statusBtn.disabled = true;
       try {
         const next = entry.status === 'godkendt' ? 'kladde' : 'godkendt';
-        await updateCaseStatus(ensureTeamSelected(), entry.caseId, next);
+        const updated = await updateCaseStatus(ensureTeamSelected(), entry.caseId, next);
         await onChange();
+        if (next === 'godkendt') {
+          openSharedModal({
+            title: 'Sag godkendt',
+            body: renderApprovalSummary(updated || entry),
+            actions: [
+              {
+                label: 'Åbn',
+                onClick: async () => {
+                  try {
+                    await handleImport(entry.caseId);
+                  } catch (error) {
+                    handleActionError(error, 'Kunne ikke åbne sag', { teamContext: teamId });
+                    showToast(error?.message || 'Kunne ikke åbne sag.', { variant: 'error' });
+                  }
+                },
+              },
+              { label: 'Luk' },
+            ],
+          });
+        } else {
+          showToast('Status sat tilbage til kladde.', { variant: 'info' });
+        }
       } catch (error) {
         console.error('Status opdatering fejlede', error);
         handleActionError(error, 'Kunne ikke opdatere status', { teamContext: teamId });
+        showToast(error?.message || 'Kunne ikke opdatere status.', { variant: 'error' });
       } finally {
         statusBtn.disabled = false;
       }
@@ -337,14 +655,21 @@ function createCaseActions(entry, userId, onChange) {
     deleteBtn.type = 'button';
     deleteBtn.textContent = 'Soft delete';
     deleteBtn.addEventListener('click', async () => {
-      if (!confirm('Soft delete?')) return;
+      const confirmed = await openConfirmModal({
+        title: 'Soft delete sag',
+        message: 'Denne sag skjules for teamet, men kan gendannes af admin.',
+        confirmLabel: 'Soft delete',
+      });
+      if (!confirmed) return;
       deleteBtn.disabled = true;
       try {
         await deleteSharedCase(ensureTeamSelected(), entry.caseId);
         await onChange();
+        showToast('Sag er soft-deleted.', { variant: 'success' });
       } catch (error) {
         console.error('Sletning fejlede', error);
         handleActionError(error, 'Kunne ikke slette sag', { teamContext: teamId });
+        showToast(error?.message || 'Kunne ikke slette sag.', { variant: 'error' });
       } finally {
         deleteBtn.disabled = false;
       }
@@ -355,39 +680,124 @@ function createCaseActions(entry, userId, onChange) {
   return container;
 }
 
-function renderCase(entry, userId, onChange) {
-  const item = document.createElement('div');
-  item.className = 'shared-case-item';
-  const title = document.createElement('div');
-  title.className = 'shared-case-title';
-  title.textContent = `${entry.caseKind || ''} · ${entry.system || ''}`;
-  const meta = document.createElement('div');
-  meta.className = 'shared-case-meta';
-  meta.textContent = `${entry.status || 'kladde'} · ${entry.createdAt || ''}`;
-  const totals = document.createElement('div');
-  totals.className = 'shared-case-totals';
-  const materials = entry?.totals?.materials || entry?.totals?.materialsSum || entry?.totals?.materialTotal || 0;
-  const total = entry?.totals?.total || entry?.totals?.project || entry?.totals?.akkord || 0;
-  totals.textContent = `Materialer: ${materials} · Total: ${total}`;
+function renderCaseCard(entry, userId, onChange) {
+  const meta = resolveCaseMeta(entry);
+  const totals = resolveCaseTotals(entry, meta);
+  const date = resolveCaseDate(entry, meta);
+  const card = document.createElement('div');
+  card.className = 'shared-case-card';
 
-  item.appendChild(title);
-  item.appendChild(meta);
-  item.appendChild(totals);
-  item.appendChild(createCaseActions(entry, userId, onChange));
-  return item;
+  const top = document.createElement('div');
+  top.className = 'shared-case-card__top';
+  const title = document.createElement('h3');
+  title.className = 'shared-case-card__title';
+  title.textContent = meta.jobNumber || entry.jobNumber || 'Ukendt sag';
+  const badge = document.createElement('span');
+  badge.className = 'shared-case-card__badge';
+  badge.textContent = entry.status || 'kladde';
+  top.appendChild(title);
+  top.appendChild(badge);
+
+  const metaGrid = document.createElement('div');
+  metaGrid.className = 'shared-case-card__meta';
+  const lines = [
+    { label: 'Type', value: meta.jobType || entry.caseKind || '–' },
+    { label: 'Opgave', value: meta.jobName || '–' },
+    { label: 'Adresse', value: meta.address || '–' },
+    { label: 'Kunde', value: meta.customer || '–' },
+    { label: 'Montører', value: meta.montor || meta.workerNames?.join(', ') || '–' },
+    { label: 'Dato', value: date.formatted || formatDateInput(date.raw) || '–' },
+    { label: 'System', value: meta.system || entry.system || '–' },
+  ];
+  lines.forEach(line => {
+    const row = document.createElement('div');
+    const label = document.createElement('span');
+    label.textContent = `${line.label}:`;
+    const value = document.createElement('strong');
+    value.textContent = line.value;
+    row.appendChild(label);
+    row.appendChild(value);
+    metaGrid.appendChild(row);
+  });
+
+  const totalsRow = document.createElement('div');
+  totalsRow.className = 'shared-case-card__totals';
+  const materials = document.createElement('div');
+  materials.innerHTML = `<span>Materialer:</span> <strong>${CURRENCY_FORMATTER.format(totals.materials)} kr.</strong>`;
+  const total = document.createElement('div');
+  total.innerHTML = `<span>Total:</span> <strong>${CURRENCY_FORMATTER.format(totals.total)} kr.</strong>`;
+  totalsRow.appendChild(materials);
+  totalsRow.appendChild(total);
+
+  card.appendChild(top);
+  card.appendChild(metaGrid);
+  card.appendChild(totalsRow);
+  card.appendChild(createCaseActions(entry, userId, onChange));
+  return card;
 }
 
-function renderGroup(group, userId, onChange) {
-  const details = document.createElement('details');
-  details.className = 'shared-group';
-  details.open = false;
-  const summary = document.createElement('summary');
-  summary.textContent = `${group.jobNumber} (${group.cases.length})`;
-  details.appendChild(summary);
-  group.cases.forEach(entry => {
-    details.appendChild(renderCase(entry, userId, onChange));
+function sortEntries(entries, sortKey) {
+  const list = entries.slice();
+  if (sortKey === 'oldest') {
+    return list.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+  }
+  if (sortKey === 'total-desc') {
+    return list.sort((a, b) => resolveCaseTotals(b, resolveCaseMeta(b)).total - resolveCaseTotals(a, resolveCaseMeta(a)).total);
+  }
+  if (sortKey === 'total-asc') {
+    return list.sort((a, b) => resolveCaseTotals(a, resolveCaseMeta(a)).total - resolveCaseTotals(b, resolveCaseMeta(b)).total);
+  }
+  return list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+}
+
+function renderBoard(entries, userId, onChange) {
+  const board = document.createElement('div');
+  board.className = 'shared-board';
+  const buckets = new Map();
+  BOARD_COLUMNS.forEach(column => {
+    buckets.set(column.id, []);
   });
-  return details;
+  entries.forEach(entry => {
+    const bucketId = resolveCaseStatusBucket(entry.status);
+    const bucket = buckets.get(bucketId) || buckets.get('andet');
+    bucket.push(entry);
+  });
+  BOARD_COLUMNS.forEach(column => {
+    const columnEl = document.createElement('section');
+    columnEl.className = 'shared-board-column';
+    const header = document.createElement('div');
+    header.className = 'shared-board-header';
+    const title = document.createElement('h3');
+    title.className = 'shared-board-title';
+    title.textContent = column.label;
+    const meta = document.createElement('span');
+    meta.className = 'shared-board-meta';
+    const columnEntries = buckets.get(column.id) || [];
+    meta.textContent = `${columnEntries.length} sager`;
+    header.appendChild(title);
+    header.appendChild(meta);
+    if (column.hint) {
+      const hint = document.createElement('div');
+      hint.className = 'shared-board-meta';
+      hint.textContent = column.hint;
+      columnEl.appendChild(header);
+      columnEl.appendChild(hint);
+    } else {
+      columnEl.appendChild(header);
+    }
+    const list = document.createElement('div');
+    list.className = 'shared-board-list';
+    columnEntries.forEach(entry => list.appendChild(renderCaseCard(entry, userId, onChange)));
+    if (!columnEntries.length) {
+      const empty = document.createElement('div');
+      empty.className = 'shared-board-meta';
+      empty.textContent = 'Ingen sager';
+      list.appendChild(empty);
+    }
+    columnEl.appendChild(list);
+    board.appendChild(columnEl);
+  });
+  return board;
 }
 
 function setSharedStatus(text) {
@@ -425,9 +835,10 @@ export function initSharedCasesPanel() {
   debugLogOutput = document.getElementById('sharedDebugLog');
   setPanelVisibility(false);
   refreshBtn = document.getElementById('refreshSharedCases');
-  const filters = ['sharedFilterJob', 'sharedFilterStatus', 'sharedFilterKind']
+  const filters = ['sharedSearchInput', 'sharedDateFrom', 'sharedDateTo', 'sharedFilterStatus', 'sharedFilterKind', 'sharedSort']
     .map(id => document.getElementById(id))
     .filter(Boolean);
+  applyStoredFilters();
   updateSharedStatus();
   updateStatusCard();
 
@@ -444,19 +855,24 @@ export function initSharedCasesPanel() {
     try {
       const groups = await listSharedGroups(ensureTeamSelected());
       const activeFilters = getFilters();
-      const filtered = groups.map(group => ({
-        ...group,
-        cases: group.cases.filter(entry => matchesFilters(entry, activeFilters)),
-      })).filter(group => group.cases.length);
+      const flattened = groups.flatMap(group => (group.cases || []).map(entry => ({
+        ...entry,
+        jobNumber: entry.jobNumber || group.jobNumber,
+      })));
+      const filtered = flattened.filter(entry => {
+        const meta = resolveCaseMeta(entry);
+        return matchesFilters(entry, meta, activeFilters);
+      });
+      const sorted = sortEntries(filtered, activeFilters.sort);
       container.textContent = '';
-      if (!filtered.length) {
+      if (!sorted.length) {
         const empty = document.createElement('p');
         empty.textContent = 'Ingen delte sager endnu.';
         container.appendChild(empty);
         setRefreshState('idle');
         return;
       }
-      filtered.forEach(group => container.appendChild(renderGroup(group, currentUser, refresh)));
+      container.appendChild(renderBoard(sorted, currentUser, refresh));
       setSharedStatus('Synkroniseret');
       clearInlineError();
       setRefreshState('idle');
@@ -478,7 +894,10 @@ export function initSharedCasesPanel() {
   };
 
   if (refreshBtn) refreshBtn.addEventListener('click', refresh);
-  filters.forEach(input => input.addEventListener('input', () => refresh()))
+  filters.forEach(input => {
+    input.addEventListener('input', () => refresh());
+    input.addEventListener('change', () => refresh());
+  });
 
   bindSessionControls(() => refresh(), () => {
     if (!requireAuth()) {
