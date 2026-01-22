@@ -1,33 +1,27 @@
-# DB backup & eksport (Delt sager)
+# DB Backup (Cssmate / Delt sager)
 
-Formålet er at sikre en stabil, manuel backup-strategi for delte sager, så data kan genskabes uden at påvirke pris-/beregningslogik.
+Formålet er at sikre, at delte sager kan gendannes selv hvis hosting eller DB bliver nulstillet.
 
-## Anbefalet cadence
+## Anbefalet rutine
 
-- Tag backup **ugentligt eller månedligt**, afhængigt af hvor ofte teamet arbejder i Delt sager.
-- Gem eksporten uden for Netlify (fx firmadrev, OneDrive, Google Drive).
+- Kør eksport **ugentligt** eller mindst **månedligt**.
+- Gem filerne et sikkert sted (fx Google Drive/OneDrive + evt. USB-drev).
+- Del kun backup med betroede admins (filen indeholder sagsdata).
 
-## Backup via API (JSON)
+## Sådan laver du en backup
 
 1. Log ind som admin.
-2. Kald backup endpointet for teamet:
-   - `GET /api/teams/{teamSlug}/backup`
-   - Inkludér slettede sager ved behov: `GET /api/teams/{teamSlug}/backup?includeDeleted=1`
-3. Gem JSON-filen lokalt som langtidshistorik.
+2. Gå til Delt sager → Backup/Export (admin-funktion).
+3. Download JSON-filen.
+   - Filen får navn som `cssmate-backup-<team>-YYYY-MM-DD.json`.
+4. (Valgfrit) Medtag soft-deleted sager ved at bruge `includeDeleted=1` i eksporten.
 
-Eksporten er det langsigtede arkiv. Neon “history retention” er **ikke** en backup-strategi.
+## Hvorfor dette er vigtigt
 
-## Valgfrit: pg_dump
+- Neon free-plan er ikke et 5-års arkiv.
+- En manuel backup er den sikreste måde at bevare historik på.
 
-Hvis du har direkte adgang til databasen:
+## Gendannelse
 
-```bash
-pg_dump "$DATABASE_URL_UNPOOLED" > sscaff-backup-$(date +%F).sql
-```
-
-Brug **unpooled** connection string for at undgå pooler-begrænsninger.
-
-## Miljøer og sikkerhed
-
-- **Production**: brug `DATABASE_URL` (pooled) og `DATABASE_URL_UNPOOLED` (direct).
-- **Preview deploys** må **ikke** pege på production DB. Brug staging DB eller read-only credentials.
+- Importflowet for backup bruges til at indlæse sager igen.
+- Hvis der mangler en automatiseret restore-proces, opret en drift-/supportopgave først.

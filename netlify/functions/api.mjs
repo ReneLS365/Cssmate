@@ -1,7 +1,7 @@
 import { db, ensureDbReady } from './_db.mjs'
 import { generateToken, getAuth0Config, hashToken, secureCompare, verifyToken } from './_auth.mjs'
 
-const JSON_HEADERS = { 'Content-Type': 'application/json' }
+const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' }
 const DEFAULT_TEAM_SLUG = process.env.DEFAULT_TEAM_SLUG || 'hulmose'
 const EMAIL_FROM = process.env.EMAIL_FROM || ''
 const EMAIL_PROVIDER_API_KEY = process.env.EMAIL_PROVIDER_API_KEY || ''
@@ -80,6 +80,28 @@ function decodeCursor (value) {
   } catch {
     return null
   }
+}
+
+function isWriteRequest (event) {
+  const method = (event.httpMethod || 'GET').toUpperCase()
+  if (method === 'GET' || method === 'HEAD') return false
+  const path = getRoutePath(event)
+  const writeRoutes = [
+    { method: 'POST', pattern: /^\/teams\/[^/]+\/cases$/ },
+    { method: 'DELETE', pattern: /^\/teams\/[^/]+\/cases\/[^/]+$/ },
+    { method: 'PATCH', pattern: /^\/teams\/[^/]+\/cases\/[^/]+\/status$/ },
+    { method: 'POST', pattern: /^\/teams\/[^/]+\/backup$/ },
+    { method: 'POST', pattern: /^\/teams\/[^/]+\/members\/self$/ },
+    { method: 'POST', pattern: /^\/teams\/[^/]+\/bootstrap$/ },
+    { method: 'PATCH', pattern: /^\/teams\/[^/]+\/members\/[^/]+$/ },
+    { method: 'DELETE', pattern: /^\/teams\/[^/]+\/members\/[^/]+$/ },
+    { method: 'PATCH', pattern: /^\/team\/members\/[^/]+$/ },
+    { method: 'DELETE', pattern: /^\/team\/members\/[^/]+$/ },
+    { method: 'POST', pattern: /^\/invites/ },
+    { method: 'PATCH', pattern: /^\/invites/ },
+    { method: 'DELETE', pattern: /^\/invites/ },
+  ]
+  return writeRoutes.some(route => route.method === method && route.pattern.test(path))
 }
 
 function normalizeEmail (email) {
@@ -825,18 +847,6 @@ async function handleCaseList (event, teamSlug) {
   await requireDbReady()
   const { team } = await requireTeamContext(event, teamSlug)
   const query = event.queryStringParameters || {}
-  const hasPaginationParams = ['limit', 'cursor', 'status', 'q', 'from', 'to'].some(key => query?.[key])
-  if (!hasPaginationParams) {
-    const result = await db.query(
-      `SELECT c.*, t.slug as team_slug
-       FROM team_cases c
-       JOIN teams t ON t.id = c.team_id
-       WHERE c.team_id = $1 AND c.deleted_at IS NULL
-       ORDER BY COALESCE(c.created_at, to_timestamp(0)) DESC, c.case_id DESC`,
-      [team.id]
-    )
-    return jsonResponse(200, result.rows.map(serializeCaseRow))
-  }
   const limit = clampCasesLimit(query.limit)
   const status = String(query.status || '').trim()
   const search = String(query.q || '').trim()
@@ -855,16 +865,16 @@ async function handleCaseList (event, teamSlug) {
   }
   if (from) {
     params.push(from)
-    whereClause += ` AND (COALESCE(c.created_at, to_timestamp(0)) AT TIME ZONE 'Europe/Copenhagen')::date >= $${params.length}`
+    whereClause += ` AND (c.created_at AT TIME ZONE 'Europe/Copenhagen')::date >= $${params.length}`
   }
   if (to) {
     params.push(to)
-    whereClause += ` AND (COALESCE(c.created_at, to_timestamp(0)) AT TIME ZONE 'Europe/Copenhagen')::date <= $${params.length}`
+    whereClause += ` AND (c.created_at AT TIME ZONE 'Europe/Copenhagen')::date <= $${params.length}`
   }
   if (cursor) {
     params.push(cursor.createdAt)
     params.push(cursor.caseId)
-    whereClause += ` AND (COALESCE(c.created_at, to_timestamp(0)), c.case_id) < ($${params.length - 1}, $${params.length})`
+    whereClause += ` AND (c.created_at, c.case_id) < ($${params.length - 1}, $${params.length})`
   }
   params.push(limit + 1)
   const result = await db.query(
@@ -872,7 +882,7 @@ async function handleCaseList (event, teamSlug) {
      FROM team_cases c
      JOIN teams t ON t.id = c.team_id
      ${whereClause}
-     ORDER BY COALESCE(c.created_at, to_timestamp(0)) DESC, c.case_id DESC
+     ORDER BY c.created_at DESC, c.case_id DESC
      LIMIT $${params.length}`,
     params
   )
@@ -1008,8 +1018,9 @@ async function handleBackupExport (event, teamSlug) {
   }
   const dateLabel = new Date().toISOString().slice(0, 10)
   const teamLabel = team?.slug || teamSlug || 'team'
-  const fileName = `sscaff-backup-${teamLabel}-${dateLabel}.json`
+  const fileName = `cssmate-backup-${teamLabel}-${dateLabel}.json`
   return jsonResponse(200, backup, {
+    'Content-Type': 'application/json; charset=utf-8',
     'Content-Disposition': `attachment; filename="${fileName}"`,
   })
 }
@@ -1066,7 +1077,7 @@ export async function handler (event) {
   const path = getRoutePath(event)
   const context = String(process.env.CONTEXT || process.env.NETLIFY_CONTEXT || 'unknown').toLowerCase()
   const isProduction = context === 'production'
-  const isWriteMethod = ['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)
+  const isWriteMethod = isWriteRequest(event)
 
   try {
     if (!isProduction && isWriteMethod) {
