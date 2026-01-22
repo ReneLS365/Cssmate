@@ -1,4 +1,4 @@
-import { listSharedGroups, downloadCaseJson, importCasePayload, updateCaseStatus, deleteSharedCase, formatTeamId, PermissionDeniedError, normalizeTeamId, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG } from './shared-ledger.js';
+import { listSharedCasesPage, downloadCaseJson, importCasePayload, updateCaseStatus, deleteSharedCase, formatTeamId, PermissionDeniedError, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG } from './shared-ledger.js';
 import { exportPDFBlob } from './export-pdf.js';
 import { buildExportModel } from './export-model.js';
 import { downloadBlob } from './utils/downloadBlob.js';
@@ -25,6 +25,11 @@ let debugPanel;
 let debugLogOutput;
 let hasDebugEntries = false;
 let debugMessagesSeen = new Set();
+let pagedEntries = [];
+let nextCursor = null;
+let activeFilters = null;
+let isLoadingMore = false;
+let loadMoreBtn;
 const UI_STORAGE_KEY = 'cssmate:shared-cases:ui:v1';
 const CASE_META_CACHE = new Map();
 const DATE_INPUT_FORMATTER = new Intl.DateTimeFormat('sv-SE');
@@ -454,6 +459,14 @@ function getFilters() {
   return filters;
 }
 
+function resolveServerFilters(filters) {
+  const status = filters?.status && filters.status !== 'andet' ? filters.status : '';
+  const q = (filters?.search || '').trim();
+  const from = dayKeyFromInput(filters?.dateFrom);
+  const to = dayKeyFromInput(filters?.dateTo);
+  return { status, q, from, to };
+}
+
 function matchesFilters(entry, meta, filters) {
   const searchValue = normalizeSearchValue(filters.search);
   const tokens = searchValue ? searchValue.split(' ').filter(Boolean) : [];
@@ -874,6 +887,74 @@ function updateSharedStatus(message) {
   updateStatusCard();
 }
 
+async function fetchCasesPage({ reset = false } = {}) {
+  if (isLoadingMore) return null;
+  if (!requireAuth()) return null;
+  isLoadingMore = true;
+  try {
+    const filters = reset ? getFilters() : (activeFilters || getFilters());
+    if (reset) {
+      activeFilters = filters;
+      pagedEntries = [];
+      nextCursor = null;
+    }
+    const serverFilters = resolveServerFilters(filters);
+    const page = await listSharedCasesPage(ensureTeamSelected(), {
+      limit: 100,
+      cursor: nextCursor,
+      status: serverFilters.status,
+      q: serverFilters.q,
+      from: serverFilters.from,
+      to: serverFilters.to,
+    });
+    const items = Array.isArray(page?.items) ? page.items : [];
+    pagedEntries = reset ? items : pagedEntries.concat(items);
+    nextCursor = page?.nextCursor || null;
+    return { entries: pagedEntries.slice(), filters };
+  } finally {
+    isLoadingMore = false;
+  }
+}
+
+function renderSharedCases(container, entries, filters, userId, onChange) {
+  container.textContent = '';
+  if (!entries.length) {
+    const empty = document.createElement('p');
+    empty.textContent = 'Ingen delte sager endnu.';
+    container.appendChild(empty);
+    return;
+  }
+  container.appendChild(renderBoard(entries, userId, onChange));
+  if (nextCursor) {
+    loadMoreBtn = document.createElement('button');
+    loadMoreBtn.type = 'button';
+    loadMoreBtn.className = 'shared-load-more';
+    loadMoreBtn.textContent = 'Hent flere';
+    loadMoreBtn.addEventListener('click', async () => {
+      if (isLoadingMore) return;
+      loadMoreBtn.disabled = true;
+      loadMoreBtn.textContent = 'Henter…';
+      try {
+        const page = await fetchCasesPage({ reset: false });
+        if (!page) return;
+        const filtered = page.entries.filter(entry => {
+          const meta = resolveCaseMeta(entry);
+          return matchesFilters(entry, meta, page.filters);
+        });
+        const sorted = sortEntries(filtered, page.filters.sort);
+        renderSharedCases(container, sorted, page.filters, userId, onChange);
+        setSharedStatus('Synkroniseret');
+        clearInlineError();
+      } catch (error) {
+        console.error('Kunne ikke hente flere delte sager', error);
+        handleActionError(error, 'Kunne ikke hente flere sager', { teamContext: teamId });
+        appendDebug(`Load more fejl: ${error?.message || 'Ukendt fejl'}`);
+      }
+    });
+    container.appendChild(loadMoreBtn);
+  }
+}
+
 export function initSharedCasesPanel() {
   if (sharedCasesPanelInitialized) return;
   const container = document.getElementById('sharedCasesList');
@@ -910,26 +991,17 @@ export function initSharedCasesPanel() {
     container.textContent = 'Henter sager…';
     const currentUser = sessionState?.user?.uid || 'offline-user';
     try {
-      const groups = await listSharedGroups(ensureTeamSelected());
-      const activeFilters = getFilters();
-      const flattened = groups.flatMap(group => (group.cases || []).map(entry => ({
-        ...entry,
-        jobNumber: entry.jobNumber || group.jobNumber,
-      })));
-      const filtered = flattened.filter(entry => {
-        const meta = resolveCaseMeta(entry);
-        return matchesFilters(entry, meta, activeFilters);
-      });
-      const sorted = sortEntries(filtered, activeFilters.sort);
-      container.textContent = '';
-      if (!sorted.length) {
-        const empty = document.createElement('p');
-        empty.textContent = 'Ingen delte sager endnu.';
-        container.appendChild(empty);
+      const page = await fetchCasesPage({ reset: true });
+      if (!page) {
         setRefreshState('idle');
         return;
       }
-      container.appendChild(renderBoard(sorted, currentUser, refresh));
+      const filtered = page.entries.filter(entry => {
+        const meta = resolveCaseMeta(entry);
+        return matchesFilters(entry, meta, page.filters);
+      });
+      const sorted = sortEntries(filtered, page.filters.sort);
+      renderSharedCases(container, sorted, page.filters, currentUser, refresh);
       setSharedStatus('Synkroniseret');
       clearInlineError();
       setRefreshState('idle');

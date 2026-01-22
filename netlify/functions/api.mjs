@@ -11,17 +11,19 @@ const INVITE_RATE_LIMIT = 20
 const INVITE_RATE_WINDOW_MS = 60 * 60 * 1000
 const ACCEPT_RATE_LIMIT = 30
 const ACCEPT_RATE_WINDOW_MS = 60 * 60 * 1000
+const DEFAULT_CASES_LIMIT = 100
+const MAX_CASES_LIMIT = 500
 const ROLE_CLAIM = 'https://sscaff.app/roles'
 const ORG_CLAIM = 'https://sscaff.app/org_id'
 const ALLOWED_ROLES = new Set(['sscaff_owner', 'sscaff_admin', 'sscaff_user'])
-const DB_NOT_MIGRATED_MESSAGE = 'DB er ikke migreret. Kør migrations/001_init.sql, migrations/002_add_team_slug.sql, migrations/003_auth0_invites.sql, migrations/004_add_team_member_login.sql og migrations/005_cases_indexes.sql mod Neon.'
+const DB_NOT_MIGRATED_MESSAGE = 'DB er ikke migreret. Kør migrations/001_init.sql, migrations/002_add_team_slug.sql, migrations/003_auth0_invites.sql, migrations/004_add_team_member_login.sql, migrations/005_cases_indexes.sql og migrations/006_cases_defaults.sql mod Neon.'
 let cachedMgmtToken = ''
 let cachedMgmtTokenExpiry = 0
 
-function jsonResponse (statusCode, payload) {
+function jsonResponse (statusCode, payload, extraHeaders = {}) {
   return {
     statusCode,
-    headers: JSON_HEADERS,
+    headers: { ...JSON_HEADERS, ...extraHeaders },
     body: JSON.stringify(payload ?? {}),
   }
 }
@@ -43,6 +45,40 @@ function parseBody (event) {
     return JSON.parse(event.body)
   } catch {
     return {}
+  }
+}
+
+function parseBooleanParam (value) {
+  if (value === undefined || value === null) return false
+  const normalized = String(value).trim().toLowerCase()
+  return ['1', 'true', 'yes', 'on'].includes(normalized)
+}
+
+function clampCasesLimit (value) {
+  const parsed = Number.parseInt(value, 10)
+  if (Number.isNaN(parsed) || parsed <= 0) return DEFAULT_CASES_LIMIT
+  return Math.min(parsed, MAX_CASES_LIMIT)
+}
+
+function parseDateKey (value) {
+  const normalized = String(value || '').trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return ''
+  return normalized
+}
+
+function decodeCursor (value) {
+  if (!value) return null
+  try {
+    const raw = Buffer.from(String(value), 'base64url').toString('utf8')
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return null
+    const createdAt = parsed.createdAt ? new Date(parsed.createdAt) : new Date(0)
+    if (Number.isNaN(createdAt.valueOf())) return null
+    const caseId = parsed.caseId ? String(parsed.caseId).trim() : ''
+    if (!caseId) return null
+    return { createdAt, caseId }
+  } catch {
+    return null
   }
 }
 
@@ -788,14 +824,70 @@ async function handleCaseCreate (event, teamSlug) {
 async function handleCaseList (event, teamSlug) {
   await requireDbReady()
   const { team } = await requireTeamContext(event, teamSlug)
+  const query = event.queryStringParameters || {}
+  const hasPaginationParams = ['limit', 'cursor', 'status', 'q', 'from', 'to'].some(key => query?.[key])
+  if (!hasPaginationParams) {
+    const result = await db.query(
+      `SELECT c.*, t.slug as team_slug
+       FROM team_cases c
+       JOIN teams t ON t.id = c.team_id
+       WHERE c.team_id = $1 AND c.deleted_at IS NULL
+       ORDER BY COALESCE(c.created_at, to_timestamp(0)) DESC, c.case_id DESC`,
+      [team.id]
+    )
+    return jsonResponse(200, result.rows.map(serializeCaseRow))
+  }
+  const limit = clampCasesLimit(query.limit)
+  const status = String(query.status || '').trim()
+  const search = String(query.q || '').trim()
+  const from = parseDateKey(query.from)
+  const to = parseDateKey(query.to)
+  const cursor = decodeCursor(query.cursor)
+  const params = [team.id]
+  let whereClause = 'WHERE c.team_id = $1 AND c.deleted_at IS NULL'
+  if (status) {
+    params.push(status)
+    whereClause += ` AND c.status = $${params.length}`
+  }
+  if (search) {
+    params.push(`%${search}%`)
+    whereClause += ` AND (c.job_number ILIKE $${params.length} OR c.case_kind ILIKE $${params.length} OR c.system ILIKE $${params.length})`
+  }
+  if (from) {
+    params.push(from)
+    whereClause += ` AND (COALESCE(c.created_at, to_timestamp(0)) AT TIME ZONE 'Europe/Copenhagen')::date >= $${params.length}`
+  }
+  if (to) {
+    params.push(to)
+    whereClause += ` AND (COALESCE(c.created_at, to_timestamp(0)) AT TIME ZONE 'Europe/Copenhagen')::date <= $${params.length}`
+  }
+  if (cursor) {
+    params.push(cursor.createdAt)
+    params.push(cursor.caseId)
+    whereClause += ` AND (COALESCE(c.created_at, to_timestamp(0)), c.case_id) < ($${params.length - 1}, $${params.length})`
+  }
+  params.push(limit + 1)
   const result = await db.query(
     `SELECT c.*, t.slug as team_slug
      FROM team_cases c
      JOIN teams t ON t.id = c.team_id
-     WHERE c.team_id = $1 AND c.deleted_at IS NULL`,
-    [team.id]
+     ${whereClause}
+     ORDER BY COALESCE(c.created_at, to_timestamp(0)) DESC, c.case_id DESC
+     LIMIT $${params.length}`,
+    params
   )
-  return jsonResponse(200, result.rows.map(serializeCaseRow))
+  const rows = result.rows || []
+  const hasMore = rows.length > limit
+  const pageRows = hasMore ? rows.slice(0, limit) : rows
+  const items = pageRows.map(serializeCaseRow)
+  const lastRow = pageRows[pageRows.length - 1]
+  const nextCursor = hasMore && lastRow
+    ? {
+      createdAt: lastRow.created_at ? new Date(lastRow.created_at).toISOString() : new Date(0).toISOString(),
+      caseId: lastRow.case_id,
+    }
+    : null
+  return jsonResponse(200, { items, nextCursor })
 }
 
 async function handleCaseGet (event, teamSlug, caseId) {
@@ -868,11 +960,19 @@ async function handleCaseStatus (event, teamSlug, caseId) {
 async function handleBackupExport (event, teamSlug) {
   await requireDbReady()
   const { user, team } = await requireTeamContext(event, teamSlug, { requireAdmin: true })
+  const query = event.queryStringParameters || {}
+  const includeDeleted = parseBooleanParam(query.includeDeleted)
+  const casesQuery = includeDeleted
+    ? `SELECT c.*, t.slug as team_slug
+       FROM team_cases c
+       JOIN teams t ON t.id = c.team_id
+       WHERE c.team_id = $1`
+    : `SELECT c.*, t.slug as team_slug
+       FROM team_cases c
+       JOIN teams t ON t.id = c.team_id
+       WHERE c.team_id = $1 AND c.deleted_at IS NULL`
   const casesResult = await db.query(
-    `SELECT c.*, t.slug as team_slug
-     FROM team_cases c
-     JOIN teams t ON t.id = c.team_id
-     WHERE c.team_id = $1`,
+    casesQuery,
     [team.id]
   )
   const auditResult = await db.query(
@@ -906,7 +1006,12 @@ async function handleBackupExport (event, teamSlug) {
     })),
     metadata: { format: 'sscaff-shared-backup', source: 'sscaff-app' },
   }
-  return jsonResponse(200, backup)
+  const dateLabel = new Date().toISOString().slice(0, 10)
+  const teamLabel = team?.slug || teamSlug || 'team'
+  const fileName = `sscaff-backup-${teamLabel}-${dateLabel}.json`
+  return jsonResponse(200, backup, {
+    'Content-Disposition': `attachment; filename="${fileName}"`,
+  })
 }
 
 async function handleBackupImport (event, teamSlug) {
@@ -959,8 +1064,14 @@ async function handleBackupImport (event, teamSlug) {
 export async function handler (event) {
   const method = event.httpMethod || 'GET'
   const path = getRoutePath(event)
+  const context = String(process.env.CONTEXT || process.env.NETLIFY_CONTEXT || 'unknown').toLowerCase()
+  const isProduction = context === 'production'
+  const isWriteMethod = ['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)
 
   try {
+    if (!isProduction && isWriteMethod) {
+      return jsonResponse(403, { error: 'Writes disabled in preview deployments.' })
+    }
     if (method === 'GET' && path === '/me') return await handleMe(event)
     if (method === 'GET' && path === '/team') return await handleTeamGet(event)
     if (method === 'GET' && path === '/team/members') return await handleTeamMembersListRoot(event)

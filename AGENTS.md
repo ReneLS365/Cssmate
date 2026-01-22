@@ -34,18 +34,19 @@ Formålet med denne fil er at sikre, at alle AI-/Codex-agenter arbejder på samm
 
 ---
 
-## Allowed work (Historik/Team/Hjælp only + safe perf + cleanup policy)
+## Allowed work (Delt sager + Team + Auth + server + ops docs, safe perf + cleanup policy)
 
 **Tilladt arbejde:**
 - Små, fuldt isolerede bugfixes.
 - Performance/responsiveness/build-time forbedringer uden adfærdsændringer.
 - Ryd op i dødt/ubrugt kode/aktiver **kun** når det er dokumenteret ubrugt.
-- Arbejde begrænset til **Historik**, **Team** og **Hjælp**.
+- Arbejde begrænset til **Delt sager**, **Team**, **Auth**, **Netlify Functions**, **DB migrations** og **drifts-/operations-dokumentation**.
 
 **Ikke tilladt:**
 - Store refactors.
-- Nye dependencies uden eksplicit godkendelse.
+- Nye dependencies uden eksplicit godkendelse (medmindre det er omfattet af en aktiv undtagelse).
 - Ændringer i delte utilities/komponenter, hvis der er risiko for regression i beregnings- og dataflow.
+- Ændringer i priser/calc/export/import/counting/scaffold eller andet der ændrer output af beregninger/priser.
 
 ---
 
@@ -75,6 +76,42 @@ Denne undtagelse er aktiv for opgaven: “Invite-flow uden email (copy link) + f
 - Manuel mobil smoke-test af core flows (samme checklist som før).
 
 ---
+
+## Exception: Release-hardening for Delt sager (approved)
+
+Denne undtagelse er aktiv for opgaven: “Release-hardening for Delt sager”.
+
+### Tilladt under denne undtagelse
+- `netlify/functions/api.mjs` ændringer begrænset til:
+  - Server-side pagination for case list.
+  - Preview/prod write-guard.
+  - Backup export options.
+- `netlify/functions/_db.mjs` ændringer begrænset til:
+  - Sikker env var resolution (DATABASE_URL kandidater).
+  - Migrations-runner opdateringer.
+- Nye migration-filer under `netlify/functions/migrations/*`.
+- `docs/DB_BACKUP.md` (eller lignende) og README-snippets for env contexts.
+
+### Stadig IKKE tilladt
+- Ændringer i priser, datasæt, løn-/akkord-beregninger, materialeliste-logik, eksport-mapping eller import/eksport-kontrakter.
+- Global CSS eller shared komponent-CSS der kan påvirke beregnings- og dataflow.
+- Ændringer i bundle-filer i `dist/` eller genererede assets.
+
+---
+
+## Preview safety contract
+
+- I non-production deploy contexts skal writes **blokeres server-side**.
+- Deploy preview env vars må **ikke** pege på production DB.
+
+---
+
+## Definition of Done (Release-hardening)
+
+- Production: create/update/list virker, pagination virker, DK date filter er stadig korrekt.
+- Preview: read ok, writes returnerer 403 med tydelig besked.
+- Backup: export producerer en downloadbar fil.
+- Ingen ændringer i business logic outputs.
 
 ## Verification checklist (build/tests + manual mobile smoke)
 
