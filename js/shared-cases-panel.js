@@ -38,6 +38,27 @@ const BOARD_COLUMNS = [
   { id: 'andet', label: 'Andet', hint: 'Ukendte statusser.' },
 ];
 
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+function localDayKeyFromDate(d) {
+  if (!(d instanceof Date) || Number.isNaN(d.getTime())) return null;
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function localDayKeyFromRaw(raw) {
+  if (!raw) return null;
+  const d = new Date(raw);
+  return localDayKeyFromDate(d);
+}
+
+function dayKeyFromInput(s) {
+  if (!s || typeof s !== 'string') return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  return s;
+}
+
 displayTeamId = DEFAULT_TEAM_SLUG;
 
 function formatMissingMembershipMessage(teamIdValue, uid) {
@@ -443,12 +464,13 @@ function matchesFilters(entry, meta, filters) {
   const kindValue = (entry.caseKind || meta?.jobType || '').toLowerCase();
   const kindMatch = !filters.kind || kindValue === filters.kind;
   const date = resolveCaseDate(entry, meta);
-  const dateFrom = parseDateInputStart(filters.dateFrom);
-  const dateTo = parseDateInputEnd(filters.dateTo);
-  const caseDate = parseCaseDate(date.raw);
-  const inRange = (!dateFrom || (caseDate && caseDate >= dateFrom))
-    && (!dateTo || (caseDate && caseDate <= dateTo));
-  return matchesSearch && statusMatch && kindMatch && inRange;
+  const fromKey = dayKeyFromInput(filters.dateFrom);
+  const toKey = dayKeyFromInput(filters.dateTo);
+  const entryKey = dayKeyFromInput(entry.dateDay)
+    || localDayKeyFromRaw(entry.lastUpdatedAt || entry.updatedAt || entry.createdAt || date.raw);
+  const dateMatch = (!fromKey || (entryKey && entryKey >= fromKey))
+    && (!toKey || (entryKey && entryKey <= toKey));
+  return matchesSearch && statusMatch && kindMatch && dateMatch;
 }
 
 async function handleJsonDownload(caseId) {
@@ -949,7 +971,13 @@ export function initSharedCasesPanel() {
   if (typeof window !== 'undefined') {
     window.addEventListener('cssmate:exported', () => {
       try {
-        if (requireAuth()) refresh();
+        if (requireAuth()) {
+          const fromInput = document.getElementById('sharedDateFrom');
+          const toInput = document.getElementById('sharedDateTo');
+          if (fromInput) fromInput.value = '';
+          if (toInput) toInput.value = '';
+          refresh();
+        }
       } catch (error) {
         // Ignore errors (likely due to no auth), since refresh will run on next auth change.
       }
