@@ -280,6 +280,23 @@ async function getMember (teamId, userSub) {
   return result.rows[0] || null
 }
 
+async function upsertMemberFromUser (teamId, user) {
+  const role = user.isOwner ? 'owner' : (user.isAdmin ? 'admin' : 'member')
+  const result = await db.query(
+    `INSERT INTO team_members (team_id, user_sub, email, role, status, joined_at, last_login_at)
+     VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+     ON CONFLICT (team_id, user_sub)
+     DO UPDATE SET
+       email = EXCLUDED.email,
+       role = EXCLUDED.role,
+       status = EXCLUDED.status,
+       last_login_at = NOW()
+     RETURNING team_id, user_sub, email, role, status, joined_at, last_login_at`,
+    [teamId, user.id, user.email, role, 'active']
+  )
+  return result.rows[0] || null
+}
+
 async function requireTeamContext (event, teamSlug, { requireAdmin = false } = {}) {
   const user = await requireAuth(event)
   const team = await ensureTeam(normalizeTeamSlug(teamSlug))
@@ -289,7 +306,10 @@ async function requireTeamContext (event, teamSlug, { requireAdmin = false } = {
   if (user.isPrivileged) {
     return { user, team, member: null }
   }
-  const member = await getMember(team.id, user.id)
+  let member = await getMember(team.id, user.id)
+  if (!member) {
+    member = await upsertMemberFromUser(team.id, user)
+  }
   if (!member || member.status !== 'active') {
     throw createError('Ingen adgang til teamet', 403)
   }
