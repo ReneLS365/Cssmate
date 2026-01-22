@@ -14,7 +14,7 @@ const ACCEPT_RATE_WINDOW_MS = 60 * 60 * 1000
 const ROLE_CLAIM = 'https://sscaff.app/roles'
 const ORG_CLAIM = 'https://sscaff.app/org_id'
 const ALLOWED_ROLES = new Set(['sscaff_owner', 'sscaff_admin', 'sscaff_user'])
-const DB_NOT_MIGRATED_MESSAGE = 'DB er ikke migreret. Kør migrations/001_init.sql, migrations/002_add_team_slug.sql, migrations/003_auth0_invites.sql og migrations/004_add_team_member_login.sql mod Neon.'
+const DB_NOT_MIGRATED_MESSAGE = 'DB er ikke migreret. Kør migrations/001_init.sql, migrations/002_add_team_slug.sql, migrations/003_auth0_invites.sql, migrations/004_add_team_member_login.sql og migrations/005_cases_indexes.sql mod Neon.'
 let cachedMgmtToken = ''
 let cachedMgmtTokenExpiry = 0
 
@@ -272,21 +272,28 @@ async function ensureTeam (slug) {
   return { id: teamId, slug: normalizedSlug, name: teamName, created_at: new Date().toISOString() }
 }
 
-async function requireTeamContext (event, teamSlug, { requireAdmin = false } = {}) {
-  const user = await requireAuth(event)
-  if (requireAdmin && !user.isPrivileged) {
-    throw createError('Kun admin kan udføre denne handling.', 403)
-  }
-  const team = await ensureTeam(normalizeTeamSlug(teamSlug))
-  return { user, team }
-}
-
 async function getMember (teamId, userSub) {
   const result = await db.query(
     'SELECT team_id, user_sub, email, role, status, joined_at, last_login_at FROM team_members WHERE team_id = $1 AND user_sub = $2',
     [teamId, userSub]
   )
   return result.rows[0] || null
+}
+
+async function requireTeamContext (event, teamSlug, { requireAdmin = false } = {}) {
+  const user = await requireAuth(event)
+  const team = await ensureTeam(normalizeTeamSlug(teamSlug))
+  if (requireAdmin && !user.isPrivileged) {
+    throw createError('Kun admin kan udføre denne handling.', 403)
+  }
+  if (user.isPrivileged) {
+    return { user, team, member: null }
+  }
+  const member = await getMember(team.id, user.id)
+  if (!member || member.status !== 'active') {
+    throw createError('Ingen adgang til teamet', 403)
+  }
+  return { user, team, member }
 }
 
 async function requireTeamRole (teamId, userSub, roles = ['admin']) {
@@ -448,12 +455,29 @@ async function handleTeamAccess (event, teamSlug) {
   const user = await requireAuth(event)
   const normalizedSlug = normalizeTeamSlug(teamSlug)
   const team = await ensureTeam(normalizedSlug)
-  const role = user.isOwner ? 'owner' : (user.isAdmin ? 'admin' : 'member')
+  if (user.isPrivileged) {
+    const role = user.isOwner ? 'owner' : (user.isAdmin ? 'admin' : 'member')
+    return jsonResponse(200, {
+      status: 'ok',
+      teamId: normalizedSlug,
+      team: { id: team.id, name: team.name, slug: team.slug },
+      member: { uid: user.id, role, status: 'active' },
+    })
+  }
+  const member = await getMember(team.id, user.id)
+  if (!member) {
+    return jsonResponse(200, {
+      status: 'missing',
+      teamId: normalizedSlug,
+      team: { id: team.id, name: team.name, slug: team.slug },
+      member: null,
+    })
+  }
   return jsonResponse(200, {
     status: 'ok',
     teamId: normalizedSlug,
     team: { id: team.id, name: team.name, slug: team.slug },
-    member: { uid: user.id, role, status: 'active' },
+    member: serializeMemberRow(member),
   })
 }
 

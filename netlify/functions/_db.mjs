@@ -6,6 +6,7 @@ import pathHelper from './_path.cjs'
 const DATABASE_SSL = process.env.DATABASE_SSL
 const DATABASE_URL_CANDIDATES = [
   process.env.DATABASE_URL,
+  process.env.DATABASE_URL_UNPOOLED,
   process.env.NETLIFY_DATABASE_URL,
   process.env.NETLIFY_DATABASE_URL_UNPOOLED,
 ]
@@ -52,7 +53,13 @@ async function ensureMigrations () {
          WHERE table_schema = 'public' AND table_name = 'team_members' AND column_name = 'last_login_at'`
       )
       const hasMemberLastLogin = lastLoginResult.rowCount > 0
-      if (hasUsersTable && hasTeamSlug && hasInviteTokenHint && hasMemberLastLogin) {
+      const indexResult = await client.query(
+        `SELECT
+           to_regclass('public.team_cases_team_created_idx') IS NOT NULL AS has_team_created_idx,
+           to_regclass('public.team_cases_team_updated_idx') IS NOT NULL AS has_team_updated_idx`
+      )
+      const hasCaseIndexes = Boolean(indexResult.rows[0]?.has_team_created_idx && indexResult.rows[0]?.has_team_updated_idx)
+      if (hasUsersTable && hasTeamSlug && hasInviteTokenHint && hasMemberLastLogin && hasCaseIndexes) {
         migrationsEnsured = true
         return
       }
@@ -63,6 +70,7 @@ async function ensureMigrations () {
         readMigrationFile('002_add_team_slug.sql'),
         readMigrationFile('003_auth0_invites.sql'),
         readMigrationFile('004_add_team_member_login.sql'),
+        readMigrationFile('005_cases_indexes.sql'),
       ])
       await client.query('BEGIN')
       for (const sql of migrations) {
@@ -152,6 +160,7 @@ function buildPoolConfig () {
   if (!databaseUrl) {
     const missingKeys = [
       'DATABASE_URL',
+      'DATABASE_URL_UNPOOLED',
       'NETLIFY_DATABASE_URL',
       'NETLIFY_DATABASE_URL_UNPOOLED',
     ].filter((key) => !process.env[key])
