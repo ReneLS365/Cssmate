@@ -59,7 +59,25 @@ async function ensureMigrations () {
            to_regclass('public.team_cases_team_updated_idx') IS NOT NULL AS has_team_updated_idx`
       )
       const hasCaseIndexes = Boolean(indexResult.rows[0]?.has_team_created_idx && indexResult.rows[0]?.has_team_updated_idx)
-      if (hasUsersTable && hasTeamSlug && hasInviteTokenHint && hasMemberLastLogin && hasCaseIndexes) {
+      const defaultsResult = await client.query(
+        `SELECT
+           SUM(CASE WHEN column_name = 'created_at' AND column_default IS NOT NULL THEN 1 ELSE 0 END) AS created_default,
+           SUM(CASE WHEN column_name = 'updated_at' AND column_default IS NOT NULL THEN 1 ELSE 0 END) AS updated_default,
+           SUM(CASE WHEN column_name = 'last_updated_at' AND column_default IS NOT NULL THEN 1 ELSE 0 END) AS last_updated_default,
+           SUM(CASE WHEN column_name = 'status' AND column_default IS NOT NULL THEN 1 ELSE 0 END) AS status_default
+         FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = 'team_cases'
+           AND column_name IN ('created_at', 'updated_at', 'last_updated_at', 'status')`
+      )
+      const defaultsRow = defaultsResult.rows[0] || {}
+      const hasCaseDefaults = Boolean(
+        Number(defaultsRow.created_default) > 0
+        && Number(defaultsRow.updated_default) > 0
+        && Number(defaultsRow.last_updated_default) > 0
+        && Number(defaultsRow.status_default) > 0
+      )
+      if (hasUsersTable && hasTeamSlug && hasInviteTokenHint && hasMemberLastLogin && hasCaseIndexes && hasCaseDefaults) {
         migrationsEnsured = true
         return
       }
@@ -71,6 +89,7 @@ async function ensureMigrations () {
         readMigrationFile('003_auth0_invites.sql'),
         readMigrationFile('004_add_team_member_login.sql'),
         readMigrationFile('005_cases_indexes.sql'),
+        readMigrationFile('006_cases_defaults.sql'),
       ])
       await client.query('BEGIN')
       for (const sql of migrations) {

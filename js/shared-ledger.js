@@ -420,6 +420,47 @@ export async function listSharedGroups(teamId) {
     .sort((a, b) => (b.lastUpdatedAt || '').localeCompare(a.lastUpdatedAt || ''))
 }
 
+function encodeCursorPayload(cursor) {
+  if (!cursor) return ''
+  const payload = typeof cursor === 'string' ? cursor : JSON.stringify(cursor)
+  if (!payload) return ''
+  if (typeof btoa === 'function') {
+    const encoded = btoa(unescape(encodeURIComponent(payload)))
+    return encoded.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  }
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(payload, 'utf8').toString('base64url')
+  }
+  return ''
+}
+
+function normalizeCasesPage(payload) {
+  if (Array.isArray(payload)) {
+    return { items: payload, nextCursor: null }
+  }
+  if (payload && Array.isArray(payload.items)) {
+    return { items: payload.items, nextCursor: payload.nextCursor || null }
+  }
+  return { items: [], nextCursor: null }
+}
+
+export async function listSharedCasesPage(teamId, { limit = 100, cursor = null, status = '', q = '', from = '', to = '' } = {}) {
+  const { teamId: resolvedTeamId } = await getTeamContext(teamId)
+  const params = new URLSearchParams()
+  if (limit) params.set('limit', String(limit))
+  if (cursor) {
+    const encoded = encodeCursorPayload(cursor)
+    if (encoded) params.set('cursor', encoded)
+  }
+  if (status) params.set('status', status)
+  if (q) params.set('q', q)
+  if (from) params.set('from', from)
+  if (to) params.set('to', to)
+  const query = params.toString()
+  const payload = await apiJson(`/api/teams/${resolvedTeamId}/cases${query ? `?${query}` : ''}`)
+  return normalizeCasesPage(payload)
+}
+
 export async function getSharedCase(teamId, caseId) {
   try {
     const { teamId: resolvedTeamId } = await getTeamContext(teamId)
@@ -504,6 +545,7 @@ export {
   getDisplayTeamId,
   resolvePreferredTeamId,
   buildMemberDocPath,
+  listSharedCasesPage,
 }
 
 export const __ledgerVersion = LEDGER_VERSION
