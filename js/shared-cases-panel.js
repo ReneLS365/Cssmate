@@ -925,6 +925,10 @@ function renderSharedCases(container, entries, filters, userId, onChange) {
     return;
   }
   container.appendChild(renderBoard(entries, userId, onChange));
+  const status = document.createElement('div');
+  status.className = 'shared-cases-status';
+  status.textContent = `Viser ${entries.length} sager${nextCursor ? ' (flere kan hentes)' : ''}.`;
+  container.appendChild(status);
   if (nextCursor) {
     loadMoreBtn = document.createElement('button');
     loadMoreBtn.type = 'button';

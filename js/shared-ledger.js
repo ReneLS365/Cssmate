@@ -398,8 +398,13 @@ function bindQueueListeners () {
 bindQueueListeners()
 
 export async function listSharedGroups(teamId) {
-  const { teamId: resolvedTeamId } = await getTeamContext(teamId)
-  const cases = await apiJson(`/api/teams/${resolvedTeamId}/cases`)
+  const cases = []
+  let cursor = null
+  do {
+    const page = await listSharedCasesPage(teamId, { cursor })
+    cases.push(...(page?.items || []))
+    cursor = page?.nextCursor || null
+  } while (cursor)
   const groups = new Map()
   ;(cases || []).forEach(entry => {
     const jobNumber = normalizeJobNumber(entry.jobNumber)
@@ -503,9 +508,12 @@ export async function importCasePayload(teamId, caseId) {
   return content
 }
 
-export async function exportSharedBackup(teamId) {
+export async function exportSharedBackup(teamId, { includeDeleted = false } = {}) {
   const { teamId: resolvedTeamId } = await getTeamContext(teamId, { requireAdmin: true })
-  return await apiJson(`/api/teams/${resolvedTeamId}/backup`)
+  const params = new URLSearchParams()
+  if (includeDeleted) params.set('includeDeleted', '1')
+  const query = params.toString()
+  return await apiJson(`/api/teams/${resolvedTeamId}/backup${query ? `?${query}` : ''}`)
 }
 
 export function validateBackupSchema(payload) {
