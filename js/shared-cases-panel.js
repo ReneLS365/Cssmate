@@ -251,8 +251,43 @@ function formatDateInput(value) {
   return DATE_INPUT_FORMATTER.format(date);
 }
 
-function parseDateInput(value) {
+function parseDateInputStart(value) {
   if (!value) return null;
+  const parts = value.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(part => Number.isNaN(part))) return null;
+  const [year, month, day] = parts;
+  const date = new Date(year, month - 1, day);
+  if (Number.isNaN(date.valueOf())) return null;
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function parseDateInputEnd(value) {
+  const date = parseDateInputStart(value);
+  if (!date) return null;
+  date.setHours(23, 59, 59, 999);
+  return date;
+}
+
+function parseCaseDate(value) {
+  if (!value) return null;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.valueOf())) return null;
+    return new Date(value.getTime());
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+    if (dateOnlyMatch) {
+      const year = Number(dateOnlyMatch[1]);
+      const month = Number(dateOnlyMatch[2]);
+      const day = Number(dateOnlyMatch[3]);
+      const date = new Date(year, month - 1, day);
+      if (Number.isNaN(date.valueOf())) return null;
+      date.setHours(0, 0, 0, 0);
+      return date;
+    }
+  }
   const date = new Date(value);
   if (Number.isNaN(date.valueOf())) return null;
   return date;
@@ -408,9 +443,9 @@ function matchesFilters(entry, meta, filters) {
   const kindValue = (entry.caseKind || meta?.jobType || '').toLowerCase();
   const kindMatch = !filters.kind || kindValue === filters.kind;
   const date = resolveCaseDate(entry, meta);
-  const dateFrom = parseDateInput(filters.dateFrom);
-  const dateTo = parseDateInput(filters.dateTo);
-  const caseDate = date.raw ? new Date(date.raw) : null;
+  const dateFrom = parseDateInputStart(filters.dateFrom);
+  const dateTo = parseDateInputEnd(filters.dateTo);
+  const caseDate = parseCaseDate(date.raw);
   const inRange = (!dateFrom || (caseDate && caseDate >= dateFrom))
     && (!dateTo || (caseDate && caseDate <= dateTo));
   return matchesSearch && statusMatch && kindMatch && inRange;
