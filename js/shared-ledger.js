@@ -397,14 +397,9 @@ function bindQueueListeners () {
 
 bindQueueListeners()
 
-export async function listSharedGroups(teamId) {
-  const cases = []
-  let cursor = null
-  do {
-    const page = await listSharedCasesPage(teamId, { cursor })
-    cases.push(...(page?.items || []))
-    cursor = page?.nextCursor || null
-  } while (cursor)
+export async function listSharedGroups(teamId, opts = {}) {
+  const page = await listSharedCasesPage(teamId, { ...opts, cursor: null })
+  const cases = page?.items || []
   const groups = new Map()
   ;(cases || []).forEach(entry => {
     const jobNumber = normalizeJobNumber(entry.jobNumber)
@@ -464,6 +459,10 @@ export async function listSharedCasesPage(teamId, { limit = 100, cursor = null, 
   const query = params.toString()
   const payload = await apiJson(`/api/teams/${resolvedTeamId}/cases${query ? `?${query}` : ''}`)
   return normalizeCasesPage(payload)
+}
+
+export async function listSharedCasesFirstPage(teamId, opts = {}) {
+  return listSharedCasesPage(teamId, { ...opts, cursor: null })
 }
 
 export async function getSharedCase(teamId, caseId) {

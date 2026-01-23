@@ -25,10 +25,12 @@ let debugPanel;
 let debugLogOutput;
 let hasDebugEntries = false;
 let debugMessagesSeen = new Set();
-let pagedEntries = [];
+const casesById = new Map();
+let caseItems = [];
 let nextCursor = null;
+let hasMore = false;
 let activeFilters = null;
-let isLoadingMore = false;
+let isLoading = false;
 let loadMoreBtn;
 const UI_STORAGE_KEY = 'cssmate:shared-cases:ui:v1';
 const CASE_META_CACHE = new Map();
@@ -887,32 +889,64 @@ function updateSharedStatus(message) {
   updateStatusCard();
 }
 
-async function fetchCasesPage({ reset = false } = {}) {
-  if (isLoadingMore) return null;
+function resetCaseState() {
+  casesById.clear();
+  caseItems = [];
+  nextCursor = null;
+  hasMore = false;
+}
+
+function mergeEntries(entries, { prepend = false } = {}) {
+  const seen = new Set();
+  const merged = [];
+  const add = (entry) => {
+    if (!entry?.caseId) return;
+    const existing = casesById.get(entry.caseId);
+    const updated = existing ? { ...existing, ...entry } : entry;
+    casesById.set(entry.caseId, updated);
+    if (seen.has(entry.caseId)) return;
+    seen.add(entry.caseId);
+    merged.push(updated);
+  };
+  const firstBatch = prepend ? entries : caseItems;
+  const secondBatch = prepend ? caseItems : entries;
+  firstBatch.forEach(add);
+  secondBatch.forEach(add);
+  caseItems = merged;
+}
+
+async function fetchCasesPage({ reset = false, prepend = false } = {}) {
+  if (isLoading) return null;
   if (!requireAuth()) return null;
-  isLoadingMore = true;
+  isLoading = true;
   try {
     const filters = reset ? getFilters() : (activeFilters || getFilters());
     if (reset) {
       activeFilters = filters;
-      pagedEntries = [];
-      nextCursor = null;
+      if (!prepend) {
+        resetCaseState();
+      }
     }
     const serverFilters = resolveServerFilters(filters);
     const page = await listSharedCasesPage(ensureTeamSelected(), {
       limit: 100,
-      cursor: nextCursor,
+      cursor: reset ? null : nextCursor,
       status: serverFilters.status,
       q: serverFilters.q,
       from: serverFilters.from,
       to: serverFilters.to,
     });
     const items = Array.isArray(page?.items) ? page.items : [];
-    pagedEntries = reset ? items : pagedEntries.concat(items);
+    if (reset && prepend) {
+      mergeEntries(items, { prepend: true });
+    } else {
+      mergeEntries(items, { prepend: false });
+    }
     nextCursor = page?.nextCursor || null;
-    return { entries: pagedEntries.slice(), filters };
+    hasMore = Boolean(nextCursor);
+    return { entries: caseItems.slice(), filters };
   } finally {
-    isLoadingMore = false;
+    isLoading = false;
   }
 }
 
@@ -927,19 +961,19 @@ function renderSharedCases(container, entries, filters, userId, onChange) {
   container.appendChild(renderBoard(entries, userId, onChange));
   const status = document.createElement('div');
   status.className = 'shared-cases-status';
-  status.textContent = `Viser ${entries.length} sager${nextCursor ? ' (flere kan hentes)' : ''}.`;
+  status.textContent = `Viser ${entries.length} sager${hasMore ? ' (flere kan hentes)' : ''}.`;
   container.appendChild(status);
-  if (nextCursor) {
+  if (hasMore) {
     loadMoreBtn = document.createElement('button');
     loadMoreBtn.type = 'button';
     loadMoreBtn.className = 'shared-load-more';
     loadMoreBtn.textContent = 'Hent flere';
     loadMoreBtn.addEventListener('click', async () => {
-      if (isLoadingMore) return;
+      if (isLoading) return;
       loadMoreBtn.disabled = true;
       loadMoreBtn.textContent = 'Henter…';
       try {
-        const page = await fetchCasesPage({ reset: false });
+        const page = await fetchCasesPage({ reset: false, prepend: false });
         if (!page) return;
         const filtered = page.entries.filter(entry => {
           const meta = resolveCaseMeta(entry);
@@ -953,6 +987,9 @@ function renderSharedCases(container, entries, filters, userId, onChange) {
         console.error('Kunne ikke hente flere delte sager', error);
         handleActionError(error, 'Kunne ikke hente flere sager', { teamContext: teamId });
         appendDebug(`Load more fejl: ${error?.message || 'Ukendt fejl'}`);
+        loadMoreBtn.textContent = 'Hent flere';
+      } finally {
+        loadMoreBtn.disabled = false;
       }
     });
     container.appendChild(loadMoreBtn);
@@ -984,7 +1021,7 @@ export function initSharedCasesPanel() {
   updateSharedStatus();
   updateStatusCard();
 
-  const refresh = async () => {
+  const refresh = async ({ prepend = false } = {}) => {
     if (!container) return;
     if (!requireAuth()) {
       container.textContent = teamError || sessionState?.message || 'Login mangler.';
@@ -992,10 +1029,12 @@ export function initSharedCasesPanel() {
       return;
     }
     setRefreshState('loading');
-    container.textContent = 'Henter sager…';
+    if (!prepend) {
+      container.textContent = 'Henter sager…';
+    }
     const currentUser = sessionState?.user?.uid || 'offline-user';
     try {
-      const page = await fetchCasesPage({ reset: true });
+      const page = await fetchCasesPage({ reset: true, prepend });
       if (!page) {
         setRefreshState('idle');
         return;
@@ -1052,7 +1091,7 @@ export function initSharedCasesPanel() {
           const toInput = document.getElementById('sharedDateTo');
           if (fromInput) fromInput.value = '';
           if (toInput) toInput.value = '';
-          refresh();
+          refresh({ prepend: true });
         }
       } catch (error) {
         // Ignore errors (likely due to no auth), since refresh will run on next auth change.
