@@ -75,7 +75,7 @@ test('export buttons trigger their actions correctly', async t => {
 
   const pdfBlob = new Blob(['pdf']);
   const exportPDFBlobMock = mock.fn(() => Promise.resolve({ blob: pdfBlob, fileName: 'custom.pdf' }));
-  const publishSharedCaseMock = mock.fn(() => Promise.resolve());
+  const publishSharedCaseMock = mock.fn(() => Promise.resolve({ status: 'kladde' }));
   const handleImportAkkordMock = mock.fn();
 
   setExportDependencies({
@@ -112,7 +112,7 @@ test('export buttons trigger their actions correctly', async t => {
   assert.ok(!pdfDownload, 'Ingen PDF download');
   assert.ok(!jsonDownload, 'Ingen JSON download');
   assert.deepEqual(actionHints[1], { message: 'Publicerer sag til fælles ledger…', variant: 'info' });
-  assert.deepEqual(actionHints[2], { message: 'Sag publiceret til fælles sager.', variant: 'success' });
+  assert.deepEqual(actionHints[2], { message: 'Kladde gemt privat. Godkend i "Delt sager" for at dele.', variant: 'success' });
 
   await buttons['#btn-import-akkord'].click();
   assert.equal(handleImportAkkordMock.mock.calls.length, 1, 'import handler invoked');

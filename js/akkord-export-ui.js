@@ -4,7 +4,7 @@ import { buildAkkordJsonPayload } from './export-json.js';
 import { buildExportModel } from './export-model.js';
 import { buildExportFileBaseName, buildJobSnapshot } from './job-snapshot.js';
 import { appendHistoryEntry } from './storageHistory.js';
-import { publishSharedCase, resolveTeamId } from './shared-ledger.js';
+import { publishSharedCase, resolveTeamId, getSharedCaseContext, clearSharedCaseContext } from './shared-ledger.js';
 import { waitForAccess, getState as getSessionState } from '../src/auth/session.js';
 
 function isDebugExportEnabled() {
@@ -209,17 +209,27 @@ export async function exportAkkordJsonAndPdf(options = {}) {
 
     const jobNumber = context.meta?.sagsnummer || context.model?.meta?.caseNumber;
     const resolvedTeamId = getSessionState()?.teamId || resolveTeamId(typeof window !== 'undefined' ? window.TEAM_ID : undefined);
+    const jobType = (context.model?.meta?.jobType || 'montage').toLowerCase();
+    const phaseHint = jobType === 'demontage' ? 'demontage' : 'montage';
+    const sharedContext = getSharedCaseContext();
+    const useSharedCase = phaseHint === 'demontage' && sharedContext?.caseId;
+    if (phaseHint === 'montage') {
+      clearSharedCaseContext();
+    }
 
     const publishResult = await publishSharedCaseFn({
       teamId: resolvedTeamId,
+      caseId: useSharedCase ? sharedContext.caseId : undefined,
+      ifMatchUpdatedAt: useSharedCase ? sharedContext.updatedAt : undefined,
+      phaseHint,
       jobNumber,
-      caseKind: (context.model?.meta?.jobType || 'montage').toLowerCase(),
+      caseKind: jobType,
       system: context.model?.meta?.system || (context.model?.meta?.systems || [])[0] || '',
       status: 'kladde',
       totals: {
         materials: context.model?.totals?.materials || 0,
-        montage: context.model?.meta?.jobType === 'montage' ? context.model?.totals?.project : 0,
-        demontage: context.model?.meta?.jobType === 'demontage' ? context.model?.totals?.project : 0,
+        montage: jobType === 'montage' ? context.model?.totals?.project : 0,
+        demontage: jobType === 'demontage' ? context.model?.totals?.project : 0,
         total: context.model?.totals?.project || context.model?.totals?.akkord || 0,
       },
       jsonContent: jsonResult.content,
@@ -231,9 +241,23 @@ export async function exportAkkordJsonAndPdf(options = {}) {
       queued: Boolean(publishResult?.queued),
       historySaved: context.historySaved,
     });
-    const sharedMessage = publishResult?.queued
+    let sharedMessage = publishResult?.queued
       ? 'Sag gemt offline og synkroniseres, når du er online.'
-      : 'Sag publiceret til fælles sager.';
+      : 'Sag gemt.';
+    if (!publishResult?.queued) {
+      const status = publishResult?.status || '';
+      if (status === 'kladde') {
+        sharedMessage = 'Kladde gemt privat. Godkend i "Delt sager" for at dele.';
+      } else if (status === 'demontage_i_gang') {
+        sharedMessage = 'Demontage i gang. Godkend i "Delt sager" når du er klar.';
+      } else if (status === 'godkendt') {
+        sharedMessage = 'Montage er allerede godkendt og delt.';
+      } else if (status === 'afsluttet') {
+        sharedMessage = 'Sagen er allerede afsluttet.';
+      } else {
+        sharedMessage = 'Sag gemt.';
+      }
+    }
     notifyAction(sharedMessage, 'success');
     return { jsonFileName: jsonResult.fileName };
   } catch (error) {

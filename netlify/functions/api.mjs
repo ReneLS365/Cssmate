@@ -18,7 +18,14 @@ const MAX_CASES_LIMIT = 500
 const ROLE_CLAIM = 'https://sscaff.app/roles'
 const ORG_CLAIM = 'https://sscaff.app/org_id'
 const ALLOWED_ROLES = new Set(['sscaff_owner', 'sscaff_admin', 'sscaff_user'])
-const DB_NOT_MIGRATED_MESSAGE = 'DB er ikke migreret. Kør migrations/001_init.sql, migrations/002_add_team_slug.sql, migrations/003_auth0_invites.sql, migrations/004_add_team_member_login.sql, migrations/005_cases_indexes.sql og migrations/006_cases_defaults.sql mod Neon.'
+const CASE_STATUS = {
+  DRAFT: 'kladde',
+  READY: 'klar_til_deling',
+  APPROVED: 'godkendt',
+  DEMONTAGE: 'demontage_i_gang',
+  DONE: 'afsluttet',
+}
+const DB_NOT_MIGRATED_MESSAGE = 'DB er ikke migreret. Kør migrations/001_init.sql, migrations/002_add_team_slug.sql, migrations/003_auth0_invites.sql, migrations/004_add_team_member_login.sql, migrations/005_cases_indexes.sql, migrations/006_cases_defaults.sql og migrations/007_cases_workflow.sql mod Neon.'
 let cachedMgmtToken = ''
 let cachedMgmtTokenExpiry = 0
 
@@ -93,6 +100,98 @@ function parseDateKey (value) {
   return normalized
 }
 
+function parseIfMatchUpdatedAt (value) {
+  if (!value) return null
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.valueOf())) {
+    throw createError('Ugyldig ifMatchUpdatedAt.', 400)
+  }
+  return parsed
+}
+
+function normalizePhaseHint (value) {
+  const normalized = (value || '').toString().trim().toLowerCase()
+  if (normalized === 'demontage') return 'demontage'
+  if (normalized === 'montage') return 'montage'
+  return ''
+}
+
+function normalizeCasePhase (value, fallback = '') {
+  const normalized = (value || '').toString().trim().toLowerCase()
+  if (normalized === 'demontage') return 'demontage'
+  if (normalized === 'montage') return 'montage'
+  return fallback
+}
+
+function resolveExportAction ({ phaseHint, caseKind }) {
+  const hint = normalizePhaseHint(phaseHint)
+  if (hint) return hint === 'demontage' ? 'EXPORT_DEMONTAGE' : 'EXPORT_MONTAGE'
+  const kind = normalizePhaseHint(caseKind)
+  if (kind) return kind === 'demontage' ? 'EXPORT_DEMONTAGE' : 'EXPORT_MONTAGE'
+  return 'EXPORT_MONTAGE'
+}
+
+function canAccessCase ({ status, createdBy, userSub, isPrivileged }) {
+  if (status === CASE_STATUS.DRAFT) {
+    return createdBy === userSub || Boolean(isPrivileged)
+  }
+  return true
+}
+
+function resolveCaseTransition ({ action, currentStatus, currentPhase, isCreator }) {
+  const normalizedPhase = normalizeCasePhase(
+    currentPhase,
+    currentStatus === CASE_STATUS.DEMONTAGE ? 'demontage' : 'montage'
+  )
+
+  if (action === 'EXPORT_MONTAGE') {
+    if (!isCreator) {
+      throw createError('Kun opretter kan ændre denne kladde.', 403)
+    }
+    if ([CASE_STATUS.DRAFT, CASE_STATUS.READY].includes(currentStatus)) {
+      return { status: CASE_STATUS.DRAFT, phase: normalizedPhase || 'montage' }
+    }
+    return { status: currentStatus, phase: normalizedPhase || 'montage' }
+  }
+
+  if (action === 'EXPORT_DEMONTAGE') {
+    if (currentStatus === CASE_STATUS.DONE) {
+      throw createError('Sagen er allerede afsluttet.', 409)
+    }
+    if ([CASE_STATUS.DRAFT, CASE_STATUS.READY].includes(currentStatus)) {
+      throw createError('Montage skal godkendes før demontage kan påbegyndes.', 403)
+    }
+    if ([CASE_STATUS.APPROVED, CASE_STATUS.DEMONTAGE].includes(currentStatus)) {
+      return { status: CASE_STATUS.DEMONTAGE, phase: 'demontage' }
+    }
+    throw createError('Ugyldig status for demontage.', 409)
+  }
+
+  if (action === 'APPROVE') {
+    if ([CASE_STATUS.DRAFT, CASE_STATUS.READY].includes(currentStatus)) {
+      if (!isCreator) {
+        throw createError('Kun opretter kan godkende kladden.', 403)
+      }
+      return { status: CASE_STATUS.APPROVED, phase: 'montage' }
+    }
+    if (currentStatus === CASE_STATUS.DEMONTAGE && normalizedPhase === 'demontage') {
+      return { status: CASE_STATUS.DONE, phase: 'demontage' }
+    }
+    if (currentStatus === CASE_STATUS.APPROVED && normalizedPhase === 'montage') {
+      throw createError('Montage er allerede godkendt.', 409)
+    }
+    if (currentStatus === CASE_STATUS.DONE) {
+      throw createError('Sagen er allerede afsluttet.', 409)
+    }
+    if (currentStatus === CASE_STATUS.DEMONTAGE) {
+      throw createError('Demontage er allerede i gang.', 409)
+    }
+    throw createError('Ugyldig status for godkendelse.', 409)
+  }
+
+  throw createError('Ukendt handling.', 400)
+}
+
 function decodeCursor (value) {
   if (!value) return null
   try {
@@ -117,6 +216,7 @@ function isWriteRequest (event) {
     { method: 'POST', pattern: /^\/teams\/[^/]+\/cases$/ },
     { method: 'DELETE', pattern: /^\/teams\/[^/]+\/cases\/[^/]+$/ },
     { method: 'PATCH', pattern: /^\/teams\/[^/]+\/cases\/[^/]+\/status$/ },
+    { method: 'POST', pattern: /^\/teams\/[^/]+\/cases\/[^/]+\/approve$/ },
     { method: 'POST', pattern: /^\/teams\/[^/]+\/backup$/ },
     { method: 'POST', pattern: /^\/teams\/[^/]+\/members\/self$/ },
     { method: 'POST', pattern: /^\/teams\/[^/]+\/bootstrap$/ },
@@ -468,6 +568,7 @@ function serializeCaseRow (row) {
     system: row.system || '',
     totals: row.totals || { materials: 0, montage: 0, demontage: 0, total: 0 },
     status: row.status || 'kladde',
+    phase: row.phase || null,
     createdAt,
     updatedAt,
     lastUpdatedAt,
@@ -475,6 +576,7 @@ function serializeCaseRow (row) {
     createdByEmail: row.created_by_email || '',
     createdByName: row.created_by_name || '',
     updatedBy: row.updated_by || row.created_by,
+    lastEditorSub: row.last_editor_sub || row.updated_by || row.created_by,
     deletedAt: row.deleted_at ? new Date(row.deleted_at).toISOString() : null,
     deletedBy: row.deleted_by || null,
     attachments: {
@@ -829,22 +931,53 @@ async function handleCaseCreate (event, teamSlug) {
   await requireDbReady(event)
   const { user, team } = await requireTeamContext(event, teamSlug)
   const body = parseBody(event)
-  const caseId = isValidUuid(body.caseId) ? body.caseId : crypto.randomUUID()
+  const explicitCaseId = isValidUuid(body.caseId) ? body.caseId : ''
+  const caseId = explicitCaseId || crypto.randomUUID()
   const totals = body.totals || { materials: 0, montage: 0, demontage: 0, total: 0 }
+  const ifMatchUpdatedAt = parseIfMatchUpdatedAt(body.ifMatchUpdatedAt)
+  const action = resolveExportAction({ phaseHint: body.phaseHint, caseKind: body.caseKind })
+  const existingResult = await db.query(
+    `SELECT c.*
+     FROM team_cases c
+     WHERE c.team_id = $1 AND c.case_id = $2`,
+    [team.id, caseId]
+  )
+  const existing = existingResult.rows[0] || null
+  if (ifMatchUpdatedAt && existing?.updated_at) {
+    const currentUpdatedAt = new Date(existing.updated_at)
+    if (currentUpdatedAt.toISOString() !== ifMatchUpdatedAt.toISOString()) {
+      throw createError('Sagen er ændret af en anden. Opdater og prøv igen.', 409)
+    }
+  }
+  const isCreator = !existing || existing.created_by === user.id
+  const currentStatus = existing?.status || CASE_STATUS.DRAFT
+  const currentPhase = existing?.phase || ''
+  if (!existing && action === 'EXPORT_DEMONTAGE') {
+    throw createError('Der findes ingen godkendt montage til demontage.', 404)
+  }
+  const { status: nextStatus, phase: nextPhase } = resolveCaseTransition({
+    action,
+    currentStatus,
+    currentPhase,
+    isCreator,
+  })
+
   await db.query(
     `INSERT INTO team_cases
-      (case_id, team_id, job_number, case_kind, system, totals, status, created_at, updated_at, last_updated_at,
-       created_by, created_by_email, created_by_name, updated_by, json_content)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, NOW(), NOW(), NOW(), $8, $9, $10, $8, $11)
+      (case_id, team_id, job_number, case_kind, system, totals, status, phase, created_at, updated_at, last_updated_at,
+       created_by, created_by_email, created_by_name, updated_by, last_editor_sub, json_content)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, NOW(), NOW(), NOW(), $9, $10, $11, $9, $9, $12)
      ON CONFLICT (case_id) DO UPDATE SET
        job_number = EXCLUDED.job_number,
        case_kind = EXCLUDED.case_kind,
        system = EXCLUDED.system,
        totals = EXCLUDED.totals,
        status = EXCLUDED.status,
+       phase = EXCLUDED.phase,
        updated_at = NOW(),
        last_updated_at = NOW(),
        updated_by = EXCLUDED.updated_by,
+       last_editor_sub = EXCLUDED.last_editor_sub,
        json_content = EXCLUDED.json_content,
        deleted_at = NULL,
        deleted_by = NULL`,
@@ -855,7 +988,8 @@ async function handleCaseCreate (event, teamSlug) {
       body.caseKind || '',
       body.system || '',
       JSON.stringify(totals),
-      body.status || 'kladde',
+      nextStatus,
+      nextPhase,
       user.id,
       user.email,
       body.createdByName || '',
@@ -874,7 +1008,7 @@ async function handleCaseCreate (event, teamSlug) {
 
 async function handleCaseList (event, teamSlug) {
   await requireDbReady(event)
-  const { team } = await requireTeamContext(event, teamSlug)
+  const { team, user } = await requireTeamContext(event, teamSlug)
   const query = event.queryStringParameters || {}
   const limit = clampCasesLimit(query.limit)
   const status = String(query.status || '').trim()
@@ -882,8 +1016,8 @@ async function handleCaseList (event, teamSlug) {
   const from = parseDateKey(query.from)
   const to = parseDateKey(query.to)
   const cursor = decodeCursor(query.cursor)
-  const params = [team.id]
-  let whereClause = 'WHERE c.team_id = $1 AND c.deleted_at IS NULL'
+  const params = [team.id, CASE_STATUS.DRAFT, user.id]
+  let whereClause = 'WHERE c.team_id = $1 AND c.deleted_at IS NULL AND (c.status <> $2 OR c.created_by = $3)'
   if (status) {
     params.push(status)
     whereClause += ` AND c.status = $${params.length}`
@@ -931,7 +1065,7 @@ async function handleCaseList (event, teamSlug) {
 
 async function handleCaseGet (event, teamSlug, caseId) {
   await requireDbReady(event)
-  const { team } = await requireTeamContext(event, teamSlug)
+  const { team, user } = await requireTeamContext(event, teamSlug)
   const result = await db.query(
     `SELECT c.*, t.slug as team_slug
      FROM team_cases c
@@ -941,6 +1075,9 @@ async function handleCaseGet (event, teamSlug, caseId) {
   )
   const row = result.rows[0]
   if (!row) return jsonResponse(404, { error: 'Sag findes ikke.' })
+  if (!canAccessCase({ status: row.status, createdBy: row.created_by, userSub: user.id, isPrivileged: user.isPrivileged })) {
+    return jsonResponse(403, { error: 'Kun opretter kan se kladden.' })
+  }
   return jsonResponse(200, serializeCaseRow(row))
 }
 
@@ -972,19 +1109,48 @@ async function handleCaseDelete (event, teamSlug, caseId) {
 }
 
 async function handleCaseStatus (event, teamSlug, caseId) {
+  const body = parseBody(event)
+  const requested = (body?.status || '').toString().trim().toLowerCase()
+  if (requested === CASE_STATUS.APPROVED || requested === CASE_STATUS.DONE) {
+    return handleCaseApprove(event, teamSlug, caseId)
+  }
+  return jsonResponse(400, { error: 'Ugyldig statusændring.' })
+}
+
+async function handleCaseApprove (event, teamSlug, caseId) {
   await requireDbReady(event)
   const { user, team } = await requireTeamContext(event, teamSlug)
   const body = parseBody(event)
-  const result = await db.query('SELECT created_by FROM team_cases WHERE team_id = $1 AND case_id = $2', [team.id, caseId])
+  const ifMatchUpdatedAt = parseIfMatchUpdatedAt(body.ifMatchUpdatedAt)
+  const result = await db.query(
+    `SELECT c.*
+     FROM team_cases c
+     WHERE c.team_id = $1 AND c.case_id = $2`,
+    [team.id, caseId]
+  )
   const row = result.rows[0]
   if (!row) return jsonResponse(404, { error: 'Sag findes ikke.' })
-  if (row.created_by !== user.id && !user.isPrivileged) {
-    return jsonResponse(403, { error: 'Kun opretter eller admin kan ændre status.' })
+  if (ifMatchUpdatedAt && row.updated_at) {
+    const currentUpdatedAt = new Date(row.updated_at)
+    if (currentUpdatedAt.toISOString() !== ifMatchUpdatedAt.toISOString()) {
+      throw createError('Sagen er ændret af en anden. Opdater og prøv igen.', 409)
+    }
   }
+
+  const currentStatus = row.status || CASE_STATUS.DRAFT
+  const currentPhase = row.phase || ''
+  const isCreator = row.created_by === user.id
+  const { status: nextStatus, phase: nextPhase } = resolveCaseTransition({
+    action: 'APPROVE',
+    currentStatus,
+    currentPhase,
+    isCreator,
+  })
+
   await db.query(
-    `UPDATE team_cases SET status = $1, updated_at = NOW(), last_updated_at = NOW(), updated_by = $2
-     WHERE team_id = $3 AND case_id = $4`,
-    [body.status || 'kladde', user.id, team.id, caseId]
+    `UPDATE team_cases SET status = $1, phase = $2, updated_at = NOW(), last_updated_at = NOW(), updated_by = $3, last_editor_sub = $3
+     WHERE team_id = $4 AND case_id = $5`,
+    [nextStatus, nextPhase, user.id, team.id, caseId]
   )
   const updated = await db.query(
     `SELECT c.*, t.slug as team_slug
@@ -1062,18 +1228,20 @@ async function handleBackupImport (event, teamSlug) {
   for (const entry of cases) {
     await db.query(
       `INSERT INTO team_cases
-        (case_id, team_id, job_number, case_kind, system, totals, status, created_at, updated_at, last_updated_at,
-         created_by, created_by_email, created_by_name, updated_by, json_content, deleted_at, deleted_by)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        (case_id, team_id, job_number, case_kind, system, totals, status, phase, created_at, updated_at, last_updated_at,
+         created_by, created_by_email, created_by_name, updated_by, last_editor_sub, json_content, deleted_at, deleted_by)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
        ON CONFLICT (case_id) DO UPDATE SET
          job_number = EXCLUDED.job_number,
          case_kind = EXCLUDED.case_kind,
          system = EXCLUDED.system,
          totals = EXCLUDED.totals,
          status = EXCLUDED.status,
+         phase = EXCLUDED.phase,
          updated_at = EXCLUDED.updated_at,
          last_updated_at = EXCLUDED.last_updated_at,
          updated_by = EXCLUDED.updated_by,
+         last_editor_sub = EXCLUDED.last_editor_sub,
          json_content = EXCLUDED.json_content,
          deleted_at = EXCLUDED.deleted_at,
          deleted_by = EXCLUDED.deleted_by`,
@@ -1085,6 +1253,7 @@ async function handleBackupImport (event, teamSlug) {
         entry.system || '',
         JSON.stringify(entry.totals || { materials: 0, montage: 0, demontage: 0, total: 0 }),
         entry.status || 'kladde',
+        entry.phase || null,
         entry.createdAt ? new Date(entry.createdAt) : new Date(),
         entry.updatedAt ? new Date(entry.updatedAt) : new Date(),
         entry.lastUpdatedAt ? new Date(entry.lastUpdatedAt) : new Date(),
@@ -1092,6 +1261,7 @@ async function handleBackupImport (event, teamSlug) {
         entry.createdByEmail || '',
         entry.createdByName || '',
         entry.updatedBy || user.id,
+        entry.lastEditorSub || entry.updatedBy || entry.createdBy || user.id,
         entry.attachments?.json?.data || null,
         entry.deletedAt ? new Date(entry.deletedAt) : null,
         entry.deletedBy || null,
@@ -1099,6 +1269,13 @@ async function handleBackupImport (event, teamSlug) {
     )
   }
   return emptyResponse(204)
+}
+
+export const __test = {
+  canAccessCase,
+  normalizeCasePhase,
+  resolveCaseTransition,
+  resolveExportAction,
 }
 
 export async function handler (event) {
@@ -1154,6 +1331,9 @@ export async function handler (event) {
 
     const caseStatusMatch = path.match(/^\/teams\/([^/]+)\/cases\/([^/]+)\/status$/)
     if (caseStatusMatch && method === 'PATCH') return withTiming(await handleCaseStatus(event, caseStatusMatch[1], caseStatusMatch[2]))
+
+    const caseApproveMatch = path.match(/^\/teams\/([^/]+)\/cases\/([^/]+)\/approve$/)
+    if (caseApproveMatch && method === 'POST') return withTiming(await handleCaseApprove(event, caseApproveMatch[1], caseApproveMatch[2]))
 
     const backupMatch = path.match(/^\/teams\/([^/]+)\/backup$/)
     if (backupMatch && method === 'GET') return withTiming(await handleBackupExport(event, backupMatch[1]))
