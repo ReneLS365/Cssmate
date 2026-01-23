@@ -1,4 +1,4 @@
-import { listSharedCasesPage, downloadCaseJson, importCasePayload, updateCaseStatus, deleteSharedCase, formatTeamId, PermissionDeniedError, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG } from './shared-ledger.js';
+import { listSharedCasesPage, downloadCaseJson, importCasePayload, approveSharedCase, deleteSharedCase, formatTeamId, PermissionDeniedError, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG, setSharedCaseContext } from './shared-ledger.js';
 import { exportPDFBlob } from './export-pdf.js';
 import { buildExportModel } from './export-model.js';
 import { downloadBlob } from './utils/downloadBlob.js';
@@ -38,10 +38,9 @@ const CASE_META_CACHE = new Map();
 const DATE_INPUT_FORMATTER = new Intl.DateTimeFormat('sv-SE');
 const CURRENCY_FORMATTER = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const BOARD_COLUMNS = [
-  { id: 'kladde', label: 'Kladde', hint: 'Nye eller uafsluttede sager.' },
-  { id: 'klar', label: 'Klar til deling', hint: 'Klar til godkendelse.' },
-  { id: 'godkendt', label: 'Godkendt', hint: 'Montage klar til demontage-hold.' },
-  { id: 'demontage', label: 'Demontage i gang', hint: 'Demontage igangsat.' },
+  { id: 'kladde', label: 'Kladde', hint: 'Private kladder (kun dig).' },
+  { id: 'godkendt', label: 'Montage klar til demontage', hint: 'Klar til demontage-hold.' },
+  { id: 'demontage_i_gang', label: 'Demontage i gang', hint: 'Demontage igangsat.' },
   { id: 'afsluttet', label: 'Afsluttet', hint: 'Sager der er afsluttet.' },
   { id: 'andet', label: 'Andet', hint: 'Ukendte statusser.' },
 ];
@@ -339,11 +338,27 @@ function resolveCaseDate(entry, meta) {
 function resolveCaseStatusBucket(status) {
   const value = (status || '').toLowerCase();
   if (value === 'kladde') return 'kladde';
-  if (['klar', 'klar-til-deling', 'klar_til_deling', 'ready'].includes(value)) return 'klar';
+  if (['klar', 'klar-til-deling', 'klar_til_deling', 'ready'].includes(value)) return 'kladde';
   if (value === 'godkendt') return 'godkendt';
-  if (['demontage', 'demontage-igang', 'demontage_i_gang', 'i-gang', 'igang', 'in-progress'].includes(value)) return 'demontage';
+  if (['demontage', 'demontage-igang', 'demontage_i_gang', 'i-gang', 'igang', 'in-progress'].includes(value)) return 'demontage_i_gang';
   if (['afsluttet', 'done', 'completed', 'complete'].includes(value)) return 'afsluttet';
   return 'andet';
+}
+
+function formatStatusLabel(status) {
+  const bucket = resolveCaseStatusBucket(status);
+  if (bucket === 'kladde') return 'Kladde';
+  if (bucket === 'godkendt') return 'Montage klar til demontage';
+  if (bucket === 'demontage_i_gang') return 'Demontage i gang';
+  if (bucket === 'afsluttet') return 'Afsluttet';
+  return status || 'Ukendt';
+}
+
+function resolvePhaseForEntry(entry) {
+  if (entry?.phase === 'demontage') return 'demontage';
+  const bucket = resolveCaseStatusBucket(entry?.status);
+  if (bucket === 'demontage_i_gang' || bucket === 'godkendt') return 'demontage';
+  return 'montage';
 }
 
 function buildSearchIndex(entry, meta) {
@@ -495,7 +510,17 @@ async function handleJsonDownload(caseId) {
   downloadBlob(result.blob, result.fileName);
 }
 
-async function handleImport(caseId) {
+async function handleImport(entry, { phase } = {}) {
+  const caseId = typeof entry === 'string' ? entry : entry?.caseId;
+  if (entry?.caseId) {
+    const phaseHint = phase || resolvePhaseForEntry(entry);
+    setSharedCaseContext({
+      caseId: entry.caseId,
+      phase: phaseHint,
+      status: entry.status || '',
+      updatedAt: entry.updatedAt || '',
+    });
+  }
   const content = await importCasePayload(ensureTeamSelected(), caseId);
   if (!content) throw new Error('Ingen JSON vedhæftet');
   const file = new File([content], 'shared-case.json', { type: 'application/json' });
@@ -634,7 +659,7 @@ function createCaseActions(entry, userId, onChange) {
   importBtn.addEventListener('click', async () => {
     importBtn.disabled = true;
     try {
-      await handleImport(entry.caseId);
+      await handleImport(entry);
       showToast('Sag importeret til optælling.', { variant: 'success' });
     } catch (error) {
       console.error('Import fejlede', error);
@@ -682,48 +707,87 @@ function createCaseActions(entry, userId, onChange) {
   });
   container.appendChild(pdfBtn);
 
-  if (entry.createdBy === userId || isAdminUser()) {
-    const statusBtn = document.createElement('button');
-    statusBtn.type = 'button';
-    statusBtn.textContent = entry.status === 'godkendt' ? 'Markér kladde' : 'Godkend';
-    statusBtn.addEventListener('click', async () => {
-      statusBtn.disabled = true;
+  const statusBucket = resolveCaseStatusBucket(entry.status);
+  if (statusBucket === 'kladde' && entry.createdBy === userId) {
+    const approveBtn = document.createElement('button');
+    approveBtn.type = 'button';
+    approveBtn.textContent = 'Godkend & del';
+    approveBtn.addEventListener('click', async () => {
+      approveBtn.disabled = true;
       try {
-        const next = entry.status === 'godkendt' ? 'kladde' : 'godkendt';
-        const updated = await updateCaseStatus(ensureTeamSelected(), entry.caseId, next);
-        await onChange();
-        if (next === 'godkendt') {
-          openSharedModal({
-            title: 'Sag godkendt',
-            body: renderApprovalSummary(updated || entry),
-            actions: [
-              {
-                label: 'Åbn',
-                onClick: async () => {
-                  try {
-                    await handleImport(entry.caseId);
-                  } catch (error) {
-                    handleActionError(error, 'Kunne ikke åbne sag', { teamContext: teamId });
-                    showToast(error?.message || 'Kunne ikke åbne sag.', { variant: 'error' });
-                  }
-                },
+        const updated = await approveSharedCase(ensureTeamSelected(), entry.caseId, { ifMatchUpdatedAt: entry.updatedAt });
+        if (typeof onChange === 'function') onChange({ updatedCase: updated });
+        openSharedModal({
+          title: 'Montage delt',
+          body: renderApprovalSummary(updated || entry),
+          actions: [
+            {
+              label: 'Åbn',
+              onClick: async () => {
+                try {
+                  await handleImport(updated || entry, { phase: 'demontage' });
+                } catch (error) {
+                  handleActionError(error, 'Kunne ikke åbne sag', { teamContext: teamId });
+                  showToast(error?.message || 'Kunne ikke åbne sag.', { variant: 'error' });
+                }
               },
-              { label: 'Luk' },
-            ],
-          });
-        } else {
-          showToast('Status sat tilbage til kladde.', { variant: 'info' });
-        }
+            },
+            { label: 'Luk' },
+          ],
+        });
       } catch (error) {
-        console.error('Status opdatering fejlede', error);
-        handleActionError(error, 'Kunne ikke opdatere status', { teamContext: teamId });
-        showToast(error?.message || 'Kunne ikke opdatere status.', { variant: 'error' });
+        console.error('Godkendelse fejlede', error);
+        handleActionError(error, 'Kunne ikke godkende sag', { teamContext: teamId });
+        showToast(error?.message || 'Kunne ikke godkende sag.', { variant: 'error' });
       } finally {
-        statusBtn.disabled = false;
+        approveBtn.disabled = false;
       }
     });
-    container.appendChild(statusBtn);
+    container.appendChild(approveBtn);
+  }
 
+  if (statusBucket === 'godkendt') {
+    const demontageBtn = document.createElement('button');
+    demontageBtn.type = 'button';
+    demontageBtn.textContent = 'Indlæs til demontage';
+    demontageBtn.addEventListener('click', async () => {
+      demontageBtn.disabled = true;
+      try {
+        await handleImport(entry, { phase: 'demontage' });
+        showToast('Sag indlæst til demontage.', { variant: 'success' });
+      } catch (error) {
+        console.error('Indlæsning fejlede', error);
+        handleActionError(error, 'Kunne ikke indlæse sag', { teamContext: teamId });
+        showToast(error?.message || 'Kunne ikke indlæse sag.', { variant: 'error' });
+      } finally {
+        demontageBtn.disabled = false;
+      }
+    });
+    container.appendChild(demontageBtn);
+  }
+
+  if (statusBucket === 'demontage_i_gang') {
+    const finishBtn = document.createElement('button');
+    finishBtn.type = 'button';
+    finishBtn.textContent = 'Godkend demontage & afslut';
+    finishBtn.addEventListener('click', async () => {
+      finishBtn.disabled = true;
+      try {
+        const updated = await approveSharedCase(ensureTeamSelected(), entry.caseId, { ifMatchUpdatedAt: entry.updatedAt });
+        if (typeof onChange === 'function') onChange({ updatedCase: updated });
+        showToast('Demontage godkendt og afsluttet.', { variant: 'success' });
+      } catch (error) {
+        console.error('Demontage godkendelse fejlede', error);
+        handleActionError(error, 'Kunne ikke afslutte demontage', { teamContext: teamId });
+        showToast(error?.message || 'Kunne ikke afslutte demontage.', { variant: 'error' });
+      } finally {
+        finishBtn.disabled = false;
+      }
+    });
+    container.appendChild(finishBtn);
+  }
+
+  if (entry.createdBy === userId || isAdminUser()) {
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
     deleteBtn.textContent = 'Soft delete';
@@ -737,7 +801,7 @@ function createCaseActions(entry, userId, onChange) {
       deleteBtn.disabled = true;
       try {
         await deleteSharedCase(ensureTeamSelected(), entry.caseId);
-        await onChange();
+        if (typeof onChange === 'function') onChange({ removeCaseId: entry.caseId });
         showToast('Sag er soft-deleted.', { variant: 'success' });
       } catch (error) {
         console.error('Sletning fejlede', error);
@@ -767,7 +831,7 @@ function renderCaseCard(entry, userId, onChange) {
   title.textContent = meta.jobNumber || entry.jobNumber || 'Ukendt sag';
   const badge = document.createElement('span');
   badge.className = 'shared-case-card__badge';
-  badge.textContent = entry.status || 'kladde';
+  badge.textContent = formatStatusLabel(entry.status);
   top.appendChild(title);
   top.appendChild(badge);
 
@@ -926,6 +990,37 @@ function mergeEntries(entries, { prepend = false } = {}) {
   caseItems = merged;
 }
 
+function updateCaseEntry(updatedCase) {
+  if (!updatedCase?.caseId) return;
+  const existing = casesById.get(updatedCase.caseId);
+  const merged = existing ? { ...existing, ...updatedCase } : updatedCase;
+  mergeEntries([merged], { prepend: true });
+}
+
+function removeCaseEntry(caseId) {
+  if (!caseId) return;
+  casesById.delete(caseId);
+  caseItems = caseItems.filter(entry => entry?.caseId !== caseId);
+}
+
+function getActiveFilters() {
+  return activeFilters || getFilters();
+}
+
+function renderFromState(container, userId) {
+  const filters = getActiveFilters();
+  const filtered = caseItems.filter(entry => {
+    const meta = resolveCaseMeta(entry);
+    return matchesFilters(entry, meta, filters);
+  });
+  const sorted = sortEntries(filtered, filters.sort);
+  renderSharedCases(container, sorted, filters, userId, (payload) => {
+    if (payload?.updatedCase) updateCaseEntry(payload.updatedCase);
+    if (payload?.removeCaseId) removeCaseEntry(payload.removeCaseId);
+    renderFromState(container, userId);
+  });
+}
+
 async function fetchCasesPage({ reset = false, prepend = false } = {}) {
   if (isLoading) return null;
   if (!requireAuth()) return null;
@@ -1056,6 +1151,11 @@ export function initSharedCasesPanel() {
       container.textContent = 'Henter sager…';
     }
     const currentUser = sessionState?.user?.uid || 'offline-user';
+    const handleCaseChange = (payload) => {
+      if (payload?.updatedCase) updateCaseEntry(payload.updatedCase);
+      if (payload?.removeCaseId) removeCaseEntry(payload.removeCaseId);
+      renderFromState(container, currentUser);
+    };
     try {
       const page = await fetchCasesPage({ reset: true, prepend });
       if (!page) {
@@ -1067,7 +1167,7 @@ export function initSharedCasesPanel() {
         return matchesFilters(entry, meta, page.filters);
       });
       const sorted = sortEntries(filtered, page.filters.sort);
-      renderSharedCases(container, sorted, page.filters, currentUser, refresh);
+      renderSharedCases(container, sorted, page.filters, currentUser, handleCaseChange);
       setSharedStatus('Synkroniseret');
       clearInlineError();
       setRefreshState('idle');
@@ -1105,16 +1205,17 @@ export function initSharedCasesPanel() {
 
   // Automatically refresh the shared cases list when a case is exported. The
   // export workflow dispatches a `cssmate:exported` event; listening here
-  // ensures that newly shared cases appear without requiring manual refresh.
+  // keeps the list in sync without reloading all pages.
   if (typeof window !== 'undefined') {
-    window.addEventListener('cssmate:exported', () => {
+    window.addEventListener('cssmate:exported', (event) => {
       try {
-        if (requireAuth()) {
-          const fromInput = document.getElementById('sharedDateFrom');
-          const toInput = document.getElementById('sharedDateTo');
-          if (fromInput) fromInput.value = '';
-          if (toInput) toInput.value = '';
-          refresh({ prepend: true });
+        if (!requireAuth()) return;
+        const detail = event?.detail || {};
+        const caseData = detail.case || null;
+        if (caseData?.caseId) {
+          updateCaseEntry(caseData);
+          renderFromState(container, sessionState?.user?.uid || 'offline-user');
+          setSharedStatus('Opdateret');
         }
       } catch (error) {
         // Ignore errors (likely due to no auth), since refresh will run on next auth change.

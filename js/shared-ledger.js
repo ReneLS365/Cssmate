@@ -20,6 +20,7 @@ const LEDGER_VERSION = 1
 const BACKUP_SCHEMA_VERSION = 2
 const SHARED_CASES_QUEUE_KEY = 'cssmate:shared-cases:queue:v1'
 const SHARED_CASES_QUEUE_MAX = 30
+const SHARED_CASE_CONTEXT_KEY = 'cssmate:shared-case:context:v1'
 
 const CASE_ID_NAMESPACE = 'cssmate:shared-case'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -58,6 +59,59 @@ const teamCache = {
 
 let queueListenerBound = false
 let queueFlushInFlight = false
+let sharedCaseContext = null
+
+function normalizeSharedCaseContext(value) {
+  if (!value || typeof value !== 'object') return null
+  const caseId = value.caseId || ''
+  if (!caseId) return null
+  const phase = value.phase === 'demontage' ? 'demontage' : 'montage'
+  return {
+    caseId,
+    phase,
+    status: value.status || '',
+    updatedAt: value.updatedAt || '',
+  }
+}
+
+function readSharedCaseContext() {
+  if (sharedCaseContext) return sharedCaseContext
+  if (typeof window === 'undefined' || !window.sessionStorage) return null
+  try {
+    const raw = window.sessionStorage.getItem(SHARED_CASE_CONTEXT_KEY)
+    const parsed = raw ? JSON.parse(raw) : null
+    sharedCaseContext = normalizeSharedCaseContext(parsed)
+    return sharedCaseContext
+  } catch {
+    return null
+  }
+}
+
+function writeSharedCaseContext(context) {
+  sharedCaseContext = normalizeSharedCaseContext(context)
+  if (typeof window === 'undefined' || !window.sessionStorage) return
+  try {
+    if (sharedCaseContext) {
+      window.sessionStorage.setItem(SHARED_CASE_CONTEXT_KEY, JSON.stringify(sharedCaseContext))
+    } else {
+      window.sessionStorage.removeItem(SHARED_CASE_CONTEXT_KEY)
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export function setSharedCaseContext(context) {
+  writeSharedCaseContext(context)
+}
+
+export function getSharedCaseContext() {
+  return readSharedCaseContext()
+}
+
+export function clearSharedCaseContext() {
+  writeSharedCaseContext(null)
+}
 
 function dispatchSharedEvent (detail = {}) {
   if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return
@@ -104,6 +158,8 @@ function normalizeQueuedEntry (entry) {
     totals: entry.totals || { materials: 0, montage: 0, demontage: 0, total: 0 },
     status: entry.status || 'kladde',
     jsonContent: entry.jsonContent || '',
+    phaseHint: entry.phaseHint || '',
+    ifMatchUpdatedAt: entry.ifMatchUpdatedAt || '',
     createdByName: entry.createdByName || '',
     actorRole: entry.actorRole || null,
     queuedAt: entry.queuedAt || Date.now(),
@@ -296,10 +352,12 @@ export async function getTeamDocument(teamId) {
   }
 }
 
-export async function publishSharedCase({ teamId, jobNumber, caseKind, system, totals, status = 'kladde', jsonContent }) {
+export async function publishSharedCase({ teamId, jobNumber, caseKind, system, totals, status = 'kladde', jsonContent, phaseHint, caseId: explicitCaseId, ifMatchUpdatedAt }) {
   const { teamId: resolvedTeamId, membership, actor } = await getTeamContext(teamId)
   const normalizedJobNumber = normalizeJobNumber(jobNumber)
-  const caseId = await buildStableCaseId({ teamId: resolvedTeamId, jobNumber: normalizedJobNumber, jsonContent })
+  const caseId = isValidUuid(explicitCaseId)
+    ? explicitCaseId
+    : await buildStableCaseId({ teamId: resolvedTeamId, jobNumber: normalizedJobNumber, jsonContent })
   const requestPayload = {
     caseId,
     jobNumber: normalizedJobNumber,
@@ -308,6 +366,8 @@ export async function publishSharedCase({ teamId, jobNumber, caseKind, system, t
     totals: totals || { materials: 0, montage: 0, demontage: 0, total: 0 },
     status,
     jsonContent,
+    phaseHint,
+    ifMatchUpdatedAt,
     createdByName: actor.name || actor.displayName || '',
     actorRole: membership?.role || null,
   }
@@ -320,6 +380,7 @@ export async function publishSharedCase({ teamId, jobNumber, caseKind, system, t
       method: 'POST',
       body: JSON.stringify(requestPayload),
     })
+    dispatchSharedEvent({ type: 'case-updated', case: payload })
     removeQueueEntry(caseId)
     return { ...payload, queued: false, caseId: payload?.caseId || caseId }
   } catch (error) {
@@ -348,6 +409,8 @@ async function publishQueuedEntry (entry) {
     totals: normalized.totals,
     status: normalized.status,
     jsonContent: normalized.jsonContent,
+    phaseHint: normalized.phaseHint,
+    ifMatchUpdatedAt: normalized.ifMatchUpdatedAt,
     createdByName: normalized.createdByName || '',
     actorRole: normalized.actorRole || null,
   }
@@ -484,11 +547,11 @@ export async function deleteSharedCase(teamId, caseId) {
   return true
 }
 
-export async function updateCaseStatus(teamId, caseId, status) {
+export async function approveSharedCase(teamId, caseId, { ifMatchUpdatedAt } = {}) {
   const { teamId: resolvedTeamId } = await getTeamContext(teamId)
-  return await apiJson(`/api/teams/${resolvedTeamId}/cases/${caseId}/status`, {
-    method: 'PATCH',
-    body: JSON.stringify({ status }),
+  return await apiJson(`/api/teams/${resolvedTeamId}/cases/${caseId}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ ifMatchUpdatedAt }),
   })
 }
 
