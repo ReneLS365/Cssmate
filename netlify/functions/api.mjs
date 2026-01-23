@@ -28,10 +28,35 @@ function jsonResponse (statusCode, payload, extraHeaders = {}) {
   }
 }
 
-async function requireDbReady () {
-  const ready = await ensureDbReady()
-  if (!ready) {
-    throw createError(DB_NOT_MIGRATED_MESSAGE, 503, {}, 'DB_NOT_MIGRATED')
+function recordTiming (event, name, startMs) {
+  if (!event?.__timings) return
+  const duration = Math.max(0, Date.now() - startMs)
+  event.__timings.push({ name, duration })
+}
+
+function applyServerTiming (event, response, handlerStart) {
+  if (!event?.__timings || !response) return response
+  const timings = [...event.__timings]
+  if (handlerStart) {
+    timings.push({ name: 'handler', duration: Math.max(0, Date.now() - handlerStart) })
+  }
+  if (!timings.length) return response
+  const headerValue = timings
+    .map(entry => `${entry.name};dur=${Math.round(entry.duration)}`)
+    .join(', ')
+  response.headers = { ...(response.headers || {}), 'Server-Timing': headerValue }
+  return response
+}
+
+async function requireDbReady (event) {
+  const start = Date.now()
+  try {
+    const ready = await ensureDbReady()
+    if (!ready) {
+      throw createError(DB_NOT_MIGRATED_MESSAGE, 503, {}, 'DB_NOT_MIGRATED')
+    }
+  } finally {
+    recordTiming(event, 'db_ready', start)
   }
 }
 
@@ -281,12 +306,13 @@ async function fetchAuth0UserInfo (token) {
 }
 
 async function requireAuth (event) {
-  const header = getAuthHeader(event)
-  if (!header.startsWith('Bearer ')) {
-    throw createError('Manglende token', 401, {}, 'auth_missing_token')
-  }
-  const token = header.replace('Bearer ', '').trim()
+  const start = Date.now()
   try {
+    const header = getAuthHeader(event)
+    if (!header.startsWith('Bearer ')) {
+      throw createError('Manglende token', 401, {}, 'auth_missing_token')
+    }
+    const token = header.replace('Bearer ', '').trim()
     const payload = await verifyToken(token)
     const roles = extractRoles(payload).filter(role => ALLOWED_ROLES.has(role))
     if (!roles.length) {
@@ -309,6 +335,8 @@ async function requireAuth (event) {
     const status = error?.status || 401
     const code = error?.code || (status === 403 ? 'auth_forbidden' : 'auth_invalid_token')
     throw createError(error?.message || 'Ugyldigt token', status, { cause: error }, code)
+  } finally {
+    recordTiming(event, 'auth', start)
   }
 }
 
@@ -319,15 +347,14 @@ async function findTeamBySlug (slug) {
 
 async function ensureTeam (slug) {
   const normalizedSlug = normalizeTeamSlug(slug)
-  const existing = await findTeamBySlug(normalizedSlug)
-  if (existing) return existing
-  const teamId = crypto.randomUUID()
-  const teamName = normalizedSlug
-  await db.query(
-    'INSERT INTO teams (id, slug, name, created_at, created_by_sub) VALUES ($1, $2, $3, NOW(), $4)',
-    [teamId, normalizedSlug, teamName, null]
+  const result = await db.query(
+    `INSERT INTO teams (id, name, slug, created_at, created_by_sub)
+     VALUES (gen_random_uuid(), $1, $1, NOW(), NULL)
+     ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
+     RETURNING id, name, slug, created_at, created_by_sub`,
+    [normalizedSlug]
   )
-  return { id: teamId, slug: normalizedSlug, name: teamName, created_at: new Date().toISOString() }
+  return result.rows[0]
 }
 
 async function getMember (teamId, userSub) {
@@ -521,7 +548,7 @@ async function handleMe (event) {
 
 async function handleTeamGet (event) {
   const user = await requireAuth(event)
-  await requireDbReady()
+  await requireDbReady(event)
   const teamSlug = resolveTeamSlugFromRequest(event)
   const team = await ensureTeam(teamSlug)
   const role = user.isOwner ? 'owner' : (user.isAdmin ? 'admin' : 'member')
@@ -529,7 +556,7 @@ async function handleTeamGet (event) {
 }
 
 async function handleTeamAccess (event, teamSlug) {
-  await requireDbReady()
+  await requireDbReady(event)
   const user = await requireAuth(event)
   const normalizedSlug = normalizeTeamSlug(teamSlug)
   const team = await ensureTeam(normalizedSlug)
@@ -565,7 +592,7 @@ async function handleTeamBootstrap (event, teamSlug) {
 }
 
 async function handleTeamMembersList (event, teamSlug) {
-  await requireDbReady()
+  await requireDbReady(event)
   const user = await requireAuth(event)
   const normalizedSlug = normalizeTeamSlug(teamSlug)
   const team = await ensureTeam(normalizedSlug)
@@ -606,7 +633,7 @@ async function handleTeamMemberDeleteRoot (event, memberSub) {
 }
 
 async function handleInviteCreate (event, teamSlug) {
-  await requireDbReady()
+  await requireDbReady(event)
   const user = await requireAuth(event)
   const body = parseBody(event)
   const role = body.role === 'admin' ? 'admin' : 'member'
@@ -652,7 +679,7 @@ async function handleInviteCreate (event, teamSlug) {
 }
 
 async function handleTeamMemberSelfUpsert (event, teamSlug) {
-  await requireDbReady()
+  await requireDbReady(event)
   const user = await requireAuth(event)
   const normalizedSlug = normalizeTeamSlug(teamSlug)
   const team = await ensureTeam(normalizedSlug)
@@ -673,7 +700,7 @@ async function handleTeamMemberSelfUpsert (event, teamSlug) {
 }
 
 async function handleInviteList (event, teamSlug) {
-  await requireDbReady()
+  await requireDbReady(event)
   const user = await requireAuth(event)
   const team = await findTeamBySlug(normalizeTeamSlug(teamSlug))
   if (!team) return jsonResponse(404, { error: 'Team findes ikke.' })
@@ -690,7 +717,7 @@ async function handleInviteList (event, teamSlug) {
 }
 
 async function handleInviteRevoke (event, inviteId) {
-  await requireDbReady()
+  await requireDbReady(event)
   const user = await requireAuth(event)
   const inviteResult = await db.query('SELECT id, team_id, email FROM team_invites WHERE id = $1', [inviteId])
   const invite = inviteResult.rows[0]
@@ -702,7 +729,7 @@ async function handleInviteRevoke (event, inviteId) {
 }
 
 async function handleInviteResend (event, inviteId) {
-  await requireDbReady()
+  await requireDbReady(event)
   const user = await requireAuth(event)
   const inviteResult = await db.query(
     `SELECT i.id, i.team_id, i.email, i.role, i.expires_at, t.slug as team_slug
@@ -743,7 +770,7 @@ async function handleInviteResend (event, inviteId) {
 }
 
 async function handleInviteAccept (event) {
-  await requireDbReady()
+  await requireDbReady(event)
   const user = await requireAuth(event)
   const body = parseBody(event)
   const token = body.token
@@ -797,7 +824,7 @@ async function handleInviteAccept (event) {
 }
 
 async function handleCaseCreate (event, teamSlug) {
-  await requireDbReady()
+  await requireDbReady(event)
   const { user, team } = await requireTeamContext(event, teamSlug)
   const body = parseBody(event)
   const caseId = isValidUuid(body.caseId) ? body.caseId : crypto.randomUUID()
@@ -844,7 +871,7 @@ async function handleCaseCreate (event, teamSlug) {
 }
 
 async function handleCaseList (event, teamSlug) {
-  await requireDbReady()
+  await requireDbReady(event)
   const { team } = await requireTeamContext(event, teamSlug)
   const query = event.queryStringParameters || {}
   const limit = clampCasesLimit(query.limit)
@@ -901,7 +928,7 @@ async function handleCaseList (event, teamSlug) {
 }
 
 async function handleCaseGet (event, teamSlug, caseId) {
-  await requireDbReady()
+  await requireDbReady(event)
   const { team } = await requireTeamContext(event, teamSlug)
   const result = await db.query(
     `SELECT c.*, t.slug as team_slug
@@ -916,7 +943,7 @@ async function handleCaseGet (event, teamSlug, caseId) {
 }
 
 async function handleCaseDelete (event, teamSlug, caseId) {
-  await requireDbReady()
+  await requireDbReady(event)
   const { user, team } = await requireTeamContext(event, teamSlug)
   const result = await db.query(
     'SELECT created_by FROM team_cases WHERE team_id = $1 AND case_id = $2',
@@ -943,7 +970,7 @@ async function handleCaseDelete (event, teamSlug, caseId) {
 }
 
 async function handleCaseStatus (event, teamSlug, caseId) {
-  await requireDbReady()
+  await requireDbReady(event)
   const { user, team } = await requireTeamContext(event, teamSlug)
   const body = parseBody(event)
   const result = await db.query('SELECT created_by FROM team_cases WHERE team_id = $1 AND case_id = $2', [team.id, caseId])
@@ -968,7 +995,7 @@ async function handleCaseStatus (event, teamSlug, caseId) {
 }
 
 async function handleBackupExport (event, teamSlug) {
-  await requireDbReady()
+  await requireDbReady(event)
   const { user, team } = await requireTeamContext(event, teamSlug, { requireAdmin: true })
   const query = event.queryStringParameters || {}
   const includeDeleted = parseBooleanParam(query.includeDeleted)
@@ -1026,7 +1053,7 @@ async function handleBackupExport (event, teamSlug) {
 }
 
 async function handleBackupImport (event, teamSlug) {
-  await requireDbReady()
+  await requireDbReady(event)
   const { user, team } = await requireTeamContext(event, teamSlug, { requireAdmin: true })
   const body = parseBody(event)
   const cases = Array.isArray(body?.cases) ? body.cases : []
@@ -1073,6 +1100,9 @@ async function handleBackupImport (event, teamSlug) {
 }
 
 export async function handler (event) {
+  const handlerStart = Date.now()
+  event.__timings = []
+  const withTiming = (response) => applyServerTiming(event, response, handlerStart)
   const method = event.httpMethod || 'GET'
   const path = getRoutePath(event)
   const context = String(process.env.CONTEXT || process.env.NETLIFY_CONTEXT || 'unknown').toLowerCase()
@@ -1081,61 +1111,61 @@ export async function handler (event) {
 
   try {
     if (!isProduction && isWriteMethod) {
-      return jsonResponse(403, { error: 'Writes disabled in preview deployments.' })
+      return withTiming(jsonResponse(403, { error: 'Writes disabled in preview deployments.' }))
     }
-    if (method === 'GET' && path === '/me') return await handleMe(event)
-    if (method === 'GET' && path === '/team') return await handleTeamGet(event)
-    if (method === 'GET' && path === '/team/members') return await handleTeamMembersListRoot(event)
+    if (method === 'GET' && path === '/me') return withTiming(await handleMe(event))
+    if (method === 'GET' && path === '/team') return withTiming(await handleTeamGet(event))
+    if (method === 'GET' && path === '/team/members') return withTiming(await handleTeamMembersListRoot(event))
     if (method === 'PATCH' && path.startsWith('/team/members/')) {
       const memberSub = decodeURIComponent(path.replace('/team/members/', ''))
-      return await handleTeamMemberPatchRoot(event, memberSub)
+      return withTiming(await handleTeamMemberPatchRoot(event, memberSub))
     }
 
     const isInviteRoute = path.startsWith('/invites') || /\/invites$/.test(path) || /\/invites\//.test(path)
     if (isInviteRoute) {
-      return jsonResponse(410, { error: 'Invites er fjernet. Team/roller styres i Auth0.' })
+      return withTiming(jsonResponse(410, { error: 'Invites er fjernet. Team/roller styres i Auth0.' }))
     }
 
     const teamAccessMatch = path.match(/^\/teams\/([^/]+)\/access$/)
-    if (teamAccessMatch && method === 'GET') return await handleTeamAccess(event, teamAccessMatch[1])
+    if (teamAccessMatch && method === 'GET') return withTiming(await handleTeamAccess(event, teamAccessMatch[1]))
 
     const teamBootstrapMatch = path.match(/^\/teams\/([^/]+)\/bootstrap$/)
-    if (teamBootstrapMatch && method === 'POST') return await handleTeamBootstrap(event, teamBootstrapMatch[1])
+    if (teamBootstrapMatch && method === 'POST') return withTiming(await handleTeamBootstrap(event, teamBootstrapMatch[1]))
 
     const teamMembersMatch = path.match(/^\/teams\/([^/]+)\/members$/)
-    if (teamMembersMatch && method === 'GET') return await handleTeamMembersList(event, teamMembersMatch[1])
+    if (teamMembersMatch && method === 'GET') return withTiming(await handleTeamMembersList(event, teamMembersMatch[1]))
 
     const teamMemberSelfMatch = path.match(/^\/teams\/([^/]+)\/members\/self$/)
-    if (teamMemberSelfMatch && method === 'POST') return await handleTeamMemberSelfUpsert(event, teamMemberSelfMatch[1])
+    if (teamMemberSelfMatch && method === 'POST') return withTiming(await handleTeamMemberSelfUpsert(event, teamMemberSelfMatch[1]))
 
     const teamMemberPatchMatch = path.match(/^\/teams\/([^/]+)\/members\/([^/]+)$/)
     if (teamMemberPatchMatch && (method === 'PATCH' || method === 'DELETE')) {
-      return jsonResponse(410, { error: 'Team medlemmer styres i Auth0.' })
+      return withTiming(jsonResponse(410, { error: 'Team medlemmer styres i Auth0.' }))
     }
 
     const caseListMatch = path.match(/^\/teams\/([^/]+)\/cases$/)
-    if (caseListMatch && method === 'GET') return await handleCaseList(event, caseListMatch[1])
-    if (caseListMatch && method === 'POST') return await handleCaseCreate(event, caseListMatch[1])
+    if (caseListMatch && method === 'GET') return withTiming(await handleCaseList(event, caseListMatch[1]))
+    if (caseListMatch && method === 'POST') return withTiming(await handleCaseCreate(event, caseListMatch[1]))
 
     const caseGetMatch = path.match(/^\/teams\/([^/]+)\/cases\/([^/]+)$/)
-    if (caseGetMatch && method === 'GET') return await handleCaseGet(event, caseGetMatch[1], caseGetMatch[2])
-    if (caseGetMatch && method === 'DELETE') return await handleCaseDelete(event, caseGetMatch[1], caseGetMatch[2])
+    if (caseGetMatch && method === 'GET') return withTiming(await handleCaseGet(event, caseGetMatch[1], caseGetMatch[2]))
+    if (caseGetMatch && method === 'DELETE') return withTiming(await handleCaseDelete(event, caseGetMatch[1], caseGetMatch[2]))
 
     const caseStatusMatch = path.match(/^\/teams\/([^/]+)\/cases\/([^/]+)\/status$/)
-    if (caseStatusMatch && method === 'PATCH') return await handleCaseStatus(event, caseStatusMatch[1], caseStatusMatch[2])
+    if (caseStatusMatch && method === 'PATCH') return withTiming(await handleCaseStatus(event, caseStatusMatch[1], caseStatusMatch[2]))
 
     const backupMatch = path.match(/^\/teams\/([^/]+)\/backup$/)
-    if (backupMatch && method === 'GET') return await handleBackupExport(event, backupMatch[1])
-    if (backupMatch && method === 'POST') return await handleBackupImport(event, backupMatch[1])
+    if (backupMatch && method === 'GET') return withTiming(await handleBackupExport(event, backupMatch[1]))
+    if (backupMatch && method === 'POST') return withTiming(await handleBackupImport(event, backupMatch[1]))
 
-    return jsonResponse(404, { error: 'Endpoint findes ikke.' })
+    return withTiming(jsonResponse(404, { error: 'Endpoint findes ikke.' }))
   } catch (error) {
     const status = error?.status || 500
     const message = error?.message || 'Serverfejl'
-    return jsonResponse(status, {
+    return withTiming(jsonResponse(status, {
       error: message,
       ...(error?.code ? { code: error.code } : {}),
       ...(error?.invitedEmail ? { invitedEmail: error.invitedEmail } : {}),
-    })
+    }))
   }
 }

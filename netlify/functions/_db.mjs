@@ -14,6 +14,7 @@ const DATABASE_URL_CANDIDATES = [
 let pool = null
 let migrationPromise = null
 let migrationsEnsured = false
+let dbReadyPromise = null
 
 const { resolveFromFunctionsDir } = pathHelper
 const MIGRATIONS_DIR = resolveFromFunctionsDir('migrations')
@@ -240,9 +241,18 @@ export async function isDbReady () {
 }
 
 export async function ensureDbReady () {
-  await getPoolRaw()
-  await ensureMigrations()
-  return isDbReady()
+  if (dbReadyPromise) return dbReadyPromise
+  dbReadyPromise = (async () => {
+    await getPoolRaw()
+    await ensureMigrations()
+    return isDbReady()
+  })()
+  try {
+    return await dbReadyPromise
+  } catch (error) {
+    dbReadyPromise = null
+    throw error
+  }
 }
 
 export async function query (text, params) {

@@ -86,11 +86,17 @@ Denne undtagelse er aktiv for opgaven: “Release-hardening for Delt sager”.
   - Server-side pagination for case list.
   - Preview/prod write-guard.
   - Backup export options.
+- `netlify/functions/api.mjs` optimeringer til:
+  - ensureTeam upsert (single-query).
+  - Server-Timing instrumentation uden secrets.
 - `netlify/functions/_db.mjs` ændringer begrænset til:
   - Sikker env var resolution (DATABASE_URL kandidater).
   - Migrations-runner opdateringer.
+- `netlify/functions/_db.mjs` single-flight init (undgå parallel init-spikes).
 - Nye migration-filer under `netlify/functions/migrations/*`.
 - `docs/DB_BACKUP.md` (eller lignende) og README-snippets for env contexts.
+- UI-ændringer i Delt sager til pagination/Load more (kun performance/UX).
+- Scheduled backup til Netlify Blobs (serverless function + docs).
 
 ### Stadig IKKE tilladt
 - Ændringer i priser, datasæt, løn-/akkord-beregninger, materialeliste-logik, eksport-mapping eller import/eksport-kontrakter.
