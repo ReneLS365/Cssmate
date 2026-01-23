@@ -146,7 +146,7 @@ Bemærk: Ændringer til disse værdier kræver et fresh deploy, så `auth0-confi
 Sørg for at Netlify Functions har adgang til databasen via env var:
 
 - `DATABASE_URL` (primær)
-- Alternativt: `NETLIFY_DATABASE_URL` / `NETLIFY_DATABASE_URL_UNPOOLED`
+- `DATABASE_URL_UNPOOLED` (direkte/uden pool)
 
 Kør migrations manuelt mod Neon/Postgres (idempotent):
 
@@ -171,7 +171,7 @@ Kræver env var i Netlify:
 ## MIGRATION + DEPLOY CHECKLIST
 
 1. Sæt env vars i Netlify (se ovenfor).
-2. Verificér at `DATABASE_URL` (eller Netlify fallback) ikke er en dummy/placeholder.
+2. Verificér at `DATABASE_URL`/`DATABASE_URL_UNPOOLED` ikke er en dummy/placeholder.
 3. Kør migrations i rækkefølge:
    - `migrations/001_init.sql`
    - `migrations/002_add_team_slug.sql`

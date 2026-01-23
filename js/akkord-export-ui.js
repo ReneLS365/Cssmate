@@ -232,8 +232,8 @@ export async function exportAkkordJsonAndPdf(options = {}) {
       historySaved: context.historySaved,
     });
     const sharedMessage = publishResult?.queued
-      ? 'Eksporteret (Historik + Delt sager). Gemt offline og synkroniseres, når du er online.'
-      : 'Eksporteret (Historik + Delt sager).';
+      ? 'Sag gemt offline og synkroniseres, når du er online.'
+      : 'Sag publiceret til fælles sager.';
     notifyAction(sharedMessage, 'success');
     return { jsonFileName: jsonResult.fileName };
   } catch (error) {

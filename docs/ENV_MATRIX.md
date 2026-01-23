@@ -34,8 +34,7 @@ This matrix documents env vars referenced in the repo, grouped by runtime target
 | `EMAIL_FROM` | Optional | `no-reply@sscaff.app` | `netlify/functions/api.mjs` | Sender address for invites. |
 | `EMAIL_PROVIDER_API_KEY` | Optional | `re_...` | `netlify/functions/api.mjs` | Resend API key for invites. |
 | `DATABASE_URL` | Yes | `postgresql://user:pass@host/db` | `netlify/functions/_db.mjs` | Primary DB connection. |
-| `NETLIFY_DATABASE_URL` | Optional | `postgresql://...` | `netlify/functions/_db.mjs` | Netlify DB connection. |
-| `NETLIFY_DATABASE_URL_UNPOOLED` | Optional | `postgresql://...` | `netlify/functions/_db.mjs` | Unpooled connection fallback. |
+| `DATABASE_URL_UNPOOLED` | Optional | `postgresql://...` | `netlify/functions/_db.mjs` | Unpooled connection fallback. |
 | `DATABASE_SSL` | Optional | `require` | `netlify/functions/_db.mjs` | Force SSL mode (true/false/require). |
 
 ## Build / CI / tooling

@@ -105,6 +105,26 @@ Denne undtagelse er aktiv for opgaven: “Release-hardening for Delt sager”.
 
 ---
 
+## Exception: Ultra-review hardening (approved)
+
+Denne undtagelse er aktiv for opgaven: “Ultra-review + hardening (post-merge)”.
+
+### Tilladt under denne undtagelse
+- Delt sager pagination + load-more UI guardrails.
+- `netlify/functions/_db.mjs` single-flight init.
+- `netlify/functions/api.mjs` preview write-guard + Server-Timing.
+- `netlify/functions/_context.mjs` helper til deploy-context.
+- `netlify.toml` redirects/headers.
+- `netlify/functions/_log.mjs` log-sanitizer util.
+- `docs/ENV.md` (env/preview safety note).
+
+### Stadig IKKE tilladt
+- Ændringer i priser, datasæt, løn-/akkord-beregninger, materialeliste-logik, eksport-mapping eller import/eksport-kontrakter.
+- Global CSS eller shared komponent-CSS der kan påvirke beregnings- og dataflow.
+- Ændringer i bundle-filer i `dist/` eller genererede assets.
+
+---
+
 ## Preview safety contract
 
 - I non-production deploy contexts skal writes **blokeres server-side**.
