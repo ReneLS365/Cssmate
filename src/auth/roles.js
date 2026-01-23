@@ -42,8 +42,7 @@ function isAdminUser (user) {
   const roles = Array.isArray(user.roles) ? user.roles : []
   if (roles.includes('sscaff_owner')) return true
   if (roles.includes('sscaff_admin')) return true
-  // Auth0 is source of truth. Email fallback is disabled to avoid split-brain access.
-  return false
+  return isAdminEmail(user.email)
 }
 
 export {

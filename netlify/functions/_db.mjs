@@ -57,9 +57,18 @@ async function ensureMigrations () {
       const indexResult = await client.query(
         `SELECT
            to_regclass('public.team_cases_team_created_idx') IS NOT NULL AS has_team_created_idx,
-           to_regclass('public.team_cases_team_updated_idx') IS NOT NULL AS has_team_updated_idx`
+           to_regclass('public.team_cases_team_updated_idx') IS NOT NULL AS has_team_updated_idx,
+           to_regclass('public.team_cases_team_status_created_idx') IS NOT NULL AS has_team_status_created_idx,
+           to_regclass('public.team_cases_team_creator_status_idx') IS NOT NULL AS has_team_creator_status_idx,
+           to_regclass('public.team_cases_team_updated_at_idx') IS NOT NULL AS has_team_updated_at_idx`
       )
-      const hasCaseIndexes = Boolean(indexResult.rows[0]?.has_team_created_idx && indexResult.rows[0]?.has_team_updated_idx)
+      const hasCaseIndexes = Boolean(
+        indexResult.rows[0]?.has_team_created_idx
+        && indexResult.rows[0]?.has_team_updated_idx
+        && indexResult.rows[0]?.has_team_status_created_idx
+        && indexResult.rows[0]?.has_team_creator_status_idx
+        && indexResult.rows[0]?.has_team_updated_at_idx
+      )
       const defaultsResult = await client.query(
         `SELECT
            SUM(CASE WHEN column_name = 'created_at' AND column_default IS NOT NULL THEN 1 ELSE 0 END) AS created_default,
@@ -71,6 +80,15 @@ async function ensureMigrations () {
            AND table_name = 'team_cases'
            AND column_name IN ('created_at', 'updated_at', 'last_updated_at', 'status')`
       )
+      const workflowColumnsResult = await client.query(
+        `SELECT
+           SUM(CASE WHEN column_name = 'phase' THEN 1 ELSE 0 END) AS has_phase,
+           SUM(CASE WHEN column_name = 'last_editor_sub' THEN 1 ELSE 0 END) AS has_last_editor_sub
+         FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = 'team_cases'
+           AND column_name IN ('phase', 'last_editor_sub')`
+      )
       const defaultsRow = defaultsResult.rows[0] || {}
       const hasCaseDefaults = Boolean(
         Number(defaultsRow.created_default) > 0
@@ -78,7 +96,9 @@ async function ensureMigrations () {
         && Number(defaultsRow.last_updated_default) > 0
         && Number(defaultsRow.status_default) > 0
       )
-      if (hasUsersTable && hasTeamSlug && hasInviteTokenHint && hasMemberLastLogin && hasCaseIndexes && hasCaseDefaults) {
+      const workflowRow = workflowColumnsResult.rows[0] || {}
+      const hasWorkflowColumns = Boolean(Number(workflowRow.has_phase) > 0 && Number(workflowRow.has_last_editor_sub) > 0)
+      if (hasUsersTable && hasTeamSlug && hasInviteTokenHint && hasMemberLastLogin && hasCaseIndexes && hasCaseDefaults && hasWorkflowColumns) {
         migrationsEnsured = true
         return
       }
@@ -91,6 +111,7 @@ async function ensureMigrations () {
         readMigrationFile('004_add_team_member_login.sql'),
         readMigrationFile('005_cases_indexes.sql'),
         readMigrationFile('006_cases_defaults.sql'),
+        readMigrationFile('007_cases_workflow.sql'),
       ])
       await client.query('BEGIN')
       for (const sql of migrations) {
@@ -246,6 +267,9 @@ export async function ensureDbReady () {
     const ready = await isDbReady()
     if (ready) {
       _dbReadyOkAt = Date.now()
+    } else {
+      _dbReadyPromise = null
+      _dbReadyOkAt = 0
     }
     return ready
   })()

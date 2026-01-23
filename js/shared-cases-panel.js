@@ -33,6 +33,7 @@ let seenCursorKeys = new Set();
 let activeFilters = null;
 let isLoading = false;
 let loadMoreBtn;
+let listSharedCasesPageFn = listSharedCasesPage;
 const UI_STORAGE_KEY = 'cssmate:shared-cases:ui:v1';
 const CASE_META_CACHE = new Map();
 const DATE_INPUT_FORMATTER = new Intl.DateTimeFormat('sv-SE');
@@ -133,6 +134,7 @@ function getAccessLabel () {
 }
 
 function renderStatusSummary (primaryMessage = '') {
+  if (typeof document === 'undefined') return;
   if (!statusBox) statusBox = document.getElementById('sharedStatus');
   const teamLabel = displayTeamId || DEFAULT_TEAM_SLUG;
   const accessLabel = getAccessLabel();
@@ -203,6 +205,10 @@ function saveUiState(state) {
   } catch {
     // ignore storage errors
   }
+}
+
+function setListSharedCasesPage(fn) {
+  listSharedCasesPageFn = typeof fn === 'function' ? fn : listSharedCasesPage;
 }
 
 function applyStoredFilters() {
@@ -459,6 +465,16 @@ function bindSessionControls(onAuthenticated, onAccessReady) {
 }
 
 function getFilters() {
+  if (typeof document === 'undefined') {
+    return {
+      search: '',
+      dateFrom: '',
+      dateTo: '',
+      status: '',
+      kind: '',
+      sort: 'newest',
+    };
+  }
   const searchInput = document.getElementById('sharedSearchInput');
   const dateFrom = document.getElementById('sharedDateFrom');
   const dateTo = document.getElementById('sharedDateTo');
@@ -962,6 +978,17 @@ function resetCaseState() {
   seenCursorKeys = new Set();
 }
 
+function setTestState({ session, teamIdValue, role } = {}) {
+  sessionState = session || {};
+  teamId = teamIdValue || sessionState?.teamId || teamId || formatTeamId(DEFAULT_TEAM_SLUG);
+  displayTeamId = sessionState.displayTeamId || getDisplayTeamId(teamId);
+  membershipRole = role || sessionState.role || membershipRole;
+  membershipError = null;
+  teamError = '';
+  activeFilters = null;
+  isLoading = false;
+}
+
 function getCursorKey(cursor) {
   if (!cursor) return '';
   try {
@@ -1034,7 +1061,7 @@ async function fetchCasesPage({ reset = false, prepend = false } = {}) {
       }
     }
     const serverFilters = resolveServerFilters(filters);
-    const page = await listSharedCasesPage(ensureTeamSelected(), {
+    const page = await listSharedCasesPageFn(ensureTeamSelected(), {
       limit: 100,
       cursor: reset ? null : nextCursor,
       status: serverFilters.status,
@@ -1225,3 +1252,9 @@ export function initSharedCasesPanel() {
 }
 
 export { formatMissingMembershipMessage };
+export const __test = {
+  fetchCasesPage,
+  resetCaseState,
+  setListSharedCasesPage,
+  setTestState,
+};

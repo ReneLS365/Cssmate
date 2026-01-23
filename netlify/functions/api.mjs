@@ -131,6 +131,67 @@ function resolveExportAction ({ phaseHint, caseKind }) {
   return 'EXPORT_MONTAGE'
 }
 
+function canAccessCase ({ status, createdBy, userSub, isPrivileged }) {
+  if (status === CASE_STATUS.DRAFT) {
+    return createdBy === userSub || Boolean(isPrivileged)
+  }
+  return true
+}
+
+function resolveCaseTransition ({ action, currentStatus, currentPhase, isCreator }) {
+  const normalizedPhase = normalizeCasePhase(
+    currentPhase,
+    currentStatus === CASE_STATUS.DEMONTAGE ? 'demontage' : 'montage'
+  )
+
+  if (action === 'EXPORT_MONTAGE') {
+    if (!isCreator) {
+      throw createError('Kun opretter kan ændre denne kladde.', 403)
+    }
+    if ([CASE_STATUS.DRAFT, CASE_STATUS.READY].includes(currentStatus)) {
+      return { status: CASE_STATUS.DRAFT, phase: normalizedPhase || 'montage' }
+    }
+    return { status: currentStatus, phase: normalizedPhase || 'montage' }
+  }
+
+  if (action === 'EXPORT_DEMONTAGE') {
+    if (currentStatus === CASE_STATUS.DONE) {
+      throw createError('Sagen er allerede afsluttet.', 409)
+    }
+    if ([CASE_STATUS.DRAFT, CASE_STATUS.READY].includes(currentStatus)) {
+      throw createError('Montage skal godkendes før demontage kan påbegyndes.', 403)
+    }
+    if ([CASE_STATUS.APPROVED, CASE_STATUS.DEMONTAGE].includes(currentStatus)) {
+      return { status: CASE_STATUS.DEMONTAGE, phase: 'demontage' }
+    }
+    throw createError('Ugyldig status for demontage.', 409)
+  }
+
+  if (action === 'APPROVE') {
+    if ([CASE_STATUS.DRAFT, CASE_STATUS.READY].includes(currentStatus)) {
+      if (!isCreator) {
+        throw createError('Kun opretter kan godkende kladden.', 403)
+      }
+      return { status: CASE_STATUS.APPROVED, phase: 'montage' }
+    }
+    if (currentStatus === CASE_STATUS.DEMONTAGE && normalizedPhase === 'demontage') {
+      return { status: CASE_STATUS.DONE, phase: 'demontage' }
+    }
+    if (currentStatus === CASE_STATUS.APPROVED && normalizedPhase === 'montage') {
+      throw createError('Montage er allerede godkendt.', 409)
+    }
+    if (currentStatus === CASE_STATUS.DONE) {
+      throw createError('Sagen er allerede afsluttet.', 409)
+    }
+    if (currentStatus === CASE_STATUS.DEMONTAGE) {
+      throw createError('Demontage er allerede i gang.', 409)
+    }
+    throw createError('Ugyldig status for godkendelse.', 409)
+  }
+
+  throw createError('Ukendt handling.', 400)
+}
+
 function decodeCursor (value) {
   if (!value) return null
   try {
@@ -890,45 +951,16 @@ async function handleCaseCreate (event, teamSlug) {
   }
   const isCreator = !existing || existing.created_by === user.id
   const currentStatus = existing?.status || CASE_STATUS.DRAFT
-  const currentPhase = normalizeCasePhase(existing?.phase, currentStatus === CASE_STATUS.DEMONTAGE ? 'demontage' : 'montage')
-  let nextStatus = currentStatus
-  let nextPhase = currentPhase || 'montage'
-
-  if (action === 'EXPORT_MONTAGE') {
-    if (existing && !isCreator) {
-      throw createError('Kun opretter kan ændre denne kladde.', 403)
-    }
-    if (!existing) {
-      nextStatus = CASE_STATUS.DRAFT
-      nextPhase = 'montage'
-    } else if ([CASE_STATUS.DRAFT, CASE_STATUS.READY].includes(currentStatus)) {
-      nextStatus = CASE_STATUS.DRAFT
-      nextPhase = currentPhase || 'montage'
-    } else {
-      nextStatus = currentStatus
-      nextPhase = currentPhase || 'montage'
-    }
-  } else if (action === 'EXPORT_DEMONTAGE') {
-    if (!existing) {
-      throw createError('Der findes ingen godkendt montage til demontage.', 404)
-    }
-    if (currentStatus === CASE_STATUS.APPROVED && currentPhase !== 'demontage') {
-      nextStatus = CASE_STATUS.DEMONTAGE
-      nextPhase = 'demontage'
-    } else if (currentStatus === CASE_STATUS.DEMONTAGE && currentPhase === 'demontage') {
-      nextStatus = CASE_STATUS.DEMONTAGE
-      nextPhase = 'demontage'
-    } else if (currentStatus === CASE_STATUS.DONE) {
-      throw createError('Sagen er allerede afsluttet.', 409)
-    } else if ([CASE_STATUS.DRAFT, CASE_STATUS.READY].includes(currentStatus)) {
-      throw createError('Montage skal godkendes før demontage kan påbegyndes.', 403)
-    } else if (currentStatus === CASE_STATUS.APPROVED) {
-      nextStatus = CASE_STATUS.DEMONTAGE
-      nextPhase = 'demontage'
-    } else {
-      throw createError('Ugyldig status for demontage.', 409)
-    }
+  const currentPhase = existing?.phase || ''
+  if (!existing && action === 'EXPORT_DEMONTAGE') {
+    throw createError('Der findes ingen godkendt montage til demontage.', 404)
   }
+  const { status: nextStatus, phase: nextPhase } = resolveCaseTransition({
+    action,
+    currentStatus,
+    currentPhase,
+    isCreator,
+  })
 
   await db.query(
     `INSERT INTO team_cases
@@ -1043,7 +1075,7 @@ async function handleCaseGet (event, teamSlug, caseId) {
   )
   const row = result.rows[0]
   if (!row) return jsonResponse(404, { error: 'Sag findes ikke.' })
-  if (row.status === CASE_STATUS.DRAFT && row.created_by !== user.id && !user.isPrivileged) {
+  if (!canAccessCase({ status: row.status, createdBy: row.created_by, userSub: user.id, isPrivileged: user.isPrivileged })) {
     return jsonResponse(403, { error: 'Kun opretter kan se kladden.' })
   }
   return jsonResponse(200, serializeCaseRow(row))
@@ -1106,28 +1138,14 @@ async function handleCaseApprove (event, teamSlug, caseId) {
   }
 
   const currentStatus = row.status || CASE_STATUS.DRAFT
-  const currentPhase = normalizeCasePhase(row.phase, currentStatus === CASE_STATUS.DEMONTAGE ? 'demontage' : 'montage')
-  let nextStatus = ''
-  let nextPhase = currentPhase || 'montage'
-
-  if ([CASE_STATUS.DRAFT, CASE_STATUS.READY].includes(currentStatus)) {
-    if (row.created_by !== user.id) {
-      return jsonResponse(403, { error: 'Kun opretter kan godkende kladden.' })
-    }
-    nextStatus = CASE_STATUS.APPROVED
-    nextPhase = 'montage'
-  } else if (currentStatus === CASE_STATUS.DEMONTAGE && currentPhase === 'demontage') {
-    nextStatus = CASE_STATUS.DONE
-    nextPhase = 'demontage'
-  } else if (currentStatus === CASE_STATUS.APPROVED && currentPhase === 'montage') {
-    return jsonResponse(409, { error: 'Montage er allerede godkendt.' })
-  } else if (currentStatus === CASE_STATUS.DONE) {
-    return jsonResponse(409, { error: 'Sagen er allerede afsluttet.' })
-  } else if (currentStatus === CASE_STATUS.DEMONTAGE) {
-    return jsonResponse(409, { error: 'Demontage er allerede i gang.' })
-  } else {
-    return jsonResponse(409, { error: 'Ugyldig status for godkendelse.' })
-  }
+  const currentPhase = row.phase || ''
+  const isCreator = row.created_by === user.id
+  const { status: nextStatus, phase: nextPhase } = resolveCaseTransition({
+    action: 'APPROVE',
+    currentStatus,
+    currentPhase,
+    isCreator,
+  })
 
   await db.query(
     `UPDATE team_cases SET status = $1, phase = $2, updated_at = NOW(), last_updated_at = NOW(), updated_by = $3, last_editor_sub = $3
@@ -1251,6 +1269,13 @@ async function handleBackupImport (event, teamSlug) {
     )
   }
   return emptyResponse(204)
+}
+
+export const __test = {
+  canAccessCase,
+  normalizeCasePhase,
+  resolveCaseTransition,
+  resolveExportAction,
 }
 
 export async function handler (event) {
