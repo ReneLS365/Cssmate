@@ -1,5 +1,6 @@
 import { db, ensureDbReady } from './_db.mjs'
 import { generateToken, getAuth0Config, hashToken, secureCompare, verifyToken } from './_auth.mjs'
+import { safeError } from './_log.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' }
 const DEFAULT_TEAM_SLUG = process.env.DEFAULT_TEAM_SLUG || 'hulmose'
@@ -1162,6 +1163,17 @@ export async function handler (event) {
   } catch (error) {
     const status = error?.status || 500
     const message = error?.message || 'Serverfejl'
+    const requestId = event.headers?.['x-nf-request-id']
+      || event.headers?.['x-request-id']
+      || event.headers?.['x-amzn-trace-id']
+      || ''
+    console.error('[api] handler error', {
+      path,
+      method,
+      status,
+      requestId,
+      err: safeError(error),
+    })
     return withTiming(jsonResponse(status, {
       error: message,
       ...(error?.code ? { code: error.code } : {}),

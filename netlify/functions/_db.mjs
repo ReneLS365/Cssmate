@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'fs/promises'
 import { Pool } from 'pg'
 import pathHelper from './_path.cjs'
+import { sanitizeObject, safeError } from './_log.mjs'
 
 const DATABASE_SSL = process.env.DATABASE_SSL
 const DATABASE_URL_CANDIDATES = [
@@ -14,7 +15,8 @@ const DATABASE_URL_CANDIDATES = [
 let pool = null
 let migrationPromise = null
 let migrationsEnsured = false
-let dbReadyPromise = null
+let _dbReadyPromise = null
+let _dbReadyOkAt = 0
 
 const { resolveFromFunctionsDir } = pathHelper
 const MIGRATIONS_DIR = resolveFromFunctionsDir('migrations')
@@ -184,7 +186,7 @@ function buildPoolConfig () {
       'NETLIFY_DATABASE_URL',
       'NETLIFY_DATABASE_URL_UNPOOLED',
     ].filter((key) => !process.env[key])
-    console.warn('Database URL mangler. Mangler env vars:', missingKeys.join(', ') || 'ukendt')
+    console.warn('Database URL mangler.', sanitizeObject({ missingKeys }))
     throw new Error('Database URL mangler. Sæt DATABASE_URL eller NETLIFY_DATABASE_URL(_UNPOOLED).')
   }
   const useSsl = resolveSslSetting(databaseUrl)
@@ -241,16 +243,22 @@ export async function isDbReady () {
 }
 
 export async function ensureDbReady () {
-  if (dbReadyPromise) return dbReadyPromise
-  dbReadyPromise = (async () => {
+  if (_dbReadyPromise) return _dbReadyPromise
+  _dbReadyPromise = (async () => {
     await getPoolRaw()
     await ensureMigrations()
-    return isDbReady()
+    const ready = await isDbReady()
+    if (ready) {
+      _dbReadyOkAt = Date.now()
+    }
+    return ready
   })()
   try {
-    return await dbReadyPromise
+    return await _dbReadyPromise
   } catch (error) {
-    dbReadyPromise = null
+    console.error('[db] ensureDbReady failed', safeError(error))
+    _dbReadyPromise = null
+    _dbReadyOkAt = 0
     throw error
   }
 }
