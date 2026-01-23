@@ -1,6 +1,7 @@
 import { db, ensureDbReady } from './_db.mjs'
 import { generateToken, getAuth0Config, hashToken, secureCompare, verifyToken } from './_auth.mjs'
 import { safeError } from './_log.mjs'
+import { isProd } from './_context.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' }
 const DEFAULT_TEAM_SLUG = process.env.DEFAULT_TEAM_SLUG || 'hulmose'
@@ -57,7 +58,7 @@ async function requireDbReady (event) {
       throw createError(DB_NOT_MIGRATED_MESSAGE, 503, {}, 'DB_NOT_MIGRATED')
     }
   } finally {
-    recordTiming(event, 'db_ready', start)
+    recordTiming(event, 'db', start)
   }
 }
 
@@ -1106,8 +1107,7 @@ export async function handler (event) {
   const withTiming = (response) => applyServerTiming(event, response, handlerStart)
   const method = event.httpMethod || 'GET'
   const path = getRoutePath(event)
-  const context = String(process.env.CONTEXT || process.env.NETLIFY_CONTEXT || 'unknown').toLowerCase()
-  const isProduction = context === 'production'
+  const isProduction = isProd()
   const isWriteMethod = isWriteRequest(event)
 
   try {
@@ -1167,12 +1167,11 @@ export async function handler (event) {
       || event.headers?.['x-request-id']
       || event.headers?.['x-amzn-trace-id']
       || ''
-    console.error('[api] handler error', {
+    console.error('[api] handler error', safeError(error), {
       path,
       method,
       status,
       requestId,
-      err: safeError(error),
     })
     return withTiming(jsonResponse(status, {
       error: message,

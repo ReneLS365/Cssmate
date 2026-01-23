@@ -8,8 +8,6 @@ const DATABASE_SSL = process.env.DATABASE_SSL
 const DATABASE_URL_CANDIDATES = [
   process.env.DATABASE_URL,
   process.env.DATABASE_URL_UNPOOLED,
-  process.env.NETLIFY_DATABASE_URL,
-  process.env.NETLIFY_DATABASE_URL_UNPOOLED,
 ]
 
 let pool = null
@@ -183,11 +181,9 @@ function buildPoolConfig () {
     const missingKeys = [
       'DATABASE_URL',
       'DATABASE_URL_UNPOOLED',
-      'NETLIFY_DATABASE_URL',
-      'NETLIFY_DATABASE_URL_UNPOOLED',
     ].filter((key) => !process.env[key])
     console.warn('Database URL mangler.', sanitizeObject({ missingKeys }))
-    throw new Error('Database URL mangler. Sæt DATABASE_URL eller NETLIFY_DATABASE_URL(_UNPOOLED).')
+    throw new Error('Database URL mangler. Sæt DATABASE_URL eller DATABASE_URL_UNPOOLED.')
   }
   const useSsl = resolveSslSetting(databaseUrl)
   return {

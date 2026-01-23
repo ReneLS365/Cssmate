@@ -18,6 +18,7 @@ function redactDatabaseUrls (value) {
     `$1${REDACTED}@`
   )
   output = output.replace(/(DATABASE_URL[^=\s]*=)[^\s]+/gi, `$1${REDACTED}`)
+  output = output.replace(/(NETLIFY_DATABASE_URL[^=\s]*=)[^\s]+/gi, `$1${REDACTED}`)
   return output
 }
 

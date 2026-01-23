@@ -29,6 +29,7 @@ const casesById = new Map();
 let caseItems = [];
 let nextCursor = null;
 let hasMore = false;
+let seenCursorKeys = new Set();
 let activeFilters = null;
 let isLoading = false;
 let loadMoreBtn;
@@ -894,6 +895,16 @@ function resetCaseState() {
   caseItems = [];
   nextCursor = null;
   hasMore = false;
+  seenCursorKeys = new Set();
+}
+
+function getCursorKey(cursor) {
+  if (!cursor) return '';
+  try {
+    return JSON.stringify(cursor);
+  } catch {
+    return '';
+  }
 }
 
 function mergeEntries(entries, { prepend = false } = {}) {
@@ -942,8 +953,20 @@ async function fetchCasesPage({ reset = false, prepend = false } = {}) {
     } else {
       mergeEntries(items, { prepend: false });
     }
-    nextCursor = page?.nextCursor || null;
-    hasMore = Boolean(nextCursor);
+    const newCursor = page?.nextCursor || null;
+    const newCursorKey = getCursorKey(newCursor);
+    if (newCursorKey && seenCursorKeys.has(newCursorKey)) {
+      nextCursor = null;
+      hasMore = false;
+      updateSharedStatus('Stopper: serveren returnerede samme side igen.');
+      appendDebug('Load more stoppet: næste cursor gentog sig.');
+    } else {
+      if (newCursorKey) {
+        seenCursorKeys.add(newCursorKey);
+      }
+      nextCursor = newCursor;
+      hasMore = Boolean(nextCursor);
+    }
     return { entries: caseItems.slice(), filters };
   } finally {
     isLoading = false;
