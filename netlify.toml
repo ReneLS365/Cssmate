@@ -34,6 +34,11 @@
     [[plugins.inputs.audits]]
       path = "/"
 
+[[plugins]]
+  package = "netlify-plugin-no-more-404"
+  [plugins.inputs]
+    on404 = "warn"
+
 [[headers]]
   for = "/reset"
   [headers.values]
