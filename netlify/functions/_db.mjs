@@ -2,9 +2,11 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'fs/promises'
 import { Pool } from 'pg'
 import pathHelper from './_path.cjs'
+import { isProd } from './_context.mjs'
 import { sanitizeObject, safeError } from './_log.mjs'
 
 const DATABASE_SSL = process.env.DATABASE_SSL
+const DATABASE_PROD_HOSTS = parseHostList(process.env.DATABASE_PROD_HOSTS || '')
 const DATABASE_URL_CANDIDATES = [
   process.env.DATABASE_URL,
   process.env.DATABASE_URL_UNPOOLED,
@@ -158,6 +160,16 @@ function parseBoolean (value) {
   return null
 }
 
+function parseHostList (value) {
+  if (!value) return new Set()
+  return new Set(
+    String(value)
+      .split(',')
+      .map((entry) => entry.trim().toLowerCase())
+      .filter(Boolean)
+  )
+}
+
 function parseSslMode (urlString) {
   try {
     const url = new URL(urlString)
@@ -172,6 +184,33 @@ function parseSslMode (urlString) {
   } catch {
     return null
   }
+}
+
+function resolveDatabaseHost (databaseUrl) {
+  try {
+    const url = new URL(databaseUrl)
+    return url.hostname.toLowerCase()
+  } catch {
+    return ''
+  }
+}
+
+function assertDatabaseHostAllowed (databaseUrl) {
+  if (isProd()) return
+  if (!DATABASE_PROD_HOSTS.size) return
+  const host = resolveDatabaseHost(databaseUrl)
+  if (!host) return
+  if (DATABASE_PROD_HOSTS.has(host)) {
+    const context = String(process.env.CONTEXT || process.env.NETLIFY_CONTEXT || 'unknown')
+    throw new Error(
+      `Preview DB guard: DATABASE_URL host "${host}" er markeret som production. Afbryder i context "${context}".`
+    )
+  }
+}
+
+function shouldRunMigrations () {
+  if (isProd()) return true
+  return parseBoolean(process.env.ALLOW_DB_MIGRATIONS) === true
 }
 
 function resolveDatabaseUrl () {
@@ -213,6 +252,7 @@ function buildPoolConfig () {
     console.warn('Database URL mangler.', sanitizeObject({ missingKeys }))
     throw new Error('Database URL mangler. Sæt DATABASE_URL eller DATABASE_URL_UNPOOLED.')
   }
+  assertDatabaseHostAllowed(databaseUrl)
   const useSsl = resolveSslSetting(databaseUrl)
   return {
     connectionString: databaseUrl,
@@ -229,7 +269,7 @@ export async function getPoolRaw () {
 
 export async function getPool () {
   await getPoolRaw()
-  if (!migrationsEnsured) {
+  if (!migrationsEnsured && shouldRunMigrations()) {
     await ensureMigrations()
   }
   return pool
@@ -278,7 +318,9 @@ export async function ensureDbReady () {
   if (_dbReadyPromise) return _dbReadyPromise
   _dbReadyPromise = (async () => {
     await getPoolRaw()
-    await ensureMigrations()
+    if (shouldRunMigrations()) {
+      await ensureMigrations()
+    }
     const ready = await isDbReady()
     if (ready) {
       _dbReadyOkAt = Date.now()

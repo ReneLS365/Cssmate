@@ -24,4 +24,17 @@ BEGIN
   END LOOP;
 END $$;
 
-DROP TABLE IF EXISTS users;
+DO $$
+DECLARE
+  users_regclass regclass;
+  legacy_regclass regclass;
+BEGIN
+  users_regclass := to_regclass('public.users');
+  IF users_regclass IS NULL THEN
+    RETURN;
+  END IF;
+  legacy_regclass := to_regclass('public.users_legacy');
+  IF legacy_regclass IS NULL THEN
+    EXECUTE 'ALTER TABLE public.users RENAME TO users_legacy';
+  END IF;
+END $$;
