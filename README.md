@@ -151,10 +151,14 @@ Sørg for at Netlify Functions har adgang til databasen via env var:
 Kør migrations manuelt mod Neon/Postgres (idempotent):
 
 ```bash
-psql "$DATABASE_URL" -f migrations/001_init.sql
-psql "$DATABASE_URL" -f migrations/002_add_team_slug.sql
-psql "$DATABASE_URL" -f migrations/003_auth0_invites.sql
-psql "$DATABASE_URL" -f migrations/004_add_team_member_login.sql
+psql "$DATABASE_URL" -f netlify/functions/migrations/001_init.sql
+psql "$DATABASE_URL" -f netlify/functions/migrations/002_add_team_slug.sql
+psql "$DATABASE_URL" -f netlify/functions/migrations/003_auth0_invites.sql
+psql "$DATABASE_URL" -f netlify/functions/migrations/004_add_team_member_login.sql
+psql "$DATABASE_URL" -f netlify/functions/migrations/005_cases_indexes.sql
+psql "$DATABASE_URL" -f netlify/functions/migrations/006_cases_defaults.sql
+psql "$DATABASE_URL" -f netlify/functions/migrations/007_cases_workflow.sql
+psql "$DATABASE_URL" -f netlify/functions/migrations/008_auth0_member_profile.sql
 ```
 
 Valgfri: kør migrations via Netlify Function (one-off):
@@ -173,13 +177,17 @@ Kræver env var i Netlify:
 1. Sæt env vars i Netlify (se ovenfor).
 2. Verificér at `DATABASE_URL`/`DATABASE_URL_UNPOOLED` ikke er en dummy/placeholder.
 3. Kør migrations i rækkefølge:
-   - `migrations/001_init.sql`
-   - `migrations/002_add_team_slug.sql`
-   - `migrations/003_auth0_invites.sql`
-   - `migrations/004_add_team_member_login.sql`
+   - `netlify/functions/migrations/001_init.sql`
+   - `netlify/functions/migrations/002_add_team_slug.sql`
+   - `netlify/functions/migrations/003_auth0_invites.sql`
+   - `netlify/functions/migrations/004_add_team_member_login.sql`
+   - `netlify/functions/migrations/005_cases_indexes.sql`
+   - `netlify/functions/migrations/006_cases_defaults.sql`
+   - `netlify/functions/migrations/007_cases_workflow.sql`
+   - `netlify/functions/migrations/008_auth0_member_profile.sql`
 4. Deploy og verificér:
-   - Signup/login fungerer.
-   - Team access og bootstrap-claim fungerer på default-teamet.
+   - Auth0 login fungerer.
+   - Team access og medlemsregistrering fungerer på default-teamet.
 5. Ryd op i Netlify env vars: fjern evt. gamle, ubrugte auth-variabler.
 6. Prerendering håndteres via Netlify Prerender‑udvidelsen (se `docs/PRERENDERING.md`).
 

@@ -21,8 +21,6 @@
 
   [build.environment]
     NODE_VERSION = "22"
-    VITE_NETLIFY_CONTEXT = "${CONTEXT}"
-    VITE_NETLIFY_SITE_NAME = "${SITE_NAME}"
 
 [[plugins]]
   package = "netlify-plugin-a11y"
@@ -126,10 +124,17 @@
 [context.deploy-preview]
   command = "npm run build"
   publish = ".netlify_publish"
+  [context.deploy-preview.environment]
+    VITE_NETLIFY_CONTEXT = "deploy-preview"
 
 [context.branch-deploy]
   command = "npm run build"
   publish = ".netlify_publish"
+  [context.branch-deploy.environment]
+    VITE_NETLIFY_CONTEXT = "branch-deploy"
+
+[context.production.environment]
+  VITE_NETLIFY_CONTEXT = "production"
 
 [context.production.functions]
   included_files = [

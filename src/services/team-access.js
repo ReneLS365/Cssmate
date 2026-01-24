@@ -6,7 +6,7 @@ const TEAM_ACCESS_CACHE_MS = 30000
 
 // Auth0-first setup:
 // Team + rolle kommer udelukkende fra Auth0 token claims.
-// DB/Firestore må IKKE være kilde til medlemskab/roller.
+// Postgres gemmer medlemsrækker, men claims er autoritative for roller/privilegier.
 // Vi låser drift til DEFAULT_TEAM_SLUG ("hulmose") indtil multi-org mapping tilføjes.
 const DEFAULT_TEAM_SLUG = 'hulmose'
 const OWNER_ROLES = new Set(['sscaff_owner'])

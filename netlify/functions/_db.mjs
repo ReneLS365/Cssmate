@@ -34,8 +34,6 @@ async function ensureMigrations () {
   migrationPromise = (async () => {
     const client = await pool.connect()
     try {
-      const usersResult = await client.query("SELECT to_regclass('public.users') AS table_name")
-      const hasUsersTable = Boolean(usersResult.rows[0]?.table_name)
       const slugResult = await client.query(
         `SELECT 1
          FROM information_schema.columns
@@ -48,12 +46,20 @@ async function ensureMigrations () {
          WHERE table_schema = 'public' AND table_name = 'team_invites' AND column_name = 'token_hint'`
       )
       const hasInviteTokenHint = inviteTokenHintResult.rowCount > 0
-      const lastLoginResult = await client.query(
-        `SELECT 1
+      const memberColumnsResult = await client.query(
+        `SELECT
+           SUM(CASE WHEN column_name = 'last_login_at' THEN 1 ELSE 0 END) AS has_last_login,
+           SUM(CASE WHEN column_name = 'last_seen_at' THEN 1 ELSE 0 END) AS has_last_seen,
+           SUM(CASE WHEN column_name = 'display_name' THEN 1 ELSE 0 END) AS has_display_name
          FROM information_schema.columns
-         WHERE table_schema = 'public' AND table_name = 'team_members' AND column_name = 'last_login_at'`
+         WHERE table_schema = 'public'
+           AND table_name = 'team_members'
+           AND column_name IN ('last_login_at', 'last_seen_at', 'display_name')`
       )
-      const hasMemberLastLogin = lastLoginResult.rowCount > 0
+      const memberColumnsRow = memberColumnsResult.rows[0] || {}
+      const hasMemberLastLogin = Number(memberColumnsRow.has_last_login) > 0
+      const hasMemberLastSeen = Number(memberColumnsRow.has_last_seen) > 0
+      const hasMemberDisplayName = Number(memberColumnsRow.has_display_name) > 0
       const indexResult = await client.query(
         `SELECT
            to_regclass('public.team_cases_team_created_idx') IS NOT NULL AS has_team_created_idx,
@@ -98,7 +104,7 @@ async function ensureMigrations () {
       )
       const workflowRow = workflowColumnsResult.rows[0] || {}
       const hasWorkflowColumns = Boolean(Number(workflowRow.has_phase) > 0 && Number(workflowRow.has_last_editor_sub) > 0)
-      if (hasUsersTable && hasTeamSlug && hasInviteTokenHint && hasMemberLastLogin && hasCaseIndexes && hasCaseDefaults && hasWorkflowColumns) {
+      if (hasTeamSlug && hasInviteTokenHint && hasMemberLastLogin && hasMemberLastSeen && hasMemberDisplayName && hasCaseIndexes && hasCaseDefaults && hasWorkflowColumns) {
         migrationsEnsured = true
         return
       }
@@ -112,6 +118,7 @@ async function ensureMigrations () {
         readMigrationFile('005_cases_indexes.sql'),
         readMigrationFile('006_cases_defaults.sql'),
         readMigrationFile('007_cases_workflow.sql'),
+        readMigrationFile('008_auth0_member_profile.sql'),
       ])
       await client.query('BEGIN')
       for (const sql of migrations) {
@@ -245,15 +252,23 @@ export async function isDbReady () {
     const columnResult = await client.query(
       `SELECT
          SUM(CASE WHEN table_name = 'teams' AND column_name = 'slug' THEN 1 ELSE 0 END) > 0 AS has_team_slug,
-         SUM(CASE WHEN table_name = 'team_members' AND column_name = 'last_login_at' THEN 1 ELSE 0 END) > 0 AS has_member_last_login
+         SUM(CASE WHEN table_name = 'team_members' AND column_name = 'last_login_at' THEN 1 ELSE 0 END) > 0 AS has_member_last_login,
+         SUM(CASE WHEN table_name = 'team_members' AND column_name = 'last_seen_at' THEN 1 ELSE 0 END) > 0 AS has_member_last_seen,
+         SUM(CASE WHEN table_name = 'team_members' AND column_name = 'display_name' THEN 1 ELSE 0 END) > 0 AS has_member_display_name
        FROM information_schema.columns
        WHERE table_schema = 'public'
          AND (
            (table_name = 'teams' AND column_name = 'slug')
-           OR (table_name = 'team_members' AND column_name = 'last_login_at')
+           OR (table_name = 'team_members' AND column_name IN ('last_login_at', 'last_seen_at', 'display_name'))
          )`
     )
-    return Boolean(columnResult.rows[0]?.has_team_slug && columnResult.rows[0]?.has_member_last_login)
+    const columnRow = columnResult.rows[0] || {}
+    return Boolean(
+      columnRow.has_team_slug
+      && columnRow.has_member_last_login
+      && columnRow.has_member_last_seen
+      && columnRow.has_member_display_name
+    )
   } finally {
     client.release()
   }

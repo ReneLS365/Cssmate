@@ -6,6 +6,14 @@ const PREVIEW_CONTEXTS = new Set(['deploy-preview', 'branch-deploy'])
 
 let loggedDebug = false
 
+function sanitizeEnvContext (value) {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (!normalized) return ''
+  if (normalized.includes('${') || normalized.includes('}')) return ''
+  if (normalized === 'undefined' || normalized === 'null') return ''
+  return normalized
+}
+
 function readEnvContext () {
   const metaEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {}
   const embeddedEnv = typeof window !== 'undefined' ? (window.__ENV__ || {}) : {}
@@ -17,7 +25,7 @@ function readEnvContext () {
     || embeddedEnv.NETLIFY_CONTEXT
     || BUILD_CONTEXT
     || ''
-  return String(context || '').trim().toLowerCase()
+  return sanitizeEnvContext(context)
 }
 
 function readHostname () {

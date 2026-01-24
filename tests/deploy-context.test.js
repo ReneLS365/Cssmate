@@ -73,3 +73,12 @@ test('env context production overrides preview hostname heuristics', async () =>
     assert.equal(context.writesAllowed, true)
   })
 })
+
+test('bogus ${context} env value is ignored on production hostname', async () => {
+  await withWindowContext({ hostname: 'sscaff.netlify.app', env: { VITE_NETLIFY_CONTEXT: '${context}' } }, async () => {
+    const context = getDeployContext()
+    assert.equal(context.envContext, '')
+    assert.equal(context.context, 'production')
+    assert.equal(context.writesAllowed, true)
+  })
+})
