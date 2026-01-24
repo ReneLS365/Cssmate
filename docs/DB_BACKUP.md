@@ -8,6 +8,11 @@ Formålet er at sikre, at delte sager kan gendannes selv hvis hosting eller DB b
 - Gem filerne et sikkert sted (fx Google Drive/OneDrive + evt. USB-drev).
 - Del kun backup med betroede admins (filen indeholder sagsdata).
 
+## Før destruktive migrations
+
+- Tag altid en frisk backup før migrations der ændrer eller fjerner legacy-tabeller.
+- Migreringer der berører `users`-tabellen skal først bekræftes af en admin og køres i production-kontekst.
+
 ## Sådan laver du en backup
 
 1. Log ind som admin.
