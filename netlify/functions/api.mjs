@@ -25,7 +25,7 @@ const CASE_STATUS = {
   DEMONTAGE: 'demontage_i_gang',
   DONE: 'afsluttet',
 }
-const DB_NOT_MIGRATED_MESSAGE = 'DB er ikke migreret. Kør migrations/001_init.sql, migrations/002_add_team_slug.sql, migrations/003_auth0_invites.sql, migrations/004_add_team_member_login.sql, migrations/005_cases_indexes.sql, migrations/006_cases_defaults.sql og migrations/007_cases_workflow.sql mod Neon.'
+const DB_NOT_MIGRATED_MESSAGE = 'DB er ikke migreret. Kør netlify/functions/migrations/001_init.sql, netlify/functions/migrations/002_add_team_slug.sql, netlify/functions/migrations/003_auth0_invites.sql, netlify/functions/migrations/004_add_team_member_login.sql, netlify/functions/migrations/005_cases_indexes.sql, netlify/functions/migrations/006_cases_defaults.sql, netlify/functions/migrations/007_cases_workflow.sql og netlify/functions/migrations/008_auth0_member_profile.sql mod Neon.'
 let cachedMgmtToken = ''
 let cachedMgmtTokenExpiry = 0
 
@@ -253,6 +253,30 @@ function normalizeTeamSlug (value) {
   return normalized || DEFAULT_TEAM_SLUG
 }
 
+function sanitizeDisplayName (value) {
+  const trimmed = (value || '').toString().trim()
+  if (!trimmed) return ''
+  return trimmed.slice(0, 160)
+}
+
+function deriveMemberRole (user) {
+  return user.isOwner ? 'owner' : (user.isAdmin ? 'admin' : 'member')
+}
+
+function buildEphemeralMember (teamId, user) {
+  return {
+    team_id: teamId,
+    user_sub: user.id,
+    email: user.email || '',
+    display_name: sanitizeDisplayName(user.name),
+    role: deriveMemberRole(user),
+    status: 'active',
+    joined_at: null,
+    last_login_at: null,
+    last_seen_at: null,
+  }
+}
+
 function getRoutePath (event) {
   const rawPath = event.path || ''
   if (rawPath.startsWith('/.netlify/functions/api')) {
@@ -449,6 +473,11 @@ async function findTeamBySlug (slug) {
 
 async function ensureTeam (slug) {
   const normalizedSlug = normalizeTeamSlug(slug)
+  if (!isProd()) {
+    const existing = await findTeamBySlug(normalizedSlug)
+    if (existing) return existing
+    return { id: normalizedSlug, name: normalizedSlug, slug: normalizedSlug, created_at: null, created_by_sub: null }
+  }
   const result = await db.query(
     `INSERT INTO teams (id, name, slug, created_at, created_by_sub)
      VALUES (gen_random_uuid(), $1, $1, NOW(), NULL)
@@ -461,31 +490,39 @@ async function ensureTeam (slug) {
 
 async function getMember (teamId, userSub) {
   const result = await db.query(
-    'SELECT team_id, user_sub, email, role, status, joined_at, last_login_at FROM team_members WHERE team_id = $1 AND user_sub = $2',
+    `SELECT team_id, user_sub, email, display_name, role, status, joined_at, last_login_at, last_seen_at
+     FROM team_members
+     WHERE team_id = $1 AND user_sub = $2`,
     [teamId, userSub]
   )
   return result.rows[0] || null
 }
 
 async function upsertMemberFromUser (teamId, user) {
-  const role = user.isOwner ? 'owner' : (user.isAdmin ? 'admin' : 'member')
+  const role = deriveMemberRole(user)
+  const email = normalizeEmail(user.email)
+  const displayName = sanitizeDisplayName(user.name)
   const result = await db.query(
-    `INSERT INTO team_members (team_id, user_sub, email, role, status, joined_at, last_login_at)
-     VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+    `INSERT INTO team_members (team_id, user_sub, email, display_name, role, status, joined_at, last_login_at, last_seen_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW(), NOW())
      ON CONFLICT (team_id, user_sub)
      DO UPDATE SET
-       email = EXCLUDED.email,
+       email = COALESCE(NULLIF(EXCLUDED.email, ''), team_members.email),
+       display_name = COALESCE(NULLIF(EXCLUDED.display_name, ''), team_members.display_name),
        role = EXCLUDED.role,
        status = EXCLUDED.status,
-       last_login_at = NOW()
-     RETURNING team_id, user_sub, email, role, status, joined_at, last_login_at`,
-    [teamId, user.id, user.email, role, 'active']
+       last_login_at = NOW(),
+       last_seen_at = NOW(),
+       joined_at = COALESCE(team_members.joined_at, EXCLUDED.joined_at)
+     RETURNING team_id, user_sub, email, display_name, role, status, joined_at, last_login_at, last_seen_at`,
+    [teamId, user.id, email, displayName, role, 'active']
   )
   return result.rows[0] || null
 }
 
 async function requireTeamContext (event, teamSlug, { requireAdmin = false } = {}) {
   const user = await requireAuth(event)
+  const isProduction = isProd()
   const team = await ensureTeam(normalizeTeamSlug(teamSlug))
   if (requireAdmin && !user.isPrivileged) {
     throw createError('Kun admin kan udføre denne handling.', 403)
@@ -495,7 +532,9 @@ async function requireTeamContext (event, teamSlug, { requireAdmin = false } = {
   }
   let member = await getMember(team.id, user.id)
   if (!member) {
-    member = await upsertMemberFromUser(team.id, user)
+    member = isProduction
+      ? await upsertMemberFromUser(team.id, user)
+      : buildEphemeralMember(team.id, user)
   }
   if (!member || member.status !== 'active') {
     throw createError('Ingen adgang til teamet', 403)
@@ -519,16 +558,20 @@ async function requireTeamAdmin (teamId, userSub) {
 }
 
 function serializeMemberRow (row) {
+  const displayName = row.display_name || row.displayName || ''
   return {
     id: row.user_sub,
     uid: row.user_sub,
+    user_sub: row.user_sub,
+    userSub: row.user_sub,
     email: row.email || '',
-    displayName: row.display_name || '',
+    displayName,
     role: row.role || 'member',
     active: row.status === 'active',
     assigned: true,
     createdAt: row.joined_at ? new Date(row.joined_at).toISOString() : null,
     lastLoginAt: row.last_login_at ? new Date(row.last_login_at).toISOString() : null,
+    lastSeenAt: row.last_seen_at ? new Date(row.last_seen_at).toISOString() : null,
   }
 }
 
@@ -655,7 +698,7 @@ async function handleTeamGet (event) {
   await requireDbReady(event)
   const teamSlug = resolveTeamSlugFromRequest(event)
   const team = await ensureTeam(teamSlug)
-  const role = user.isOwner ? 'owner' : (user.isAdmin ? 'admin' : 'member')
+  const role = deriveMemberRole(user)
   return jsonResponse(200, { team: { id: team.id, name: team.name, slug: team.slug }, member: { role } })
 }
 
@@ -665,7 +708,7 @@ async function handleTeamAccess (event, teamSlug) {
   const normalizedSlug = normalizeTeamSlug(teamSlug)
   const team = await ensureTeam(normalizedSlug)
   if (user.isPrivileged) {
-    const role = user.isOwner ? 'owner' : (user.isAdmin ? 'admin' : 'member')
+    const role = deriveMemberRole(user)
     return jsonResponse(200, {
       status: 'ok',
       teamId: normalizedSlug,
@@ -675,6 +718,14 @@ async function handleTeamAccess (event, teamSlug) {
   }
   const member = await getMember(team.id, user.id)
   if (!member) {
+    if (!isProd()) {
+      return jsonResponse(200, {
+        status: 'ok',
+        teamId: normalizedSlug,
+        team: { id: team.id, name: team.name, slug: team.slug },
+        member: serializeMemberRow(buildEphemeralMember(team.id, user)),
+      })
+    }
     return jsonResponse(200, {
       status: 'missing',
       teamId: normalizedSlug,
@@ -702,10 +753,13 @@ async function handleTeamMembersList (event, teamSlug) {
   const team = await ensureTeam(normalizedSlug)
   if (!user.isPrivileged) {
     const member = await getMember(team.id, user.id)
+    if (!member && !isProd()) {
+      return jsonResponse(200, [serializeMemberRow(buildEphemeralMember(team.id, user))])
+    }
     return jsonResponse(200, member ? [serializeMemberRow(member)] : [])
   }
   const result = await db.query(
-    `SELECT team_id, user_sub, email, role, status, joined_at, last_login_at
+    `SELECT team_id, user_sub, email, display_name, role, status, joined_at, last_login_at, last_seen_at
      FROM team_members
      WHERE team_id = $1 AND status != 'removed'
      ORDER BY joined_at DESC NULLS LAST`,
@@ -785,20 +839,26 @@ async function handleInviteCreate (event, teamSlug) {
 async function handleTeamMemberSelfUpsert (event, teamSlug) {
   await requireDbReady(event)
   const user = await requireAuth(event)
+  const body = parseBody(event)
   const normalizedSlug = normalizeTeamSlug(teamSlug)
   const team = await ensureTeam(normalizedSlug)
-  const role = user.isOwner ? 'owner' : (user.isAdmin ? 'admin' : 'member')
+  const role = deriveMemberRole(user)
+  const email = normalizeEmail(user.email || body.email)
+  const displayName = sanitizeDisplayName(user.name || body.name || body.displayName)
   const result = await db.query(
-    `INSERT INTO team_members (team_id, user_sub, email, role, status, joined_at, last_login_at)
-     VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+    `INSERT INTO team_members (team_id, user_sub, email, display_name, role, status, joined_at, last_login_at, last_seen_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW(), NOW())
      ON CONFLICT (team_id, user_sub)
      DO UPDATE SET
-       email = EXCLUDED.email,
+       email = COALESCE(NULLIF(EXCLUDED.email, ''), team_members.email),
+       display_name = COALESCE(NULLIF(EXCLUDED.display_name, ''), team_members.display_name),
        role = EXCLUDED.role,
        status = EXCLUDED.status,
-       last_login_at = NOW()
-     RETURNING team_id, user_sub, email, role, status, joined_at, last_login_at`,
-    [team.id, user.id, user.email, role, 'active']
+       last_login_at = NOW(),
+       last_seen_at = NOW(),
+       joined_at = COALESCE(team_members.joined_at, EXCLUDED.joined_at)
+     RETURNING team_id, user_sub, email, display_name, role, status, joined_at, last_login_at, last_seen_at`,
+    [team.id, user.id, email, displayName, role, 'active']
   )
   return jsonResponse(200, { member: serializeMemberRow(result.rows[0]) })
 }

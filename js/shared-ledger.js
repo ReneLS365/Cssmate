@@ -40,7 +40,7 @@ class MembershipMissingError extends PermissionDeniedError {
     this.code = 'not-member'
     this.teamId = teamId
     this.uid = uid
-    this.expectedPath = teamId && uid ? `teams/${teamId}/members/${uid}` : ''
+    this.expectedPath = teamId && uid ? buildMemberDocPath(teamId, uid) : ''
   }
 }
 

@@ -9,7 +9,7 @@ import { resetAppState } from '../utils/reset-app.js'
 
 // Auth0-first:
 // - Team + roller styres i Auth0 (Organizations + Roles/Permissions)
-// - DB/Firestore er IKKE kilde til membership/rolle
+// - Postgres gemmer medlemsrækker, men Auth0 claims er autoritative
 // - UI skal ikke lække teamId som input
 
 function setText (el, text) {
@@ -136,9 +136,9 @@ async function renderMembers (membersListEl, statusEl, baseStatus = '', teamId, 
     const members = await membersPromise
     membersListEl.textContent = ''
     const normalized = members.map(member => ({
-      user_id: member?.user_id || member?.userId || '',
+      userSub: member?.userSub || member?.user_sub || member?.id || member?.uid || '',
       email: member?.email || '',
-      name: member?.displayName || member?.name || '',
+      name: member?.displayName || member?.display_name || member?.name || '',
     }))
 
     if (!normalized.length) {

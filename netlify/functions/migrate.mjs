@@ -9,6 +9,10 @@ const MIGRATION_FILES = [
   '002_add_team_slug.sql',
   '003_auth0_invites.sql',
   '004_add_team_member_login.sql',
+  '005_cases_indexes.sql',
+  '006_cases_defaults.sql',
+  '007_cases_workflow.sql',
+  '008_auth0_member_profile.sql',
 ]
 
 const { resolveFromFunctionsDir } = pathHelper
