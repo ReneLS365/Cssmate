@@ -1,7 +1,7 @@
 import { BUILD_CONTEXT } from '../version.js'
 import { isDebugOverlayEnabled } from '../state/debug.js'
 
-const PROD_HOSTNAME = 'sscaff.netlify.app'
+const PROD_HOSTS = new Set(['sscaff.netlify.app'])
 const PREVIEW_CONTEXTS = new Set(['deploy-preview', 'branch-deploy'])
 
 let loggedDebug = false
@@ -38,7 +38,7 @@ function computePreviewFromHostname (hostname) {
   const isDeployPreview = hostname.startsWith('deploy-preview-')
   const isBranchDeploy = hostname.includes('--')
     && hostname.endsWith('.netlify.app')
-    && hostname !== PROD_HOSTNAME
+    && !PROD_HOSTS.has(hostname)
   return {
     isDeployPreview,
     isBranchDeploy,
@@ -58,17 +58,22 @@ export function getDeployContext () {
   const hostname = readHostname()
   const envContext = readEnvContext()
   const previewFromHost = computePreviewFromHostname(hostname)
+  const isKnownProdHost = PROD_HOSTS.has(hostname)
 
-  const hasEnvContext = Boolean(envContext)
-  const isProduction = hasEnvContext
-    ? envContext === 'production'
-    : !previewFromHost.isPreview
-  const isPreview = hasEnvContext
-    ? PREVIEW_CONTEXTS.has(envContext)
-    : previewFromHost.isPreview
+  let resolvedContext = 'production'
+  if (isKnownProdHost) {
+    resolvedContext = 'production'
+  } else if (envContext) {
+    resolvedContext = envContext
+  } else if (previewFromHost.isDeployPreview) {
+    resolvedContext = 'deploy-preview'
+  } else if (previewFromHost.isBranchDeploy) {
+    resolvedContext = 'branch-deploy'
+  }
 
-  const resolvedContext = envContext || (isPreview ? 'deploy-preview' : 'production')
-  const writesAllowed = isProduction && !isPreview
+  const isPreview = PREVIEW_CONTEXTS.has(resolvedContext)
+  const isProduction = resolvedContext === 'production'
+  const writesAllowed = isProduction
 
   const details = {
     context: resolvedContext,
