@@ -2,6 +2,8 @@ import { getAuthContext, waitForAuthReady } from './shared-auth.js'
 import { apiJson } from '../src/api/client.js'
 import { updateTeamDebugState } from '../src/state/debug.js'
 import { sha256Hex } from '../src/lib/sha256.js'
+import { getDeployContext, getPreviewWriteDisabledMessage } from '../src/lib/deploy-context.js'
+import { isDebugOverlayEnabled } from '../src/state/debug.js'
 import {
   DEFAULT_TEAM_ID,
   DEFAULT_TEAM_SLUG,
@@ -60,6 +62,41 @@ const teamCache = {
 let queueListenerBound = false
 let queueFlushInFlight = false
 let sharedCaseContext = null
+
+function debugLog (label, details = {}) {
+  if (!isDebugOverlayEnabled()) return
+  const safeDetails = details && typeof details === 'object'
+    ? Object.fromEntries(Object.entries(details).filter(([key]) => !/token|secret|password/i.test(key)))
+    : details
+  try {
+    console.info(`[shared-ledger] ${label}`, safeDetails)
+  } catch {}
+}
+
+function createPreviewDisabledError (action, context) {
+  const error = new Error(getPreviewWriteDisabledMessage())
+  error.code = 'preview-disabled'
+  error.status = 403
+  error.action = action
+  error.context = context?.context || ''
+  return error
+}
+
+function ensureWritesAllowed (action) {
+  const context = getDeployContext()
+  const allowed = context.writesAllowed
+  debugLog('writes-check', {
+    action,
+    allowed,
+    context: context.context,
+    hostname: context.hostname,
+    isPreview: context.isPreview,
+  })
+  if (allowed) return context
+  const error = createPreviewDisabledError(action, context)
+  debugLog('writes-blocked', { action, context: context.context, hostname: context.hostname })
+  throw error
+}
 
 function normalizeSharedCaseContext(value) {
   if (!value || typeof value !== 'object') return null
@@ -353,6 +390,7 @@ export async function getTeamDocument(teamId) {
 }
 
 export async function publishSharedCase({ teamId, jobNumber, caseKind, system, totals, status = 'kladde', jsonContent, phaseHint, caseId: explicitCaseId, ifMatchUpdatedAt }) {
+  ensureWritesAllowed('publishSharedCase')
   const { teamId: resolvedTeamId, membership, actor } = await getTeamContext(teamId)
   const normalizedJobNumber = normalizeJobNumber(jobNumber)
   const caseId = isValidUuid(explicitCaseId)
@@ -396,6 +434,7 @@ export async function publishSharedCase({ teamId, jobNumber, caseKind, system, t
 async function publishQueuedEntry (entry) {
   const normalized = normalizeQueuedEntry(entry)
   if (!normalized) return false
+  ensureWritesAllowed('publishQueuedEntry')
   const { teamId: resolvedTeamId } = await getTeamContext(normalized.teamId)
   const payload = {
     caseId: isValidUuid(normalized.caseId) ? normalized.caseId : await buildStableCaseId({
@@ -433,6 +472,10 @@ export async function flushSharedCasesQueue () {
       await publishQueuedEntry(entry)
       flushed += 1
     } catch (error) {
+      if (error?.code === 'preview-disabled') {
+        remaining.push(entry)
+        break
+      }
       const isNetworkError = error instanceof TypeError || /network|offline|failed to fetch/i.test(error?.message || '')
       const updated = { ...entry, retries: (entry?.retries || 0) + 1 }
       remaining.push(updated)
@@ -540,6 +583,7 @@ export async function getSharedCase(teamId, caseId) {
 }
 
 export async function deleteSharedCase(teamId, caseId) {
+  ensureWritesAllowed('deleteSharedCase')
   const entry = await getSharedCase(teamId, caseId)
   if (!entry) return false
   const { teamId: resolvedTeamId } = await getTeamContext(teamId)
@@ -548,6 +592,7 @@ export async function deleteSharedCase(teamId, caseId) {
 }
 
 export async function approveSharedCase(teamId, caseId, { ifMatchUpdatedAt } = {}) {
+  ensureWritesAllowed('approveSharedCase')
   const { teamId: resolvedTeamId } = await getTeamContext(teamId)
   return await apiJson(`/api/teams/${resolvedTeamId}/cases/${caseId}/approve`, {
     method: 'POST',
@@ -571,6 +616,7 @@ export async function importCasePayload(teamId, caseId) {
 }
 
 export async function exportSharedBackup(teamId, { includeDeleted = false } = {}) {
+  ensureWritesAllowed('exportSharedBackup')
   const { teamId: resolvedTeamId } = await getTeamContext(teamId, { requireAdmin: true })
   const params = new URLSearchParams()
   if (includeDeleted) params.set('includeDeleted', '1')
@@ -586,6 +632,7 @@ export function validateBackupSchema(payload) {
 }
 
 export async function importSharedBackup(teamId, payload) {
+  ensureWritesAllowed('importSharedBackup')
   const { teamId: resolvedTeamId } = await getTeamContext(teamId, { requireAdmin: true })
   const validated = validateBackupSchema(payload)
   await apiJson(`/api/teams/${resolvedTeamId}/backup`, {

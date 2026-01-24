@@ -1,6 +1,8 @@
 import { getAuthContext } from '../../js/shared-auth.js'
 import { getToken } from '../auth/auth0-client.js'
 import { getState as getSessionState, onChange as onSessionChange } from '../auth/session.js'
+import { getDeployContext } from '../lib/deploy-context.js'
+import { getUserOrgId, getUserSub } from '../lib/auth0-user.js'
 import { registerTeamMemberOnce } from '../services/team-members.js'
 import { DEFAULT_TEAM_SLUG, formatTeamId } from '../services/team-ids.js'
 import { resetAppState } from '../utils/reset-app.js'
@@ -72,22 +74,65 @@ async function fetchTeamMembers (teamId) {
 
 let membersPromise = null
 let membersKey = ''
+let memberRegistrationKey = ''
+let memberRegistrationStatus = 'idle'
+let memberRegistrationMessage = ''
 
-async function renderMembers (membersListEl, statusEl, baseStatus = '', teamId, shouldRefresh = false) {
+function setRegistrationState (status, message = '') {
+  memberRegistrationStatus = status
+  memberRegistrationMessage = message || ''
+}
+
+function describeRegistrationError (error, deployContext) {
+  const message = (error?.message || '').toString()
+  const normalized = message.toLowerCase()
+  if (error?.code === 'preview-disabled' || normalized.includes('writes disabled in preview deployments')) {
+    return 'Writes er slået fra i deploy preview (deploy-preview/branch deploy). Åbn production-linket for at kunne dele.'
+  }
+  if (error?.status === 401) return 'Login er udløbet. Log ind igen.'
+  if (error?.status === 403) return 'Du har ikke rettigheder til at registrere medlemmet.'
+  if (!deployContext?.hostname) return error?.message || 'Kunne ikke registrere medlem.'
+  return error?.message || 'Kunne ikke registrere medlem.'
+}
+
+async function renderMembers (membersListEl, statusEl, baseStatus = '', teamId, { shouldRefresh = false, user = null, role = '' } = {}) {
   if (!membersListEl) return
   membersListEl.textContent = ''
-  if (shouldRefresh) membersPromise = null
+  if (shouldRefresh) {
+    membersPromise = null
+    memberRegistrationKey = ''
+    setRegistrationState('idle', '')
+  }
   if (!membersPromise) {
     const resolvedTeamId = formatTeamId(teamId || DEFAULT_TEAM_SLUG)
-    const authCtx = getAuthContext()
-    const currentUser = authCtx?.user || null
-    await registerTeamMemberOnce({ teamId: resolvedTeamId, userId: currentUser?.uid || currentUser?.sub || '' })
+    const currentUser = user || getAuthContext()?.user || null
+    const deployContext = getDeployContext()
+    const sub = getUserSub(currentUser)
+    const orgId = getUserOrgId(currentUser)
+    const registrationKey = `${resolvedTeamId}:${sub}:${role}:${orgId}`
+
+    if (sub && registrationKey !== memberRegistrationKey) {
+      memberRegistrationKey = registrationKey
+      setRegistrationState('loading', 'Registrerer medlem…')
+      try {
+        await registerTeamMemberOnce({ teamId: resolvedTeamId, user: currentUser, role, orgId })
+        setRegistrationState('ok', 'Connected til Auth0 (medlem registreret).')
+      } catch (error) {
+        const message = describeRegistrationError(error, deployContext)
+        const status = error?.code === 'preview-disabled' ? 'preview-disabled' : 'error'
+        setRegistrationState(status, message)
+      }
+    } else if (!sub) {
+      setRegistrationState('error', 'Auth0 sub mangler – kan ikke registrere medlem.')
+    }
+
     membersPromise = fetchTeamMembers(resolvedTeamId).finally(() => {
       membersPromise = null
     })
   }
   try {
-    setText(statusEl, 'Henter medlemmer…')
+    const loadingMessage = memberRegistrationStatus === 'loading' ? memberRegistrationMessage : 'Henter medlemmer…'
+    setText(statusEl, loadingMessage)
     const members = await membersPromise
     membersListEl.textContent = ''
     const normalized = members.map(member => ({
@@ -104,7 +149,8 @@ async function renderMembers (membersListEl, statusEl, baseStatus = '', teamId, 
     } else {
       normalized.forEach(member => membersListEl.appendChild(buildMemberRow(member)))
     }
-    setText(statusEl, baseStatus)
+    const statusMessage = memberRegistrationMessage || baseStatus
+    setText(statusEl, statusMessage)
   } catch (error) {
     membersListEl.textContent = ''
     const isDbNotMigrated = error?.code === 'DB_NOT_MIGRATED'
@@ -114,7 +160,14 @@ async function renderMembers (membersListEl, statusEl, baseStatus = '', teamId, 
       errorEl.textContent = error?.message || 'Kunne ikke hente medlemmer.'
       membersListEl.appendChild(errorEl)
     }
-    setText(statusEl, isDbNotMigrated ? (error?.message || '') : baseStatus)
+    if (isDbNotMigrated) {
+      setText(statusEl, error?.message || '')
+      return
+    }
+    const statusMessage = memberRegistrationStatus === 'error' || memberRegistrationStatus === 'preview-disabled'
+      ? memberRegistrationMessage
+      : baseStatus
+    setText(statusEl, statusMessage)
   }
 }
 
@@ -144,6 +197,7 @@ function render () {
   const user = authContext?.user || {}
   const role = resolveAuthRole(user)
   const teamId = formatTeamId(state?.teamId || DEFAULT_TEAM_SLUG)
+  const deployContext = getDeployContext()
   setText(statusUser, user?.displayName || user?.name || user?.email || '—')
   setText(statusEmail, user?.email || '—')
 
@@ -159,17 +213,21 @@ function render () {
   if (adminLists) setHidden(adminLists, !isAuthed)
   if (teamAdminSection) setHidden(teamAdminSection, !isAuthed)
   setText(connectedState, isAuthed ? 'Ja' : 'Nej')
-  setText(connectedAuth0, authContext?.isReady ? 'klar' : 'venter')
+  setText(connectedAuth0, authContext?.isReady ? (deployContext.isPreview ? `klar (${deployContext.context})` : 'klar') : 'venter')
   setText(connectedOrg, authContext?.user?.orgId || '–')
   setText(connectedTeam, teamId || '–')
   const displayRole = isAuthed ? (state?.role || (isAdmin ? 'admin' : 'member')) : ''
   setText(connectedRole, displayRole || '–')
 
   if (isAuthed) {
-    const key = `${teamId}:${user?.email || user?.uid || ''}:${isAdmin ? 'admin' : 'member'}`
+    const key = `${teamId}:${getUserSub(user)}:${displayRole}`
     const shouldRefresh = key !== membersKey
     membersKey = key
-    renderMembers(teamMembersList, statusEl, baseStatus, teamId, shouldRefresh)
+    renderMembers(teamMembersList, statusEl, baseStatus, teamId, {
+      shouldRefresh,
+      user,
+      role: displayRole,
+    })
   }
 }
 

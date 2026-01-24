@@ -288,7 +288,12 @@ async function evaluateAccess () {
       accessDetail: accessResult || null,
     })
     if (membershipStatus === 'member') {
-      void registerTeamMemberOnce({ teamId: resolvedTeamId, userId: currentUser?.uid || '' })
+      void registerTeamMemberOnce({
+        teamId: resolvedTeamId,
+        user: currentUser,
+        role,
+        orgId: currentUser?.orgId || accessResult?.orgId || '',
+      }).catch(() => {})
     }
     teamDebug('session-access', {
       status: nextState.status,

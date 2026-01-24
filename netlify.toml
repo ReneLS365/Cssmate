@@ -21,6 +21,8 @@
 
   [build.environment]
     NODE_VERSION = "22"
+    VITE_NETLIFY_CONTEXT = "${CONTEXT}"
+    VITE_NETLIFY_SITE_NAME = "${SITE_NAME}"
 
 [[plugins]]
   package = "netlify-plugin-a11y"
