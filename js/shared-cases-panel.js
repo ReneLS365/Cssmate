@@ -7,6 +7,7 @@ import { initAuthSession, onChange as onSessionChange, getState as getSessionSta
 import { TEAM_ACCESS_STATUS } from '../src/services/team-access.js';
 import { normalizeSearchValue, formatDateLabel } from './history-normalizer.js';
 import { showToast } from '../src/ui/toast.js';
+import { getPreviewWriteDisabledMessage } from '../src/lib/deploy-context.js';
 
 let sharedCasesPanelInitialized = false;
 let refreshBtn;
@@ -38,6 +39,7 @@ const UI_STORAGE_KEY = 'cssmate:shared-cases:ui:v1';
 const CASE_META_CACHE = new Map();
 const DATE_INPUT_FORMATTER = new Intl.DateTimeFormat('sv-SE');
 const CURRENCY_FORMATTER = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const PREVIEW_WRITE_MESSAGE = getPreviewWriteDisabledMessage();
 const BOARD_COLUMNS = [
   { id: 'kladde', label: 'Kladde', hint: 'Private kladder (kun dig).' },
   { id: 'godkendt', label: 'Montage klar til demontage', hint: 'Klar til demontage-hold.' },
@@ -85,6 +87,9 @@ function describePermissionError (error, attemptedTeamId) {
   const message = (error?.message || '').toString();
   const normalized = message.toLowerCase();
   const code = error?.code || '';
+  if (code === 'preview-disabled' || normalized.includes('writes disabled in preview deployments')) {
+    return PREVIEW_WRITE_MESSAGE;
+  }
   if (error instanceof MembershipMissingError) {
     const uid = sessionState?.user?.uid || 'uid';
     return formatMissingMembershipMessage(error.teamId || attemptedTeamId, uid);
