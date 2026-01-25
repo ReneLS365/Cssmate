@@ -357,6 +357,11 @@ function resolveCaseStatusBucket(status) {
   return 'andet';
 }
 
+function resolveEntryBucket(entry) {
+  if (entry?.__viewBucket) return entry.__viewBucket;
+  return resolveCaseStatusBucket(entry?.status);
+}
+
 function formatStatusLabel(status) {
   const bucket = resolveCaseStatusBucket(status);
   if (bucket === 'kladde') return 'Kladde';
@@ -364,6 +369,15 @@ function formatStatusLabel(status) {
   if (bucket === 'demontage_i_gang') return 'Demontage i gang';
   if (bucket === 'afsluttet') return 'Afsluttet';
   return status || 'Ukendt';
+}
+
+function formatEntryStatusLabel(entry) {
+  const bucket = resolveEntryBucket(entry);
+  if (bucket === 'afsluttet') {
+    if (!entry?.attachments?.demontage) return 'Afsluttet montage';
+    return 'Afsluttet';
+  }
+  return formatStatusLabel(entry?.status);
 }
 
 function resolvePhaseForEntry(entry) {
@@ -513,7 +527,7 @@ function matchesFilters(entry, meta, filters) {
   const searchIndex = buildSearchIndex(entry, meta);
   const matchesSearch = tokens.length === 0
     || tokens.every(token => searchIndex.some(value => value.includes(token)));
-  const statusMatch = !filters.status || resolveCaseStatusBucket(entry.status) === filters.status;
+  const statusMatch = !filters.status || resolveEntryBucket(entry) === filters.status;
   const kindValue = (entry.caseKind || meta?.jobType || '').toLowerCase();
   const kindMatch = !filters.kind || kindValue === filters.kind;
   const date = resolveCaseDate(entry, meta);
@@ -548,7 +562,13 @@ function buildAttachmentBundle(entry) {
   const demontage = attachments.demontage || null;
   const receipt = attachments.receipt || null;
   if (!montage && !demontage && !receipt) return null;
-  return { montage, demontage, receipt };
+  return {
+    caseId: entry?.caseId || '',
+    jobNumber: entry?.jobNumber || '',
+    montage,
+    demontage,
+    receipt,
+  };
 }
 
 function downloadAttachmentBundle(entry) {
@@ -560,7 +580,7 @@ function downloadAttachmentBundle(entry) {
 }
 
 async function handleJsonDownloadForEntry(entry) {
-  const statusBucket = resolveCaseStatusBucket(entry?.status);
+  const statusBucket = resolveEntryBucket(entry);
   if (statusBucket === 'afsluttet') {
     downloadAttachmentBundle(entry);
     return;
@@ -609,36 +629,84 @@ async function handlePdfDownloadFromContent(content, entry, suffix) {
   downloadBlob(payload.blob, `${entry.jobNumber || 'akkord'}-${entry.caseId}${label}.pdf`);
 }
 
+function safeNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function extractTotalsFromSheet(sheet) {
+  let source = sheet;
+  if (typeof sheet === 'string') {
+    try {
+      source = JSON.parse(sheet);
+    } catch {
+      return { materials: 0, total: 0, hours: 0 };
+    }
+  }
+  const totals = source?.totals || source?.summary?.totals || source?.result?.totals;
+  if (!totals) return { materials: 0, total: 0, hours: 0 };
+  const totalValue = totals.total ?? totals.project ?? totals.akkord ?? totals.montage ?? totals.demontage;
+  return {
+    materials: safeNumber(totals.materials),
+    total: safeNumber(totalValue),
+    hours: safeNumber(totals.hours || totals.timer || totals.time),
+  };
+}
+
 function resolveReceiptTotals(entry) {
   const totals = entry?.attachments?.receipt?.totals || null;
   if (!totals) return null;
   return {
-    materials: Number(totals.materials) || 0,
-    montage: Number(totals.montage) || 0,
-    demontage: Number(totals.demontage) || 0,
-    total: Number(totals.total) || 0,
-    hours: Number(totals.hours) || 0,
+    materials: safeNumber(totals.materials),
+    montage: safeNumber(totals.montage),
+    demontage: safeNumber(totals.demontage),
+    total: safeNumber(totals.total),
+    hours: safeNumber(totals.hours),
   };
 }
 
 function renderReceiptSummary(entry) {
   const wrapper = document.createElement('div');
-  const receipt = entry?.attachments?.receipt || {};
-  const totals = resolveReceiptTotals(entry);
-  const hasBoth = receipt?.hasMontage && receipt?.hasDemontage;
-  if (!totals || !hasBoth) {
+  const receipt = entry?.attachments?.receipt || null;
+  const receiptTotals = resolveReceiptTotals(entry);
+  const montageSheet = entry?.attachments?.montage || null;
+  const demontageSheet = entry?.attachments?.demontage || null;
+  const hasMontage = Boolean(montageSheet);
+  const hasDemontage = Boolean(demontageSheet);
+  const montageTotals = extractTotalsFromSheet(montageSheet);
+  const demontageTotals = extractTotalsFromSheet(demontageSheet);
+  const totals = receiptTotals || {
+    materials: montageTotals.materials + demontageTotals.materials,
+    montage: montageTotals.total,
+    demontage: demontageTotals.total,
+    total: montageTotals.total + demontageTotals.total,
+    hours: montageTotals.hours + demontageTotals.hours,
+  };
+
+  if (!hasMontage && !hasDemontage && !receiptTotals) {
     const message = document.createElement('p');
-    message.textContent = 'Kvittering er kun klar når både montage og demontage er eksportet.';
+    message.textContent = 'Ingen montage/demontage er tilgængelig endnu.';
     wrapper.appendChild(message);
     return wrapper;
   }
+
+  if (!hasDemontage) {
+    const message = document.createElement('p');
+    message.textContent = 'Montage afsluttet – venter på demontage.';
+    wrapper.appendChild(message);
+  } else if (!hasMontage) {
+    const message = document.createElement('p');
+    message.textContent = 'Demontage afsluttet – montage mangler i oversigten.';
+    wrapper.appendChild(message);
+  }
+
   const rows = [
     { label: 'Materialer', value: `${CURRENCY_FORMATTER.format(totals.materials)} kr.` },
-    { label: 'Montage', value: `${CURRENCY_FORMATTER.format(totals.montage)} kr.` },
-    { label: 'Demontage', value: `${CURRENCY_FORMATTER.format(totals.demontage)} kr.` },
+    hasMontage ? { label: 'Montage', value: `${CURRENCY_FORMATTER.format(totals.montage)} kr.` } : null,
+    hasDemontage ? { label: 'Demontage', value: `${CURRENCY_FORMATTER.format(totals.demontage)} kr.` } : null,
     { label: 'Timer', value: `${HOURS_FORMATTER.format(totals.hours)} t.` },
     { label: 'Projektsum', value: `${CURRENCY_FORMATTER.format(totals.total)} kr.` },
-  ];
+  ].filter(Boolean);
   rows.forEach(row => {
     const line = document.createElement('div');
     const label = document.createElement('span');
@@ -758,7 +826,7 @@ function renderApprovalSummary(entry) {
 function createCaseActions(entry, userId, onChange) {
   const container = document.createElement('div');
   container.className = 'shared-case-actions';
-  const statusBucket = resolveCaseStatusBucket(entry.status);
+  const statusBucket = resolveEntryBucket(entry);
 
   if (statusBucket !== 'afsluttet') {
     const importBtn = document.createElement('button');
@@ -942,7 +1010,7 @@ function createCaseActions(entry, userId, onChange) {
     container.appendChild(finishBtn);
   }
 
-  if (entry.createdBy === userId || isAdminUser()) {
+  if (statusBucket !== 'afsluttet' && (entry.createdBy === userId || isAdminUser())) {
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
     deleteBtn.textContent = 'Soft delete';
@@ -986,7 +1054,7 @@ function renderCaseCard(entry, userId, onChange) {
   title.textContent = meta.jobNumber || entry.jobNumber || 'Ukendt sag';
   const badge = document.createElement('span');
   badge.className = 'shared-case-card__badge';
-  badge.textContent = formatStatusLabel(entry.status);
+  badge.textContent = formatEntryStatusLabel(entry);
   top.appendChild(title);
   top.appendChild(badge);
 
@@ -1050,7 +1118,7 @@ function renderBoard(entries, userId, onChange) {
     buckets.set(column.id, []);
   });
   entries.forEach(entry => {
-    const bucketId = resolveCaseStatusBucket(entry.status);
+    const bucketId = resolveEntryBucket(entry);
     const bucket = buckets.get(bucketId) || buckets.get('andet');
     bucket.push(entry);
   });
@@ -1173,9 +1241,22 @@ function getActiveFilters() {
   return activeFilters || getFilters();
 }
 
+function expandEntriesForDisplay(entries) {
+  const expanded = [];
+  entries.forEach(entry => {
+    expanded.push(entry);
+    const bucket = resolveCaseStatusBucket(entry?.status);
+    if (bucket !== 'afsluttet' && entry?.attachments?.montage) {
+      expanded.push({ ...entry, __viewBucket: 'afsluttet' });
+    }
+  });
+  return expanded;
+}
+
 function renderFromState(container, userId) {
   const filters = getActiveFilters();
-  const filtered = caseItems.filter(entry => {
+  const displayEntries = expandEntriesForDisplay(caseItems);
+  const filtered = displayEntries.filter(entry => {
     const meta = resolveCaseMeta(entry);
     return matchesFilters(entry, meta, filters);
   });

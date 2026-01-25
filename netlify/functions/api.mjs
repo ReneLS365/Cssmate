@@ -1284,10 +1284,26 @@ async function handleCaseApprove (event, teamSlug, caseId) {
     isCreator,
   })
 
+  const storedAttachments = row.attachments && typeof row.attachments === 'object' ? row.attachments : {}
+  const attachments = { ...storedAttachments }
+  let totals = row.totals || { materials: 0, montage: 0, demontage: 0, total: 0 }
+  const approvingMontage = [CASE_STATUS.DRAFT, CASE_STATUS.READY].includes(currentStatus) && nextStatus === CASE_STATUS.APPROVED
+  if (approvingMontage && !attachments.montage) {
+    attachments.montage = row.json_content || null
+  }
+  if (nextStatus === CASE_STATUS.DONE) {
+    if (!attachments.montage && row.json_content) {
+      attachments.montage = row.json_content
+    }
+    const receipt = computeReceipt({ montageSheet: attachments.montage, demontageSheet: attachments.demontage })
+    attachments.receipt = receipt
+    totals = receipt.totals
+  }
+
   await db.query(
-    `UPDATE team_cases SET status = $1, phase = $2, updated_at = NOW(), last_updated_at = NOW(), updated_by = $3, last_editor_sub = $3
-     WHERE team_id = $4 AND case_id = $5`,
-    [nextStatus, nextPhase, user.id, team.id, caseId]
+    `UPDATE team_cases SET status = $1, phase = $2, totals = $3::jsonb, attachments = $4::jsonb, updated_at = NOW(), last_updated_at = NOW(), updated_by = $5, last_editor_sub = $5
+     WHERE team_id = $6 AND case_id = $7`,
+    [nextStatus, nextPhase, JSON.stringify(totals), JSON.stringify(attachments), user.id, team.id, caseId]
   )
   const updated = await db.query(
     `SELECT c.*, t.slug as team_slug
