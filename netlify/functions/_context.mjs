@@ -13,9 +13,11 @@ function hostnameFromUrl (u) {
 export function getDeployContext () {
   // Prefer URL-based detection because it is the most reliable signal in Netlify Functions runtime.
   // These env vars exist in Netlify deploy/runtime (may vary by context).
-  const url = normalize(process.env.URL) // primary site url
-  const deployUrl = normalize(process.env.DEPLOY_URL) // current deploy url
-  const primeUrl = normalize(process.env.DEPLOY_PRIME_URL) // deploy preview or branch url
+  // NOTE: Some Netlify Functions runtimes do not populate URL/DEPLOY_URL reliably.
+  // APP_ORIGIN is already configured in the Netlify site env and is a strong fallback.
+  const url = normalize(process.env.URL || process.env.SITE_URL || process.env.APP_ORIGIN) // primary site url
+  const deployUrl = normalize(process.env.DEPLOY_URL || process.env.DEPLOY_PRIME_URL || process.env.APP_ORIGIN) // current deploy url
+  const primeUrl = normalize(process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL) // deploy preview or branch url
 
   const hUrl = hostnameFromUrl(url)
   const hDeploy = hostnameFromUrl(deployUrl)
@@ -33,6 +35,11 @@ export function getDeployContext () {
 
   // If deploy hostname equals the primary site hostname → production
   if (hUrl && hDeploy && hUrl === hDeploy) return 'production'
+
+  // If we have a primary hostname but no deploy hostname, and we're on Netlify runtime,
+  // assume production (common when only APP_ORIGIN is available).
+  const onNetlify = normalize(process.env.NETLIFY).toLowerCase() === 'true'
+  if (onNetlify && hUrl && !hDeploy && !hPrime) return 'production'
 
   // Fallback to Netlify context vars if present
   const ctx = normalize(

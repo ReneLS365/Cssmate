@@ -1,7 +1,7 @@
 import { db, ensureDbReady } from './_db.mjs'
 import { generateToken, getAuth0Config, hashToken, secureCompare, verifyToken } from './_auth.mjs'
 import { safeError } from './_log.mjs'
-import { isProd } from './_context.mjs'
+import { getDeployContext, isProd } from './_context.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' }
 const DEFAULT_TEAM_SLUG = process.env.DEFAULT_TEAM_SLUG || 'hulmose'
@@ -1359,6 +1359,15 @@ export const __test = {
 }
 
 export async function handler (event) {
+  if (process.env.DEBUG_CONTEXT === '1') {
+    console.log('[context]', {
+      deployContext: getDeployContext(),
+      URL: Boolean(process.env.URL),
+      DEPLOY_URL: Boolean(process.env.DEPLOY_URL),
+      DEPLOY_PRIME_URL: Boolean(process.env.DEPLOY_PRIME_URL),
+      APP_ORIGIN: process.env.APP_ORIGIN ? '[set]' : '[missing]',
+    })
+  }
   const handlerStart = Date.now()
   event.__timings = []
   const withTiming = (response) => applyServerTiming(event, response, handlerStart)
