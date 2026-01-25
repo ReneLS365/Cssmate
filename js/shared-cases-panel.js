@@ -39,6 +39,7 @@ const UI_STORAGE_KEY = 'cssmate:shared-cases:ui:v1';
 const CASE_META_CACHE = new Map();
 const DATE_INPUT_FORMATTER = new Intl.DateTimeFormat('sv-SE');
 const CURRENCY_FORMATTER = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const HOURS_FORMATTER = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const PREVIEW_WRITE_MESSAGE = getPreviewWriteDisabledMessage();
 const BOARD_COLUMNS = [
   { id: 'kladde', label: 'Kladde', hint: 'Private kladder (kun dig).' },
@@ -531,6 +532,42 @@ async function handleJsonDownload(caseId) {
   downloadBlob(result.blob, result.fileName);
 }
 
+function normalizeAttachmentContent(value) {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
+
+function buildAttachmentBundle(entry) {
+  const attachments = entry?.attachments || {};
+  const montage = attachments.montage || null;
+  const demontage = attachments.demontage || null;
+  const receipt = attachments.receipt || null;
+  if (!montage && !demontage && !receipt) return null;
+  return { montage, demontage, receipt };
+}
+
+function downloadAttachmentBundle(entry) {
+  const bundle = buildAttachmentBundle(entry);
+  if (!bundle) throw new Error('Ingen vedhæftninger fundet');
+  const payload = JSON.stringify(bundle, null, 2);
+  const fileName = `${entry?.jobNumber || 'akkord'}-${entry?.caseId || 'bundle'}-bundle.json`;
+  downloadBlob(new Blob([payload], { type: 'application/json' }), fileName);
+}
+
+async function handleJsonDownloadForEntry(entry) {
+  const statusBucket = resolveCaseStatusBucket(entry?.status);
+  if (statusBucket === 'afsluttet') {
+    downloadAttachmentBundle(entry);
+    return;
+  }
+  await handleJsonDownload(entry.caseId);
+}
+
 async function handleImport(entry, { phase } = {}) {
   const caseId = typeof entry === 'string' ? entry : entry?.caseId;
   if (entry?.caseId) {
@@ -555,6 +592,10 @@ async function handleImport(entry, { phase } = {}) {
 async function handlePdfDownload(entry) {
   const content = await importCasePayload(ensureTeamSelected(), entry.caseId);
   if (!content) throw new Error('Ingen JSON vedhæftet');
+  await handlePdfDownloadFromContent(content, entry);
+}
+
+async function handlePdfDownloadFromContent(content, entry, suffix) {
   let parsed;
   try {
     parsed = JSON.parse(content);
@@ -564,7 +605,51 @@ async function handlePdfDownload(entry) {
   }
   const model = buildExportModel(parsed, { exportedAt: new Date().toISOString() });
   const payload = await exportPDFBlob(parsed, { model, customSagsnummer: entry.jobNumber });
-  downloadBlob(payload.blob, `${entry.jobNumber || 'akkord'}-${entry.caseId}.pdf`);
+  const label = suffix ? `-${suffix}` : '';
+  downloadBlob(payload.blob, `${entry.jobNumber || 'akkord'}-${entry.caseId}${label}.pdf`);
+}
+
+function resolveReceiptTotals(entry) {
+  const totals = entry?.attachments?.receipt?.totals || null;
+  if (!totals) return null;
+  return {
+    materials: Number(totals.materials) || 0,
+    montage: Number(totals.montage) || 0,
+    demontage: Number(totals.demontage) || 0,
+    total: Number(totals.total) || 0,
+    hours: Number(totals.hours) || 0,
+  };
+}
+
+function renderReceiptSummary(entry) {
+  const wrapper = document.createElement('div');
+  const receipt = entry?.attachments?.receipt || {};
+  const totals = resolveReceiptTotals(entry);
+  const hasBoth = receipt?.hasMontage && receipt?.hasDemontage;
+  if (!totals || !hasBoth) {
+    const message = document.createElement('p');
+    message.textContent = 'Kvittering er kun klar når både montage og demontage er eksportet.';
+    wrapper.appendChild(message);
+    return wrapper;
+  }
+  const rows = [
+    { label: 'Materialer', value: `${CURRENCY_FORMATTER.format(totals.materials)} kr.` },
+    { label: 'Montage', value: `${CURRENCY_FORMATTER.format(totals.montage)} kr.` },
+    { label: 'Demontage', value: `${CURRENCY_FORMATTER.format(totals.demontage)} kr.` },
+    { label: 'Timer', value: `${HOURS_FORMATTER.format(totals.hours)} t.` },
+    { label: 'Projektsum', value: `${CURRENCY_FORMATTER.format(totals.total)} kr.` },
+  ];
+  rows.forEach(row => {
+    const line = document.createElement('div');
+    const label = document.createElement('span');
+    label.textContent = row.label;
+    const value = document.createElement('strong');
+    value.textContent = row.value;
+    line.appendChild(label);
+    line.appendChild(value);
+    wrapper.appendChild(line);
+  });
+  return wrapper;
 }
 
 function openSharedModal({ title, body, actions = [] }) {
@@ -673,24 +758,27 @@ function renderApprovalSummary(entry) {
 function createCaseActions(entry, userId, onChange) {
   const container = document.createElement('div');
   container.className = 'shared-case-actions';
+  const statusBucket = resolveCaseStatusBucket(entry.status);
 
-  const importBtn = document.createElement('button');
-  importBtn.type = 'button';
-  importBtn.textContent = 'Importér';
-  importBtn.addEventListener('click', async () => {
-    importBtn.disabled = true;
-    try {
-      await handleImport(entry);
-      showToast('Sag importeret til optælling.', { variant: 'success' });
-    } catch (error) {
-      console.error('Import fejlede', error);
-      handleActionError(error, 'Import fejlede', { teamContext: teamId });
-      showToast(error?.message || 'Import fejlede.', { variant: 'error' });
-    } finally {
-      importBtn.disabled = false;
-    }
-  });
-  container.appendChild(importBtn);
+  if (statusBucket !== 'afsluttet') {
+    const importBtn = document.createElement('button');
+    importBtn.type = 'button';
+    importBtn.textContent = 'Importér';
+    importBtn.addEventListener('click', async () => {
+      importBtn.disabled = true;
+      try {
+        await handleImport(entry);
+        showToast('Sag importeret til optælling.', { variant: 'success' });
+      } catch (error) {
+        console.error('Import fejlede', error);
+        handleActionError(error, 'Import fejlede', { teamContext: teamId });
+        showToast(error?.message || 'Import fejlede.', { variant: 'error' });
+      } finally {
+        importBtn.disabled = false;
+      }
+    });
+    container.appendChild(importBtn);
+  }
 
   const jsonBtn = document.createElement('button');
   jsonBtn.type = 'button';
@@ -698,7 +786,7 @@ function createCaseActions(entry, userId, onChange) {
   jsonBtn.addEventListener('click', async () => {
     jsonBtn.disabled = true;
     try {
-      await handleJsonDownload(entry.caseId);
+      await handleJsonDownloadForEntry(entry);
       showToast('JSON er hentet.', { variant: 'success' });
     } catch (error) {
       console.error('Download fejlede', error);
@@ -716,8 +804,41 @@ function createCaseActions(entry, userId, onChange) {
   pdfBtn.addEventListener('click', async () => {
     pdfBtn.disabled = true;
     try {
-      await handlePdfDownload(entry);
-      showToast('PDF er genereret.', { variant: 'success' });
+      if (statusBucket === 'afsluttet') {
+        const montageContent = normalizeAttachmentContent(entry?.attachments?.montage);
+        const demontageContent = normalizeAttachmentContent(entry?.attachments?.demontage);
+        if (!montageContent && !demontageContent) {
+          throw new Error('Ingen PDF-data fundet');
+        }
+        openSharedModal({
+          title: 'Vælg PDF',
+          body: 'Hvilken PDF vil du hente?',
+          actions: [
+            montageContent
+              ? {
+                label: 'PDF montage',
+                onClick: async () => {
+                  await handlePdfDownloadFromContent(montageContent, entry, 'montage');
+                  showToast('PDF montage er genereret.', { variant: 'success' });
+                },
+              }
+              : null,
+            demontageContent
+              ? {
+                label: 'PDF demontage',
+                onClick: async () => {
+                  await handlePdfDownloadFromContent(demontageContent, entry, 'demontage');
+                  showToast('PDF demontage er genereret.', { variant: 'success' });
+                },
+              }
+              : null,
+            { label: 'Luk' },
+          ].filter(Boolean),
+        });
+      } else {
+        await handlePdfDownload(entry);
+        showToast('PDF er genereret.', { variant: 'success' });
+      }
     } catch (error) {
       console.error('PDF fejlede', error);
       handleActionError(error, 'Kunne ikke generere PDF', { teamContext: teamId });
@@ -728,7 +849,20 @@ function createCaseActions(entry, userId, onChange) {
   });
   container.appendChild(pdfBtn);
 
-  const statusBucket = resolveCaseStatusBucket(entry.status);
+  if (statusBucket === 'afsluttet') {
+    const receiptBtn = document.createElement('button');
+    receiptBtn.type = 'button';
+    receiptBtn.textContent = 'Kvittering';
+    receiptBtn.addEventListener('click', () => {
+      openSharedModal({
+        title: 'Kvittering',
+        body: renderReceiptSummary(entry),
+        actions: [{ label: 'Luk' }],
+      });
+    });
+    container.appendChild(receiptBtn);
+  }
+
   if (statusBucket === 'kladde' && entry.createdBy === userId) {
     const approveBtn = document.createElement('button');
     approveBtn.type = 'button';
