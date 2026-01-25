@@ -162,7 +162,7 @@ function resolveCaseTransition ({ action, currentStatus, currentPhase, isCreator
       throw createError('Montage skal godkendes før demontage kan påbegyndes.', 403)
     }
     if ([CASE_STATUS.APPROVED, CASE_STATUS.DEMONTAGE].includes(currentStatus)) {
-      return { status: CASE_STATUS.DEMONTAGE, phase: 'demontage' }
+      return { status: CASE_STATUS.DONE, phase: 'demontage' }
     }
     throw createError('Ugyldig status for demontage.', 409)
   }
@@ -190,6 +190,41 @@ function resolveCaseTransition ({ action, currentStatus, currentPhase, isCreator
   }
 
   throw createError('Ukendt handling.', 400)
+}
+
+function safeNumber (value) {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : 0
+}
+
+function extractTotalsFromSheet (sheet) {
+  const totals = sheet?.totals || sheet?.summary?.totals || sheet?.result?.totals
+  if (!totals) return { materials: 0, montage: 0, demontage: 0, total: 0, hours: 0 }
+  return {
+    materials: safeNumber(totals.materials),
+    montage: safeNumber(totals.montage),
+    demontage: safeNumber(totals.demontage),
+    total: safeNumber(totals.total),
+    hours: safeNumber(totals.hours || totals.timer || totals.time),
+  }
+}
+
+function computeReceipt ({ montageSheet, demontageSheet }) {
+  const montageTotals = extractTotalsFromSheet(montageSheet)
+  const demontageTotals = extractTotalsFromSheet(demontageSheet)
+  const receiptTotals = {
+    materials: montageTotals.materials + demontageTotals.materials,
+    montage: montageTotals.total > 0 ? montageTotals.total : montageTotals.montage,
+    demontage: demontageTotals.total > 0 ? demontageTotals.total : demontageTotals.demontage,
+    total: montageTotals.total + demontageTotals.total,
+    hours: montageTotals.hours + demontageTotals.hours,
+  }
+  return {
+    createdAt: new Date().toISOString(),
+    totals: receiptTotals,
+    hasMontage: Boolean(montageSheet),
+    hasDemontage: Boolean(demontageSheet),
+  }
 }
 
 function decodeCursor (value) {
@@ -613,6 +648,10 @@ function serializeCaseRow (row) {
   const createdAt = row.created_at ? new Date(row.created_at).toISOString() : null
   const updatedAt = row.updated_at ? new Date(row.updated_at).toISOString() : createdAt
   const lastUpdatedAt = row.last_updated_at ? new Date(row.last_updated_at).toISOString() : updatedAt
+  const storedAttachments = row.attachments && typeof row.attachments === 'object' ? row.attachments : {}
+  const jsonAttachment = row.json_content
+    ? { data: row.json_content, createdAt }
+    : storedAttachments.json || null
   return {
     caseId: row.case_id,
     teamId: row.team_slug,
@@ -633,8 +672,9 @@ function serializeCaseRow (row) {
     deletedAt: row.deleted_at ? new Date(row.deleted_at).toISOString() : null,
     deletedBy: row.deleted_by || null,
     attachments: {
-      json: row.json_content ? { data: row.json_content, createdAt } : null,
-      pdf: null,
+      ...storedAttachments,
+      json: jsonAttachment,
+      pdf: storedAttachments.pdf || null,
     },
   }
 }
@@ -1011,7 +1051,7 @@ async function handleCaseCreate (event, teamSlug) {
   const body = parseBody(event)
   const explicitCaseId = isValidUuid(body.caseId) ? body.caseId : ''
   const caseId = explicitCaseId || crypto.randomUUID()
-  const totals = body.totals || { materials: 0, montage: 0, demontage: 0, total: 0 }
+  let totals = body.totals || { materials: 0, montage: 0, demontage: 0, total: 0 }
   const ifMatchUpdatedAt = parseIfMatchUpdatedAt(body.ifMatchUpdatedAt)
   const action = resolveExportAction({ phaseHint: body.phaseHint, caseKind: body.caseKind })
   const existingResult = await db.query(
@@ -1040,11 +1080,28 @@ async function handleCaseCreate (event, teamSlug) {
     isCreator,
   })
 
+  const prevAttachments = (existing && typeof existing.attachments === 'object' && existing.attachments) ? existing.attachments : {}
+  const attachments = { ...prevAttachments }
+  if (action === 'EXPORT_MONTAGE') {
+    attachments.montage = body.jsonContent || null
+  }
+  if (action === 'EXPORT_DEMONTAGE') {
+    attachments.demontage = body.jsonContent || null
+    if (!attachments.montage && existing?.json_content) {
+      attachments.montage = existing.json_content
+    }
+  }
+  if (nextStatus === CASE_STATUS.DONE) {
+    const receipt = computeReceipt({ montageSheet: attachments.montage, demontageSheet: attachments.demontage })
+    attachments.receipt = receipt
+    totals = receipt.totals
+  }
+
   await db.query(
     `INSERT INTO team_cases
-      (case_id, team_id, job_number, case_kind, system, totals, status, phase, created_at, updated_at, last_updated_at,
+      (case_id, team_id, job_number, case_kind, system, totals, status, phase, attachments, created_at, updated_at, last_updated_at,
        created_by, created_by_email, created_by_name, updated_by, last_editor_sub, json_content)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, NOW(), NOW(), NOW(), $9, $10, $11, $9, $9, $12)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9::jsonb, NOW(), NOW(), NOW(), $10, $11, $12, $10, $10, $13)
      ON CONFLICT (case_id) DO UPDATE SET
        job_number = EXCLUDED.job_number,
        case_kind = EXCLUDED.case_kind,
@@ -1052,6 +1109,7 @@ async function handleCaseCreate (event, teamSlug) {
        totals = EXCLUDED.totals,
        status = EXCLUDED.status,
        phase = EXCLUDED.phase,
+       attachments = EXCLUDED.attachments,
        updated_at = NOW(),
        last_updated_at = NOW(),
        updated_by = EXCLUDED.updated_by,
@@ -1068,6 +1126,7 @@ async function handleCaseCreate (event, teamSlug) {
       JSON.stringify(totals),
       nextStatus,
       nextPhase,
+      JSON.stringify(attachments),
       user.id,
       user.email,
       body.createdByName || '',
