@@ -14,3 +14,8 @@
 ## Preview safety contract
 - Preview/branch deploys must **not** write to the DB.
 - The API rejects write routes unless `CONTEXT=production`.
+
+## Deploy context overrides (client)
+- `VITE_PROD_HOSTS` (comma-separated hostnames) defines production hostnames on the client.
+  - Used to force production gating even if `VITE_NETLIFY_CONTEXT` is misconfigured.
+  - Example: `VITE_PROD_HOSTS=sscaff.netlify.app,app.example.com`

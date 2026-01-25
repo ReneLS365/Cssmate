@@ -38,6 +38,15 @@ test('sscaff.netlify.app is treated as production without env context', async ()
   })
 })
 
+test('production hostname overrides deploy-preview env context', async () => {
+  await withWindowContext({ hostname: 'sscaff.netlify.app', env: { VITE_NETLIFY_CONTEXT: 'deploy-preview' } }, async () => {
+    const context = getDeployContext()
+    assert.equal(context.context, 'production')
+    assert.equal(context.isPreview, false)
+    assert.equal(context.writesAllowed, true)
+  })
+})
+
 test('deploy-preview hostnames are treated as preview', async () => {
   await withWindowContext({ hostname: 'deploy-preview-42--sscaff.netlify.app' }, async () => {
     const context = getDeployContext()
@@ -79,6 +88,18 @@ test('bogus ${context} env value is ignored on production hostname', async () =>
     const context = getDeployContext()
     assert.equal(context.envContext, '')
     assert.equal(context.context, 'production')
+    assert.equal(context.writesAllowed, true)
+  })
+})
+
+test('custom prod hosts from env override preview contexts', async () => {
+  await withWindowContext({
+    hostname: 'app.example.com',
+    env: { VITE_NETLIFY_CONTEXT: 'deploy-preview', VITE_PROD_HOSTS: 'app.example.com,app-2.example.com' },
+  }, async () => {
+    const context = getDeployContext()
+    assert.equal(context.context, 'production')
+    assert.equal(context.isPreview, false)
     assert.equal(context.writesAllowed, true)
   })
 })

@@ -1,7 +1,7 @@
 import { BUILD_CONTEXT } from '../version.js'
 import { isDebugOverlayEnabled } from '../state/debug.js'
 
-const PROD_HOSTS = new Set(['sscaff.netlify.app'])
+const DEFAULT_PROD_HOSTS = new Set(['sscaff.netlify.app'])
 const PREVIEW_CONTEXTS = new Set(['deploy-preview', 'branch-deploy'])
 
 let loggedDebug = false
@@ -14,18 +14,37 @@ function sanitizeEnvContext (value) {
   return normalized
 }
 
-function readEnvContext () {
+function sanitizeEnvHosts (value) {
+  const normalized = String(value || '').trim()
+  if (!normalized) return []
+  if (normalized.includes('${') || normalized.includes('}')) return []
+  if (normalized.toLowerCase() === 'undefined' || normalized.toLowerCase() === 'null') return []
+  return normalized
+    .split(',')
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean)
+}
+
+function readEnvValue (key) {
   const metaEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {}
   const embeddedEnv = typeof window !== 'undefined' ? (window.__ENV__ || {}) : {}
-  const context = metaEnv.VITE_NETLIFY_CONTEXT
-    || metaEnv.CONTEXT
-    || metaEnv.NETLIFY_CONTEXT
-    || embeddedEnv.VITE_NETLIFY_CONTEXT
-    || embeddedEnv.CONTEXT
-    || embeddedEnv.NETLIFY_CONTEXT
+  return metaEnv[key] || embeddedEnv[key] || ''
+}
+
+function readEnvContext () {
+  const context = readEnvValue('VITE_NETLIFY_CONTEXT')
+    || readEnvValue('CONTEXT')
+    || readEnvValue('NETLIFY_CONTEXT')
     || BUILD_CONTEXT
     || ''
   return sanitizeEnvContext(context)
+}
+
+function readEnvProdHosts () {
+  const prodHosts = readEnvValue('VITE_PROD_HOSTS')
+    || readEnvValue('PROD_HOSTS')
+    || ''
+  return sanitizeEnvHosts(prodHosts)
 }
 
 function readHostname () {
@@ -33,12 +52,12 @@ function readHostname () {
   return String(window.location?.hostname || '').trim().toLowerCase()
 }
 
-function computePreviewFromHostname (hostname) {
+function computePreviewFromHostname (hostname, prodHosts) {
   if (!hostname) return { isDeployPreview: false, isBranchDeploy: false, isPreview: false }
   const isDeployPreview = hostname.startsWith('deploy-preview-')
   const isBranchDeploy = hostname.includes('--')
     && hostname.endsWith('.netlify.app')
-    && !PROD_HOSTS.has(hostname)
+    && !prodHosts.has(hostname)
   return {
     isDeployPreview,
     isBranchDeploy,
@@ -57,8 +76,12 @@ function logDebugOnce (context) {
 export function getDeployContext () {
   const hostname = readHostname()
   const envContext = readEnvContext()
-  const previewFromHost = computePreviewFromHostname(hostname)
-  const isKnownProdHost = PROD_HOSTS.has(hostname)
+  const prodHosts = new Set([
+    ...DEFAULT_PROD_HOSTS,
+    ...readEnvProdHosts(),
+  ])
+  const previewFromHost = computePreviewFromHostname(hostname, prodHosts)
+  const isKnownProdHost = prodHosts.has(hostname)
 
   let resolvedContext = 'production'
   if (isKnownProdHost) {
@@ -79,6 +102,7 @@ export function getDeployContext () {
     context: resolvedContext,
     envContext,
     hostname,
+    prodHosts: [...prodHosts],
     isDeployPreview: previewFromHost.isDeployPreview,
     isBranchDeploy: previewFromHost.isBranchDeploy,
     isPreview,

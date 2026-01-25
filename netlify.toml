@@ -21,6 +21,7 @@
 
   [build.environment]
     NODE_VERSION = "22"
+    VITE_PROD_HOSTS = "sscaff.netlify.app"
 
 [[plugins]]
   package = "netlify-plugin-a11y"
