@@ -478,14 +478,24 @@ async function ensureTeam (slug) {
     if (existing) return existing
     return { id: normalizedSlug, name: normalizedSlug, slug: normalizedSlug, created_at: null, created_by_sub: null }
   }
-  const result = await db.query(
+  const insertResult = await db.query(
     `INSERT INTO teams (id, name, slug, created_at, created_by_sub)
      VALUES (gen_random_uuid(), $1, $1, NOW(), NULL)
-     ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
+     ON CONFLICT (slug) DO NOTHING
      RETURNING id, name, slug, created_at, created_by_sub`,
     [normalizedSlug]
   )
-  return result.rows[0]
+  if (insertResult.rows[0]) return insertResult.rows[0]
+  const existing = await findTeamBySlug(normalizedSlug)
+  if (existing) return existing
+  const fallbackResult = await db.query(
+    `INSERT INTO teams (id, name, slug, created_at, created_by_sub)
+     VALUES (gen_random_uuid(), $1, $1, NOW(), NULL)
+     ON CONFLICT (slug) DO NOTHING
+     RETURNING id, name, slug, created_at, created_by_sub`,
+    [normalizedSlug]
+  )
+  return fallbackResult.rows[0] || { id: normalizedSlug, name: normalizedSlug, slug: normalizedSlug, created_at: null, created_by_sub: null }
 }
 
 async function getMember (teamId, userSub) {
@@ -751,12 +761,20 @@ async function handleTeamMembersList (event, teamSlug) {
   const user = await requireAuth(event)
   const normalizedSlug = normalizeTeamSlug(teamSlug)
   const team = await ensureTeam(normalizedSlug)
+  const members = await listTeamMembersForUser({ team, user, isProduction: isProd() })
+  return jsonResponse(200, members)
+}
+
+async function listTeamMembersForUser ({ team, user, isProduction }) {
   if (!user.isPrivileged) {
-    const member = await getMember(team.id, user.id)
-    if (!member && !isProd()) {
-      return jsonResponse(200, [serializeMemberRow(buildEphemeralMember(team.id, user))])
+    let member = await getMember(team.id, user.id)
+    if (!member) {
+      if (!isProduction) {
+        return [serializeMemberRow(buildEphemeralMember(team.id, user))]
+      }
+      member = await upsertMemberFromUser(team.id, user)
     }
-    return jsonResponse(200, member ? [serializeMemberRow(member)] : [])
+    return member ? [serializeMemberRow(member)] : []
   }
   const result = await db.query(
     `SELECT team_id, user_sub, email, display_name, role, status, joined_at, last_login_at, last_seen_at
@@ -765,7 +783,7 @@ async function handleTeamMembersList (event, teamSlug) {
      ORDER BY joined_at DESC NULLS LAST`,
     [team.id]
   )
-  return jsonResponse(200, result.rows.map(serializeMemberRow))
+  return result.rows.map(serializeMemberRow)
 }
 
 async function handleTeamMembersListRoot (event) {
@@ -1333,6 +1351,8 @@ async function handleBackupImport (event, teamSlug) {
 
 export const __test = {
   canAccessCase,
+  ensureTeam,
+  listTeamMembersForUser,
   normalizeCasePhase,
   resolveCaseTransition,
   resolveExportAction,

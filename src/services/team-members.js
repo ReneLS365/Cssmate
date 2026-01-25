@@ -6,6 +6,8 @@ import { DEFAULT_TEAM_SLUG, formatTeamId } from './team-ids.js'
 
 let registrationKey = ''
 let registrationPromise = null
+const registrationCache = new Map()
+const registrationKeys = new Set()
 
 function debugLog (label, details = {}) {
   if (!isDebugOverlayEnabled()) return
@@ -30,13 +32,16 @@ function createPreviewDisabledError (context) {
   return error
 }
 
-export async function registerTeamMemberOnce ({ teamId, user, userId, role = '', orgId } = {}) {
+export async function registerTeamMemberOnce ({ teamId, user, userId, role = '', orgId, force = false } = {}) {
   const resolvedTeamId = formatTeamId(teamId || DEFAULT_TEAM_SLUG)
   const sub = getUserSub(user) || (userId ? String(userId) : '')
   if (!resolvedTeamId || !sub) return null
   const resolvedOrgId = orgId || getUserOrgId(user)
   const key = buildRegistrationKey({ teamId: resolvedTeamId, sub, role, orgId: resolvedOrgId })
-  if (registrationKey === key && registrationPromise) return registrationPromise
+  if (!force) {
+    if (registrationKeys.has(key)) return registrationCache.get(key) || null
+    if (registrationKey === key && registrationPromise) return registrationPromise
+  }
   registrationKey = key
   registrationPromise = registerTeamMember({
     teamId: resolvedTeamId,
@@ -45,8 +50,15 @@ export async function registerTeamMemberOnce ({ teamId, user, userId, role = '',
     role,
     orgId: resolvedOrgId,
   })
+    .then((result) => {
+      registrationKeys.add(key)
+      registrationCache.set(key, result)
+      return result
+    })
     .finally(() => {
-      registrationPromise = null
+      if (registrationKey === key) {
+        registrationPromise = null
+      }
     })
   return registrationPromise
 }
@@ -78,4 +90,13 @@ async function registerTeamMember ({ teamId, sub, email, role, orgId }) {
   }
   debugLog('register-success', { teamId, sub, role: payload?.member?.role || role, orgId: orgId || '' })
   return payload
+}
+
+export const __test = {
+  resetRegistrationOnceCache () {
+    registrationKey = ''
+    registrationPromise = null
+    registrationCache.clear()
+    registrationKeys.clear()
+  },
 }
