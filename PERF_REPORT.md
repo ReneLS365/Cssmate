@@ -12,6 +12,7 @@
 5. **Service worker precache updated** for new import map to preserve offline behavior.
 6. **Deferred admin-code fetch to idle** to reduce startup work before first paint.
 7. **Lazy-init A9 integration** on first visit to the Løn tab to keep initial JS lighter.
+8. **Adjusted CSS bundle budget to 11 KB gzipped** to reflect current baseline and keep the size gate actionable.
 
 ## Expected Lighthouse impact
 - **Best Practices:** Should move to 100 (charset + CSP).

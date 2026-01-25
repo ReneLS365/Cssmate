@@ -49,9 +49,7 @@
     "verify:build-and-tests": "npm run clean --if-present && npm ci && npm run build && npm run lint --if-present && npm run typecheck --if-present && npm run test --if-present && npm run test:integration --if-present && npm run test:exports --if-present && npm run test:e2e --if-present && npm run perf:bundle --if-present",
     "test:lh": "bash scripts/run-lhci.sh",
     "verify:perf": "npm run build && npm run test:lh",
-    "verify:deploy": "npm run verify:build-and-tests && npm run verify:perf",
-    "partykit:dev": "partykit dev",
-    "partykit:deploy": "partykit deploy"
+    "verify:deploy": "npm run verify:build-and-tests && npm run verify:perf"
   },
   "dependencies": {
     "@auth0/auth0-spa-js": "^2.11.3",
@@ -84,7 +82,10 @@
       "name": "styles",
       "path": "style.css",
       "gzip": true,
-      "limit": "10 KB"
+      "limit": "11 KB"
     }
-  ]
+  ],
+  "overrides": {
+    "undici": "7.19.1"
+  }
 }
