@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'fs/promises'
 import { Pool } from 'pg'
 import pathHelper from './_path.cjs'
-import { isProd } from './_context.mjs'
+import { getDeployContext, isProd } from './_context.mjs'
 import { sanitizeObject, safeError } from './_log.mjs'
 
 const DATABASE_SSL = process.env.DATABASE_SSL
@@ -17,6 +17,7 @@ let migrationPromise = null
 let migrationsEnsured = false
 let _dbReadyPromise = null
 let _dbReadyOkAt = 0
+let deployContextLogged = false
 
 const { resolveFromFunctionsDir } = pathHelper
 const MIGRATIONS_DIR = resolveFromFunctionsDir('migrations')
@@ -196,12 +197,12 @@ function resolveDatabaseHost (databaseUrl) {
 }
 
 function assertDatabaseHostAllowed (databaseUrl) {
-  if (isProd()) return
+  const context = getDeployContext()
+  if (context === 'production') return
   if (!DATABASE_PROD_HOSTS.size) return
   const host = resolveDatabaseHost(databaseUrl)
   if (!host) return
   if (DATABASE_PROD_HOSTS.has(host)) {
-    const context = String(process.env.CONTEXT || process.env.NETLIFY_CONTEXT || 'unknown')
     throw new Error(
       `Preview DB guard: DATABASE_URL host "${host}" er markeret som production. Afbryder i context "${context}".`
     )
@@ -251,6 +252,16 @@ function buildPoolConfig () {
     ].filter((key) => !process.env[key])
     console.warn('Database URL mangler.', sanitizeObject({ missingKeys }))
     throw new Error('Database URL mangler. Sæt DATABASE_URL eller DATABASE_URL_UNPOOLED.')
+  }
+  const deployContext = getDeployContext()
+  if (deployContext !== 'production' && !deployContextLogged) {
+    deployContextLogged = true
+    console.log('[deploy-context]', {
+      context: deployContext,
+      URL: process.env.URL,
+      DEPLOY_URL: process.env.DEPLOY_URL,
+      DEPLOY_PRIME_URL: process.env.DEPLOY_PRIME_URL,
+    })
   }
   assertDatabaseHostAllowed(databaseUrl)
   const useSsl = resolveSslSetting(databaseUrl)
