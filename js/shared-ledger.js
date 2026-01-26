@@ -550,6 +550,24 @@ function normalizeCasesPage(payload) {
   return { items: [], nextCursor: null }
 }
 
+function normalizeCasesDelta(payload, since = '') {
+  const base = normalizeCasesPage(payload)
+  if (payload && payload.mode === 'delta') {
+    return {
+      ...base,
+      mode: 'delta',
+      serverNow: payload.serverNow || null,
+      maxUpdatedAt: payload.maxUpdatedAt || since || null,
+    }
+  }
+  return {
+    ...base,
+    mode: payload?.mode || 'delta',
+    serverNow: payload?.serverNow || null,
+    maxUpdatedAt: payload?.maxUpdatedAt || since || null,
+  }
+}
+
 export async function listSharedCasesPage(teamId, { limit = 100, cursor = null, status = '', q = '', from = '', to = '' } = {}) {
   const { teamId: resolvedTeamId } = await getTeamContext(teamId)
   const params = new URLSearchParams()
@@ -565,6 +583,17 @@ export async function listSharedCasesPage(teamId, { limit = 100, cursor = null, 
   const query = params.toString()
   const payload = await apiJson(`/api/teams/${resolvedTeamId}/cases${query ? `?${query}` : ''}`)
   return normalizeCasesPage(payload)
+}
+
+export async function listSharedCasesDelta(teamId, { since = '', sinceId = '', limit = 200 } = {}) {
+  const { teamId: resolvedTeamId } = await getTeamContext(teamId)
+  const params = new URLSearchParams()
+  if (limit) params.set('limit', String(limit))
+  if (since) params.set('since', since)
+  if (sinceId) params.set('sinceId', sinceId)
+  const query = params.toString()
+  const payload = await apiJson(`/api/teams/${resolvedTeamId}/cases${query ? `?${query}` : ''}`)
+  return normalizeCasesDelta(payload, since)
 }
 
 export async function listSharedCasesFirstPage(teamId, opts = {}) {

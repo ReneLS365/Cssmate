@@ -1,4 +1,4 @@
-import { listSharedCasesPage, downloadCaseJson, importCasePayload, approveSharedCase, deleteSharedCase, formatTeamId, PermissionDeniedError, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG, setSharedCaseContext } from './shared-ledger.js';
+import { listSharedCasesPage, listSharedCasesDelta, downloadCaseJson, importCasePayload, approveSharedCase, deleteSharedCase, formatTeamId, PermissionDeniedError, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG, setSharedCaseContext } from './shared-ledger.js';
 import { exportPDFBlob } from './export-pdf.js';
 import { buildExportModel } from './export-model.js';
 import { downloadBlob } from './utils/downloadBlob.js';
@@ -13,6 +13,7 @@ let sharedCasesPanelInitialized = false;
 let refreshBtn;
 let sessionState = {};
 let sharedCard;
+let sharedCasesContainer;
 let teamId = '';
 let displayTeamId = '';
 let membershipRole = '';
@@ -35,12 +36,21 @@ let activeFilters = null;
 let isLoading = false;
 let loadMoreBtn;
 let listSharedCasesPageFn = listSharedCasesPage;
+let refreshCases = async () => {};
+let deltaTimer = null;
+let deltaInFlight = false;
+let lastDeltaAt = null;
+let lastDeltaCaseId = '';
+let pollingActive = false;
+let pollingReason = '';
+let lastDeltaSyncLabel = '';
 const UI_STORAGE_KEY = 'cssmate:shared-cases:ui:v1';
 const CASE_META_CACHE = new Map();
 const DATE_INPUT_FORMATTER = new Intl.DateTimeFormat('sv-SE');
 const CURRENCY_FORMATTER = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const HOURS_FORMATTER = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const PREVIEW_WRITE_MESSAGE = getPreviewWriteDisabledMessage();
+const POLL_INTERVAL_MS = 5000;
 const BOARD_COLUMNS = [
   { id: 'kladde', label: 'Kladde', hint: 'Private kladder (kun dig).' },
   { id: 'godkendt', label: 'Montage klar til demontage', hint: 'Klar til demontage-hold.' },
@@ -51,6 +61,56 @@ const BOARD_COLUMNS = [
 
 function pad2(n) {
   return String(n).padStart(2, '0');
+}
+
+function formatTimeLabel(value) {
+  const d = value instanceof Date ? value : new Date(value || Date.now());
+  if (Number.isNaN(d.getTime())) return '';
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
+function isOnline() {
+  if (typeof navigator === 'undefined') return true;
+  return navigator.onLine !== false;
+}
+
+function getDeltaKey(entry) {
+  if (!entry) return { updatedAt: '', caseId: '' };
+  return {
+    updatedAt: entry.lastUpdatedAt || entry.updatedAt || entry.createdAt || '',
+    caseId: entry.caseId || '',
+  };
+}
+
+function compareDeltaKeys(a, b) {
+  if (a.updatedAt !== b.updatedAt) {
+    return (a.updatedAt || '').localeCompare(b.updatedAt || '');
+  }
+  return (a.caseId || '').localeCompare(b.caseId || '');
+}
+
+function getMaxDeltaKey(entries) {
+  let maxKey = { updatedAt: '', caseId: '' };
+  entries.forEach(entry => {
+    const key = getDeltaKey(entry);
+    if (compareDeltaKeys(maxKey, key) < 0) {
+      maxKey = key;
+    }
+  });
+  return maxKey;
+}
+
+function getLiveStatusLabel() {
+  if (!pollingActive && !pollingReason) return '';
+  if (!pollingActive) return `Live: pauset (${pollingReason})`;
+  const lastLabel = lastDeltaSyncLabel ? ` (sidst ${lastDeltaSyncLabel})` : '';
+  return `Live: tjekker hvert ${Math.round(POLL_INTERVAL_MS / 1000)}s${lastLabel}`;
+}
+
+function composeStatusMessage(message) {
+  const liveLabel = getLiveStatusLabel();
+  if (message && liveLabel) return `${message} · ${liveLabel}`;
+  return message || liveLabel;
 }
 
 function localDayKeyFromDate(d) {
@@ -471,6 +531,7 @@ function bindSessionControls(onAuthenticated, onAccessReady) {
     setPanelVisibility(Boolean(state?.sessionReady));
     updateSharedStatus();
     updateStatusCard();
+    updatePollingState();
 
     if (hasAccess && lastStatus !== state.status) {
       if (typeof onAccessReady === 'function') onAccessReady();
@@ -1161,7 +1222,7 @@ function renderBoard(entries, userId, onChange) {
 }
 
 function setSharedStatus(text) {
-  renderStatusSummary(text);
+  renderStatusSummary(composeStatusMessage(text));
 }
 
 function setRefreshState(state = 'idle') {
@@ -1183,6 +1244,9 @@ function resetCaseState() {
   nextCursor = null;
   hasMore = false;
   seenCursorKeys = new Set();
+  lastDeltaAt = null;
+  lastDeltaCaseId = '';
+  lastDeltaSyncLabel = '';
 }
 
 function setTestState({ session, teamIdValue, role } = {}) {
@@ -1266,6 +1330,117 @@ function renderFromState(container, userId) {
     if (payload?.removeCaseId) removeCaseEntry(payload.removeCaseId);
     renderFromState(container, userId);
   });
+}
+
+function updateDeltaCursorFromItems(items) {
+  if (!Array.isArray(items) || !items.length) return;
+  const maxKey = getMaxDeltaKey(items);
+  if (maxKey.updatedAt) {
+    lastDeltaAt = maxKey.updatedAt;
+    lastDeltaCaseId = maxKey.caseId || lastDeltaCaseId;
+  }
+}
+
+function markDeltaSynced(message) {
+  lastDeltaSyncLabel = formatTimeLabel(new Date());
+  updateSharedStatus(message || '');
+}
+
+function stopDeltaPolling(reason) {
+  if (deltaTimer) {
+    clearInterval(deltaTimer);
+    deltaTimer = null;
+  }
+  pollingActive = false;
+  pollingReason = reason || '';
+  updateSharedStatus('');
+}
+
+function startDeltaPolling() {
+  if (deltaTimer) return;
+  pollingActive = true;
+  pollingReason = '';
+  deltaTimer = setInterval(() => {
+    runDeltaSync().catch(() => {
+      // handled in runDeltaSync
+    });
+  }, POLL_INTERVAL_MS);
+  updateSharedStatus('');
+  runDeltaSync().catch(() => {
+    // handled in runDeltaSync
+  });
+}
+
+function updatePollingState() {
+  if (!sharedCard || !sharedCasesContainer) return;
+  if (!requireAuth()) {
+    stopDeltaPolling('ingen adgang');
+    return;
+  }
+  if (!isOnline()) {
+    stopDeltaPolling('offline');
+    return;
+  }
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+    stopDeltaPolling('fanen er skjult');
+    return;
+  }
+  if (sharedCard.hidden) {
+    stopDeltaPolling('panelet er skjult');
+    return;
+  }
+  startDeltaPolling();
+}
+
+async function runDeltaSync() {
+  if (deltaInFlight || isLoading) return;
+  if (!sharedCasesContainer) return;
+  if (!requireAuth()) return;
+  if (!isOnline()) return;
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+  if (sharedCard?.hidden) return;
+  deltaInFlight = true;
+  try {
+    if (!lastDeltaAt) {
+      await refreshCases({ prepend: false });
+      return;
+    }
+    const payload = await listSharedCasesDelta(ensureTeamSelected(), {
+      since: lastDeltaAt,
+      sinceId: lastDeltaCaseId,
+      limit: 200,
+    });
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    let didChange = false;
+    items.forEach(entry => {
+      if (!entry?.caseId) return;
+      if (entry.status === 'deleted') {
+        if (casesById.has(entry.caseId)) {
+          removeCaseEntry(entry.caseId);
+          didChange = true;
+        }
+        return;
+      }
+      updateCaseEntry(entry);
+      didChange = true;
+    });
+    if (items.length) {
+      updateDeltaCursorFromItems(items);
+    } else if (payload?.maxUpdatedAt) {
+      lastDeltaAt = payload.maxUpdatedAt;
+    }
+    if (didChange) {
+      renderFromState(sharedCasesContainer, sessionState?.user?.uid || 'offline-user');
+      markDeltaSynced('Opdateret');
+    } else {
+      markDeltaSynced('Synkroniseret');
+    }
+    clearInlineError();
+  } catch (error) {
+    appendDebug(`Delta sync fejl: ${error?.message || 'Ukendt fejl'}`);
+  } finally {
+    deltaInFlight = false;
+  }
 }
 
 async function fetchCasesPage({ reset = false, prepend = false } = {}) {
@@ -1363,8 +1538,8 @@ function renderSharedCases(container, entries, filters, userId, onChange) {
 
 export function initSharedCasesPanel() {
   if (sharedCasesPanelInitialized) return;
-  const container = document.getElementById('sharedCasesList');
-  if (!container) return;
+  sharedCasesContainer = document.getElementById('sharedCasesList');
+  if (!sharedCasesContainer) return;
   sessionState = getSessionState?.() || {};
   displayTeamId = sessionState.displayTeamId || displayTeamId || DEFAULT_TEAM_SLUG;
   teamId = sessionState.teamId || teamId || formatTeamId(DEFAULT_TEAM_SLUG);
@@ -1386,22 +1561,22 @@ export function initSharedCasesPanel() {
   updateSharedStatus();
   updateStatusCard();
 
-  const refresh = async ({ prepend = false } = {}) => {
-    if (!container) return;
+  refreshCases = async ({ prepend = false } = {}) => {
+    if (!sharedCasesContainer) return;
     if (!requireAuth()) {
-      container.textContent = teamError || sessionState?.message || 'Login mangler.';
+      sharedCasesContainer.textContent = teamError || sessionState?.message || 'Login mangler.';
       setRefreshState('idle');
       return;
     }
     setRefreshState('loading');
     if (!prepend) {
-      container.textContent = 'Henter sager…';
+      sharedCasesContainer.textContent = 'Henter sager…';
     }
     const currentUser = sessionState?.user?.uid || 'offline-user';
     const handleCaseChange = (payload) => {
       if (payload?.updatedCase) updateCaseEntry(payload.updatedCase);
       if (payload?.removeCaseId) removeCaseEntry(payload.removeCaseId);
-      renderFromState(container, currentUser);
+      renderFromState(sharedCasesContainer, currentUser);
     };
     try {
       const page = await fetchCasesPage({ reset: true, prepend });
@@ -1414,7 +1589,9 @@ export function initSharedCasesPanel() {
         return matchesFilters(entry, meta, page.filters);
       });
       const sorted = sortEntries(filtered, page.filters.sort);
-      renderSharedCases(container, sorted, page.filters, currentUser, handleCaseChange);
+      renderSharedCases(sharedCasesContainer, sorted, page.filters, currentUser, handleCaseChange);
+      updateDeltaCursorFromItems(caseItems);
+      lastDeltaSyncLabel = formatTimeLabel(new Date());
       setSharedStatus('Synkroniseret');
       clearInlineError();
       setRefreshState('idle');
@@ -1425,7 +1602,7 @@ export function initSharedCasesPanel() {
       const status = typeof error?.status === 'number' ? error.status : 0;
       const looksLikeAuth = status === 401 || message.includes('"iss"') || message.includes('"aud"');
       if (denied) teamError = message;
-      container.textContent = looksLikeAuth
+      sharedCasesContainer.textContent = looksLikeAuth
         ? `${message} (Login token matcher ikke serverens Auth0-konfig. Prøv Log ud → Log ind igen.)`
         : `${message} ${denied ? '' : 'Tjek netværk eller log ind igen.'}`.trim();
       setInlineError(message);
@@ -1435,19 +1612,21 @@ export function initSharedCasesPanel() {
     }
   };
 
-  if (refreshBtn) refreshBtn.addEventListener('click', refresh);
+  if (refreshBtn) refreshBtn.addEventListener('click', refreshCases);
   filters.forEach(input => {
-    input.addEventListener('input', () => refresh());
-    input.addEventListener('change', () => refresh());
+    input.addEventListener('input', () => refreshCases());
+    input.addEventListener('change', () => refreshCases());
   });
 
-  bindSessionControls(() => refresh(), () => {
+  bindSessionControls(() => refreshCases(), () => {
     if (!requireAuth()) {
-      container.textContent = teamError || sessionState?.message || 'Log ind for at se delte sager.';
+      sharedCasesContainer.textContent = teamError || sessionState?.message || 'Log ind for at se delte sager.';
       setRefreshState('idle');
+      updatePollingState();
       return;
     }
-    refresh();
+    refreshCases();
+    updatePollingState();
   });
 
   // Automatically refresh the shared cases list when a case is exported. The
@@ -1461,11 +1640,31 @@ export function initSharedCasesPanel() {
         const caseData = detail.case || null;
         if (caseData?.caseId) {
           updateCaseEntry(caseData);
-          renderFromState(container, sessionState?.user?.uid || 'offline-user');
+          renderFromState(sharedCasesContainer, sessionState?.user?.uid || 'offline-user');
+          updateDeltaCursorFromItems([caseData]);
+          lastDeltaSyncLabel = formatTimeLabel(new Date());
           setSharedStatus('Opdateret');
         }
       } catch (error) {
         // Ignore errors (likely due to no auth), since refresh will run on next auth change.
+      }
+    });
+
+    window.addEventListener('online', () => {
+      updatePollingState();
+      runDeltaSync().catch(() => {});
+    });
+
+    window.addEventListener('offline', () => {
+      updatePollingState();
+    });
+  }
+
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      updatePollingState();
+      if (document.visibilityState === 'visible') {
+        runDeltaSync().catch(() => {});
       }
     });
   }
