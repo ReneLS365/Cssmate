@@ -1311,12 +1311,16 @@ function updateSharedStatus(message) {
 function resetCaseState() {
   casesById.clear();
   caseItems = [];
-  nextCursor = null;
-  hasMore = false;
-  seenCursorKeys = new Set();
+  resetPaginationState();
   lastDeltaAt = null;
   lastDeltaCaseId = '';
   lastDeltaSyncLabel = '';
+}
+
+function resetPaginationState() {
+  nextCursor = null;
+  hasMore = false;
+  seenCursorKeys = new Set();
 }
 
 function setTestState({ session, teamIdValue, role } = {}) {
@@ -1397,6 +1401,7 @@ function handleFiltersChanged({ immediate = false } = {}) {
   const serverChanged = !areServerFiltersEqual(serverFilters, lastServerFilters || {});
   if (serverChanged) {
     lastServerFilters = serverFilters;
+    resetPaginationState();
   }
   renderFromState(sharedCasesContainer, sessionState?.user?.uid || 'offline-user');
   if (serverChanged) {
