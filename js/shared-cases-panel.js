@@ -33,7 +33,9 @@ let nextCursor = null;
 let hasMore = false;
 let seenCursorKeys = new Set();
 let activeFilters = null;
+let lastServerFilters = null;
 let isLoading = false;
+let loadingCount = 0;
 let loadMoreBtn;
 let listSharedCasesPageFn = listSharedCasesPage;
 let refreshCases = async () => {};
@@ -44,6 +46,8 @@ let lastDeltaCaseId = '';
 let pollingActive = false;
 let pollingReason = '';
 let lastDeltaSyncLabel = '';
+let latestRequestId = 0;
+let debouncedServerRefresh = null;
 const UI_STORAGE_KEY = 'cssmate:shared-cases:ui:v1';
 const CASE_META_CACHE = new Map();
 const DATE_INPUT_FORMATTER = new Intl.DateTimeFormat('sv-SE');
@@ -61,6 +65,27 @@ const BOARD_COLUMNS = [
 
 function pad2(n) {
   return String(n).padStart(2, '0');
+}
+
+function debounce(fn, waitMs = 300) {
+  let timerId;
+  return (...args) => {
+    if (timerId) clearTimeout(timerId);
+    timerId = setTimeout(() => {
+      timerId = null;
+      fn(...args);
+    }, waitMs);
+  };
+}
+
+function startLoading() {
+  loadingCount += 1;
+  isLoading = loadingCount > 0;
+}
+
+function stopLoading() {
+  loadingCount = Math.max(0, loadingCount - 1);
+  isLoading = loadingCount > 0;
 }
 
 function formatTimeLabel(value) {
@@ -422,6 +447,19 @@ function resolveEntryBucket(entry) {
   return resolveCaseStatusBucket(entry?.status);
 }
 
+function computeBucketCounts(entries) {
+  const counts = new Map();
+  BOARD_COLUMNS.forEach(column => {
+    counts.set(column.id, 0);
+  });
+  entries.forEach(entry => {
+    const bucketId = resolveEntryBucket(entry);
+    const resolved = counts.has(bucketId) ? bucketId : 'andet';
+    counts.set(resolved, (counts.get(resolved) || 0) + 1);
+  });
+  return counts;
+}
+
 function formatStatusLabel(status) {
   const bucket = resolveCaseStatusBucket(status);
   if (bucket === 'kladde') return 'Kladde';
@@ -445,6 +483,13 @@ function resolvePhaseForEntry(entry) {
   const bucket = resolveCaseStatusBucket(entry?.status);
   if (bucket === 'demontage_i_gang' || bucket === 'godkendt') return 'demontage';
   return 'montage';
+}
+
+function resolveOptimisticStatus(entry) {
+  const bucket = resolveEntryBucket(entry);
+  if (bucket === 'kladde') return 'godkendt';
+  if (bucket === 'demontage_i_gang') return 'afsluttet';
+  return entry?.status || '';
 }
 
 function buildSearchIndex(entry, meta) {
@@ -575,20 +620,25 @@ function getFilters() {
 }
 
 function resolveServerFilters(filters) {
-  const status = filters?.status && filters.status !== 'andet' ? filters.status : '';
   const q = (filters?.search || '').trim();
   const from = dayKeyFromInput(filters?.dateFrom);
   const to = dayKeyFromInput(filters?.dateTo);
-  return { status, q, from, to };
+  return { q, from, to };
 }
 
-function matchesFilters(entry, meta, filters) {
+function areServerFiltersEqual(a = {}, b = {}) {
+  return (a.q || '') === (b.q || '')
+    && (a.from || '') === (b.from || '')
+    && (a.to || '') === (b.to || '');
+}
+
+function matchesFilters(entry, meta, filters, { includeStatus = true } = {}) {
   const searchValue = normalizeSearchValue(filters.search);
   const tokens = searchValue ? searchValue.split(' ').filter(Boolean) : [];
   const searchIndex = buildSearchIndex(entry, meta);
   const matchesSearch = tokens.length === 0
     || tokens.every(token => searchIndex.some(value => value.includes(token)));
-  const statusMatch = !filters.status || resolveEntryBucket(entry) === filters.status;
+  const statusMatch = !includeStatus || !filters.status || resolveEntryBucket(entry) === filters.status;
   const kindValue = (entry.caseKind || meta?.jobType || '').toLowerCase();
   const kindMatch = !filters.kind || kindValue === filters.kind;
   const date = resolveCaseDate(entry, meta);
@@ -998,9 +1048,15 @@ function createCaseActions(entry, userId, onChange) {
     approveBtn.textContent = 'Godkend & del';
     approveBtn.addEventListener('click', async () => {
       approveBtn.disabled = true;
+      const previousEntry = casesById.get(entry.caseId) || entry;
+      const optimisticStatus = resolveOptimisticStatus(previousEntry);
+      const optimisticEntry = buildOptimisticUpdate(previousEntry, { status: optimisticStatus });
+      if (optimisticEntry && typeof onChange === 'function') {
+        onChange({ updatedCase: optimisticEntry });
+      }
       try {
         const updated = await approveSharedCase(ensureTeamSelected(), entry.caseId, { ifMatchUpdatedAt: entry.updatedAt });
-        if (typeof onChange === 'function') onChange({ updatedCase: updated });
+        if (typeof onChange === 'function') onChange({ updatedCase: { ...updated, __syncing: false } });
         openSharedModal({
           title: 'Montage delt',
           body: renderApprovalSummary(updated || entry),
@@ -1021,6 +1077,9 @@ function createCaseActions(entry, userId, onChange) {
         });
       } catch (error) {
         console.error('Godkendelse fejlede', error);
+        if (typeof onChange === 'function') {
+          onChange({ updatedCase: { ...previousEntry, __syncing: false } });
+        }
         handleActionError(error, 'Kunne ikke godkende sag', { teamContext: teamId });
         showToast(error?.message || 'Kunne ikke godkende sag.', { variant: 'error' });
       } finally {
@@ -1056,12 +1115,21 @@ function createCaseActions(entry, userId, onChange) {
     finishBtn.textContent = 'Godkend demontage & afslut';
     finishBtn.addEventListener('click', async () => {
       finishBtn.disabled = true;
+      const previousEntry = casesById.get(entry.caseId) || entry;
+      const optimisticStatus = resolveOptimisticStatus(previousEntry);
+      const optimisticEntry = buildOptimisticUpdate(previousEntry, { status: optimisticStatus });
+      if (optimisticEntry && typeof onChange === 'function') {
+        onChange({ updatedCase: optimisticEntry });
+      }
       try {
         const updated = await approveSharedCase(ensureTeamSelected(), entry.caseId, { ifMatchUpdatedAt: entry.updatedAt });
-        if (typeof onChange === 'function') onChange({ updatedCase: updated });
+        if (typeof onChange === 'function') onChange({ updatedCase: { ...updated, __syncing: false } });
         showToast('Demontage godkendt og afsluttet.', { variant: 'success' });
       } catch (error) {
         console.error('Demontage godkendelse fejlede', error);
+        if (typeof onChange === 'function') {
+          onChange({ updatedCase: { ...previousEntry, __syncing: false } });
+        }
         handleActionError(error, 'Kunne ikke afslutte demontage', { teamContext: teamId });
         showToast(error?.message || 'Kunne ikke afslutte demontage.', { variant: 'error' });
       } finally {
@@ -1115,7 +1183,8 @@ function renderCaseCard(entry, userId, onChange) {
   title.textContent = meta.jobNumber || entry.jobNumber || 'Ukendt sag';
   const badge = document.createElement('span');
   badge.className = 'shared-case-card__badge';
-  badge.textContent = formatEntryStatusLabel(entry);
+  const statusLabel = formatEntryStatusLabel(entry);
+  badge.textContent = entry?.__syncing ? `${statusLabel} · Synker…` : statusLabel;
   top.appendChild(title);
   top.appendChild(badge);
 
@@ -1171,7 +1240,7 @@ function sortEntries(entries, sortKey) {
   return list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 }
 
-function renderBoard(entries, userId, onChange) {
+function renderBoard(entries, userId, onChange, allCounts) {
   const board = document.createElement('div');
   board.className = 'shared-board';
   const buckets = new Map();
@@ -1194,7 +1263,8 @@ function renderBoard(entries, userId, onChange) {
     const meta = document.createElement('span');
     meta.className = 'shared-board-meta';
     const columnEntries = buckets.get(column.id) || [];
-    meta.textContent = `${columnEntries.length} sager`;
+    const countValue = allCounts instanceof Map ? (allCounts.get(column.id) || 0) : columnEntries.length;
+    meta.textContent = `${countValue} sager`;
     header.appendChild(title);
     header.appendChild(meta);
     if (column.hint) {
@@ -1257,7 +1327,10 @@ function setTestState({ session, teamIdValue, role } = {}) {
   membershipError = null;
   teamError = '';
   activeFilters = null;
+  lastServerFilters = null;
   isLoading = false;
+  loadingCount = 0;
+  latestRequestId = 0;
 }
 
 function getCursorKey(cursor) {
@@ -1295,6 +1368,17 @@ function updateCaseEntry(updatedCase) {
   mergeEntries([merged], { prepend: true });
 }
 
+function buildOptimisticUpdate(entry, updates) {
+  if (!entry?.caseId) return null;
+  const base = { ...entry };
+  delete base.__viewBucket;
+  return {
+    ...base,
+    ...updates,
+    __syncing: true,
+  };
+}
+
 function removeCaseEntry(caseId) {
   if (!caseId) return;
   casesById.delete(caseId);
@@ -1303,6 +1387,25 @@ function removeCaseEntry(caseId) {
 
 function getActiveFilters() {
   return activeFilters || getFilters();
+}
+
+function handleFiltersChanged({ immediate = false } = {}) {
+  if (!sharedCasesContainer) return;
+  const filters = getFilters();
+  activeFilters = filters;
+  const serverFilters = resolveServerFilters(filters);
+  const serverChanged = !areServerFiltersEqual(serverFilters, lastServerFilters || {});
+  if (serverChanged) {
+    lastServerFilters = serverFilters;
+  }
+  renderFromState(sharedCasesContainer, sessionState?.user?.uid || 'offline-user');
+  if (serverChanged) {
+    if (immediate) {
+      refreshCases({ prepend: false });
+    } else if (typeof debouncedServerRefresh === 'function') {
+      debouncedServerRefresh();
+    }
+  }
 }
 
 function expandEntriesForDisplay(entries) {
@@ -1319,17 +1422,21 @@ function expandEntriesForDisplay(entries) {
 
 function renderFromState(container, userId) {
   const filters = getActiveFilters();
-  const displayEntries = expandEntriesForDisplay(caseItems);
-  const filtered = displayEntries.filter(entry => {
+  const expandedEntries = expandEntriesForDisplay(caseItems);
+  const scopeEntries = expandedEntries.filter(entry => {
     const meta = resolveCaseMeta(entry);
-    return matchesFilters(entry, meta, filters);
+    return matchesFilters(entry, meta, filters, { includeStatus: false });
   });
-  const sorted = sortEntries(filtered, filters.sort);
+  const allCounts = computeBucketCounts(scopeEntries);
+  const displayEntries = filters.status
+    ? scopeEntries.filter(entry => resolveEntryBucket(entry) === filters.status)
+    : scopeEntries;
+  const sorted = sortEntries(displayEntries, filters.sort);
   renderSharedCases(container, sorted, filters, userId, (payload) => {
     if (payload?.updatedCase) updateCaseEntry(payload.updatedCase);
     if (payload?.removeCaseId) removeCaseEntry(payload.removeCaseId);
     renderFromState(container, userId);
-  });
+  }, allCounts);
 }
 
 function updateDeltaCursorFromItems(items) {
@@ -1443,28 +1550,28 @@ async function runDeltaSync() {
   }
 }
 
-async function fetchCasesPage({ reset = false, prepend = false } = {}) {
-  if (isLoading) return null;
+async function fetchCasesPage({ reset = false, prepend = false, requestId = null, replace = false, allowParallel = false } = {}) {
+  if (isLoading && !allowParallel) return null;
   if (!requireAuth()) return null;
-  isLoading = true;
+  startLoading();
   try {
     const filters = reset ? getFilters() : (activeFilters || getFilters());
     if (reset) {
       activeFilters = filters;
-      if (!prepend) {
-        resetCaseState();
-      }
     }
     const serverFilters = resolveServerFilters(filters);
     const page = await listSharedCasesPageFn(ensureTeamSelected(), {
       limit: 100,
       cursor: reset ? null : nextCursor,
-      status: serverFilters.status,
       q: serverFilters.q,
       from: serverFilters.from,
       to: serverFilters.to,
     });
+    if (requestId && requestId !== latestRequestId) return null;
     const items = Array.isArray(page?.items) ? page.items : [];
+    if (reset && replace) {
+      resetCaseState();
+    }
     if (reset && prepend) {
       mergeEntries(items, { prepend: true });
     } else {
@@ -1486,19 +1593,21 @@ async function fetchCasesPage({ reset = false, prepend = false } = {}) {
     }
     return { entries: caseItems.slice(), filters };
   } finally {
-    isLoading = false;
+    stopLoading();
   }
 }
 
-function renderSharedCases(container, entries, filters, userId, onChange) {
+function renderSharedCases(container, entries, filters, userId, onChange, allCounts) {
   container.textContent = '';
-  if (!entries.length) {
+  const hasCounts = allCounts instanceof Map
+    && Array.from(allCounts.values()).some(value => value > 0);
+  if (!entries.length && !hasCounts) {
     const empty = document.createElement('p');
     empty.textContent = 'Ingen delte sager endnu.';
     container.appendChild(empty);
     return;
   }
-  container.appendChild(renderBoard(entries, userId, onChange));
+  container.appendChild(renderBoard(entries, userId, onChange, allCounts));
   const status = document.createElement('div');
   status.className = 'shared-cases-status';
   status.textContent = `Viser ${entries.length} sager${hasMore ? ' (flere kan hentes)' : ''}.`;
@@ -1515,12 +1624,7 @@ function renderSharedCases(container, entries, filters, userId, onChange) {
       try {
         const page = await fetchCasesPage({ reset: false, prepend: false });
         if (!page) return;
-        const filtered = page.entries.filter(entry => {
-          const meta = resolveCaseMeta(entry);
-          return matchesFilters(entry, meta, page.filters);
-        });
-        const sorted = sortEntries(filtered, page.filters.sort);
-        renderSharedCases(container, sorted, page.filters, userId, onChange);
+        renderFromState(container, userId);
         setSharedStatus('Synkroniseret');
         clearInlineError();
       } catch (error) {
@@ -1560,6 +1664,12 @@ export function initSharedCasesPanel() {
   applyStoredFilters();
   updateSharedStatus();
   updateStatusCard();
+  const initialFilters = getFilters();
+  activeFilters = initialFilters;
+  lastServerFilters = resolveServerFilters(initialFilters);
+  debouncedServerRefresh = debounce(() => {
+    refreshCases({ prepend: false });
+  }, 300);
 
   refreshCases = async ({ prepend = false } = {}) => {
     if (!sharedCasesContainer) return;
@@ -1569,27 +1679,28 @@ export function initSharedCasesPanel() {
       return;
     }
     setRefreshState('loading');
-    if (!prepend) {
+    if (!prepend && !caseItems.length) {
       sharedCasesContainer.textContent = 'Henter sager…';
     }
+    updateSharedStatus('Opdaterer…');
     const currentUser = sessionState?.user?.uid || 'offline-user';
-    const handleCaseChange = (payload) => {
-      if (payload?.updatedCase) updateCaseEntry(payload.updatedCase);
-      if (payload?.removeCaseId) removeCaseEntry(payload.removeCaseId);
-      renderFromState(sharedCasesContainer, currentUser);
-    };
+    let requestId = 0;
     try {
-      const page = await fetchCasesPage({ reset: true, prepend });
-      if (!page) {
-        setRefreshState('idle');
+      requestId = ++latestRequestId;
+      const page = await fetchCasesPage({
+        reset: true,
+        prepend,
+        requestId,
+        replace: true,
+        allowParallel: true,
+      });
+      if (!page || requestId !== latestRequestId) {
+        if (requestId === latestRequestId) {
+          setRefreshState('idle');
+        }
         return;
       }
-      const filtered = page.entries.filter(entry => {
-        const meta = resolveCaseMeta(entry);
-        return matchesFilters(entry, meta, page.filters);
-      });
-      const sorted = sortEntries(filtered, page.filters.sort);
-      renderSharedCases(sharedCasesContainer, sorted, page.filters, currentUser, handleCaseChange);
+      renderFromState(sharedCasesContainer, currentUser);
       updateDeltaCursorFromItems(caseItems);
       lastDeltaSyncLabel = formatTimeLabel(new Date());
       setSharedStatus('Synkroniseret');
@@ -1607,15 +1718,23 @@ export function initSharedCasesPanel() {
         : `${message} ${denied ? '' : 'Tjek netværk eller log ind igen.'}`.trim();
       setInlineError(message);
       setSharedStatus(`Fejl: ${message}`);
-      setRefreshState('error');
+      if (requestId === latestRequestId) {
+        setRefreshState('error');
+      }
       appendDebug(`Liste fejl: ${message}`);
     }
   };
 
   if (refreshBtn) refreshBtn.addEventListener('click', refreshCases);
   filters.forEach(input => {
-    input.addEventListener('input', () => refreshCases());
-    input.addEventListener('change', () => refreshCases());
+    const isServerInput = ['sharedSearchInput', 'sharedDateFrom', 'sharedDateTo'].includes(input.id);
+    if (isServerInput) {
+      input.addEventListener('input', () => handleFiltersChanged({ immediate: false }));
+      input.addEventListener('change', () => handleFiltersChanged({ immediate: false }));
+    } else {
+      input.addEventListener('input', () => handleFiltersChanged({ immediate: true }));
+      input.addEventListener('change', () => handleFiltersChanged({ immediate: true }));
+    }
   });
 
   bindSessionControls(() => refreshCases(), () => {
