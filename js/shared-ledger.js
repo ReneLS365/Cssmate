@@ -304,6 +304,9 @@ async function buildStableCaseId ({ teamId, jobNumber, phase, jsonContent }) {
 
 export async function computeProjectId(teamId, jobNumber) {
   const normalizedJob = normalizeJobNumber(jobNumber)
+  if (!normalizedJob || normalizedJob === 'UKENDT') {
+    return null
+  }
   const payload = `${PROJECT_ID_NAMESPACE}|team:${teamId}|job:${normalizedJob}`
   const hex = await sha256Hex(payload)
   return formatUuidFromHex(hex)

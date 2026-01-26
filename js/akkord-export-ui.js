@@ -219,7 +219,7 @@ export async function exportAkkordJsonAndPdf(options = {}) {
     }
     const resolvedProjectId = sharedContext?.projectId
       ? sharedContext.projectId
-      : await computeProjectId(resolvedTeamId, jobNumber || 'UKENDT');
+      : await computeProjectId(resolvedTeamId, jobNumber);
     const parentCaseId = useSharedCase ? sharedContext.caseId : null;
 
     const publishResult = await publishSharedCaseFn({
