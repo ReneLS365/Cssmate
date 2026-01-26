@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import { db, ensureDbReady } from './_db.mjs'
 import { generateToken, getAuth0Config, hashToken, secureCompare, verifyToken } from './_auth.mjs'
 import { safeError } from './_log.mjs'
@@ -25,7 +26,8 @@ const CASE_STATUS = {
   DEMONTAGE: 'demontage_i_gang',
   DONE: 'afsluttet',
 }
-const DB_NOT_MIGRATED_MESSAGE = 'DB er ikke migreret. Kør netlify/functions/migrations/001_init.sql, netlify/functions/migrations/002_add_team_slug.sql, netlify/functions/migrations/003_auth0_invites.sql, netlify/functions/migrations/004_add_team_member_login.sql, netlify/functions/migrations/005_cases_indexes.sql, netlify/functions/migrations/006_cases_defaults.sql, netlify/functions/migrations/007_cases_workflow.sql, netlify/functions/migrations/008_auth0_member_profile.sql og netlify/functions/migrations/009_cases_attachments.sql mod Neon.'
+const PROJECT_ID_NAMESPACE = 'cssmate:shared-project'
+const DB_NOT_MIGRATED_MESSAGE = 'DB er ikke migreret. Kør netlify/functions/migrations/001_init.sql, netlify/functions/migrations/002_add_team_slug.sql, netlify/functions/migrations/003_auth0_invites.sql, netlify/functions/migrations/004_add_team_member_login.sql, netlify/functions/migrations/005_cases_indexes.sql, netlify/functions/migrations/006_cases_defaults.sql, netlify/functions/migrations/007_cases_workflow.sql, netlify/functions/migrations/008_auth0_member_profile.sql, netlify/functions/migrations/009_cases_attachments.sql og netlify/functions/migrations/010_cases_project_id.sql mod Neon.'
 let cachedMgmtToken = ''
 let cachedMgmtTokenExpiry = 0
 
@@ -132,6 +134,22 @@ function normalizeCasePhase (value, fallback = '') {
   return fallback
 }
 
+function normalizeJobNumber (value) {
+  return (value || '').toString().trim() || 'UKENDT'
+}
+
+function formatUuidFromHex (hex) {
+  const cleaned = (hex || '').toString().replace(/[^a-f0-9]/gi, '').padEnd(32, '0').slice(0, 32)
+  return `${cleaned.slice(0, 8)}-${cleaned.slice(8, 12)}-${cleaned.slice(12, 16)}-${cleaned.slice(16, 20)}-${cleaned.slice(20, 32)}`.toLowerCase()
+}
+
+function computeProjectId (teamSlug, jobNumber) {
+  const normalizedJob = normalizeJobNumber(jobNumber)
+  const payload = `${PROJECT_ID_NAMESPACE}|team:${teamSlug}|job:${normalizedJob}`
+  const hex = createHash('sha256').update(payload).digest('hex')
+  return formatUuidFromHex(hex)
+}
+
 function resolveExportAction ({ phaseHint, caseKind }) {
   const hint = normalizePhaseHint(phaseHint)
   if (hint) return hint === 'demontage' ? 'EXPORT_DEMONTAGE' : 'EXPORT_MONTAGE'
@@ -168,6 +186,9 @@ function resolveCaseTransition ({ action, currentStatus, currentPhase, isCreator
       throw createError('Sagen er allerede afsluttet.', 409)
     }
     if ([CASE_STATUS.DRAFT, CASE_STATUS.READY].includes(currentStatus)) {
+      if (normalizedPhase === 'demontage') {
+        return { status: CASE_STATUS.DONE, phase: 'demontage' }
+      }
       throw createError('Montage skal godkendes før demontage kan påbegyndes.', 403)
     }
     if ([CASE_STATUS.APPROVED, CASE_STATUS.DEMONTAGE].includes(currentStatus)) {
@@ -661,15 +682,21 @@ function serializeCaseRow (row) {
   const jsonAttachment = row.json_content
     ? { data: row.json_content, createdAt }
     : storedAttachments.json || null
+  const jobNumber = row.job_number || ''
+  const fallbackPhase = storedAttachments?.demontage ? 'demontage' : 'montage'
+  const resolvedPhase = normalizeCasePhase(row.phase, fallbackPhase)
+  const resolvedProjectId = row.project_id || computeProjectId(row.team_slug || '', jobNumber)
   return {
     caseId: row.case_id,
     teamId: row.team_slug,
-    jobNumber: row.job_number || '',
+    jobNumber,
     caseKind: row.case_kind || '',
     system: row.system || '',
     totals: row.totals || { materials: 0, montage: 0, demontage: 0, total: 0 },
     status: row.status || 'kladde',
-    phase: row.phase || null,
+    phase: resolvedPhase,
+    projectId: resolvedProjectId,
+    parentCaseId: row.parent_case_id || null,
     createdAt,
     updatedAt,
     lastUpdatedAt,
@@ -1078,6 +1105,11 @@ async function handleCaseCreate (event, teamSlug) {
   let totals = body.totals || { materials: 0, montage: 0, demontage: 0, total: 0 }
   const ifMatchUpdatedAt = parseIfMatchUpdatedAt(body.ifMatchUpdatedAt)
   const action = resolveExportAction({ phaseHint: body.phaseHint, caseKind: body.caseKind })
+  const normalizedJobNumber = normalizeJobNumber(body.jobNumber)
+  const resolvedProjectId = isValidUuid(body.projectId)
+    ? body.projectId
+    : computeProjectId(team.slug || teamSlug, normalizedJobNumber)
+  const resolvedParentCaseId = isValidUuid(body.parentCaseId) ? body.parentCaseId : null
   const existingResult = await db.query(
     `SELECT c.*
      FROM team_cases c
@@ -1093,9 +1125,9 @@ async function handleCaseCreate (event, teamSlug) {
   }
   const isCreator = !existing || existing.created_by === user.id
   const currentStatus = existing?.status || CASE_STATUS.DRAFT
-  const currentPhase = existing?.phase || ''
+  const currentPhase = existing?.phase || normalizeCasePhase(body.phase || body.phaseHint || body.caseKind, '')
   if (!existing && action === 'EXPORT_DEMONTAGE') {
-    throw createError('Der findes ingen godkendt montage til demontage.', 404)
+    // Allow demontage exports to create their own case entries.
   }
   const { status: nextStatus, phase: nextPhase } = resolveCaseTransition({
     action,
@@ -1123,10 +1155,12 @@ async function handleCaseCreate (event, teamSlug) {
 
   await db.query(
     `INSERT INTO team_cases
-      (case_id, team_id, job_number, case_kind, system, totals, status, phase, attachments, created_at, updated_at, last_updated_at,
+      (case_id, team_id, project_id, parent_case_id, job_number, case_kind, system, totals, status, phase, attachments, created_at, updated_at, last_updated_at,
        created_by, created_by_email, created_by_name, updated_by, last_editor_sub, json_content)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9::jsonb, NOW(), NOW(), NOW(), $10, $11, $12, $10, $10, $13)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11::jsonb, NOW(), NOW(), NOW(), $12, $13, $14, $12, $12, $15)
      ON CONFLICT (case_id) DO UPDATE SET
+       project_id = EXCLUDED.project_id,
+       parent_case_id = COALESCE(EXCLUDED.parent_case_id, team_cases.parent_case_id),
        job_number = EXCLUDED.job_number,
        case_kind = EXCLUDED.case_kind,
        system = EXCLUDED.system,
@@ -1144,7 +1178,9 @@ async function handleCaseCreate (event, teamSlug) {
     [
       caseId,
       team.id,
-      body.jobNumber || '',
+      resolvedProjectId,
+      resolvedParentCaseId,
+      normalizedJobNumber,
       body.caseKind || '',
       body.system || '',
       JSON.stringify(totals),
@@ -1305,12 +1341,76 @@ async function handleCaseDelete (event, teamSlug, caseId) {
 }
 
 async function handleCaseStatus (event, teamSlug, caseId) {
+  await requireDbReady(event)
+  const { user, team } = await requireTeamContext(event, teamSlug)
   const body = parseBody(event)
   const requested = (body?.status || '').toString().trim().toLowerCase()
-  if (requested === CASE_STATUS.APPROVED || requested === CASE_STATUS.DONE) {
+  if (requested === CASE_STATUS.APPROVED) {
     return handleCaseApprove(event, teamSlug, caseId)
   }
-  return jsonResponse(400, { error: 'Ugyldig statusændring.' })
+  if (![CASE_STATUS.DEMONTAGE, CASE_STATUS.DONE].includes(requested)) {
+    return jsonResponse(400, { error: 'Ugyldig statusændring.' })
+  }
+  const ifMatchUpdatedAt = parseIfMatchUpdatedAt(body.ifMatchUpdatedAt)
+  const result = await db.query(
+    `SELECT c.*
+     FROM team_cases c
+     WHERE c.team_id = $1 AND c.case_id = $2`,
+    [team.id, caseId]
+  )
+  const row = result.rows[0]
+  if (!row) return jsonResponse(404, { error: 'Sag findes ikke.' })
+  if (ifMatchUpdatedAt && row.updated_at) {
+    const currentUpdatedAt = new Date(row.updated_at)
+    if (currentUpdatedAt.toISOString() !== ifMatchUpdatedAt.toISOString()) {
+      return jsonResponse(409, { error: 'Sagen er ændret af en anden. Opdater og prøv igen.', case: serializeCaseRow(row) })
+    }
+  }
+  const currentStatus = row.status || CASE_STATUS.DRAFT
+  const currentPhase = normalizeCasePhase(row.phase, row.status === CASE_STATUS.DEMONTAGE ? 'demontage' : 'montage')
+  let nextStatus = currentStatus
+  let nextPhase = currentPhase
+  if (requested === CASE_STATUS.DEMONTAGE) {
+    if (currentStatus === CASE_STATUS.DEMONTAGE) {
+      return jsonResponse(200, serializeCaseRow(row))
+    }
+    if (currentStatus === CASE_STATUS.APPROVED) {
+      nextStatus = CASE_STATUS.DEMONTAGE
+    } else if (currentStatus === CASE_STATUS.DONE) {
+      return jsonResponse(409, { error: 'Sagen er allerede afsluttet.', case: serializeCaseRow(row) })
+    } else {
+      return jsonResponse(409, { error: 'Sagen kan ikke sættes i demontage.', case: serializeCaseRow(row) })
+    }
+  }
+  if (requested === CASE_STATUS.DONE) {
+    if (currentStatus === CASE_STATUS.DONE) {
+      return jsonResponse(200, serializeCaseRow(row))
+    }
+    if ([CASE_STATUS.APPROVED, CASE_STATUS.DEMONTAGE].includes(currentStatus)) {
+      nextStatus = CASE_STATUS.DONE
+    } else {
+      return jsonResponse(409, { error: 'Sagen kan ikke afsluttes endnu.', case: serializeCaseRow(row) })
+    }
+  }
+  const resolvedProjectId = isValidUuid(body.projectId)
+    ? body.projectId
+    : row.project_id || computeProjectId(team.slug || teamSlug, row.job_number || body.jobNumber || '')
+  const resolvedParentCaseId = isValidUuid(body.parentCaseId) ? body.parentCaseId : null
+  await db.query(
+    `UPDATE team_cases
+     SET status = $1, phase = $2, project_id = $3, parent_case_id = COALESCE($4, parent_case_id),
+         updated_at = NOW(), last_updated_at = NOW(), updated_by = $5, last_editor_sub = $5
+     WHERE team_id = $6 AND case_id = $7`,
+    [nextStatus, nextPhase, resolvedProjectId, resolvedParentCaseId, user.id, team.id, caseId]
+  )
+  const updated = await db.query(
+    `SELECT c.*, t.slug as team_slug
+     FROM team_cases c
+     JOIN teams t ON t.id = c.team_id
+     WHERE c.team_id = $1 AND c.case_id = $2`,
+    [team.id, caseId]
+  )
+  return jsonResponse(200, serializeCaseRow(updated.rows[0]))
 }
 
 async function handleCaseApprove (event, teamSlug, caseId) {
@@ -1346,6 +1446,7 @@ async function handleCaseApprove (event, teamSlug, caseId) {
   const storedAttachments = row.attachments && typeof row.attachments === 'object' ? row.attachments : {}
   const attachments = { ...storedAttachments }
   let totals = row.totals || { materials: 0, montage: 0, demontage: 0, total: 0 }
+  const resolvedProjectId = row.project_id || computeProjectId(team.slug || teamSlug, row.job_number || '')
   const approvingMontage = [CASE_STATUS.DRAFT, CASE_STATUS.READY].includes(currentStatus) && nextStatus === CASE_STATUS.APPROVED
   if (approvingMontage && !attachments.montage) {
     attachments.montage = row.json_content || null
@@ -1360,9 +1461,10 @@ async function handleCaseApprove (event, teamSlug, caseId) {
   }
 
   await db.query(
-    `UPDATE team_cases SET status = $1, phase = $2, totals = $3::jsonb, attachments = $4::jsonb, updated_at = NOW(), last_updated_at = NOW(), updated_by = $5, last_editor_sub = $5
-     WHERE team_id = $6 AND case_id = $7`,
-    [nextStatus, nextPhase, JSON.stringify(totals), JSON.stringify(attachments), user.id, team.id, caseId]
+    `UPDATE team_cases SET status = $1, phase = $2, totals = $3::jsonb, attachments = $4::jsonb, project_id = $5,
+     updated_at = NOW(), last_updated_at = NOW(), updated_by = $6, last_editor_sub = $6
+     WHERE team_id = $7 AND case_id = $8`,
+    [nextStatus, nextPhase, JSON.stringify(totals), JSON.stringify(attachments), resolvedProjectId, user.id, team.id, caseId]
   )
   const updated = await db.query(
     `SELECT c.*, t.slug as team_slug
@@ -1438,12 +1540,18 @@ async function handleBackupImport (event, teamSlug) {
   const body = parseBody(event)
   const cases = Array.isArray(body?.cases) ? body.cases : []
   for (const entry of cases) {
+    const resolvedProjectId = isValidUuid(entry.projectId)
+      ? entry.projectId
+      : computeProjectId(team.slug || teamSlug, entry.jobNumber || '')
+    const resolvedParentCaseId = isValidUuid(entry.parentCaseId) ? entry.parentCaseId : null
     await db.query(
       `INSERT INTO team_cases
-        (case_id, team_id, job_number, case_kind, system, totals, status, phase, created_at, updated_at, last_updated_at,
+        (case_id, team_id, project_id, parent_case_id, job_number, case_kind, system, totals, status, phase, created_at, updated_at, last_updated_at,
          created_by, created_by_email, created_by_name, updated_by, last_editor_sub, json_content, deleted_at, deleted_by)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
        ON CONFLICT (case_id) DO UPDATE SET
+         project_id = EXCLUDED.project_id,
+         parent_case_id = COALESCE(EXCLUDED.parent_case_id, team_cases.parent_case_id),
          job_number = EXCLUDED.job_number,
          case_kind = EXCLUDED.case_kind,
          system = EXCLUDED.system,
@@ -1460,6 +1568,8 @@ async function handleBackupImport (event, teamSlug) {
       [
         entry.caseId,
         team.id,
+        resolvedProjectId,
+        resolvedParentCaseId,
         entry.jobNumber || '',
         entry.caseKind || '',
         entry.system || '',

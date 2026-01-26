@@ -25,6 +25,7 @@ const SHARED_CASES_QUEUE_MAX = 30
 const SHARED_CASE_CONTEXT_KEY = 'cssmate:shared-case:context:v1'
 
 const CASE_ID_NAMESPACE = 'cssmate:shared-case'
+const PROJECT_ID_NAMESPACE = 'cssmate:shared-project'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 class PermissionDeniedError extends Error {
@@ -108,6 +109,7 @@ function normalizeSharedCaseContext(value) {
     phase,
     status: value.status || '',
     updatedAt: value.updatedAt || '',
+    projectId: value.projectId || '',
   }
 }
 
@@ -186,7 +188,9 @@ function isOnline () {
 
 function normalizeQueuedEntry (entry) {
   if (!entry || !entry.caseId) return null
+  const operationType = entry.operationType || 'publish'
   return {
+    operationType,
     caseId: entry.caseId,
     teamId: entry.teamId,
     jobNumber: entry.jobNumber || 'UKENDT',
@@ -195,7 +199,9 @@ function normalizeQueuedEntry (entry) {
     totals: entry.totals || { materials: 0, montage: 0, demontage: 0, total: 0 },
     status: entry.status || 'kladde',
     jsonContent: entry.jsonContent || '',
-    phaseHint: entry.phaseHint || '',
+    phase: normalizePhase(entry.phase || entry.phaseHint || entry.caseKind),
+    projectId: entry.projectId || '',
+    parentCaseId: entry.parentCaseId || null,
     ifMatchUpdatedAt: entry.ifMatchUpdatedAt || '',
     createdByName: entry.createdByName || '',
     actorRole: entry.actorRole || null,
@@ -208,7 +214,7 @@ function upsertQueueEntry (entry) {
   const normalized = normalizeQueuedEntry(entry)
   if (!normalized) return
   const current = readQueueStorage()
-  const index = current.findIndex(item => item?.caseId === normalized.caseId)
+  const index = current.findIndex(item => item?.caseId === normalized.caseId && item?.operationType === normalized.operationType)
   if (index >= 0) {
     current[index] = { ...current[index], ...normalized, queuedAt: current[index].queuedAt || normalized.queuedAt }
   } else {
@@ -220,9 +226,13 @@ function upsertQueueEntry (entry) {
   writeQueueStorage(current)
 }
 
-function removeQueueEntry (caseId) {
+function removeQueueEntry (caseId, operationType = '') {
   if (!caseId) return
-  const current = readQueueStorage().filter(item => item?.caseId !== caseId)
+  const current = readQueueStorage().filter(item => {
+    if (item?.caseId !== caseId) return true
+    if (!operationType) return false
+    return item?.operationType !== operationType
+  })
   writeQueueStorage(current)
 }
 
@@ -237,6 +247,12 @@ async function ensureAuthUser() {
 
 function normalizeJobNumber(jobNumber) {
   return (jobNumber || '').toString().trim() || 'UKENDT'
+}
+
+function normalizePhase(value) {
+  const normalized = (value || '').toString().trim().toLowerCase()
+  if (normalized === 'demontage') return 'demontage'
+  return 'montage'
 }
 
 function cacheTeamResolution(uid, teamId, membership) {
@@ -273,11 +289,25 @@ function formatUuidFromHex (hex) {
   return `${cleaned.slice(0, 8)}-${cleaned.slice(8, 12)}-${cleaned.slice(12, 16)}-${cleaned.slice(16, 20)}-${cleaned.slice(20, 32)}`.toLowerCase()
 }
 
-async function buildStableCaseId ({ teamId, jobNumber, jsonContent }) {
+async function buildStableCaseId ({ teamId, jobNumber, phase, jsonContent }) {
   const normalizedJob = normalizeJobNumber(jobNumber)
-  const payload = normalizedJob && normalizedJob !== 'UKENDT'
-    ? `${CASE_ID_NAMESPACE}|team:${teamId}|job:${normalizedJob}`
-    : `${CASE_ID_NAMESPACE}|team:${teamId}|payload:${jsonContent || ''}`
+  const normalizedPhase = normalizePhase(phase)
+  const base = normalizedJob && normalizedJob !== 'UKENDT'
+    ? `${CASE_ID_NAMESPACE}|team:${teamId}|job:${normalizedJob}|phase:${normalizedPhase}`
+    : `${CASE_ID_NAMESPACE}|team:${teamId}|phase:${normalizedPhase}`
+  const payload = jsonContent
+    ? `${base}|payload:${jsonContent}`
+    : base
+  const hex = await sha256Hex(payload)
+  return formatUuidFromHex(hex)
+}
+
+export async function computeProjectId(teamId, jobNumber) {
+  const normalizedJob = normalizeJobNumber(jobNumber)
+  if (!normalizedJob || normalizedJob === 'UKENDT') {
+    return null
+  }
+  const payload = `${PROJECT_ID_NAMESPACE}|team:${teamId}|job:${normalizedJob}`
   const hex = await sha256Hex(payload)
   return formatUuidFromHex(hex)
 }
@@ -389,13 +419,31 @@ export async function getTeamDocument(teamId) {
   }
 }
 
-export async function publishSharedCase({ teamId, jobNumber, caseKind, system, totals, status = 'kladde', jsonContent, phaseHint, caseId: explicitCaseId, ifMatchUpdatedAt }) {
+export async function publishSharedCase({
+  teamId,
+  jobNumber,
+  caseKind,
+  system,
+  totals,
+  status = 'kladde',
+  jsonContent,
+  phaseHint,
+  phase,
+  projectId,
+  parentCaseId,
+  caseId: explicitCaseId,
+  ifMatchUpdatedAt,
+}) {
   ensureWritesAllowed('publishSharedCase')
   const { teamId: resolvedTeamId, membership, actor } = await getTeamContext(teamId)
   const normalizedJobNumber = normalizeJobNumber(jobNumber)
+  const resolvedPhase = normalizePhase(phase || phaseHint || caseKind)
+  const resolvedProjectId = isValidUuid(projectId)
+    ? projectId
+    : await computeProjectId(resolvedTeamId, normalizedJobNumber)
   const caseId = isValidUuid(explicitCaseId)
     ? explicitCaseId
-    : await buildStableCaseId({ teamId: resolvedTeamId, jobNumber: normalizedJobNumber, jsonContent })
+    : await buildStableCaseId({ teamId: resolvedTeamId, jobNumber: normalizedJobNumber, phase: resolvedPhase, jsonContent })
   const requestPayload = {
     caseId,
     jobNumber: normalizedJobNumber,
@@ -404,13 +452,16 @@ export async function publishSharedCase({ teamId, jobNumber, caseKind, system, t
     totals: totals || { materials: 0, montage: 0, demontage: 0, total: 0 },
     status,
     jsonContent,
-    phaseHint,
+    phaseHint: resolvedPhase,
+    phase: resolvedPhase,
+    projectId: resolvedProjectId,
+    parentCaseId: isValidUuid(parentCaseId) ? parentCaseId : null,
     ifMatchUpdatedAt,
     createdByName: actor.name || actor.displayName || '',
     actorRole: membership?.role || null,
   }
   if (!isOnline()) {
-    upsertQueueEntry({ ...requestPayload, teamId: resolvedTeamId })
+    upsertQueueEntry({ ...requestPayload, teamId: resolvedTeamId, operationType: 'publish' })
     return { queued: true, caseId }
   }
   try {
@@ -419,12 +470,12 @@ export async function publishSharedCase({ teamId, jobNumber, caseKind, system, t
       body: JSON.stringify(requestPayload),
     })
     dispatchSharedEvent({ type: 'case-updated', case: payload })
-    removeQueueEntry(caseId)
+    removeQueueEntry(caseId, 'publish')
     return { ...payload, queued: false, caseId: payload?.caseId || caseId }
   } catch (error) {
     const isNetworkError = error instanceof TypeError || /network|offline|failed to fetch/i.test(error?.message || '')
     if (isNetworkError) {
-      upsertQueueEntry({ ...requestPayload, teamId: resolvedTeamId })
+      upsertQueueEntry({ ...requestPayload, teamId: resolvedTeamId, operationType: 'publish' })
       return { queued: true, caseId }
     }
     throw error
@@ -434,12 +485,14 @@ export async function publishSharedCase({ teamId, jobNumber, caseKind, system, t
 async function publishQueuedEntry (entry) {
   const normalized = normalizeQueuedEntry(entry)
   if (!normalized) return false
+  if (normalized.operationType !== 'publish') return false
   ensureWritesAllowed('publishQueuedEntry')
   const { teamId: resolvedTeamId } = await getTeamContext(normalized.teamId)
   const payload = {
     caseId: isValidUuid(normalized.caseId) ? normalized.caseId : await buildStableCaseId({
       teamId: resolvedTeamId,
       jobNumber: normalized.jobNumber,
+      phase: normalized.phase,
       jsonContent: normalized.jsonContent,
     }),
     jobNumber: normalized.jobNumber,
@@ -448,7 +501,10 @@ async function publishQueuedEntry (entry) {
     totals: normalized.totals,
     status: normalized.status,
     jsonContent: normalized.jsonContent,
-    phaseHint: normalized.phaseHint,
+    phaseHint: normalized.phase,
+    phase: normalized.phase,
+    projectId: normalized.projectId,
+    parentCaseId: normalized.parentCaseId,
     ifMatchUpdatedAt: normalized.ifMatchUpdatedAt,
     createdByName: normalized.createdByName || '',
     actorRole: normalized.actorRole || null,
@@ -460,6 +516,59 @@ async function publishQueuedEntry (entry) {
   return true
 }
 
+async function updateQueuedStatus (entry) {
+  const normalized = normalizeQueuedEntry(entry)
+  if (!normalized) return false
+  if (normalized.operationType !== 'status-update') return false
+  ensureWritesAllowed('updateQueuedStatus')
+  const { teamId: resolvedTeamId } = await getTeamContext(normalized.teamId)
+  const payload = {
+    status: normalized.status,
+    ifMatchUpdatedAt: normalized.ifMatchUpdatedAt,
+    projectId: normalized.projectId,
+    phase: normalized.phase,
+    parentCaseId: normalized.parentCaseId,
+  }
+  const result = await apiJson(`/api/teams/${resolvedTeamId}/cases/${normalized.caseId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+  dispatchSharedEvent({ type: 'case-updated', case: result })
+  return true
+}
+
+export async function updateSharedCaseStatus(teamId, caseId, { status, ifMatchUpdatedAt, projectId, phase, parentCaseId } = {}) {
+  ensureWritesAllowed('updateSharedCaseStatus')
+  const { teamId: resolvedTeamId } = await getTeamContext(teamId)
+  const payload = {
+    status,
+    ifMatchUpdatedAt,
+    projectId,
+    phase,
+    parentCaseId,
+  }
+  if (!isOnline()) {
+    upsertQueueEntry({ operationType: 'status-update', caseId, teamId: resolvedTeamId, ...payload })
+    return { queued: true, caseId, status }
+  }
+  try {
+    const result = await apiJson(`/api/teams/${resolvedTeamId}/cases/${caseId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    })
+    dispatchSharedEvent({ type: 'case-updated', case: result })
+    removeQueueEntry(caseId, 'status-update')
+    return { ...result, queued: false }
+  } catch (error) {
+    const isNetworkError = error instanceof TypeError || /network|offline|failed to fetch/i.test(error?.message || '')
+    if (isNetworkError) {
+      upsertQueueEntry({ operationType: 'status-update', caseId, teamId: resolvedTeamId, ...payload })
+      return { queued: true, caseId, status }
+    }
+    throw error
+  }
+}
+
 export async function flushSharedCasesQueue () {
   if (queueFlushInFlight) return { flushed: 0, pending: readQueueStorage().length }
   if (!isOnline()) return { flushed: 0, pending: readQueueStorage().length }
@@ -469,12 +578,22 @@ export async function flushSharedCasesQueue () {
   const remaining = []
   for (const entry of queue) {
     try {
-      await publishQueuedEntry(entry)
+      const normalized = normalizeQueuedEntry(entry)
+      const handled = normalized?.operationType === 'status-update'
+        ? await updateQueuedStatus(entry)
+        : await publishQueuedEntry(entry)
+      if (!handled) {
+        remaining.push(entry)
+        continue
+      }
       flushed += 1
     } catch (error) {
       if (error?.code === 'preview-disabled') {
         remaining.push(entry)
         break
+      }
+      if (error?.status === 409) {
+        continue
       }
       const isNetworkError = error instanceof TypeError || /network|offline|failed to fetch/i.test(error?.message || '')
       const updated = { ...entry, retries: (entry?.retries || 0) + 1 }
