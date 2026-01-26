@@ -109,6 +109,15 @@ function parseIfMatchUpdatedAt (value) {
   return parsed
 }
 
+function parseSinceParam (value) {
+  if (!value) return null
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.valueOf())) {
+    throw createError('Ugyldig since.', 400)
+  }
+  return parsed
+}
+
 function normalizePhaseHint (value) {
   const normalized = (value || '').toString().trim().toLowerCase()
   if (normalized === 'demontage') return 'demontage'
@@ -679,6 +688,21 @@ function serializeCaseRow (row) {
   }
 }
 
+function serializeCaseDeltaRow (row) {
+  const base = serializeCaseRow(row)
+  if (base.status === 'deleted' || base.deletedAt) {
+    return {
+      caseId: base.caseId,
+      teamId: base.teamId,
+      status: 'deleted',
+      lastUpdatedAt: base.lastUpdatedAt,
+      deletedAt: base.deletedAt,
+      deletedBy: base.deletedBy,
+    }
+  }
+  return base
+}
+
 async function writeAuditLog ({ teamId, actorSub, action, meta }) {
   if (!teamId || !action) return
   await db.query(
@@ -1148,11 +1172,46 @@ async function handleCaseList (event, teamSlug) {
   const { team, user } = await requireTeamContext(event, teamSlug)
   const query = event.queryStringParameters || {}
   const limit = clampCasesLimit(query.limit)
+  const since = parseSinceParam(query.since)
+  const sinceId = String(query.sinceId || '').trim()
   const status = String(query.status || '').trim()
   const search = String(query.q || '').trim()
   const from = parseDateKey(query.from)
   const to = parseDateKey(query.to)
   const cursor = decodeCursor(query.cursor)
+  if (since) {
+    const sinceIso = since.toISOString()
+    const params = [team.id, CASE_STATUS.DRAFT, user.id, sinceIso]
+    let whereClause = 'WHERE c.team_id = $1 AND (c.status <> $2 OR c.created_by = $3)'
+    if (sinceId) {
+      params.push(sinceId)
+      whereClause += ` AND (c.last_updated_at, c.case_id) > ($4, $5)`
+    } else {
+      whereClause += ' AND c.last_updated_at > $4'
+    }
+    params.push(limit)
+    const result = await db.query(
+      `SELECT c.*, t.slug as team_slug
+       FROM team_cases c
+       JOIN teams t ON t.id = c.team_id
+       ${whereClause}
+       ORDER BY c.last_updated_at ASC, c.case_id ASC
+       LIMIT $${params.length}`,
+      params
+    )
+    const rows = result.rows || []
+    const items = rows.map(serializeCaseDeltaRow)
+    const lastRow = rows[rows.length - 1]
+    const maxUpdatedAt = lastRow?.last_updated_at
+      ? new Date(lastRow.last_updated_at).toISOString()
+      : sinceIso
+    return jsonResponse(200, {
+      mode: 'delta',
+      serverNow: new Date().toISOString(),
+      maxUpdatedAt,
+      items,
+    })
+  }
   const params = [team.id, CASE_STATUS.DRAFT, user.id]
   let whereClause = 'WHERE c.team_id = $1 AND c.deleted_at IS NULL AND (c.status <> $2 OR c.created_by = $3)'
   if (status) {
