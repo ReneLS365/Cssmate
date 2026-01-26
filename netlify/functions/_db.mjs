@@ -89,15 +89,16 @@ async function ensureMigrations () {
            AND table_name = 'team_cases'
            AND column_name IN ('created_at', 'updated_at', 'last_updated_at', 'status')`
       )
-      const workflowColumnsResult = await client.query(
-        `SELECT
-           SUM(CASE WHEN column_name = 'phase' THEN 1 ELSE 0 END) AS has_phase,
-           SUM(CASE WHEN column_name = 'last_editor_sub' THEN 1 ELSE 0 END) AS has_last_editor_sub
-         FROM information_schema.columns
-         WHERE table_schema = 'public'
-           AND table_name = 'team_cases'
-           AND column_name IN ('phase', 'last_editor_sub')`
-      )
+       const workflowColumnsResult = await client.query(
+         `SELECT
+            SUM(CASE WHEN column_name = 'phase' THEN 1 ELSE 0 END) AS has_phase,
+           SUM(CASE WHEN column_name = 'last_editor_sub' THEN 1 ELSE 0 END) AS has_last_editor_sub,
+           SUM(CASE WHEN column_name = 'attachments' THEN 1 ELSE 0 END) AS has_attachments
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'team_cases'
+           AND column_name IN ('phase', 'last_editor_sub', 'attachments')`
+       )
       const defaultsRow = defaultsResult.rows[0] || {}
       const hasCaseDefaults = Boolean(
         Number(defaultsRow.created_default) > 0
@@ -106,7 +107,11 @@ async function ensureMigrations () {
         && Number(defaultsRow.status_default) > 0
       )
       const workflowRow = workflowColumnsResult.rows[0] || {}
-      const hasWorkflowColumns = Boolean(Number(workflowRow.has_phase) > 0 && Number(workflowRow.has_last_editor_sub) > 0)
+      const hasWorkflowColumns = Boolean(
+        Number(workflowRow.has_phase) > 0
+        && Number(workflowRow.has_last_editor_sub) > 0
+        && Number(workflowRow.has_attachments) > 0
+      )
       if (hasTeamSlug && hasInviteTokenHint && hasMemberLastLogin && hasMemberLastSeen && hasMemberDisplayName && hasCaseIndexes && hasCaseDefaults && hasWorkflowColumns) {
         migrationsEnsured = true
         return
@@ -122,6 +127,7 @@ async function ensureMigrations () {
         readMigrationFile('006_cases_defaults.sql'),
         readMigrationFile('007_cases_workflow.sql'),
         readMigrationFile('008_auth0_member_profile.sql'),
+        readMigrationFile('009_cases_attachments.sql'),
       ])
       await client.query('BEGIN')
       for (const sql of migrations) {
