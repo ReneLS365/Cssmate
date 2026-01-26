@@ -4,7 +4,7 @@ import { buildAkkordJsonPayload } from './export-json.js';
 import { buildExportModel } from './export-model.js';
 import { buildExportFileBaseName, buildJobSnapshot } from './job-snapshot.js';
 import { appendHistoryEntry } from './storageHistory.js';
-import { publishSharedCase, resolveTeamId, getSharedCaseContext, clearSharedCaseContext } from './shared-ledger.js';
+import { publishSharedCase, resolveTeamId, getSharedCaseContext, clearSharedCaseContext, computeProjectId, updateSharedCaseStatus } from './shared-ledger.js';
 import { waitForAccess, getState as getSessionState } from '../src/auth/session.js';
 
 function isDebugExportEnabled() {
@@ -212,16 +212,22 @@ export async function exportAkkordJsonAndPdf(options = {}) {
     const jobType = (context.model?.meta?.jobType || 'montage').toLowerCase();
     const phaseHint = jobType === 'demontage' ? 'demontage' : 'montage';
     const sharedContext = getSharedCaseContext();
-    const useSharedCase = phaseHint === 'demontage' && sharedContext?.caseId;
-    if (phaseHint === 'montage') {
+    const isDemontage = phaseHint === 'demontage';
+    const useSharedCase = isDemontage && sharedContext?.caseId;
+    if (!isDemontage) {
       clearSharedCaseContext();
     }
+    const resolvedProjectId = sharedContext?.projectId
+      ? sharedContext.projectId
+      : await computeProjectId(resolvedTeamId, jobNumber || 'UKENDT');
+    const parentCaseId = useSharedCase ? sharedContext.caseId : null;
 
     const publishResult = await publishSharedCaseFn({
       teamId: resolvedTeamId,
-      caseId: useSharedCase ? sharedContext.caseId : undefined,
-      ifMatchUpdatedAt: useSharedCase ? sharedContext.updatedAt : undefined,
+      projectId: resolvedProjectId,
+      parentCaseId,
       phaseHint,
+      phase: phaseHint,
       jobNumber,
       caseKind: jobType,
       system: context.model?.meta?.system || (context.model?.meta?.systems || [])[0] || '',
@@ -234,6 +240,21 @@ export async function exportAkkordJsonAndPdf(options = {}) {
       },
       jsonContent: jsonResult.content,
     });
+
+    if (isDemontage && sharedContext?.caseId) {
+      try {
+        await updateSharedCaseStatus(resolvedTeamId, sharedContext.caseId, {
+          status: 'afsluttet',
+          ifMatchUpdatedAt: sharedContext.updatedAt || '',
+          projectId: resolvedProjectId,
+          phase: sharedContext.phase || 'montage',
+        });
+      } catch (error) {
+        exportDebugLog('montage_status_update_failed', { message: error?.message || 'status update failed' });
+      } finally {
+        clearSharedCaseContext();
+      }
+    }
 
     notifyHistory('shared', {
       caseId: publishResult?.caseId || '',

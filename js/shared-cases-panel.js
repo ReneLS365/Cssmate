@@ -1,4 +1,4 @@
-import { listSharedCasesPage, listSharedCasesDelta, downloadCaseJson, importCasePayload, approveSharedCase, deleteSharedCase, formatTeamId, PermissionDeniedError, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG, setSharedCaseContext } from './shared-ledger.js';
+import { listSharedCasesPage, listSharedCasesDelta, downloadCaseJson, importCasePayload, approveSharedCase, deleteSharedCase, formatTeamId, PermissionDeniedError, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG, setSharedCaseContext, updateSharedCaseStatus } from './shared-ledger.js';
 import { exportPDFBlob } from './export-pdf.js';
 import { buildExportModel } from './export-model.js';
 import { downloadBlob } from './utils/downloadBlob.js';
@@ -33,7 +33,6 @@ let nextCursor = null;
 let hasMore = false;
 let seenCursorKeys = new Set();
 let activeFilters = null;
-let lastServerFilters = null;
 let isLoading = false;
 let loadingCount = 0;
 let loadMoreBtn;
@@ -47,7 +46,8 @@ let pollingActive = false;
 let pollingReason = '';
 let lastDeltaSyncLabel = '';
 let latestRequestId = 0;
-let debouncedServerRefresh = null;
+let debouncedFilterRender = null;
+let debouncedQuickRender = null;
 const UI_STORAGE_KEY = 'cssmate:shared-cases:ui:v1';
 const CASE_META_CACHE = new Map();
 const DATE_INPUT_FORMATTER = new Intl.DateTimeFormat('sv-SE');
@@ -369,6 +369,13 @@ function resolveCaseMeta(entry) {
   return resolved;
 }
 
+function resolveProjectKey(entry, meta) {
+  const jobNumber = (meta?.jobNumber || entry?.jobNumber || '').toString().trim();
+  if (entry?.projectId) return entry.projectId;
+  if (jobNumber) return `job:${jobNumber}`;
+  return entry?.caseId || '';
+}
+
 function formatDateInput(value) {
   if (!value) return '';
   const date = value instanceof Date ? value : new Date(value);
@@ -436,7 +443,7 @@ function resolveCaseStatusBucket(status) {
   const value = (status || '').toLowerCase();
   if (value === 'kladde') return 'kladde';
   if (['klar', 'klar-til-deling', 'klar_til_deling', 'ready'].includes(value)) return 'kladde';
-  if (value === 'godkendt') return 'godkendt';
+  if (value === 'godkendt' || value === 'klar_til_demontage') return 'godkendt';
   if (['demontage', 'demontage-igang', 'demontage_i_gang', 'i-gang', 'igang', 'in-progress'].includes(value)) return 'demontage_i_gang';
   if (['afsluttet', 'done', 'completed', 'complete'].includes(value)) return 'afsluttet';
   return 'andet';
@@ -449,12 +456,19 @@ function resolveEntryBucket(entry) {
 
 function computeBucketCounts(entries) {
   const counts = new Map();
+  const finishedProjects = new Set();
   BOARD_COLUMNS.forEach(column => {
     counts.set(column.id, 0);
   });
   entries.forEach(entry => {
     const bucketId = resolveEntryBucket(entry);
     const resolved = counts.has(bucketId) ? bucketId : 'andet';
+    if (resolved === 'afsluttet') {
+      const meta = resolveCaseMeta(entry);
+      const projectKey = resolveProjectKey(entry, meta);
+      if (!projectKey || finishedProjects.has(projectKey)) return;
+      finishedProjects.add(projectKey);
+    }
     counts.set(resolved, (counts.get(resolved) || 0) + 1);
   });
   return counts;
@@ -619,19 +633,6 @@ function getFilters() {
   return filters;
 }
 
-function resolveServerFilters(filters) {
-  const q = (filters?.search || '').trim();
-  const from = dayKeyFromInput(filters?.dateFrom);
-  const to = dayKeyFromInput(filters?.dateTo);
-  return { q, from, to };
-}
-
-function areServerFiltersEqual(a = {}, b = {}) {
-  return (a.q || '') === (b.q || '')
-    && (a.from || '') === (b.from || '')
-    && (a.to || '') === (b.to || '');
-}
-
 function matchesFilters(entry, meta, filters, { includeStatus = true } = {}) {
   const searchValue = normalizeSearchValue(filters.search);
   const tokens = searchValue ? searchValue.split(' ').filter(Boolean) : [];
@@ -708,6 +709,7 @@ async function handleImport(entry, { phase } = {}) {
       phase: phaseHint,
       status: entry.status || '',
       updatedAt: entry.updatedAt || '',
+      projectId: entry.projectId || '',
     });
   }
   const content = await importCasePayload(ensureTeamSelected(), caseId);
@@ -1096,6 +1098,27 @@ function createCaseActions(entry, userId, onChange) {
     demontageBtn.addEventListener('click', async () => {
       demontageBtn.disabled = true;
       try {
+        const previousEntry = casesById.get(entry.caseId) || entry;
+        const optimisticEntry = buildOptimisticUpdate(previousEntry, { status: 'demontage_i_gang' });
+        if (optimisticEntry && typeof onChange === 'function') {
+          onChange({ updatedCase: optimisticEntry });
+        }
+        try {
+          const updated = await updateSharedCaseStatus(ensureTeamSelected(), entry.caseId, {
+            status: 'demontage_i_gang',
+            ifMatchUpdatedAt: entry.updatedAt,
+            projectId: entry.projectId || '',
+            phase: entry.phase || 'montage',
+          });
+          if (typeof onChange === 'function' && !updated?.queued) {
+            onChange({ updatedCase: { ...updated, __syncing: false } });
+          }
+        } catch (error) {
+          if (typeof onChange === 'function') {
+            onChange({ updatedCase: { ...previousEntry, __syncing: false } });
+          }
+          throw error;
+        }
         await handleImport(entry, { phase: 'demontage' });
         showToast('Sag indlæst til demontage.', { variant: 'success' });
       } catch (error) {
@@ -1226,6 +1249,164 @@ function renderCaseCard(entry, userId, onChange) {
   return card;
 }
 
+function resolveEntryPhase(entry) {
+  if (entry?.phase === 'demontage') return 'demontage';
+  if (entry?.phase === 'montage') return 'montage';
+  const bucket = resolveCaseStatusBucket(entry?.status);
+  if (bucket === 'demontage_i_gang') return 'demontage';
+  if (entry?.attachments?.demontage && !entry?.attachments?.montage) return 'demontage';
+  return 'montage';
+}
+
+function buildFinishedProjectGroups(entries) {
+  const groups = new Map();
+  entries.forEach(entry => {
+    if (resolveEntryBucket(entry) !== 'afsluttet') return;
+    const meta = resolveCaseMeta(entry);
+    const key = resolveProjectKey(entry, meta);
+    if (!key) return;
+    const timestamp = entry.lastUpdatedAt || entry.updatedAt || entry.createdAt || '';
+    const phase = resolveEntryPhase(entry);
+    const existing = groups.get(key) || {
+      projectKey: key,
+      projectId: entry.projectId || '',
+      jobNumber: meta.jobNumber || entry.jobNumber || '',
+      latestUpdatedAt: '',
+      meta: meta,
+      montageCases: [],
+      demontageCases: [],
+    };
+    if (!existing.latestUpdatedAt || timestamp.localeCompare(existing.latestUpdatedAt) > 0) {
+      existing.latestUpdatedAt = timestamp;
+      existing.meta = meta;
+      existing.jobNumber = meta.jobNumber || entry.jobNumber || existing.jobNumber;
+    }
+    if (phase === 'demontage') {
+      existing.demontageCases.push(entry);
+    } else {
+      existing.montageCases.push(entry);
+    }
+    if (!existing.projectId && entry.projectId) existing.projectId = entry.projectId;
+    groups.set(key, existing);
+  });
+  return Array.from(groups.values())
+    .map(group => ({
+      ...group,
+      montageCases: group.montageCases.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || '')),
+      demontageCases: group.demontageCases.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || '')),
+    }))
+    .sort((a, b) => (b.latestUpdatedAt || '').localeCompare(a.latestUpdatedAt || ''));
+}
+
+function renderPhaseSummary(entry, label, userId, onChange) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'shared-case-project__phase';
+  if (!entry) {
+    const empty = document.createElement('div');
+    empty.className = 'shared-case-project__empty';
+    empty.textContent = `${label}: ingen registrering endnu.`;
+    wrapper.appendChild(empty);
+    return wrapper;
+  }
+  const date = resolveCaseDate(entry, resolveCaseMeta(entry));
+  const heading = document.createElement('div');
+  heading.className = 'shared-case-project__phase-title';
+  heading.textContent = `${label} · ${date.formatted || formatDateInput(date.raw) || '–'}`;
+  wrapper.appendChild(heading);
+  const totals = resolveCaseTotals(entry, resolveCaseMeta(entry));
+  const totalsRow = document.createElement('div');
+  totalsRow.className = 'shared-case-project__totals';
+  totalsRow.innerHTML = `<span>Materialer:</span> <strong>${CURRENCY_FORMATTER.format(totals.materials)} kr.</strong>
+    <span>Total:</span> <strong>${CURRENCY_FORMATTER.format(totals.total)} kr.</strong>`;
+  wrapper.appendChild(totalsRow);
+  wrapper.appendChild(createCaseActions(entry, userId, onChange));
+  return wrapper;
+}
+
+function renderPhaseHistory(entries, label, userId, onChange) {
+  if (!entries.length) return null;
+  const section = document.createElement('div');
+  section.className = 'shared-case-project__history-section';
+  const title = document.createElement('div');
+  title.className = 'shared-case-project__history-title';
+  title.textContent = label;
+  section.appendChild(title);
+  entries.forEach(entry => {
+    const date = resolveCaseDate(entry, resolveCaseMeta(entry));
+    const entryWrap = document.createElement('div');
+    entryWrap.className = 'shared-case-project__history-entry';
+    const item = document.createElement('div');
+    item.className = 'shared-case-project__history-item';
+    item.textContent = `${entry.caseId.slice(0, 8)} · ${date.formatted || formatDateInput(date.raw) || '–'}`;
+    entryWrap.appendChild(item);
+    entryWrap.appendChild(createCaseActions(entry, userId, onChange));
+    section.appendChild(entryWrap);
+  });
+  return section;
+}
+
+function renderFinishedProjectCard(group, userId, onChange) {
+  const card = document.createElement('div');
+  card.className = 'shared-case-card shared-case-project';
+  const top = document.createElement('div');
+  top.className = 'shared-case-card__top';
+  const title = document.createElement('h3');
+  title.className = 'shared-case-card__title';
+  title.textContent = group.jobNumber || 'Ukendt projekt';
+  const badge = document.createElement('span');
+  badge.className = 'shared-case-card__badge';
+  badge.textContent = 'Afsluttet';
+  top.appendChild(title);
+  top.appendChild(badge);
+  card.appendChild(top);
+
+  const meta = group.meta || {};
+  const metaGrid = document.createElement('div');
+  metaGrid.className = 'shared-case-card__meta';
+  const lines = [
+    { label: 'Opgave', value: meta.jobName || '–' },
+    { label: 'Adresse', value: meta.address || '–' },
+    { label: 'Kunde', value: meta.customer || '–' },
+    { label: 'System', value: meta.system || '–' },
+  ];
+  lines.forEach(line => {
+    const row = document.createElement('div');
+    const label = document.createElement('span');
+    label.textContent = `${line.label}:`;
+    const value = document.createElement('strong');
+    value.textContent = line.value;
+    row.appendChild(label);
+    row.appendChild(value);
+    metaGrid.appendChild(row);
+  });
+  card.appendChild(metaGrid);
+
+  const latestMontage = group.montageCases[0] || null;
+  const latestDemontage = group.demontageCases[0] || null;
+  card.appendChild(renderPhaseSummary(latestMontage, 'Seneste montage', userId, onChange));
+  card.appendChild(renderPhaseSummary(latestDemontage, 'Seneste demontage', userId, onChange));
+
+  const olderMontage = group.montageCases.slice(1);
+  const olderDemontage = group.demontageCases.slice(1);
+  if (olderMontage.length || olderDemontage.length) {
+    const details = document.createElement('details');
+    details.className = 'shared-case-project__history';
+    const summary = document.createElement('summary');
+    summary.textContent = `Vis historik (${olderMontage.length + olderDemontage.length})`;
+    details.appendChild(summary);
+    const historyWrap = document.createElement('div');
+    historyWrap.className = 'shared-case-project__history-content';
+    const montageHistory = renderPhaseHistory(olderMontage, 'Montage', userId, onChange);
+    const demontageHistory = renderPhaseHistory(olderDemontage, 'Demontage', userId, onChange);
+    if (montageHistory) historyWrap.appendChild(montageHistory);
+    if (demontageHistory) historyWrap.appendChild(demontageHistory);
+    details.appendChild(historyWrap);
+    card.appendChild(details);
+  }
+
+  return card;
+}
+
 function sortEntries(entries, sortKey) {
   const list = entries.slice();
   if (sortKey === 'oldest') {
@@ -1244,14 +1425,20 @@ function renderBoard(entries, userId, onChange, allCounts) {
   const board = document.createElement('div');
   board.className = 'shared-board';
   const buckets = new Map();
+  const finishedEntries = [];
   BOARD_COLUMNS.forEach(column => {
     buckets.set(column.id, []);
   });
   entries.forEach(entry => {
     const bucketId = resolveEntryBucket(entry);
+    if (bucketId === 'afsluttet') {
+      finishedEntries.push(entry);
+      return;
+    }
     const bucket = buckets.get(bucketId) || buckets.get('andet');
     bucket.push(entry);
   });
+  const finishedGroups = buildFinishedProjectGroups(finishedEntries);
   BOARD_COLUMNS.forEach(column => {
     const columnEl = document.createElement('section');
     columnEl.className = 'shared-board-column';
@@ -1278,12 +1465,22 @@ function renderBoard(entries, userId, onChange, allCounts) {
     }
     const list = document.createElement('div');
     list.className = 'shared-board-list';
-    columnEntries.forEach(entry => list.appendChild(renderCaseCard(entry, userId, onChange)));
-    if (!columnEntries.length) {
-      const empty = document.createElement('div');
-      empty.className = 'shared-board-meta';
-      empty.textContent = 'Ingen sager';
-      list.appendChild(empty);
+    if (column.id === 'afsluttet') {
+      finishedGroups.forEach(group => list.appendChild(renderFinishedProjectCard(group, userId, onChange)));
+      if (!finishedGroups.length) {
+        const empty = document.createElement('div');
+        empty.className = 'shared-board-meta';
+        empty.textContent = 'Ingen afsluttede projekter';
+        list.appendChild(empty);
+      }
+    } else {
+      columnEntries.forEach(entry => list.appendChild(renderCaseCard(entry, userId, onChange)));
+      if (!columnEntries.length) {
+        const empty = document.createElement('div');
+        empty.className = 'shared-board-meta';
+        empty.textContent = 'Ingen sager';
+        list.appendChild(empty);
+      }
     }
     columnEl.appendChild(list);
     board.appendChild(columnEl);
@@ -1331,7 +1528,6 @@ function setTestState({ session, teamIdValue, role } = {}) {
   membershipError = null;
   teamError = '';
   activeFilters = null;
-  lastServerFilters = null;
   isLoading = false;
   loadingCount = 0;
   latestRequestId = 0;
@@ -1393,46 +1589,37 @@ function getActiveFilters() {
   return activeFilters || getFilters();
 }
 
-function handleFiltersChanged({ immediate = false } = {}) {
+function handleFiltersChanged({ immediate = false, fast = false } = {}) {
   if (!sharedCasesContainer) return;
   const filters = getFilters();
   activeFilters = filters;
-  const serverFilters = resolveServerFilters(filters);
-  const serverChanged = !areServerFiltersEqual(serverFilters, lastServerFilters || {});
-  if (serverChanged) {
-    lastServerFilters = serverFilters;
-    resetPaginationState();
+  if (immediate) {
+    renderFromState(sharedCasesContainer, sessionState?.user?.uid || 'offline-user');
+    return;
+  }
+  if (fast && typeof debouncedQuickRender === 'function') {
+    debouncedQuickRender();
+    return;
+  }
+  if (typeof debouncedFilterRender === 'function') {
+    debouncedFilterRender();
+    return;
   }
   renderFromState(sharedCasesContainer, sessionState?.user?.uid || 'offline-user');
-  if (serverChanged) {
-    if (immediate) {
-      refreshCases({ prepend: false });
-    } else if (typeof debouncedServerRefresh === 'function') {
-      debouncedServerRefresh();
-    }
-  }
 }
 
 function expandEntriesForDisplay(entries) {
-  const expanded = [];
-  entries.forEach(entry => {
-    expanded.push(entry);
-    const bucket = resolveCaseStatusBucket(entry?.status);
-    if (bucket !== 'afsluttet' && entry?.attachments?.montage) {
-      expanded.push({ ...entry, __viewBucket: 'afsluttet' });
-    }
-  });
-  return expanded;
+  return entries.slice();
 }
 
 function renderFromState(container, userId) {
   const filters = getActiveFilters();
   const expandedEntries = expandEntriesForDisplay(caseItems);
+  const allCounts = computeBucketCounts(expandedEntries);
   const scopeEntries = expandedEntries.filter(entry => {
     const meta = resolveCaseMeta(entry);
     return matchesFilters(entry, meta, filters, { includeStatus: false });
   });
-  const allCounts = computeBucketCounts(scopeEntries);
   const displayEntries = filters.status
     ? scopeEntries.filter(entry => resolveEntryBucket(entry) === filters.status)
     : scopeEntries;
@@ -1564,13 +1751,12 @@ async function fetchCasesPage({ reset = false, prepend = false, requestId = null
     if (reset) {
       activeFilters = filters;
     }
-    const serverFilters = resolveServerFilters(filters);
     const page = await listSharedCasesPageFn(ensureTeamSelected(), {
       limit: 100,
       cursor: reset ? null : nextCursor,
-      q: serverFilters.q,
-      from: serverFilters.from,
-      to: serverFilters.to,
+      q: '',
+      from: '',
+      to: '',
     });
     if (requestId && requestId !== latestRequestId) return null;
     const items = Array.isArray(page?.items) ? page.items : [];
@@ -1671,10 +1857,14 @@ export function initSharedCasesPanel() {
   updateStatusCard();
   const initialFilters = getFilters();
   activeFilters = initialFilters;
-  lastServerFilters = resolveServerFilters(initialFilters);
-  debouncedServerRefresh = debounce(() => {
-    refreshCases({ prepend: false });
-  }, 300);
+  debouncedFilterRender = debounce(() => {
+    if (!sharedCasesContainer) return;
+    renderFromState(sharedCasesContainer, sessionState?.user?.uid || 'offline-user');
+  }, 200);
+  debouncedQuickRender = debounce(() => {
+    if (!sharedCasesContainer) return;
+    renderFromState(sharedCasesContainer, sessionState?.user?.uid || 'offline-user');
+  }, 80);
 
   refreshCases = async ({ prepend = false } = {}) => {
     if (!sharedCasesContainer) return;
@@ -1737,8 +1927,8 @@ export function initSharedCasesPanel() {
       input.addEventListener('input', () => handleFiltersChanged({ immediate: false }));
       input.addEventListener('change', () => handleFiltersChanged({ immediate: false }));
     } else {
-      input.addEventListener('input', () => handleFiltersChanged({ immediate: true }));
-      input.addEventListener('change', () => handleFiltersChanged({ immediate: true }));
+      input.addEventListener('input', () => handleFiltersChanged({ immediate: false, fast: true }));
+      input.addEventListener('change', () => handleFiltersChanged({ immediate: false, fast: true }));
     }
   });
 
