@@ -19,3 +19,8 @@
 - `VITE_PROD_HOSTS` (comma-separated hostnames) defines production hostnames on the client.
   - Used to force production gating even if `VITE_NETLIFY_CONTEXT` is misconfigured.
   - Example: `VITE_PROD_HOSTS=sscaff.netlify.app,app.example.com`
+
+## Admin maintenance
+- `ADMIN_PURGE_CODE` is required for the admin-only hard purge endpoint.
+  - Use a strong random string (minimum 24 characters).
+  - Never log or expose the value in client code.
