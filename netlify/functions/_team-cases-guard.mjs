@@ -1,6 +1,7 @@
 import { isProd } from './_context.mjs'
 
 const TEAM_CASES_SQL_FORBIDDEN = [
+  /\bparent_case_id\b/i,
   /\bproject_id\b/i,
   /\bFROM\s+cases\b/i,
   /\bRETURNING\s+id\b/i,

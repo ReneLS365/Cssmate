@@ -3,7 +3,7 @@ import { getTeamCase, listTeamCasesDelta, listTeamCasesPage, softDeleteTeamCase,
 import { generateToken, getAuth0Config, hashToken, secureCompare, verifyToken } from './_auth.mjs'
 import { safeError } from './_log.mjs'
 import { getDeployContext, isProd } from './_context.mjs'
-import { assertTeamIdUuid, getTeamById, resolveTeamId } from './_team.mjs'
+import { assertTeamIdUuid, getTeamById, isUuidV4, resolveTeamId } from './_team.mjs'
 import { guardTeamCasesSql, TEAM_CASES_SCHEMA_INFO } from './_team-cases-guard.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' }
@@ -292,8 +292,7 @@ function decodeCursor (value) {
     const updatedAt = parsed.updatedAt ? new Date(parsed.updatedAt) : new Date(0)
     const createdAt = parsed.createdAt ? new Date(parsed.createdAt) : new Date(0)
     if ([lastUpdatedAt, updatedAt, createdAt].some(date => Number.isNaN(date.valueOf()))) return null
-    const caseId = parsed.caseId ? String(parsed.caseId).trim() : ''
-    if (!caseId) return null
+    const caseId = isUuidV4(parsed.caseId) ? parsed.caseId.toLowerCase() : null
     return {
       lastUpdatedAt,
       updatedAt,
@@ -765,7 +764,6 @@ function serializeCaseRow (row) {
     status: row.status || 'kladde',
     phase: workflowPhase,
     sheetPhase,
-    parentCaseId: row.parent_case_id || null,
     createdAt,
     updatedAt,
     lastUpdatedAt,
@@ -1175,7 +1173,6 @@ async function handleCaseCreate (event, teamSlug) {
   const ifMatchUpdatedAt = parseIfMatchUpdatedAt(body.ifMatchUpdatedAt)
   const action = resolveExportAction({ phaseHint: body.phaseHint, caseKind: body.caseKind })
   const normalizedJobNumber = normalizeJobNumber(body.jobNumber)
-  const resolvedParentCaseId = isValidUuid(body.parentCaseId) ? body.parentCaseId : null
   const existing = await getTeamCase({ teamId: team.id, caseId })
   if (ifMatchUpdatedAt && existing?.updated_at) {
     const currentUpdatedAt = new Date(existing.updated_at)
@@ -1221,7 +1218,6 @@ async function handleCaseCreate (event, teamSlug) {
   const upserted = await upsertTeamCase({
     caseId,
     teamId: team.id,
-    parentCaseId: resolvedParentCaseId,
     jobNumber: normalizedJobNumber,
     caseKind: body.caseKind || '',
     system: body.system || '',
@@ -1363,7 +1359,6 @@ async function handleCaseStatus (event, teamSlug, caseId) {
       return jsonResponse(409, { error: 'Sagen kan ikke afsluttes endnu.', case: serializeCaseRow(row) })
     }
   }
-  const resolvedParentCaseId = isValidUuid(body.parentCaseId) ? body.parentCaseId : null
   const workflowPhase = resolveWorkflowPhase({
     action: requested === CASE_STATUS.DONE ? 'EXPORT_DEMONTAGE' : 'EXPORT_MONTAGE',
     nextStatus,
@@ -1373,12 +1368,11 @@ async function handleCaseStatus (event, teamSlug, caseId) {
   await db.query(
     guardTeamCasesSql(
       `UPDATE public.team_cases
-       SET status = $1, phase = $2, parent_case_id = COALESCE($3, parent_case_id),
-           updated_at = NOW(), last_updated_at = NOW(), updated_by = $4, last_editor_sub = $4
-       WHERE team_id = $5 AND case_id = $6`,
+       SET status = $1, phase = $2, updated_at = NOW(), last_updated_at = NOW(), updated_by = $3, last_editor_sub = $3
+       WHERE team_id = $4 AND case_id = $5`,
       'handleCaseStatus'
     ),
-    [nextStatus, workflowPhase, resolvedParentCaseId, user.id, team.id, caseId]
+    [nextStatus, workflowPhase, user.id, team.id, caseId]
   )
   const updated = await getTeamCase({ teamId: team.id, caseId })
   return jsonResponse(200, serializeCaseRow(updated))
@@ -1509,15 +1503,13 @@ async function handleBackupImport (event, teamSlug) {
   const body = parseBody(event)
   const cases = Array.isArray(body?.cases) ? body.cases : []
   for (const entry of cases) {
-    const resolvedParentCaseId = isValidUuid(entry.parentCaseId) ? entry.parentCaseId : null
     await db.query(
       guardTeamCasesSql(
         `INSERT INTO public.team_cases
-          (case_id, team_id, parent_case_id, job_number, case_kind, system, totals, status, phase, created_at, updated_at, last_updated_at,
+          (case_id, team_id, job_number, case_kind, system, totals, status, phase, created_at, updated_at, last_updated_at,
            created_by, created_by_email, created_by_name, updated_by, last_editor_sub, json_content, deleted_at, deleted_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
          ON CONFLICT (case_id) DO UPDATE SET
-           parent_case_id = COALESCE(EXCLUDED.parent_case_id, public.team_cases.parent_case_id),
            job_number = EXCLUDED.job_number,
            case_kind = EXCLUDED.case_kind,
            system = EXCLUDED.system,
@@ -1536,7 +1528,6 @@ async function handleBackupImport (event, teamSlug) {
       [
         entry.caseId,
         team.id,
-        resolvedParentCaseId,
         entry.jobNumber || '',
         entry.caseKind || '',
         entry.system || '',
