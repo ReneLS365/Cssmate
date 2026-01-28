@@ -93,7 +93,7 @@ export async function listTeamCasesPage({
       `SELECT ${TEAM_CASE_COLUMNS}
        FROM public.team_cases c
        ${whereClause}
-       ORDER BY c.last_updated_at DESC NULLS LAST, c.updated_at DESC, c.created_at DESC
+       ORDER BY c.last_updated_at DESC NULLS LAST, c.updated_at DESC, c.created_at DESC, c.case_id DESC
        LIMIT $${params.length}`,
       'listTeamCasesPage'
     ),
