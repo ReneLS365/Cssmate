@@ -79,11 +79,12 @@ export async function listTeamCasesPage({
     params.push(to)
     whereClause += ` AND (c.created_at AT TIME ZONE 'Europe/Copenhagen')::date <= $${params.length}`
   }
-  if (cursor) {
+  if (cursor?.caseId) {
     params.push(cursor.lastUpdatedAt)
     params.push(cursor.updatedAt)
     params.push(cursor.createdAt)
-    whereClause += ` AND (c.last_updated_at, c.updated_at, c.created_at) < ($${params.length - 2}, $${params.length - 1}, $${params.length})`
+    params.push(cursor.caseId)
+    whereClause += ` AND (c.last_updated_at, c.updated_at, c.created_at, c.case_id) < ($${params.length - 3}, $${params.length - 2}, $${params.length - 1}, $${params.length})`
   }
   params.push(limit + 1)
   const result = await db.query(
@@ -91,7 +92,7 @@ export async function listTeamCasesPage({
       `SELECT ${TEAM_CASE_COLUMNS}
        FROM public.team_cases c
        ${whereClause}
-       ORDER BY c.last_updated_at DESC NULLS LAST, c.updated_at DESC, c.created_at DESC
+       ORDER BY c.last_updated_at DESC NULLS LAST, c.updated_at DESC, c.created_at DESC, c.case_id DESC
        LIMIT $${params.length}`,
       'listTeamCasesPage'
     ),
@@ -106,6 +107,7 @@ export async function listTeamCasesPage({
       lastUpdatedAt: lastRow.last_updated_at ? new Date(lastRow.last_updated_at).toISOString() : new Date(0).toISOString(),
       updatedAt: lastRow.updated_at ? new Date(lastRow.updated_at).toISOString() : new Date(0).toISOString(),
       createdAt: lastRow.created_at ? new Date(lastRow.created_at).toISOString() : new Date(0).toISOString(),
+      caseId: lastRow.case_id,
     }
     : null
   return { rows: pageRows, nextCursor }

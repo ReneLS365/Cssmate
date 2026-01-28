@@ -3,7 +3,7 @@ import { getTeamCase, listTeamCasesDelta, listTeamCasesPage, softDeleteTeamCase,
 import { generateToken, getAuth0Config, hashToken, secureCompare, verifyToken } from './_auth.mjs'
 import { safeError } from './_log.mjs'
 import { getDeployContext, isProd } from './_context.mjs'
-import { assertTeamIdUuid, getTeamById, resolveTeamId } from './_team.mjs'
+import { assertTeamIdUuid, getTeamById, isUuidV4, resolveTeamId } from './_team.mjs'
 import { guardTeamCasesSql, TEAM_CASES_SCHEMA_INFO } from './_team-cases-guard.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' }
@@ -292,10 +292,12 @@ function decodeCursor (value) {
     const updatedAt = parsed.updatedAt ? new Date(parsed.updatedAt) : new Date(0)
     const createdAt = parsed.createdAt ? new Date(parsed.createdAt) : new Date(0)
     if ([lastUpdatedAt, updatedAt, createdAt].some(date => Number.isNaN(date.valueOf()))) return null
+    const caseId = isUuidV4(parsed.caseId) ? parsed.caseId.toLowerCase() : null
     return {
       lastUpdatedAt,
       updatedAt,
       createdAt,
+      caseId,
     }
   } catch {
     return null
