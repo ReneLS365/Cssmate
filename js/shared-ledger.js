@@ -204,7 +204,6 @@ function normalizeQueuedEntry (entry) {
     status: entry.status || 'kladde',
     jsonContent: entry.jsonContent || '',
     phase: normalizePhase(entry.phase || entry.phaseHint || entry.caseKind),
-    parentCaseId: entry.parentCaseId || null,
     ifMatchUpdatedAt: entry.ifMatchUpdatedAt || '',
     createdByName: entry.createdByName || '',
     actorRole: entry.actorRole || null,
@@ -453,7 +452,6 @@ export async function publishSharedCase({
   jsonContent,
   phaseHint,
   phase,
-  parentCaseId,
   caseId: explicitCaseId,
   ifMatchUpdatedAt,
 }) {
@@ -474,7 +472,6 @@ export async function publishSharedCase({
     jsonContent,
     phaseHint: resolvedPhase,
     phase: resolvedPhase,
-    parentCaseId: isValidUuid(parentCaseId) ? parentCaseId : null,
     ifMatchUpdatedAt,
     createdByName: actor.name || actor.displayName || '',
     actorRole: membership?.role || null,
@@ -525,7 +522,6 @@ async function publishQueuedEntry (entry) {
     jsonContent: normalized.jsonContent,
     phaseHint: normalized.phase,
     phase: normalized.phase,
-    parentCaseId: normalized.parentCaseId,
     ifMatchUpdatedAt: normalized.ifMatchUpdatedAt,
     createdByName: normalized.createdByName || '',
     actorRole: normalized.actorRole || null,
@@ -547,7 +543,6 @@ async function updateQueuedStatus (entry) {
     status: normalized.status,
     ifMatchUpdatedAt: normalized.ifMatchUpdatedAt,
     phase: normalized.phase,
-    parentCaseId: normalized.parentCaseId,
   }
   const result = await apiJson(`/api/teams/${resolvedTeamId}/cases/${normalized.caseId}/status`, {
     method: 'PATCH',
@@ -560,14 +555,13 @@ async function updateQueuedStatus (entry) {
   return true
 }
 
-export async function updateSharedCaseStatus(teamId, caseId, { status, ifMatchUpdatedAt, phase, parentCaseId } = {}) {
+export async function updateSharedCaseStatus(teamId, caseId, { status, ifMatchUpdatedAt, phase } = {}) {
   ensureWritesAllowed('updateSharedCaseStatus')
   const { teamId: resolvedTeamId } = await getTeamContext(teamId)
   const payload = {
     status,
     ifMatchUpdatedAt,
     phase,
-    parentCaseId,
   }
   if (!isOnline()) {
     upsertQueueEntry({ operationType: 'status-update', caseId, teamId: resolvedTeamId, ...payload })

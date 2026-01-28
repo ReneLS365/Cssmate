@@ -213,15 +213,12 @@ export async function exportAkkordJsonAndPdf(options = {}) {
     const phaseHint = jobType === 'demontage' ? 'demontage' : 'montage';
     const sharedContext = getSharedCaseContext();
     const isDemontage = phaseHint === 'demontage';
-    const useSharedCase = isDemontage && sharedContext?.caseId;
     if (!isDemontage) {
       clearSharedCaseContext();
     }
-    const parentCaseId = useSharedCase ? sharedContext.caseId : null;
 
     const publishResult = await publishSharedCaseFn({
       teamId: resolvedTeamId,
-      parentCaseId,
       phaseHint,
       phase: phaseHint,
       jobNumber,
