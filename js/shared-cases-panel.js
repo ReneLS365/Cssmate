@@ -55,11 +55,15 @@ const CURRENCY_FORMATTER = new Intl.NumberFormat('da-DK', { minimumFractionDigit
 const HOURS_FORMATTER = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const PREVIEW_WRITE_MESSAGE = getPreviewWriteDisabledMessage();
 const POLL_INTERVAL_MS = 5000;
+const WORKFLOW_PHASE = {
+  DRAFT: 'draft',
+  READY_FOR_DEMONTAGE: 'ready_for_demontage',
+  COMPLETED: 'completed',
+};
 const BOARD_COLUMNS = [
-  { id: 'kladde', label: 'Kladde', hint: 'Private kladder (kun dig).' },
-  { id: 'godkendt', label: 'Montage klar til demontage', hint: 'Klar til demontage-hold.' },
-  { id: 'demontage_i_gang', label: 'Demontage i gang', hint: 'Demontage igangsat.' },
-  { id: 'afsluttet', label: 'Afsluttet', hint: 'Sager der er afsluttet.' },
+  { id: WORKFLOW_PHASE.DRAFT, label: 'Kladde', hint: 'Kladder før deling.' },
+  { id: WORKFLOW_PHASE.READY_FOR_DEMONTAGE, label: 'Montage klar til demontage', hint: 'Klar til demontage-hold.' },
+  { id: WORKFLOW_PHASE.COMPLETED, label: 'Afsluttet', hint: 'Sager der er afsluttet.' },
   { id: 'andet', label: 'Andet', hint: 'Ukendte statusser.' },
 ];
 
@@ -97,6 +101,25 @@ function formatTimeLabel(value) {
 function isOnline() {
   if (typeof navigator === 'undefined') return true;
   return navigator.onLine !== false;
+}
+
+function isDevEnvironment() {
+  if (typeof process !== 'undefined' && process?.env?.NODE_ENV) {
+    return process.env.NODE_ENV !== 'production';
+  }
+  if (typeof window !== 'undefined') {
+    const host = window.location?.hostname || '';
+    return host === 'localhost' || host === '127.0.0.1';
+  }
+  return false;
+}
+
+function warnMissingCaseId(entry) {
+  if (!isDevEnvironment()) return;
+  const summary = entry && typeof entry === 'object'
+    ? { status: entry.status, phase: entry.phase, teamId: entry.teamId, id: entry.id }
+    : { entry };
+  console.warn('Delte sager: sag mangler caseId/id og springes over.', summary);
 }
 
 function getDeltaKey(entry) {
@@ -298,6 +321,14 @@ function saveUiState(state) {
   }
 }
 
+function normalizeStoredStatusFilter(value) {
+  if (!value) return '';
+  if (value === 'kladde') return WORKFLOW_PHASE.DRAFT;
+  if (value === 'godkendt' || value === 'demontage_i_gang') return WORKFLOW_PHASE.READY_FOR_DEMONTAGE;
+  if (value === 'afsluttet') return WORKFLOW_PHASE.COMPLETED;
+  return value;
+}
+
 function setListSharedCasesPage(fn) {
   listSharedCasesPageFn = typeof fn === 'function' ? fn : listSharedCasesPage;
 }
@@ -313,7 +344,7 @@ function applyStoredFilters() {
   if (searchInput && typeof state.search === 'string') searchInput.value = state.search;
   if (dateFrom && typeof state.dateFrom === 'string') dateFrom.value = state.dateFrom;
   if (dateTo && typeof state.dateTo === 'string') dateTo.value = state.dateTo;
-  if (status && typeof state.status === 'string') status.value = state.status;
+  if (status && typeof state.status === 'string') status.value = normalizeStoredStatusFilter(state.status);
   if (kind && typeof state.kind === 'string') kind.value = state.kind;
   if (sort && typeof state.sort === 'string') sort.value = state.sort;
 }
@@ -439,19 +470,17 @@ function resolveCaseDate(entry, meta) {
   return { raw: dateValue, formatted, iso };
 }
 
-function resolveCaseStatusBucket(status) {
-  const value = (status || '').toLowerCase();
-  if (value === 'kladde') return 'kladde';
-  if (['klar', 'klar-til-deling', 'klar_til_deling', 'ready'].includes(value)) return 'kladde';
-  if (value === 'godkendt' || value === 'klar_til_demontage') return 'godkendt';
-  if (['demontage', 'demontage-igang', 'demontage_i_gang', 'i-gang', 'igang', 'in-progress'].includes(value)) return 'demontage_i_gang';
-  if (['afsluttet', 'done', 'completed', 'complete'].includes(value)) return 'afsluttet';
+function resolveCasePhaseBucket(phase) {
+  const value = (phase || '').toLowerCase();
+  if (value === WORKFLOW_PHASE.DRAFT) return WORKFLOW_PHASE.DRAFT;
+  if (value === WORKFLOW_PHASE.READY_FOR_DEMONTAGE) return WORKFLOW_PHASE.READY_FOR_DEMONTAGE;
+  if (value === WORKFLOW_PHASE.COMPLETED) return WORKFLOW_PHASE.COMPLETED;
   return 'andet';
 }
 
 function resolveEntryBucket(entry) {
   if (entry?.__viewBucket) return entry.__viewBucket;
-  return resolveCaseStatusBucket(entry?.status);
+  return resolveCasePhaseBucket(entry?.phase || entry?.workflowPhase);
 }
 
 function computeBucketCounts(entries) {
@@ -463,7 +492,7 @@ function computeBucketCounts(entries) {
   entries.forEach(entry => {
     const bucketId = resolveEntryBucket(entry);
     const resolved = counts.has(bucketId) ? bucketId : 'andet';
-    if (resolved === 'afsluttet') {
+    if (resolved === WORKFLOW_PHASE.COMPLETED) {
       const meta = resolveCaseMeta(entry);
       const projectKey = resolveProjectKey(entry, meta);
       if (!projectKey || finishedProjects.has(projectKey)) return;
@@ -474,35 +503,42 @@ function computeBucketCounts(entries) {
   return counts;
 }
 
-function formatStatusLabel(status) {
-  const bucket = resolveCaseStatusBucket(status);
-  if (bucket === 'kladde') return 'Kladde';
-  if (bucket === 'godkendt') return 'Montage klar til demontage';
-  if (bucket === 'demontage_i_gang') return 'Demontage i gang';
-  if (bucket === 'afsluttet') return 'Afsluttet';
-  return status || 'Ukendt';
+function formatStatusLabel(phase) {
+  const bucket = resolveCasePhaseBucket(phase);
+  if (bucket === WORKFLOW_PHASE.DRAFT) return 'Kladde';
+  if (bucket === WORKFLOW_PHASE.READY_FOR_DEMONTAGE) return 'Montage klar til demontage';
+  if (bucket === WORKFLOW_PHASE.COMPLETED) return 'Afsluttet';
+  return 'Ukendt';
 }
 
 function formatEntryStatusLabel(entry) {
   const bucket = resolveEntryBucket(entry);
-  if (bucket === 'afsluttet') {
+  if (bucket === WORKFLOW_PHASE.READY_FOR_DEMONTAGE && entry?.status === 'demontage_i_gang') {
+    return 'Demontage i gang';
+  }
+  if (bucket === WORKFLOW_PHASE.COMPLETED) {
     if (!entry?.attachments?.demontage) return 'Afsluttet montage';
     return 'Afsluttet';
   }
-  return formatStatusLabel(entry?.status);
+  return formatStatusLabel(entry?.phase);
+}
+
+function resolveSheetPhase(entry) {
+  const phase = (entry?.sheetPhase || entry?.caseKind || '').toString().trim().toLowerCase();
+  if (phase === 'demontage') return 'demontage';
+  if (entry?.attachments?.demontage && !entry?.attachments?.montage) return 'demontage';
+  if (entry?.status === 'demontage_i_gang') return 'demontage';
+  return 'montage';
 }
 
 function resolvePhaseForEntry(entry) {
-  if (entry?.phase === 'demontage') return 'demontage';
-  const bucket = resolveCaseStatusBucket(entry?.status);
-  if (bucket === 'demontage_i_gang' || bucket === 'godkendt') return 'demontage';
-  return 'montage';
+  return resolveSheetPhase(entry);
 }
 
 function resolveOptimisticStatus(entry) {
   const bucket = resolveEntryBucket(entry);
-  if (bucket === 'kladde') return 'godkendt';
-  if (bucket === 'demontage_i_gang') return 'afsluttet';
+  if (bucket === WORKFLOW_PHASE.DRAFT) return 'godkendt';
+  if (entry?.status === 'demontage_i_gang') return 'afsluttet';
   return entry?.status || '';
 }
 
@@ -693,7 +729,7 @@ function downloadAttachmentBundle(entry) {
 
 async function handleJsonDownloadForEntry(entry) {
   const statusBucket = resolveEntryBucket(entry);
-  if (statusBucket === 'afsluttet') {
+  if (statusBucket === WORKFLOW_PHASE.COMPLETED) {
     downloadAttachmentBundle(entry);
     return;
   }
@@ -941,7 +977,7 @@ function createCaseActions(entry, userId, onChange) {
   container.className = 'shared-case-actions';
   const statusBucket = resolveEntryBucket(entry);
 
-  if (statusBucket !== 'afsluttet') {
+  if (statusBucket !== WORKFLOW_PHASE.COMPLETED) {
     const importBtn = document.createElement('button');
     importBtn.type = 'button';
     importBtn.textContent = 'Importér';
@@ -985,7 +1021,7 @@ function createCaseActions(entry, userId, onChange) {
   pdfBtn.addEventListener('click', async () => {
     pdfBtn.disabled = true;
     try {
-      if (statusBucket === 'afsluttet') {
+      if (statusBucket === WORKFLOW_PHASE.COMPLETED) {
         const montageContent = normalizeAttachmentContent(entry?.attachments?.montage);
         const demontageContent = normalizeAttachmentContent(entry?.attachments?.demontage);
         if (!montageContent && !demontageContent) {
@@ -1030,7 +1066,7 @@ function createCaseActions(entry, userId, onChange) {
   });
   container.appendChild(pdfBtn);
 
-  if (statusBucket === 'afsluttet') {
+  if (statusBucket === WORKFLOW_PHASE.COMPLETED) {
     const receiptBtn = document.createElement('button');
     receiptBtn.type = 'button';
     receiptBtn.textContent = 'Kvittering';
@@ -1044,7 +1080,7 @@ function createCaseActions(entry, userId, onChange) {
     container.appendChild(receiptBtn);
   }
 
-  if (statusBucket === 'kladde' && entry.createdBy === userId) {
+  if (statusBucket === WORKFLOW_PHASE.DRAFT && entry.createdBy === userId) {
     const approveBtn = document.createElement('button');
     approveBtn.type = 'button';
     approveBtn.textContent = 'Godkend & del';
@@ -1091,7 +1127,7 @@ function createCaseActions(entry, userId, onChange) {
     container.appendChild(approveBtn);
   }
 
-  if (statusBucket === 'godkendt') {
+  if (statusBucket === WORKFLOW_PHASE.READY_FOR_DEMONTAGE && entry?.status !== 'demontage_i_gang') {
     const demontageBtn = document.createElement('button');
     demontageBtn.type = 'button';
     demontageBtn.textContent = 'Indlæs til demontage';
@@ -1108,7 +1144,7 @@ function createCaseActions(entry, userId, onChange) {
             status: 'demontage_i_gang',
             ifMatchUpdatedAt: entry.updatedAt,
             projectId: entry.projectId || '',
-            phase: entry.phase || 'montage',
+            phase: entry.sheetPhase || 'montage',
           });
           if (typeof onChange === 'function' && !updated?.queued) {
             onChange({ updatedCase: { ...updated, __syncing: false } });
@@ -1132,7 +1168,7 @@ function createCaseActions(entry, userId, onChange) {
     container.appendChild(demontageBtn);
   }
 
-  if (statusBucket === 'demontage_i_gang') {
+  if (statusBucket === WORKFLOW_PHASE.READY_FOR_DEMONTAGE && entry?.status === 'demontage_i_gang') {
     const finishBtn = document.createElement('button');
     finishBtn.type = 'button';
     finishBtn.textContent = 'Godkend demontage & afslut';
@@ -1162,7 +1198,7 @@ function createCaseActions(entry, userId, onChange) {
     container.appendChild(finishBtn);
   }
 
-  if (statusBucket !== 'afsluttet' && (entry.createdBy === userId || isAdminUser())) {
+  if (statusBucket !== WORKFLOW_PHASE.COMPLETED && (entry.createdBy === userId || isAdminUser())) {
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
     deleteBtn.textContent = 'Soft delete';
@@ -1250,18 +1286,13 @@ function renderCaseCard(entry, userId, onChange) {
 }
 
 function resolveEntryPhase(entry) {
-  if (entry?.phase === 'demontage') return 'demontage';
-  if (entry?.phase === 'montage') return 'montage';
-  const bucket = resolveCaseStatusBucket(entry?.status);
-  if (bucket === 'demontage_i_gang') return 'demontage';
-  if (entry?.attachments?.demontage && !entry?.attachments?.montage) return 'demontage';
-  return 'montage';
+  return resolveSheetPhase(entry);
 }
 
 function buildFinishedProjectGroups(entries) {
   const groups = new Map();
   entries.forEach(entry => {
-    if (resolveEntryBucket(entry) !== 'afsluttet') return;
+    if (resolveEntryBucket(entry) !== WORKFLOW_PHASE.COMPLETED) return;
     const meta = resolveCaseMeta(entry);
     const key = resolveProjectKey(entry, meta);
     if (!key) return;
@@ -1431,7 +1462,7 @@ function renderBoard(entries, userId, onChange, allCounts) {
   });
   entries.forEach(entry => {
     const bucketId = resolveEntryBucket(entry);
-    if (bucketId === 'afsluttet') {
+    if (bucketId === WORKFLOW_PHASE.COMPLETED) {
       finishedEntries.push(entry);
       return;
     }
@@ -1465,7 +1496,7 @@ function renderBoard(entries, userId, onChange, allCounts) {
     }
     const list = document.createElement('div');
     list.className = 'shared-board-list';
-    if (column.id === 'afsluttet') {
+    if (column.id === WORKFLOW_PHASE.COMPLETED) {
       finishedGroups.forEach(group => list.appendChild(renderFinishedProjectCard(group, userId, onChange)));
       if (!finishedGroups.length) {
         const empty = document.createElement('div');
@@ -1546,7 +1577,10 @@ function mergeEntries(entries, { prepend = false } = {}) {
   const seen = new Set();
   const merged = [];
   const add = (entry) => {
-    if (!entry?.caseId) return;
+    if (!entry?.caseId) {
+      warnMissingCaseId(entry);
+      return;
+    }
     const existing = casesById.get(entry.caseId);
     const updated = existing ? { ...existing, ...entry } : entry;
     casesById.set(entry.caseId, updated);
@@ -1958,6 +1992,7 @@ export function initSharedCasesPanel() {
           updateDeltaCursorFromItems([caseData]);
           lastDeltaSyncLabel = formatTimeLabel(new Date());
           setSharedStatus('Opdateret');
+          refreshCases({ prepend: false });
         }
       } catch (error) {
         // Ignore errors (likely due to no auth), since refresh will run on next auth change.
@@ -1990,4 +2025,6 @@ export const __test = {
   resetCaseState,
   setListSharedCasesPage,
   setTestState,
+  resolveEntryBucket,
+  WORKFLOW_PHASE,
 };

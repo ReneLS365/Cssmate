@@ -65,8 +65,8 @@ export async function handler () {
     const teamSlug = team.slug || team.id
     const casesResult = await db.query(
       `SELECT c.*, t.slug as team_slug
-       FROM team_cases c
-       JOIN teams t ON t.id = c.team_id
+       FROM public.team_cases c
+       JOIN public.teams t ON t.id = c.team_id
        WHERE c.team_id = $1`,
       [team.id]
     )
