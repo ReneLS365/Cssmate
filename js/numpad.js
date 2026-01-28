@@ -220,7 +220,6 @@ function bindInputElement (input) {
   const wantsNumpad = input.dataset.numpad === 'true' || (input.type === 'number' && input.dataset.numpad !== 'off')
 
   if (wantsNumpad) {
-    input.addEventListener('focus', handleNumpadFocus)
     input.addEventListener('click', handleNumpadPointerDown)
     input.addEventListener('beforeinput', blockNativeInput)
   }
@@ -350,7 +349,11 @@ function hideNumpad ({ commit = false } = {}) {
   }
 
   if (commit && commitTarget?.blur) {
-    commitTarget.blur()
+    try {
+      commitTarget.blur()
+    } catch {
+      // ignore blur errors
+    }
   }
 
   overlay.classList.add('numpad-hidden')
