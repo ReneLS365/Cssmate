@@ -1,6 +1,7 @@
 import { gzipSync } from 'node:zlib'
 import { getStore } from '@netlify/blobs'
 import { db, ensureDbReady } from './_db.mjs'
+import { guardTeamCasesSql } from './_team-cases-guard.mjs'
 
 const BACKUP_SCHEMA_VERSION = 2
 
@@ -64,10 +65,13 @@ export async function handler () {
   for (const team of teams) {
     const teamSlug = team.slug || team.id
     const casesResult = await db.query(
-      `SELECT c.*, t.slug as team_slug
-       FROM public.team_cases c
-       JOIN public.teams t ON t.id = c.team_id
-       WHERE c.team_id = $1`,
+      guardTeamCasesSql(
+        `SELECT c.*, t.slug as team_slug
+         FROM public.team_cases c
+         JOIN public.teams t ON t.id = c.team_id
+         WHERE c.team_id = $1`,
+        'backupMonthly'
+      ),
       [team.id]
     )
     const auditResult = await db.query(

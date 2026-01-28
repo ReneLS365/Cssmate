@@ -402,7 +402,6 @@ function resolveCaseMeta(entry) {
 
 function resolveProjectKey(entry, meta) {
   const jobNumber = (meta?.jobNumber || entry?.jobNumber || '').toString().trim();
-  if (entry?.projectId) return entry.projectId;
   if (jobNumber) return `job:${jobNumber}`;
   return entry?.caseId || '';
 }
@@ -745,7 +744,6 @@ async function handleImport(entry, { phase } = {}) {
       phase: phaseHint,
       status: entry.status || '',
       updatedAt: entry.updatedAt || '',
-      projectId: entry.projectId || '',
     });
   }
   const content = await importCasePayload(ensureTeamSelected(), caseId);
@@ -1143,7 +1141,6 @@ function createCaseActions(entry, userId, onChange) {
           const updated = await updateSharedCaseStatus(ensureTeamSelected(), entry.caseId, {
             status: 'demontage_i_gang',
             ifMatchUpdatedAt: entry.updatedAt,
-            projectId: entry.projectId || '',
             phase: entry.sheetPhase || 'montage',
           });
           if (typeof onChange === 'function' && !updated?.queued) {
@@ -1300,7 +1297,6 @@ function buildFinishedProjectGroups(entries) {
     const phase = resolveEntryPhase(entry);
     const existing = groups.get(key) || {
       projectKey: key,
-      projectId: entry.projectId || '',
       jobNumber: meta.jobNumber || entry.jobNumber || '',
       latestUpdatedAt: '',
       meta: meta,
@@ -1317,7 +1313,6 @@ function buildFinishedProjectGroups(entries) {
     } else {
       existing.montageCases.push(entry);
     }
-    if (!existing.projectId && entry.projectId) existing.projectId = entry.projectId;
     groups.set(key, existing);
   });
   return Array.from(groups.values())

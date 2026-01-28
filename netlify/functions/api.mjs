@@ -1,10 +1,10 @@
-import { createHash } from 'crypto'
 import { db, ensureDbReady } from './_db.mjs'
 import { getTeamCase, listTeamCasesDelta, listTeamCasesPage, softDeleteTeamCase, upsertTeamCase } from './_team-cases.mjs'
 import { generateToken, getAuth0Config, hashToken, secureCompare, verifyToken } from './_auth.mjs'
 import { safeError } from './_log.mjs'
 import { getDeployContext, isProd } from './_context.mjs'
 import { assertTeamIdUuid, getTeamById, resolveTeamId } from './_team.mjs'
+import { guardTeamCasesSql, TEAM_CASES_SCHEMA_INFO } from './_team-cases-guard.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' }
 const DEFAULT_TEAM_SLUG = process.env.DEFAULT_TEAM_SLUG || 'hulmose'
@@ -33,8 +33,7 @@ const CASE_PHASE = {
   READY_FOR_DEMONTAGE: 'ready_for_demontage',
   COMPLETED: 'completed',
 }
-const PROJECT_ID_NAMESPACE = 'cssmate:shared-project'
-const DB_NOT_MIGRATED_MESSAGE = 'DB er ikke migreret. Kør netlify/functions/migrations/001_init.sql, netlify/functions/migrations/002_add_team_slug.sql, netlify/functions/migrations/003_auth0_invites.sql, netlify/functions/migrations/004_add_team_member_login.sql, netlify/functions/migrations/005_cases_indexes.sql, netlify/functions/migrations/006_cases_defaults.sql, netlify/functions/migrations/007_cases_workflow.sql, netlify/functions/migrations/008_auth0_member_profile.sql, netlify/functions/migrations/009_cases_attachments.sql og netlify/functions/migrations/010_cases_project_id.sql mod Neon.'
+const DB_NOT_MIGRATED_MESSAGE = 'DB er ikke migreret. Kør netlify/functions/migrations/001_init.sql, netlify/functions/migrations/002_add_team_slug.sql, netlify/functions/migrations/003_auth0_invites.sql, netlify/functions/migrations/004_add_team_member_login.sql, netlify/functions/migrations/005_cases_indexes.sql, netlify/functions/migrations/006_cases_defaults.sql, netlify/functions/migrations/007_cases_workflow.sql, netlify/functions/migrations/008_auth0_member_profile.sql og netlify/functions/migrations/009_cases_attachments.sql mod Neon.'
 let cachedMgmtToken = ''
 let cachedMgmtTokenExpiry = 0
 
@@ -155,18 +154,6 @@ function normalizeWorkflowPhase (value, status = '') {
 
 function normalizeJobNumber (value) {
   return (value || '').toString().trim() || 'UKENDT'
-}
-
-function formatUuidFromHex (hex) {
-  const cleaned = (hex || '').toString().replace(/[^a-f0-9]/gi, '').padEnd(32, '0').slice(0, 32)
-  return `${cleaned.slice(0, 8)}-${cleaned.slice(8, 12)}-${cleaned.slice(12, 16)}-${cleaned.slice(16, 20)}-${cleaned.slice(20, 32)}`.toLowerCase()
-}
-
-function computeProjectId (teamSlug, jobNumber) {
-  const normalizedJob = normalizeJobNumber(jobNumber)
-  const payload = `${PROJECT_ID_NAMESPACE}|team:${teamSlug}|job:${normalizedJob}`
-  const hex = createHash('sha256').update(payload).digest('hex')
-  return formatUuidFromHex(hex)
 }
 
 function resolveExportAction ({ phaseHint, caseKind }) {
@@ -301,11 +288,18 @@ function decodeCursor (value) {
     const raw = Buffer.from(String(value), 'base64url').toString('utf8')
     const parsed = JSON.parse(raw)
     if (!parsed || typeof parsed !== 'object') return null
+    const lastUpdatedAt = parsed.lastUpdatedAt ? new Date(parsed.lastUpdatedAt) : new Date(0)
+    const updatedAt = parsed.updatedAt ? new Date(parsed.updatedAt) : new Date(0)
     const createdAt = parsed.createdAt ? new Date(parsed.createdAt) : new Date(0)
-    if (Number.isNaN(createdAt.valueOf())) return null
+    if ([lastUpdatedAt, updatedAt, createdAt].some(date => Number.isNaN(date.valueOf()))) return null
     const caseId = parsed.caseId ? String(parsed.caseId).trim() : ''
     if (!caseId) return null
-    return { createdAt, caseId }
+    return {
+      lastUpdatedAt,
+      updatedAt,
+      createdAt,
+      caseId,
+    }
   } catch {
     return null
   }
@@ -761,10 +755,9 @@ function serializeCaseRow (row) {
     status: row.status,
     attachments: storedAttachments,
   })
-  const resolvedProjectId = row.project_id || computeProjectId(row.team_slug || '', jobNumber)
   return {
     caseId: row.case_id,
-    teamId: row.team_slug,
+    teamId: row.team_id,
     jobNumber,
     caseKind: row.case_kind || '',
     system: row.system || '',
@@ -772,7 +765,6 @@ function serializeCaseRow (row) {
     status: row.status || 'kladde',
     phase: workflowPhase,
     sheetPhase,
-    projectId: resolvedProjectId,
     parentCaseId: row.parent_case_id || null,
     createdAt,
     updatedAt,
@@ -1183,9 +1175,6 @@ async function handleCaseCreate (event, teamSlug) {
   const ifMatchUpdatedAt = parseIfMatchUpdatedAt(body.ifMatchUpdatedAt)
   const action = resolveExportAction({ phaseHint: body.phaseHint, caseKind: body.caseKind })
   const normalizedJobNumber = normalizeJobNumber(body.jobNumber)
-  const resolvedProjectId = isValidUuid(body.projectId)
-    ? body.projectId
-    : computeProjectId(team.slug || teamSlug, normalizedJobNumber)
   const resolvedParentCaseId = isValidUuid(body.parentCaseId) ? body.parentCaseId : null
   const existing = await getTeamCase({ teamId: team.id, caseId })
   if (ifMatchUpdatedAt && existing?.updated_at) {
@@ -1232,7 +1221,6 @@ async function handleCaseCreate (event, teamSlug) {
   const upserted = await upsertTeamCase({
     caseId,
     teamId: team.id,
-    projectId: resolvedProjectId,
     parentCaseId: resolvedParentCaseId,
     jobNumber: normalizedJobNumber,
     caseKind: body.caseKind || '',
@@ -1259,6 +1247,7 @@ async function handleCaseList (event, teamSlug) {
   const since = parseSinceParam(query.since)
   const sinceId = String(query.sinceId || '').trim()
   const status = String(query.status || '').trim()
+  const phase = String(query.phase || '').trim()
   const search = String(query.q || '').trim()
   const from = parseDateKey(query.from)
   const to = parseDateKey(query.to)
@@ -1289,6 +1278,7 @@ async function handleCaseList (event, teamSlug) {
     limit,
     cursor,
     status,
+    phase,
     search,
     from,
     to,
@@ -1314,7 +1304,10 @@ async function handleCaseDelete (event, teamSlug, caseId) {
   const { user, team } = await requireCaseTeamContext(event, teamSlug)
   assertTeamIdUuid(team.id, 'handleCaseDelete')
   const result = await db.query(
-    'SELECT created_by FROM public.team_cases WHERE team_id = $1 AND case_id = $2',
+    guardTeamCasesSql(
+      'SELECT created_by FROM public.team_cases WHERE team_id = $1 AND case_id = $2',
+      'handleCaseDelete'
+    ),
     [team.id, caseId]
   )
   const row = result.rows[0]
@@ -1370,9 +1363,6 @@ async function handleCaseStatus (event, teamSlug, caseId) {
       return jsonResponse(409, { error: 'Sagen kan ikke afsluttes endnu.', case: serializeCaseRow(row) })
     }
   }
-  const resolvedProjectId = isValidUuid(body.projectId)
-    ? body.projectId
-    : row.project_id || computeProjectId(team.slug || teamSlug, row.job_number || body.jobNumber || '')
   const resolvedParentCaseId = isValidUuid(body.parentCaseId) ? body.parentCaseId : null
   const workflowPhase = resolveWorkflowPhase({
     action: requested === CASE_STATUS.DONE ? 'EXPORT_DEMONTAGE' : 'EXPORT_MONTAGE',
@@ -1381,11 +1371,14 @@ async function handleCaseStatus (event, teamSlug, caseId) {
   })
   assertTeamIdUuid(team.id, 'handleCaseStatus')
   await db.query(
-    `UPDATE public.team_cases
-     SET status = $1, phase = $2, project_id = $3, parent_case_id = COALESCE($4, parent_case_id),
-         updated_at = NOW(), last_updated_at = NOW(), updated_by = $5, last_editor_sub = $5
-     WHERE team_id = $6 AND case_id = $7`,
-    [nextStatus, workflowPhase, resolvedProjectId, resolvedParentCaseId, user.id, team.id, caseId]
+    guardTeamCasesSql(
+      `UPDATE public.team_cases
+       SET status = $1, phase = $2, parent_case_id = COALESCE($3, parent_case_id),
+           updated_at = NOW(), last_updated_at = NOW(), updated_by = $4, last_editor_sub = $4
+       WHERE team_id = $5 AND case_id = $6`,
+      'handleCaseStatus'
+    ),
+    [nextStatus, workflowPhase, resolvedParentCaseId, user.id, team.id, caseId]
   )
   const updated = await getTeamCase({ teamId: team.id, caseId })
   return jsonResponse(200, serializeCaseRow(updated))
@@ -1423,7 +1416,6 @@ async function handleCaseApprove (event, teamSlug, caseId) {
   const storedAttachments = row.attachments && typeof row.attachments === 'object' ? row.attachments : {}
   const attachments = { ...storedAttachments }
   let totals = row.totals || { materials: 0, montage: 0, demontage: 0, total: 0 }
-  const resolvedProjectId = row.project_id || computeProjectId(team.slug || teamSlug, row.job_number || '')
   const approvingMontage = [CASE_STATUS.DRAFT, CASE_STATUS.READY].includes(currentStatus) && nextStatus === CASE_STATUS.APPROVED
   if (approvingMontage && !attachments.montage) {
     attachments.montage = row.json_content || null
@@ -1439,10 +1431,13 @@ async function handleCaseApprove (event, teamSlug, caseId) {
 
   assertTeamIdUuid(team.id, 'handleCaseApprove')
   await db.query(
-    `UPDATE public.team_cases SET status = $1, phase = $2, totals = $3::jsonb, attachments = $4::jsonb, project_id = $5,
-     updated_at = NOW(), last_updated_at = NOW(), updated_by = $6, last_editor_sub = $6
-     WHERE team_id = $7 AND case_id = $8`,
-    [nextStatus, workflowPhase, JSON.stringify(totals), JSON.stringify(attachments), resolvedProjectId, user.id, team.id, caseId]
+    guardTeamCasesSql(
+      `UPDATE public.team_cases SET status = $1, phase = $2, totals = $3::jsonb, attachments = $4::jsonb,
+       updated_at = NOW(), last_updated_at = NOW(), updated_by = $5, last_editor_sub = $5
+       WHERE team_id = $6 AND case_id = $7`,
+      'handleCaseApprove'
+    ),
+    [nextStatus, workflowPhase, JSON.stringify(totals), JSON.stringify(attachments), user.id, team.id, caseId]
   )
   const updated = await getTeamCase({ teamId: team.id, caseId })
   return jsonResponse(200, serializeCaseRow(updated))
@@ -1464,7 +1459,7 @@ async function handleBackupExport (event, teamSlug) {
        JOIN public.teams t ON t.id = c.team_id
        WHERE c.team_id = $1 AND c.deleted_at IS NULL`
   const casesResult = await db.query(
-    casesQuery,
+    guardTeamCasesSql(casesQuery, 'handleBackupExport'),
     [team.id]
   )
   const auditResult = await db.query(
@@ -1514,35 +1509,33 @@ async function handleBackupImport (event, teamSlug) {
   const body = parseBody(event)
   const cases = Array.isArray(body?.cases) ? body.cases : []
   for (const entry of cases) {
-    const resolvedProjectId = isValidUuid(entry.projectId)
-      ? entry.projectId
-      : computeProjectId(team.slug || teamSlug, entry.jobNumber || '')
     const resolvedParentCaseId = isValidUuid(entry.parentCaseId) ? entry.parentCaseId : null
     await db.query(
-      `INSERT INTO public.team_cases
-        (case_id, team_id, project_id, parent_case_id, job_number, case_kind, system, totals, status, phase, created_at, updated_at, last_updated_at,
-         created_by, created_by_email, created_by_name, updated_by, last_editor_sub, json_content, deleted_at, deleted_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
-       ON CONFLICT (case_id) DO UPDATE SET
-         project_id = EXCLUDED.project_id,
-         parent_case_id = COALESCE(EXCLUDED.parent_case_id, public.team_cases.parent_case_id),
-         job_number = EXCLUDED.job_number,
-         case_kind = EXCLUDED.case_kind,
-         system = EXCLUDED.system,
-         totals = EXCLUDED.totals,
-         status = EXCLUDED.status,
-         phase = EXCLUDED.phase,
-         updated_at = EXCLUDED.updated_at,
-         last_updated_at = EXCLUDED.last_updated_at,
-         updated_by = EXCLUDED.updated_by,
-         last_editor_sub = EXCLUDED.last_editor_sub,
-         json_content = EXCLUDED.json_content,
-         deleted_at = EXCLUDED.deleted_at,
-         deleted_by = EXCLUDED.deleted_by`,
+      guardTeamCasesSql(
+        `INSERT INTO public.team_cases
+          (case_id, team_id, parent_case_id, job_number, case_kind, system, totals, status, phase, created_at, updated_at, last_updated_at,
+           created_by, created_by_email, created_by_name, updated_by, last_editor_sub, json_content, deleted_at, deleted_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+         ON CONFLICT (case_id) DO UPDATE SET
+           parent_case_id = COALESCE(EXCLUDED.parent_case_id, public.team_cases.parent_case_id),
+           job_number = EXCLUDED.job_number,
+           case_kind = EXCLUDED.case_kind,
+           system = EXCLUDED.system,
+           totals = EXCLUDED.totals,
+           status = EXCLUDED.status,
+           phase = EXCLUDED.phase,
+           updated_at = EXCLUDED.updated_at,
+           last_updated_at = EXCLUDED.last_updated_at,
+           updated_by = EXCLUDED.updated_by,
+           last_editor_sub = EXCLUDED.last_editor_sub,
+           json_content = EXCLUDED.json_content,
+           deleted_at = EXCLUDED.deleted_at,
+           deleted_by = EXCLUDED.deleted_by`,
+        'handleBackupImport'
+      ),
       [
         entry.caseId,
         team.id,
-        resolvedProjectId,
         resolvedParentCaseId,
         entry.jobNumber || '',
         entry.caseKind || '',
@@ -1585,6 +1578,9 @@ export async function handler (event) {
       DEPLOY_PRIME_URL: Boolean(process.env.DEPLOY_PRIME_URL),
       APP_ORIGIN: process.env.APP_ORIGIN ? '[set]' : '[missing]',
     })
+  }
+  if (!isProd() && process.env.DEBUG_TEAM_CASES === '1') {
+    console.log('[team_cases] schema', TEAM_CASES_SCHEMA_INFO)
   }
   const handlerStart = Date.now()
   event.__timings = []
