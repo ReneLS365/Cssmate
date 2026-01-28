@@ -15,12 +15,14 @@ let baseValue = 0
 let activeOperator = null
 let expressionParts = []
 let suppressNextFocus = false
+let suppressTimer = null
 const NUMPAD_ACTIVE_CLASS = 'numpad-target-active'
 const NUMPAD_COMMIT_READY_CLASS = 'numpad-commit--ready'
 const NUMPAD_COMMITTED_CLASS = 'numpad-committed'
 let initialFieldValue = ''
 let displayUpdateFrame = null
 let keyboardBlockActive = false
+let commitInProgress = false
 const DEBUG_NUMPAD = Boolean(
   (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV) ||
   (typeof import.meta !== 'undefined' && import.meta.env && String(import.meta.env.VITE_DEBUG_NUMPAD ?? '') === '1')
@@ -152,11 +154,29 @@ function stopKeyboardBlock () {
   keyboardBlockActive = false
 }
 
+function setSuppressNextFocus (durationMs = 250) {
+  suppressNextFocus = true
+  if (suppressTimer) {
+    clearTimeout(suppressTimer)
+  }
+  suppressTimer = setTimeout(() => {
+    suppressNextFocus = false
+    suppressTimer = null
+  }, durationMs)
+}
+
+function clearSuppressNextFocus () {
+  suppressNextFocus = false
+  if (suppressTimer) {
+    clearTimeout(suppressTimer)
+    suppressTimer = null
+  }
+}
+
 function handleNumpadFocus (event) {
   const input = event.currentTarget
   if (!(input instanceof HTMLInputElement)) return
   if (suppressNextFocus) {
-    suppressNextFocus = false
     return
   }
 
@@ -298,7 +318,7 @@ function showNumpadForInput (input) {
 function hideNumpad ({ commit = false } = {}) {
   if (!overlay) return
 
-  const focusTarget = lastFocusedInput
+  let focusTarget = lastFocusedInput
   const commitTarget = activeInput
 
   if (commit && activeInput) {
@@ -329,6 +349,10 @@ function hideNumpad ({ commit = false } = {}) {
     commitTarget.classList.remove(NUMPAD_ACTIVE_CLASS)
   }
 
+  if (commit && commitTarget?.blur) {
+    commitTarget.blur()
+  }
+
   overlay.classList.add('numpad-hidden')
   overlay.setAttribute('aria-hidden', 'true')
   overlay.setAttribute('inert', '')
@@ -343,14 +367,17 @@ function hideNumpad ({ commit = false } = {}) {
   if (document?.documentElement) {
     document.documentElement.classList.remove('np-open')
   }
+  if (commit) {
+    setSuppressNextFocus(250)
+    focusTarget = document.body || null
+  }
   if (focusTarget && document.contains(focusTarget) && typeof focusTarget.focus === 'function') {
-    suppressNextFocus = true
+    if (!commit) {
+      setSuppressNextFocus(250)
+    }
     focusTarget.focus()
-    setTimeout(() => {
-      suppressNextFocus = false
-    }, 0)
-  } else {
-    suppressNextFocus = false
+  } else if (!commit) {
+    clearSuppressNextFocus()
   }
   lastFocusedInput = null
 
@@ -365,6 +392,18 @@ function handleTabChange () {
 }
 
 function handleCommitClick () {
+  if (commitInProgress) return
+  commitInProgress = true
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => {
+      commitInProgress = false
+    })
+  } else {
+    setTimeout(() => {
+      commitInProgress = false
+    }, 0)
+  }
+
   const resolved = evaluatePendingExpression()
   const fallback = parseNumericValue(currentValue)
   const numericResult = resolved ?? fallback ?? baseValue ?? 0

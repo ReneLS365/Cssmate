@@ -6,6 +6,8 @@
 const initializedContainers = new WeakSet()
 
 const SELECTORS = [
+  '[data-tab-panels]',
+  '.tab-panels',
   '#materials .mat-scroll',
   '#materials-list',
   '.materials-scroll',
@@ -14,7 +16,18 @@ const SELECTORS = [
 ]
 
 function findMaterialsScrollContainer (root = document) {
-  if (!root || typeof root.querySelector !== 'function') {
+  if (!root) {
+    return null
+  }
+
+  if (root !== document && typeof root.closest === 'function') {
+    const closest = root.closest('[data-tab-panels], .tab-panels')
+    if (closest) {
+      return closest
+    }
+  }
+
+  if (typeof root.querySelector !== 'function') {
     return null
   }
 
@@ -37,6 +50,8 @@ export function initMaterialsScrollLock (root = document) {
   if (!container || initializedContainers.has(container)) {
     return
   }
+
+  const MAX_INIT_ATTEMPTS = 5
 
   const lockWithinBounds = () => {
     const max = Math.max(0, container.scrollHeight - container.clientHeight)
@@ -70,21 +85,37 @@ export function initMaterialsScrollLock (root = document) {
     lockWithinBounds()
   }
 
-  const supportsOverscroll = typeof CSS !== 'undefined' && CSS.supports?.('overscroll-behavior: contain')
-  const supportsTouchAction = typeof CSS !== 'undefined' && CSS.supports?.('touch-action: pan-y')
-  if (supportsOverscroll && !container.style.overscrollBehavior) {
-    container.style.overscrollBehavior = 'contain'
-  }
-  if (supportsTouchAction && !container.style.touchAction) {
-    container.style.touchAction = 'pan-y'
+  const initializeLock = (attempt = 0) => {
+    if (!canScroll()) {
+      if (attempt < MAX_INIT_ATTEMPTS) {
+        const retry = () => initializeLock(attempt + 1)
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(retry)
+        } else {
+          setTimeout(retry, 0)
+        }
+      }
+      return
+    }
+
+    const supportsOverscroll = typeof CSS !== 'undefined' && CSS.supports?.('overscroll-behavior: contain')
+    const supportsTouchAction = typeof CSS !== 'undefined' && CSS.supports?.('touch-action: pan-y')
+    if (supportsOverscroll && !container.style.overscrollBehavior) {
+      container.style.overscrollBehavior = 'contain'
+    }
+    if (supportsTouchAction && !container.style.touchAction) {
+      container.style.touchAction = 'pan-y'
+    }
+
+    container.addEventListener('touchstart', handleTouchStart, { passive: true })
+    if (!supportsOverscroll || !supportsTouchAction) {
+      container.addEventListener('touchmove', handleTouchMove, { passive: true })
+      container.addEventListener('wheel', handleWheel, { passive: true })
+    }
+    window.addEventListener('resize', handleResize)
+
+    initializedContainers.add(container)
   }
 
-  container.addEventListener('touchstart', handleTouchStart, { passive: true })
-  if (!supportsOverscroll || !supportsTouchAction) {
-    container.addEventListener('touchmove', handleTouchMove, { passive: true })
-    container.addEventListener('wheel', handleWheel, { passive: true })
-  }
-  window.addEventListener('resize', handleResize)
-
-  initializedContainers.add(container)
+  initializeLock()
 }
