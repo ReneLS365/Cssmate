@@ -23,6 +23,8 @@ let initialFieldValue = ''
 let displayUpdateFrame = null
 let keyboardBlockActive = false
 let commitInProgress = false
+let lastPointerDownAt = 0
+const POINTER_FOCUS_GUARD_MS = 450
 const DEBUG_NUMPAD = Boolean(
   (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV) ||
   (typeof import.meta !== 'undefined' && import.meta.env && String(import.meta.env.VITE_DEBUG_NUMPAD ?? '') === '1')
@@ -129,6 +131,7 @@ function initNumpad () {
   })
 
   document.addEventListener('keydown', handleKeydown)
+  document.addEventListener('pointerdown', recordPointerDown, true)
   document.addEventListener('cssmate:tab-change', handleTabChange)
 
   bindInputs()
@@ -176,7 +179,11 @@ function clearSuppressNextFocus () {
 function handleNumpadFocus (event) {
   const input = event.currentTarget
   if (!(input instanceof HTMLInputElement)) return
+  if (isNumpadOpen()) return
   if (suppressNextFocus) {
+    return
+  }
+  if (!shouldOpenOnFocus(input)) {
     return
   }
 
@@ -188,6 +195,19 @@ function handleNumpadFocus (event) {
   }
 
   showNumpadForInput(input)
+}
+
+function recordPointerDown () {
+  lastPointerDownAt = performance.now()
+}
+
+function shouldOpenOnFocus (input) {
+  if (!input) return false
+  if (typeof input.matches === 'function' && input.matches(':focus-visible')) {
+    return true
+  }
+  const now = performance.now()
+  return now - lastPointerDownAt > POINTER_FOCUS_GUARD_MS
 }
 
 function handleNumpadPointerDown (event) {
@@ -220,6 +240,7 @@ function bindInputElement (input) {
   const wantsNumpad = input.dataset.numpad === 'true' || (input.type === 'number' && input.dataset.numpad !== 'off')
 
   if (wantsNumpad) {
+    input.addEventListener('focus', handleNumpadFocus)
     input.addEventListener('click', handleNumpadPointerDown)
     input.addEventListener('beforeinput', blockNativeInput)
   }
