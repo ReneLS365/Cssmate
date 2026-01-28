@@ -1,4 +1,5 @@
 import { db } from './_db.mjs'
+import { assertTeamIdUuid } from './_team.mjs'
 
 const TEAM_CASE_COLUMNS = `
   c.case_id,
@@ -33,6 +34,7 @@ function buildSearchClause({ search, params }) {
 }
 
 export async function getTeamCase({ teamId, caseId }) {
+  assertTeamIdUuid(teamId, 'getTeamCase')
   const result = await db.query(
     `SELECT ${TEAM_CASE_COLUMNS}
      FROM public.team_cases c
@@ -53,6 +55,7 @@ export async function listTeamCasesPage({
   to = '',
   includeDeleted = false,
 }) {
+  assertTeamIdUuid(teamId, 'listTeamCasesPage')
   const params = [teamId]
   let whereClause = 'WHERE c.team_id = $1'
   if (!includeDeleted) {
@@ -100,6 +103,7 @@ export async function listTeamCasesPage({
 }
 
 export async function listTeamCasesDelta({ teamId, since, sinceId = '', limit }) {
+  assertTeamIdUuid(teamId, 'listTeamCasesDelta')
   const params = [teamId]
   let whereClause = 'WHERE c.team_id = $1'
   if (sinceId) {
@@ -142,6 +146,7 @@ export async function upsertTeamCase({
   lastEditorSub,
   jsonContent,
 }) {
+  assertTeamIdUuid(teamId, 'upsertTeamCase')
   const totalsPayload = typeof totals === 'string' ? totals : JSON.stringify(totals || {})
   const attachmentsPayload = typeof attachments === 'string' ? attachments : JSON.stringify(attachments || {})
   await db.query(
@@ -190,6 +195,7 @@ export async function upsertTeamCase({
 }
 
 export async function softDeleteTeamCase({ teamId, caseId, deletedBy }) {
+  assertTeamIdUuid(teamId, 'softDeleteTeamCase')
   await db.query(
     `UPDATE public.team_cases
      SET status = $1, deleted_at = NOW(), deleted_by = $2, updated_at = NOW(), last_updated_at = NOW(), updated_by = $2
