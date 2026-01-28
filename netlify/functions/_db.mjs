@@ -89,16 +89,25 @@ async function ensureMigrations () {
            AND table_name = 'team_cases'
            AND column_name IN ('created_at', 'updated_at', 'last_updated_at', 'status')`
       )
-       const workflowColumnsResult = await client.query(
-         `SELECT
-            SUM(CASE WHEN column_name = 'phase' THEN 1 ELSE 0 END) AS has_phase,
+      const workflowColumnsResult = await client.query(
+        `SELECT
+           SUM(CASE WHEN column_name = 'phase' THEN 1 ELSE 0 END) AS has_phase,
            SUM(CASE WHEN column_name = 'last_editor_sub' THEN 1 ELSE 0 END) AS has_last_editor_sub,
            SUM(CASE WHEN column_name = 'attachments' THEN 1 ELSE 0 END) AS has_attachments
           FROM information_schema.columns
           WHERE table_schema = 'public'
             AND table_name = 'team_cases'
            AND column_name IN ('phase', 'last_editor_sub', 'attachments')`
-       )
+      )
+      const legacyColumnsResult = await client.query(
+        `SELECT
+           SUM(CASE WHEN column_name = 'project_id' THEN 1 ELSE 0 END) AS has_project_id,
+           SUM(CASE WHEN column_name = 'parent_case_id' THEN 1 ELSE 0 END) AS has_parent_case_id
+         FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = 'team_cases'
+           AND column_name IN ('project_id', 'parent_case_id')`
+      )
       const defaultsRow = defaultsResult.rows[0] || {}
       const hasCaseDefaults = Boolean(
         Number(defaultsRow.created_default) > 0
@@ -112,7 +121,12 @@ async function ensureMigrations () {
         && Number(workflowRow.has_last_editor_sub) > 0
         && Number(workflowRow.has_attachments) > 0
       )
-      if (hasTeamSlug && hasInviteTokenHint && hasMemberLastLogin && hasMemberLastSeen && hasMemberDisplayName && hasCaseIndexes && hasCaseDefaults && hasWorkflowColumns) {
+      const legacyRow = legacyColumnsResult.rows[0] || {}
+      const hasLegacyColumns = Boolean(
+        Number(legacyRow.has_project_id) > 0
+        && Number(legacyRow.has_parent_case_id) > 0
+      )
+      if (hasTeamSlug && hasInviteTokenHint && hasMemberLastLogin && hasMemberLastSeen && hasMemberDisplayName && hasCaseIndexes && hasCaseDefaults && hasWorkflowColumns && hasLegacyColumns) {
         migrationsEnsured = true
         return
       }
@@ -128,6 +142,7 @@ async function ensureMigrations () {
         readMigrationFile('007_cases_workflow.sql'),
         readMigrationFile('008_auth0_member_profile.sql'),
         readMigrationFile('009_cases_attachments.sql'),
+        readMigrationFile('010_cases_legacy_columns.sql'),
       ])
       await client.query('BEGIN')
       for (const sql of migrations) {
