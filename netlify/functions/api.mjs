@@ -189,7 +189,9 @@ function resolveSheetPhase ({ caseKind, status, attachments }) {
 }
 
 function resolveWorkflowPhase ({ action, nextStatus, currentPhase }) {
-  if (action === 'EXPORT_MONTAGE') return CASE_PHASE.READY_FOR_DEMONTAGE
+  if (action === 'EXPORT_MONTAGE') {
+    return nextStatus === CASE_STATUS.DRAFT ? CASE_PHASE.DRAFT : CASE_PHASE.READY_FOR_DEMONTAGE
+  }
   if (action === 'EXPORT_DEMONTAGE') return CASE_PHASE.COMPLETED
   if (action === 'APPROVE') {
     return nextStatus === CASE_STATUS.DONE ? CASE_PHASE.COMPLETED : CASE_PHASE.READY_FOR_DEMONTAGE
