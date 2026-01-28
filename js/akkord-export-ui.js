@@ -4,7 +4,7 @@ import { buildAkkordJsonPayload } from './export-json.js';
 import { buildExportModel } from './export-model.js';
 import { buildExportFileBaseName, buildJobSnapshot } from './job-snapshot.js';
 import { appendHistoryEntry } from './storageHistory.js';
-import { publishSharedCase, resolveTeamId, getSharedCaseContext, clearSharedCaseContext, computeProjectId, updateSharedCaseStatus } from './shared-ledger.js';
+import { publishSharedCase, resolveTeamId, getSharedCaseContext, clearSharedCaseContext, updateSharedCaseStatus } from './shared-ledger.js';
 import { waitForAccess, getState as getSessionState } from '../src/auth/session.js';
 
 function isDebugExportEnabled() {
@@ -217,14 +217,10 @@ export async function exportAkkordJsonAndPdf(options = {}) {
     if (!isDemontage) {
       clearSharedCaseContext();
     }
-    const resolvedProjectId = sharedContext?.projectId
-      ? sharedContext.projectId
-      : await computeProjectId(resolvedTeamId, jobNumber);
     const parentCaseId = useSharedCase ? sharedContext.caseId : null;
 
     const publishResult = await publishSharedCaseFn({
       teamId: resolvedTeamId,
-      projectId: resolvedProjectId,
       parentCaseId,
       phaseHint,
       phase: phaseHint,
@@ -246,7 +242,6 @@ export async function exportAkkordJsonAndPdf(options = {}) {
         await updateSharedCaseStatus(resolvedTeamId, sharedContext.caseId, {
           status: 'afsluttet',
           ifMatchUpdatedAt: sharedContext.updatedAt || '',
-          projectId: resolvedProjectId,
           phase: sharedContext.phase || 'montage',
         });
       } catch (error) {

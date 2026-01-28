@@ -186,7 +186,6 @@ Kræver env var i Netlify:
    - `netlify/functions/migrations/007_cases_workflow.sql`
    - `netlify/functions/migrations/008_auth0_member_profile.sql`
    - `netlify/functions/migrations/009_cases_attachments.sql`
-   - `netlify/functions/migrations/010_cases_project_id.sql`
 4. Deploy og verificér:
    - Auth0 login fungerer.
    - Team access og medlemsregistrering fungerer på default-teamet.
@@ -201,7 +200,7 @@ Kræver env var i Netlify:
 ## Delt sager workflow (kort)
 
 - Flow: Montage → Montage klar til demontage → Demontage i gang → Afsluttet (samlet pr. sagsnr/jobnr).
-- Afsluttede sager grupperes pr. projekt (projectId) og viser seneste montage + demontage med versionhistorik.
+- Afsluttede sager grupperes pr. sagsnr/jobnr og viser seneste montage + demontage med versionhistorik.
 - Statusopdateringer bruger `ifMatchUpdatedAt` for robust samtidighed mellem brugere.
 
 ## Contribution flow + verification

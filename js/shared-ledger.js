@@ -25,7 +25,6 @@ const SHARED_CASES_QUEUE_MAX = 30
 const SHARED_CASE_CONTEXT_KEY = 'cssmate:shared-case:context:v1'
 
 const CASE_ID_NAMESPACE = 'cssmate:shared-case'
-const PROJECT_ID_NAMESPACE = 'cssmate:shared-project'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const WORKFLOW_PHASE = {
   DRAFT: 'draft',
@@ -115,7 +114,6 @@ function normalizeSharedCaseContext(value) {
     phase,
     status: value.status || '',
     updatedAt: value.updatedAt || '',
-    projectId: value.projectId || '',
   }
 }
 
@@ -206,7 +204,6 @@ function normalizeQueuedEntry (entry) {
     status: entry.status || 'kladde',
     jsonContent: entry.jsonContent || '',
     phase: normalizePhase(entry.phase || entry.phaseHint || entry.caseKind),
-    projectId: entry.projectId || '',
     parentCaseId: entry.parentCaseId || null,
     ifMatchUpdatedAt: entry.ifMatchUpdatedAt || '',
     createdByName: entry.createdByName || '',
@@ -339,16 +336,6 @@ async function buildStableCaseId ({ teamId, jobNumber, phase, jsonContent }) {
   return formatUuidFromHex(hex)
 }
 
-export async function computeProjectId(teamId, jobNumber) {
-  const normalizedJob = normalizeJobNumber(jobNumber)
-  if (!normalizedJob || normalizedJob === 'UKENDT') {
-    return null
-  }
-  const payload = `${PROJECT_ID_NAMESPACE}|team:${teamId}|job:${normalizedJob}`
-  const hex = await sha256Hex(payload)
-  return formatUuidFromHex(hex)
-}
-
 export function resolveTeamId(rawTeamId) {
   const provided = rawTeamId || (typeof window !== 'undefined' ? window.TEAM_ID : null)
   if (provided) return formatTeamId(provided)
@@ -466,7 +453,6 @@ export async function publishSharedCase({
   jsonContent,
   phaseHint,
   phase,
-  projectId,
   parentCaseId,
   caseId: explicitCaseId,
   ifMatchUpdatedAt,
@@ -475,9 +461,6 @@ export async function publishSharedCase({
   const { teamId: resolvedTeamId, membership, actor } = await getTeamContext(teamId)
   const normalizedJobNumber = normalizeJobNumber(jobNumber)
   const resolvedPhase = normalizePhase(phase || phaseHint || caseKind)
-  const resolvedProjectId = isValidUuid(projectId)
-    ? projectId
-    : await computeProjectId(resolvedTeamId, normalizedJobNumber)
   const caseId = isValidUuid(explicitCaseId)
     ? explicitCaseId
     : await buildStableCaseId({ teamId: resolvedTeamId, jobNumber: normalizedJobNumber, phase: resolvedPhase, jsonContent })
@@ -491,7 +474,6 @@ export async function publishSharedCase({
     jsonContent,
     phaseHint: resolvedPhase,
     phase: resolvedPhase,
-    projectId: resolvedProjectId,
     parentCaseId: isValidUuid(parentCaseId) ? parentCaseId : null,
     ifMatchUpdatedAt,
     createdByName: actor.name || actor.displayName || '',
@@ -543,7 +525,6 @@ async function publishQueuedEntry (entry) {
     jsonContent: normalized.jsonContent,
     phaseHint: normalized.phase,
     phase: normalized.phase,
-    projectId: normalized.projectId,
     parentCaseId: normalized.parentCaseId,
     ifMatchUpdatedAt: normalized.ifMatchUpdatedAt,
     createdByName: normalized.createdByName || '',
@@ -565,7 +546,6 @@ async function updateQueuedStatus (entry) {
   const payload = {
     status: normalized.status,
     ifMatchUpdatedAt: normalized.ifMatchUpdatedAt,
-    projectId: normalized.projectId,
     phase: normalized.phase,
     parentCaseId: normalized.parentCaseId,
   }
@@ -580,13 +560,12 @@ async function updateQueuedStatus (entry) {
   return true
 }
 
-export async function updateSharedCaseStatus(teamId, caseId, { status, ifMatchUpdatedAt, projectId, phase, parentCaseId } = {}) {
+export async function updateSharedCaseStatus(teamId, caseId, { status, ifMatchUpdatedAt, phase, parentCaseId } = {}) {
   ensureWritesAllowed('updateSharedCaseStatus')
   const { teamId: resolvedTeamId } = await getTeamContext(teamId)
   const payload = {
     status,
     ifMatchUpdatedAt,
-    projectId,
     phase,
     parentCaseId,
   }

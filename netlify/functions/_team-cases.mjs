@@ -1,10 +1,10 @@
 import { db } from './_db.mjs'
+import { guardTeamCasesSql } from './_team-cases-guard.mjs'
 import { assertTeamIdUuid } from './_team.mjs'
 
 const TEAM_CASE_COLUMNS = `
   c.case_id,
   c.team_id,
-  c.project_id,
   c.parent_case_id,
   c.job_number,
   c.case_kind,
@@ -23,23 +23,24 @@ const TEAM_CASE_COLUMNS = `
   c.last_editor_sub,
   c.json_content,
   c.deleted_at,
-  c.deleted_by,
-  t.slug as team_slug
+  c.deleted_by
 `
 
 function buildSearchClause({ search, params }) {
   if (!search) return ''
   params.push(`%${search}%`)
-  return ` AND (c.job_number ILIKE $${params.length} OR c.case_kind ILIKE $${params.length} OR c.system ILIKE $${params.length})`
+  return ` AND (c.job_number ILIKE $${params.length} OR c.created_by_name ILIKE $${params.length} OR c.system ILIKE $${params.length})`
 }
 
 export async function getTeamCase({ teamId, caseId }) {
   assertTeamIdUuid(teamId, 'getTeamCase')
   const result = await db.query(
-    `SELECT ${TEAM_CASE_COLUMNS}
-     FROM public.team_cases c
-     JOIN public.teams t ON t.id = c.team_id
-     WHERE c.team_id = $1 AND c.case_id = $2`,
+    guardTeamCasesSql(
+      `SELECT ${TEAM_CASE_COLUMNS}
+       FROM public.team_cases c
+       WHERE c.team_id = $1 AND c.case_id = $2`,
+      'getTeamCase'
+    ),
     [teamId, caseId]
   )
   return result.rows[0] || null
@@ -50,6 +51,7 @@ export async function listTeamCasesPage({
   limit,
   cursor,
   status = '',
+  phase = '',
   search = '',
   from = '',
   to = '',
@@ -65,6 +67,10 @@ export async function listTeamCasesPage({
     params.push(status)
     whereClause += ` AND c.status = $${params.length}`
   }
+  if (phase) {
+    params.push(phase)
+    whereClause += ` AND c.phase = $${params.length}`
+  }
   whereClause += buildSearchClause({ search, params })
   if (from) {
     params.push(from)
@@ -75,18 +81,22 @@ export async function listTeamCasesPage({
     whereClause += ` AND (c.created_at AT TIME ZONE 'Europe/Copenhagen')::date <= $${params.length}`
   }
   if (cursor) {
+    params.push(cursor.lastUpdatedAt)
+    params.push(cursor.updatedAt)
     params.push(cursor.createdAt)
     params.push(cursor.caseId)
-    whereClause += ` AND (c.created_at, c.case_id) < ($${params.length - 1}, $${params.length})`
+    whereClause += ` AND (c.last_updated_at, c.updated_at, c.created_at, c.case_id) < ($${params.length - 3}, $${params.length - 2}, $${params.length - 1}, $${params.length})`
   }
   params.push(limit + 1)
   const result = await db.query(
-    `SELECT ${TEAM_CASE_COLUMNS}
-     FROM public.team_cases c
-     JOIN public.teams t ON t.id = c.team_id
-     ${whereClause}
-     ORDER BY c.created_at DESC, c.case_id DESC
-     LIMIT $${params.length}`,
+    guardTeamCasesSql(
+      `SELECT ${TEAM_CASE_COLUMNS}
+       FROM public.team_cases c
+       ${whereClause}
+       ORDER BY c.last_updated_at DESC NULLS LAST, c.updated_at DESC, c.created_at DESC
+       LIMIT $${params.length}`,
+      'listTeamCasesPage'
+    ),
     params
   )
   const rows = result.rows || []
@@ -95,6 +105,8 @@ export async function listTeamCasesPage({
   const lastRow = pageRows[pageRows.length - 1]
   const nextCursor = hasMore && lastRow
     ? {
+      lastUpdatedAt: lastRow.last_updated_at ? new Date(lastRow.last_updated_at).toISOString() : new Date(0).toISOString(),
+      updatedAt: lastRow.updated_at ? new Date(lastRow.updated_at).toISOString() : new Date(0).toISOString(),
       createdAt: lastRow.created_at ? new Date(lastRow.created_at).toISOString() : new Date(0).toISOString(),
       caseId: lastRow.case_id,
     }
@@ -116,12 +128,14 @@ export async function listTeamCasesDelta({ teamId, since, sinceId = '', limit })
   }
   params.push(limit)
   const result = await db.query(
-    `SELECT ${TEAM_CASE_COLUMNS}
-     FROM public.team_cases c
-     JOIN public.teams t ON t.id = c.team_id
-     ${whereClause}
-     ORDER BY c.last_updated_at ASC, c.case_id ASC
-     LIMIT $${params.length}`,
+    guardTeamCasesSql(
+      `SELECT ${TEAM_CASE_COLUMNS}
+       FROM public.team_cases c
+       ${whereClause}
+       ORDER BY c.last_updated_at ASC, c.case_id ASC
+       LIMIT $${params.length}`,
+      'listTeamCasesDelta'
+    ),
     params
   )
   return { rows: result.rows || [] }
@@ -130,7 +144,6 @@ export async function listTeamCasesDelta({ teamId, since, sinceId = '', limit })
 export async function upsertTeamCase({
   caseId,
   teamId,
-  projectId,
   parentCaseId,
   jobNumber,
   caseKind,
@@ -150,31 +163,32 @@ export async function upsertTeamCase({
   const totalsPayload = typeof totals === 'string' ? totals : JSON.stringify(totals || {})
   const attachmentsPayload = typeof attachments === 'string' ? attachments : JSON.stringify(attachments || {})
   await db.query(
-    `INSERT INTO public.team_cases
-      (case_id, team_id, project_id, parent_case_id, job_number, case_kind, system, totals, status, phase, attachments, created_at, updated_at, last_updated_at,
-       created_by, created_by_email, created_by_name, updated_by, last_editor_sub, json_content)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11::jsonb, NOW(), NOW(), NOW(), $12, $13, $14, $15, $16, $17)
-     ON CONFLICT (case_id) DO UPDATE SET
-       project_id = EXCLUDED.project_id,
-       parent_case_id = COALESCE(EXCLUDED.parent_case_id, public.team_cases.parent_case_id),
-       job_number = EXCLUDED.job_number,
-       case_kind = EXCLUDED.case_kind,
-       system = EXCLUDED.system,
-       totals = EXCLUDED.totals,
-       status = EXCLUDED.status,
-       phase = EXCLUDED.phase,
-       attachments = EXCLUDED.attachments,
-       updated_at = NOW(),
-       last_updated_at = NOW(),
-       updated_by = EXCLUDED.updated_by,
-       last_editor_sub = EXCLUDED.last_editor_sub,
-       json_content = EXCLUDED.json_content,
-       deleted_at = NULL,
-       deleted_by = NULL`,
+    guardTeamCasesSql(
+      `INSERT INTO public.team_cases
+        (case_id, team_id, parent_case_id, job_number, case_kind, system, totals, status, phase, attachments, created_at, updated_at, last_updated_at,
+         created_by, created_by_email, created_by_name, updated_by, last_editor_sub, json_content)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10::jsonb, NOW(), NOW(), NOW(), $11, $12, $13, $14, $15, $16)
+       ON CONFLICT (case_id) DO UPDATE SET
+         parent_case_id = COALESCE(EXCLUDED.parent_case_id, public.team_cases.parent_case_id),
+         job_number = EXCLUDED.job_number,
+         case_kind = EXCLUDED.case_kind,
+         system = EXCLUDED.system,
+         totals = EXCLUDED.totals,
+         status = EXCLUDED.status,
+         phase = EXCLUDED.phase,
+         attachments = EXCLUDED.attachments,
+         updated_at = NOW(),
+         last_updated_at = NOW(),
+         updated_by = EXCLUDED.updated_by,
+         last_editor_sub = EXCLUDED.last_editor_sub,
+         json_content = EXCLUDED.json_content,
+         deleted_at = NULL,
+         deleted_by = NULL`,
+      'upsertTeamCase'
+    ),
     [
       caseId,
       teamId,
-      projectId,
       parentCaseId,
       jobNumber,
       caseKind,
@@ -197,9 +211,12 @@ export async function upsertTeamCase({
 export async function softDeleteTeamCase({ teamId, caseId, deletedBy }) {
   assertTeamIdUuid(teamId, 'softDeleteTeamCase')
   await db.query(
-    `UPDATE public.team_cases
-     SET status = $1, deleted_at = NOW(), deleted_by = $2, updated_at = NOW(), last_updated_at = NOW(), updated_by = $2
-     WHERE team_id = $3 AND case_id = $4`,
+    guardTeamCasesSql(
+      `UPDATE public.team_cases
+       SET status = $1, deleted_at = NOW(), deleted_by = $2, updated_at = NOW(), last_updated_at = NOW(), updated_by = $2
+       WHERE team_id = $3 AND case_id = $4`,
+      'softDeleteTeamCase'
+    ),
     ['deleted', deletedBy, teamId, caseId]
   )
   return getTeamCase({ teamId, caseId })
