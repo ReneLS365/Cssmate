@@ -5,14 +5,14 @@ import { __test } from '../netlify/functions/api.mjs'
 
 const { canAccessCase, resolveCaseTransition } = __test
 
-test('draft visibility is limited to creator', () => {
+test('draft visibility is team-scoped for shared cases', () => {
   assert.equal(
     canAccessCase({ status: 'kladde', createdBy: 'user-a', userSub: 'user-a', isPrivileged: false }),
     true
   )
   assert.equal(
     canAccessCase({ status: 'kladde', createdBy: 'user-a', userSub: 'user-b', isPrivileged: false }),
-    false
+    true
   )
   assert.equal(
     canAccessCase({ status: 'godkendt', createdBy: 'user-a', userSub: 'user-b', isPrivileged: false }),
@@ -24,7 +24,7 @@ test('montage approve transitions kladde -> godkendt', () => {
   const next = resolveCaseTransition({
     action: 'APPROVE',
     currentStatus: 'kladde',
-    currentPhase: 'montage',
+    sheetPhase: 'montage',
     isCreator: true,
   })
   assert.deepEqual(next, { status: 'godkendt', phase: 'montage' })
@@ -35,21 +35,21 @@ test('non-creator cannot approve draft', () => {
     () => resolveCaseTransition({
       action: 'APPROVE',
       currentStatus: 'kladde',
-      currentPhase: 'montage',
+      sheetPhase: 'montage',
       isCreator: false,
     }),
     /Kun opretter kan godkende kladden/
   )
 })
 
-test('demontage export transitions godkendt -> demontage_i_gang', () => {
+test('demontage export transitions godkendt -> afsluttet', () => {
   const next = resolveCaseTransition({
     action: 'EXPORT_DEMONTAGE',
     currentStatus: 'godkendt',
-    currentPhase: 'montage',
+    sheetPhase: 'demontage',
     isCreator: false,
   })
-  assert.deepEqual(next, { status: 'demontage_i_gang', phase: 'demontage' })
+  assert.deepEqual(next, { status: 'afsluttet', phase: 'demontage' })
 })
 
 test('demontage export rejects draft', () => {
@@ -57,7 +57,7 @@ test('demontage export rejects draft', () => {
     () => resolveCaseTransition({
       action: 'EXPORT_DEMONTAGE',
       currentStatus: 'kladde',
-      currentPhase: 'montage',
+      sheetPhase: 'montage',
       isCreator: true,
     }),
     /Montage skal godkendes/
@@ -68,7 +68,7 @@ test('demontage approve transitions demontage_i_gang -> afsluttet', () => {
   const next = resolveCaseTransition({
     action: 'APPROVE',
     currentStatus: 'demontage_i_gang',
-    currentPhase: 'demontage',
+    sheetPhase: 'demontage',
     isCreator: false,
   })
   assert.deepEqual(next, { status: 'afsluttet', phase: 'demontage' })

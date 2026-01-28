@@ -27,6 +27,12 @@ const SHARED_CASE_CONTEXT_KEY = 'cssmate:shared-case:context:v1'
 const CASE_ID_NAMESPACE = 'cssmate:shared-case'
 const PROJECT_ID_NAMESPACE = 'cssmate:shared-project'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const WORKFLOW_PHASE = {
+  DRAFT: 'draft',
+  READY_FOR_DEMONTAGE: 'ready_for_demontage',
+  COMPLETED: 'completed',
+}
+const WORKFLOW_PHASE_VALUES = new Set(Object.values(WORKFLOW_PHASE))
 
 class PermissionDeniedError extends Error {
   constructor(message) {
@@ -255,6 +261,37 @@ function normalizePhase(value) {
   return 'montage'
 }
 
+function normalizeWorkflowPhase(value, status = '') {
+  const normalized = (value || '').toString().trim().toLowerCase()
+  if (WORKFLOW_PHASE_VALUES.has(normalized)) return normalized
+  const statusValue = (status || '').toString().trim().toLowerCase()
+  if (['afsluttet', 'done', 'completed'].includes(statusValue)) return WORKFLOW_PHASE.COMPLETED
+  if (['godkendt', 'demontage_i_gang', 'klar_til_demontage', 'ready'].includes(statusValue)) return WORKFLOW_PHASE.READY_FOR_DEMONTAGE
+  if (['kladde', 'klar_til_deling', 'klar', 'draft'].includes(statusValue)) return WORKFLOW_PHASE.DRAFT
+  return WORKFLOW_PHASE.DRAFT
+}
+
+function mapTeamCaseRow(row) {
+  if (!row || typeof row !== 'object') return null
+  const caseId = row.caseId || row.case_id || row.id || ''
+  if (!caseId) return null
+  const teamId = row.teamId || row.team_id || row.team_slug || row.team || ''
+  const status = row.status || ''
+  const workflowPhase = normalizeWorkflowPhase(row.phase || row.workflowPhase || row.workflow_phase, status)
+  const caseKind = row.caseKind || row.case_kind || ''
+  const sheetPhase = normalizePhase(row.sheetPhase || row.phaseHint || caseKind)
+  return {
+    ...row,
+    id: caseId,
+    caseId,
+    teamId,
+    caseKind,
+    phase: workflowPhase,
+    workflowPhase,
+    sheetPhase,
+  }
+}
+
 function cacheTeamResolution(uid, teamId, membership) {
   teamCache.uid = uid
   teamCache.teamId = teamId
@@ -469,9 +506,12 @@ export async function publishSharedCase({
       method: 'POST',
       body: JSON.stringify(requestPayload),
     })
-    dispatchSharedEvent({ type: 'case-updated', case: payload })
+    const mapped = mapTeamCaseRow(payload)
+    if (mapped) {
+      dispatchSharedEvent({ type: 'case-updated', case: mapped })
+    }
     removeQueueEntry(caseId, 'publish')
-    return { ...payload, queued: false, caseId: payload?.caseId || caseId }
+    return { ...(mapped || payload), queued: false, caseId: mapped?.caseId || payload?.caseId || caseId }
   } catch (error) {
     const isNetworkError = error instanceof TypeError || /network|offline|failed to fetch/i.test(error?.message || '')
     if (isNetworkError) {
@@ -533,7 +573,10 @@ async function updateQueuedStatus (entry) {
     method: 'PATCH',
     body: JSON.stringify(payload),
   })
-  dispatchSharedEvent({ type: 'case-updated', case: result })
+  const mapped = mapTeamCaseRow(result)
+  if (mapped) {
+    dispatchSharedEvent({ type: 'case-updated', case: mapped })
+  }
   return true
 }
 
@@ -556,9 +599,12 @@ export async function updateSharedCaseStatus(teamId, caseId, { status, ifMatchUp
       method: 'PATCH',
       body: JSON.stringify(payload),
     })
-    dispatchSharedEvent({ type: 'case-updated', case: result })
+    const mapped = mapTeamCaseRow(result)
+    if (mapped) {
+      dispatchSharedEvent({ type: 'case-updated', case: mapped })
+    }
     removeQueueEntry(caseId, 'status-update')
-    return { ...result, queued: false }
+    return { ...(mapped || result), queued: false }
   } catch (error) {
     const isNetworkError = error instanceof TypeError || /network|offline|failed to fetch/i.test(error?.message || '')
     if (isNetworkError) {
@@ -661,10 +707,10 @@ function encodeCursorPayload(cursor) {
 
 function normalizeCasesPage(payload) {
   if (Array.isArray(payload)) {
-    return { items: payload, nextCursor: null }
+    return { items: payload.map(mapTeamCaseRow).filter(Boolean), nextCursor: null }
   }
   if (payload && Array.isArray(payload.items)) {
-    return { items: payload.items, nextCursor: payload.nextCursor || null }
+    return { items: payload.items.map(mapTeamCaseRow).filter(Boolean), nextCursor: payload.nextCursor || null }
   }
   return { items: [], nextCursor: null }
 }
@@ -722,7 +768,8 @@ export async function listSharedCasesFirstPage(teamId, opts = {}) {
 export async function getSharedCase(teamId, caseId) {
   try {
     const { teamId: resolvedTeamId } = await getTeamContext(teamId)
-    return await apiJson(`/api/teams/${resolvedTeamId}/cases/${caseId}`)
+    const payload = await apiJson(`/api/teams/${resolvedTeamId}/cases/${caseId}`)
+    return mapTeamCaseRow(payload)
   } catch (error) {
     console.warn('Kunne ikke hente sag', error)
     if (error?.code === 'permission-denied') throw error
@@ -813,3 +860,8 @@ export {
 }
 
 export const __ledgerVersion = LEDGER_VERSION
+export const __test = {
+  mapTeamCaseRow,
+  normalizeWorkflowPhase,
+  WORKFLOW_PHASE,
+}
