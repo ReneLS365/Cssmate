@@ -39,19 +39,25 @@ function createError (message, status = 400, code = '') {
 }
 
 async function requireAuth (event) {
-  const header = getAuthHeader(event)
-  if (!header.startsWith('Bearer ')) {
-    throw createError('Manglende token', 401, 'auth_missing_token')
-  }
-  const token = header.replace('Bearer ', '').trim()
-  const payload = await verifyToken(token)
-  const roles = extractRoles(payload).filter(role => ALLOWED_ROLES.has(role))
-  if (!roles.length) {
-    throw createError('Manglende rolle i Auth0 token.', 403, 'auth_missing_role')
-  }
-  return {
-    id: payload.sub,
-    roles,
+  try {
+    const header = getAuthHeader(event)
+    if (!header.startsWith('Bearer ')) {
+      throw createError('Manglende token', 401, 'auth_missing_token')
+    }
+    const token = header.replace('Bearer ', '').trim()
+    const payload = await verifyToken(token)
+    const roles = extractRoles(payload).filter(role => ALLOWED_ROLES.has(role))
+    if (!roles.length) {
+      throw createError('Manglende rolle i Auth0 token.', 403, 'auth_missing_role')
+    }
+    return {
+      id: payload.sub,
+      roles,
+    }
+  } catch (error) {
+    const status = error?.status || 401
+    const code = error?.code || (status === 403 ? 'auth_forbidden' : 'auth_invalid_token')
+    throw createError(error?.message || 'Ugyldigt token', status, code)
   }
 }
 
