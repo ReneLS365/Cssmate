@@ -4,6 +4,7 @@ import { getTeamCase, listTeamCasesDelta, listTeamCasesPage, softDeleteTeamCase,
 import { generateToken, getAuth0Config, hashToken, secureCompare, verifyToken } from './_auth.mjs'
 import { safeError } from './_log.mjs'
 import { getDeployContext, isProd } from './_context.mjs'
+import { assertTeamIdUuid, getTeamById, resolveTeamId } from './_team.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' }
 const DEFAULT_TEAM_SLUG = process.env.DEFAULT_TEAM_SLUG || 'hulmose'
@@ -632,6 +633,40 @@ async function upsertMemberFromUser (teamId, user) {
   return result.rows[0] || null
 }
 
+async function resolveTeamIdForEvent (event, teamInput) {
+  if (!event.__teamIdCache) {
+    event.__teamIdCache = new Map()
+  }
+  return resolveTeamId(teamInput, { cache: event.__teamIdCache })
+}
+
+async function requireCaseTeamContext (event, teamInput, { requireAdmin = false } = {}) {
+  const user = await requireAuth(event)
+  const isProduction = isProd()
+  const teamId = await resolveTeamIdForEvent(event, teamInput)
+  const team = await getTeamById(teamId)
+  if (!team) {
+    console.warn('[team] invalid team reference', { input: teamInput })
+    throw createError('Invalid team reference. Expected team slug/name or uuid.', 400)
+  }
+  if (requireAdmin && !user.isPrivileged) {
+    throw createError('Kun admin kan udføre denne handling.', 403)
+  }
+  if (user.isPrivileged) {
+    return { user, team, member: null }
+  }
+  let member = await getMember(team.id, user.id)
+  if (!member) {
+    member = isProduction
+      ? await upsertMemberFromUser(team.id, user)
+      : buildEphemeralMember(team.id, user)
+  }
+  if (!member || member.status !== 'active') {
+    throw createError('Ingen adgang til teamet', 403)
+  }
+  return { user, team, member }
+}
+
 async function requireTeamContext (event, teamSlug, { requireAdmin = false } = {}) {
   const user = await requireAuth(event)
   const isProduction = isProd()
@@ -1140,7 +1175,7 @@ async function handleInviteAccept (event) {
 
 async function handleCaseCreate (event, teamSlug) {
   await requireDbReady(event)
-  const { user, team } = await requireTeamContext(event, teamSlug)
+  const { user, team } = await requireCaseTeamContext(event, teamSlug)
   const body = parseBody(event)
   const explicitCaseId = isValidUuid(body.caseId) ? body.caseId : ''
   const caseId = explicitCaseId || crypto.randomUUID()
@@ -1218,7 +1253,7 @@ async function handleCaseCreate (event, teamSlug) {
 
 async function handleCaseList (event, teamSlug) {
   await requireDbReady(event)
-  const { team } = await requireTeamContext(event, teamSlug)
+  const { team } = await requireCaseTeamContext(event, teamSlug)
   const query = event.queryStringParameters || {}
   const limit = clampCasesLimit(query.limit)
   const since = parseSinceParam(query.since)
@@ -1265,7 +1300,7 @@ async function handleCaseList (event, teamSlug) {
 
 async function handleCaseGet (event, teamSlug, caseId) {
   await requireDbReady(event)
-  const { team, user } = await requireTeamContext(event, teamSlug)
+  const { team, user } = await requireCaseTeamContext(event, teamSlug)
   const row = await getTeamCase({ teamId: team.id, caseId })
   if (!row) return jsonResponse(404, { error: 'Sag findes ikke.' })
   if (!canAccessCase({ status: row.status, createdBy: row.created_by, userSub: user.id, isPrivileged: user.isPrivileged })) {
@@ -1276,7 +1311,8 @@ async function handleCaseGet (event, teamSlug, caseId) {
 
 async function handleCaseDelete (event, teamSlug, caseId) {
   await requireDbReady(event)
-  const { user, team } = await requireTeamContext(event, teamSlug)
+  const { user, team } = await requireCaseTeamContext(event, teamSlug)
+  assertTeamIdUuid(team.id, 'handleCaseDelete')
   const result = await db.query(
     'SELECT created_by FROM public.team_cases WHERE team_id = $1 AND case_id = $2',
     [team.id, caseId]
@@ -1292,7 +1328,7 @@ async function handleCaseDelete (event, teamSlug, caseId) {
 
 async function handleCaseStatus (event, teamSlug, caseId) {
   await requireDbReady(event)
-  const { user, team } = await requireTeamContext(event, teamSlug)
+  const { user, team } = await requireCaseTeamContext(event, teamSlug)
   const body = parseBody(event)
   const requested = (body?.status || '').toString().trim().toLowerCase()
   if (requested === CASE_STATUS.APPROVED) {
@@ -1343,6 +1379,7 @@ async function handleCaseStatus (event, teamSlug, caseId) {
     nextStatus,
     currentPhase: row.phase,
   })
+  assertTeamIdUuid(team.id, 'handleCaseStatus')
   await db.query(
     `UPDATE public.team_cases
      SET status = $1, phase = $2, project_id = $3, parent_case_id = COALESCE($4, parent_case_id),
@@ -1356,7 +1393,7 @@ async function handleCaseStatus (event, teamSlug, caseId) {
 
 async function handleCaseApprove (event, teamSlug, caseId) {
   await requireDbReady(event)
-  const { user, team } = await requireTeamContext(event, teamSlug)
+  const { user, team } = await requireCaseTeamContext(event, teamSlug)
   const body = parseBody(event)
   const ifMatchUpdatedAt = parseIfMatchUpdatedAt(body.ifMatchUpdatedAt)
   const row = await getTeamCase({ teamId: team.id, caseId })
@@ -1400,6 +1437,7 @@ async function handleCaseApprove (event, teamSlug, caseId) {
     totals = receipt.totals
   }
 
+  assertTeamIdUuid(team.id, 'handleCaseApprove')
   await db.query(
     `UPDATE public.team_cases SET status = $1, phase = $2, totals = $3::jsonb, attachments = $4::jsonb, project_id = $5,
      updated_at = NOW(), last_updated_at = NOW(), updated_by = $6, last_editor_sub = $6
@@ -1412,7 +1450,8 @@ async function handleCaseApprove (event, teamSlug, caseId) {
 
 async function handleBackupExport (event, teamSlug) {
   await requireDbReady(event)
-  const { user, team } = await requireTeamContext(event, teamSlug, { requireAdmin: true })
+  const { user, team } = await requireCaseTeamContext(event, teamSlug, { requireAdmin: true })
+  assertTeamIdUuid(team.id, 'handleBackupExport')
   const query = event.queryStringParameters || {}
   const includeDeleted = parseBooleanParam(query.includeDeleted)
   const casesQuery = includeDeleted
@@ -1470,7 +1509,8 @@ async function handleBackupExport (event, teamSlug) {
 
 async function handleBackupImport (event, teamSlug) {
   await requireDbReady(event)
-  const { user, team } = await requireTeamContext(event, teamSlug, { requireAdmin: true })
+  const { user, team } = await requireCaseTeamContext(event, teamSlug, { requireAdmin: true })
+  assertTeamIdUuid(team.id, 'handleBackupImport')
   const body = parseBody(event)
   const cases = Array.isArray(body?.cases) ? body.cases : []
   for (const entry of cases) {
