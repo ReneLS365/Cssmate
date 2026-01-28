@@ -10,6 +10,15 @@ function createInvalidTeamError () {
   return error
 }
 
+function normalizeTeamSlug (value) {
+  const cleaned = (value || '').toString().trim().toLowerCase()
+  if (!cleaned) return ''
+  return cleaned
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
 export function isUuidV4 (value) {
   return UUID_V4_REGEX.test((value || '').toString())
 }
@@ -23,33 +32,43 @@ export function assertTeamIdUuid (teamId, context = '') {
 }
 
 export async function resolveTeamId (input, { cache } = {}) {
-  const normalized = (input || '').toString().trim()
-  if (!normalized) {
+  const rawInput = (input || '').toString().trim()
+  if (!rawInput) {
     console.warn('[team] resolveTeamId missing input')
     throw createInvalidTeamError()
   }
-  if (isUuidV4(normalized)) {
-    const teamId = normalized.toLowerCase()
-    if (cache) cache.set(normalized, teamId)
+  if (isUuidV4(rawInput)) {
+    const teamId = rawInput.toLowerCase()
+    if (cache) {
+      cache.set(rawInput, teamId)
+      cache.set(teamId, teamId)
+    }
     return teamId
   }
-  if (cache?.has(normalized)) {
-    return cache.get(normalized)
+  const normalizedSlug = normalizeTeamSlug(rawInput)
+  if (cache?.has(rawInput)) {
+    return cache.get(rawInput)
+  }
+  if (normalizedSlug && cache?.has(normalizedSlug)) {
+    return cache.get(normalizedSlug)
   }
   const result = await db.query(
     `SELECT id AS team_id
      FROM public.teams
-     WHERE slug = $1 OR name = $1
-     ORDER BY CASE WHEN slug = $1 THEN 0 ELSE 1 END
+     WHERE slug = $1 OR name = $2
+     ORDER BY CASE WHEN slug = $1 THEN 0 WHEN name = $2 THEN 1 ELSE 2 END
      LIMIT 1`,
-    [normalized]
+    [normalizedSlug, rawInput]
   )
   const teamId = result.rows[0]?.team_id
   if (!teamId) {
-    console.warn('[team] resolveTeamId miss', { input: normalized })
+    console.warn('[team] resolveTeamId miss', { input: rawInput })
     throw createInvalidTeamError()
   }
-  if (cache) cache.set(normalized, teamId)
+  if (cache) {
+    cache.set(rawInput, teamId)
+    if (normalizedSlug) cache.set(normalizedSlug, teamId)
+  }
   return teamId
 }
 
