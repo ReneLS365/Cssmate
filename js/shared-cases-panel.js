@@ -50,6 +50,16 @@ let latestRequestId = 0;
 let lastFiltersSnapshot = null;
 let debouncedFilterRender = null;
 let debouncedQuickRender = null;
+let caseItemsVersion = 0;
+let renderCache = {
+  version: -1,
+  filterKey: '',
+  sortKey: '',
+  allCounts: null,
+  scopeEntries: null,
+  displayEntries: null,
+  sortedEntries: null,
+};
 const UI_STORAGE_KEY = 'cssmate:shared-cases:ui:v1';
 const CASE_META_CACHE = new Map();
 const DATE_INPUT_FORMATTER = new Intl.DateTimeFormat('sv-SE');
@@ -92,6 +102,19 @@ function startLoading() {
 function stopLoading() {
   loadingCount = Math.max(0, loadingCount - 1);
   isLoading = loadingCount > 0;
+}
+
+function touchCaseItems() {
+  caseItemsVersion += 1;
+  renderCache = {
+    version: -1,
+    filterKey: '',
+    sortKey: '',
+    allCounts: null,
+    scopeEntries: null,
+    displayEntries: null,
+    sortedEntries: null,
+  };
 }
 
 function formatTimeLabel(value) {
@@ -530,6 +553,27 @@ function countsToObject(counts) {
     summary[key] = value;
   });
   return summary;
+}
+
+function getFilterKey(filters) {
+  if (!filters) return '';
+  return [
+    filters.search || '',
+    filters.dateFrom || '',
+    filters.dateTo || '',
+    filters.status || '',
+    filters.kind || '',
+  ].join('|');
+}
+
+function areFiltersEqual(a, b) {
+  if (!a || !b) return false;
+  return a.search === b.search
+    && a.dateFrom === b.dateFrom
+    && a.dateTo === b.dateTo
+    && a.status === b.status
+    && a.kind === b.kind
+    && a.sort === b.sort;
 }
 
 function logFilterChange(nextFilters, { total }) {
@@ -1587,6 +1631,7 @@ function resetCaseState() {
   lastDeltaAt = null;
   lastDeltaCaseId = '';
   lastDeltaSyncLabel = '';
+  touchCaseItems();
 }
 
 function resetPaginationState() {
@@ -1637,6 +1682,7 @@ function mergeEntries(entries, { prepend = false } = {}) {
   firstBatch.forEach(add);
   secondBatch.forEach(add);
   caseItems = merged;
+  touchCaseItems();
 }
 
 function updateCaseEntry(updatedCase) {
@@ -1683,6 +1729,7 @@ function removeCaseEntry(caseId) {
   if (!caseId) return;
   casesById.delete(caseId);
   caseItems = caseItems.filter(entry => entry?.caseId !== caseId);
+  touchCaseItems();
 }
 
 function getActiveFilters() {
@@ -1692,6 +1739,9 @@ function getActiveFilters() {
 function handleFiltersChanged({ immediate = false, fast = false } = {}) {
   if (!sharedCasesContainer) return;
   const filters = getFilters();
+  if (activeFilters && areFiltersEqual(filters, activeFilters)) {
+    return;
+  }
   activeFilters = filters;
   logFilterChange(filters, { total: caseItems.length });
   if (immediate) {
@@ -1709,30 +1759,53 @@ function handleFiltersChanged({ immediate = false, fast = false } = {}) {
   renderFromState(sharedCasesContainer, sessionState?.user?.uid || 'offline-user');
 }
 
-function expandEntriesForDisplay(entries) {
-  return entries.slice();
-}
-
 function renderFromState(container, userId) {
   const debugEnabled = isDebugEnabled();
   const start = debugEnabled && typeof performance !== 'undefined' ? performance.now() : 0;
   const filters = getActiveFilters();
-  const expandedEntries = expandEntriesForDisplay(caseItems);
-  const allCounts = computeBucketCounts(expandedEntries);
+  const filterKey = getFilterKey(filters);
+  const sortKey = filters?.sort || 'newest';
+  let expandedEntries = caseItems;
+  let allCounts = null;
+  let scopeEntries = null;
+  let displayEntries = null;
+  let sorted = null;
+  if (renderCache.version === caseItemsVersion && renderCache.filterKey === filterKey) {
+    allCounts = renderCache.allCounts;
+    scopeEntries = renderCache.scopeEntries;
+    displayEntries = renderCache.displayEntries;
+  } else {
+    allCounts = computeBucketCounts(expandedEntries);
+    scopeEntries = expandedEntries.filter(entry => {
+      const meta = resolveCaseMeta(entry);
+      return matchesFilters(entry, meta, filters, { includeStatus: false });
+    });
+    displayEntries = filters.status
+      ? scopeEntries.filter(entry => resolveEntryBucket(entry) === filters.status)
+      : scopeEntries;
+    renderCache = {
+      version: caseItemsVersion,
+      filterKey,
+      sortKey: '',
+      allCounts,
+      scopeEntries,
+      displayEntries,
+      sortedEntries: null,
+    };
+  }
+  if (renderCache.version === caseItemsVersion && renderCache.filterKey === filterKey && renderCache.sortKey === sortKey) {
+    sorted = renderCache.sortedEntries || [];
+  } else {
+    sorted = sortEntries(displayEntries, sortKey);
+    renderCache.sortKey = sortKey;
+    renderCache.sortedEntries = sorted;
+  }
   if (debugEnabled) {
     debugLog('shared-cases grouped', {
       total: expandedEntries.length,
       counts: countsToObject(allCounts),
     });
   }
-  const scopeEntries = expandedEntries.filter(entry => {
-    const meta = resolveCaseMeta(entry);
-    return matchesFilters(entry, meta, filters, { includeStatus: false });
-  });
-  const displayEntries = filters.status
-    ? scopeEntries.filter(entry => resolveEntryBucket(entry) === filters.status)
-    : scopeEntries;
-  const sorted = sortEntries(displayEntries, filters.sort);
   if (debugEnabled && expandedEntries.length > 0 && sorted.length === 0) {
     debugWarn('shared-cases stale state guard', {
       total: expandedEntries.length,
@@ -1934,11 +2007,12 @@ function renderSharedCases(container, entries, filters, userId, onChange, allCou
     container.appendChild(empty);
     return;
   }
-  container.appendChild(renderBoard(entries, userId, onChange, allCounts));
+  const fragment = document.createDocumentFragment();
+  fragment.appendChild(renderBoard(entries, userId, onChange, allCounts));
   const status = document.createElement('div');
   status.className = 'shared-cases-status';
   status.textContent = `Viser ${entries.length} sager${hasMore ? ' (flere kan hentes)' : ''}.`;
-  container.appendChild(status);
+  fragment.appendChild(status);
   if (hasMore) {
     loadMoreBtn = document.createElement('button');
     loadMoreBtn.type = 'button';
@@ -1963,8 +2037,9 @@ function renderSharedCases(container, entries, filters, userId, onChange, allCou
         loadMoreBtn.disabled = false;
       }
     });
-    container.appendChild(loadMoreBtn);
+    fragment.appendChild(loadMoreBtn);
   }
+  container.appendChild(fragment);
 }
 
 export function initSharedCasesPanel() {

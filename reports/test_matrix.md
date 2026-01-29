@@ -16,3 +16,18 @@
 - `npm run lint --if-present`
 - `npm test`
 - `npm run build`
+
+## Bundt 4 (cleanup + perf) status
+
+> **Note:** Manual tests were not executed in this environment (no interactive browser). Run locally on device/desktop as described above.
+
+| Test | Run A (cold) | Run B (reload) | Run C (nav) | Notes |
+| --- | --- | --- | --- | --- |
+| Delt sager: filter/sort + counts | Not run | Not run | Not run | Requires interactive UI |
+| Team: refresh after publish + navigation | Not run | Not run | Not run | Requires interactive Auth0 session |
+| Offline/online toggle | Not run | Not run | Not run | Requires PWA/service worker |
+
+### Automated checks (this run)
+- `npm run lint --if-present`
+- `npm test` (Playwright skipped: missing `libatk-1.0.so.0`)
+- `npm run build`

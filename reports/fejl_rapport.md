@@ -126,3 +126,23 @@
 - **Fix:** Reset case-state ved SIGNED_OUT/NO_ACCESS/ERROR + team-skift.
 - **Filer:** `js/shared-cases-panel.js` (session change)
 - **Test:** Dækkes via refresh/publish tests + manuel check (se test-matrix).
+
+## Bundt 4 — Performance: Delt sager “instant” (low risk)
+
+### P0-perf-1: Unødvendig recompute ved filter/sort
+- **Observed issue:** Filter/sort i Delt sager triggere ofte fuld recompute af counts + filtre + sortering selv når kun sort ændres.
+- **Fix:** Introduceret let memoization baseret på case-items version + filter/sort keys, så counts og filterede lister genbruges når input er uændret.
+- **Impact:** Reducerer CPU-churn ved gentagne filter/sort skift (debug OFF: samme adfærd).
+- **Filer:** `js/shared-cases-panel.js` (render cache + filter key)
+
+### P0-perf-2: Unødvendig array-kopi i render
+- **Observed issue:** `expandEntriesForDisplay` lavede altid kopi uden behov.
+- **Fix:** Fjernet helperen og bruger direkte `caseItems` som input til filtre/sortering.
+- **Impact:** Mindre GC/alloc ved store lister.
+- **Filer:** `js/shared-cases-panel.js`
+
+### P0-perf-3: DOM churn ved render af status/board
+- **Observed issue:** Flere append-operationer per render.
+- **Fix:** Samler board/status/load-more i `DocumentFragment` før append til container.
+- **Impact:** Færre DOM writes ved større lister.
+- **Filer:** `js/shared-cases-panel.js`
