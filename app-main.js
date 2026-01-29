@@ -18,6 +18,7 @@ import { appendHistoryEntry, loadHistory as loadHistoryEntries, deleteHistoryEnt
 import { normalizeHistoryEntry as baseNormalizeHistoryEntry, normalizeHistoryList, formatDateLabel, normalizeSearchValue } from './js/history-normalizer.js'
 import { downloadBlob } from './js/utils/downloadBlob.js'
 import { applyBuildMetadata, isDebugOverlayEnabled, updateCurrentView } from './src/state/debug.js'
+import { debugLog, isDebugEnabled } from './src/lib/debug.js'
 import { resetAppState, resetOfflineCache } from './src/utils/reset-app.js'
 import { initBootInline } from './boot-inline.js'
 import { isAutomated, isCi, isLighthouse } from './src/config/runtime-modes.js'
@@ -83,6 +84,19 @@ function setupServiceWorkerAutoReload () {
       }
     }, 1000)
   })
+}
+
+function syncServiceWorkerDebugState () {
+  if (!isDebugEnabled()) return
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
+  const send = () => {
+    const controller = navigator.serviceWorker?.controller
+    if (!controller) return
+    controller.postMessage({ type: 'CSSMATE_DEBUG', enabled: true })
+    debugLog('service worker debug enabled')
+  }
+  send()
+  navigator.serviceWorker.addEventListener('controllerchange', send)
 }
 
 
@@ -5937,6 +5951,7 @@ function configureBootstrap () {
     window.__cssmateEnsureTabsBound = () => ensureTabsBound()
   }
   initBootInline()
+  syncServiceWorkerDebugState()
   initTabDiagnosticsLazy()
   installTabClickRecovery()
   if (isDiagnosticsEnabled()) {

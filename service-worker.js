@@ -15,6 +15,7 @@ const APP_VERSION = BUILD_META.cacheKey || self.CSSMATE_APP_VERSION || BUILD_MET
 const SW_BUILD_ID = "202601212003-712ddf7"
 const CACHE_VERSION = `sscaff-${APP_VERSION}-${SW_BUILD_ID}`
 const CACHE_NAME = CACHE_VERSION
+let DEBUG_SW = false
 const PRECACHE_URLS = [
   '/',
   '/index.html',
@@ -91,11 +92,22 @@ const PRECACHE_URLS = [
 async function cacheFirst(request) {
   const cache = await caches.open(CACHE_NAME)
   const cached = await cache.match(request)
-  if (cached) return cached
+  if (cached) {
+    if (DEBUG_SW) {
+      console.debug('[sw]', 'cache-hit', request.url)
+    }
+    return cached
+  }
 
   const response = await fetch(request)
   if (response && response.ok) {
     cache.put(request, response.clone())
+    if (DEBUG_SW) {
+      console.debug('[sw]', 'cache-miss→network→cache-put', request.url)
+    }
+  }
+  if (DEBUG_SW && (!response || !response.ok)) {
+    console.debug('[sw]', 'cache-miss→network-fail', request.url)
   }
   return response
 }
@@ -109,10 +121,21 @@ async function handleNavigation(request) {
   try {
     const response = await fetch(request)
     cache.put(request, response.clone())
+    if (DEBUG_SW) {
+      console.debug('[sw]', 'nav-network→cache-put', request.url)
+    }
     return response
   } catch (error) {
     const cached = await cache.match(request)
-    if (cached) return cached
+    if (cached) {
+      if (DEBUG_SW) {
+        console.debug('[sw]', 'nav-cache-fallback', request.url)
+      }
+      return cached
+    }
+    if (DEBUG_SW) {
+      console.debug('[sw]', 'nav-cache-miss', request.url)
+    }
     return cache.match('/index.html')
   }
 }
@@ -144,6 +167,12 @@ self.addEventListener('activate', event => {
 self.addEventListener('message', event => {
   if (event?.data?.type === 'SKIP_WAITING') {
     self.skipWaiting()
+  }
+  if (event?.data?.type === 'CSSMATE_DEBUG') {
+    DEBUG_SW = Boolean(event.data.enabled)
+    if (DEBUG_SW) {
+      console.debug('[sw]', 'debug enabled')
+    }
   }
 })
 

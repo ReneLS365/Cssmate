@@ -8,6 +8,7 @@ import { TEAM_ACCESS_STATUS } from '../src/services/team-access.js';
 import { normalizeSearchValue, formatDateLabel } from './history-normalizer.js';
 import { showToast } from '../src/ui/toast.js';
 import { getPreviewWriteDisabledMessage } from '../src/lib/deploy-context.js';
+import { debugLog, debugWarn, isDebugEnabled } from '../src/lib/debug.js';
 
 let sharedCasesPanelInitialized = false;
 let refreshBtn;
@@ -46,8 +47,19 @@ let pollingActive = false;
 let pollingReason = '';
 let lastDeltaSyncLabel = '';
 let latestRequestId = 0;
+let lastFiltersSnapshot = null;
 let debouncedFilterRender = null;
 let debouncedQuickRender = null;
+let caseItemsVersion = 0;
+let renderCache = {
+  version: -1,
+  filterKey: '',
+  sortKey: '',
+  allCounts: null,
+  scopeEntries: null,
+  displayEntries: null,
+  sortedEntries: null,
+};
 const UI_STORAGE_KEY = 'cssmate:shared-cases:ui:v1';
 const CASE_META_CACHE = new Map();
 const DATE_INPUT_FORMATTER = new Intl.DateTimeFormat('sv-SE');
@@ -90,6 +102,19 @@ function startLoading() {
 function stopLoading() {
   loadingCount = Math.max(0, loadingCount - 1);
   isLoading = loadingCount > 0;
+}
+
+function touchCaseItems() {
+  caseItemsVersion += 1;
+  renderCache = {
+    version: -1,
+    filterKey: '',
+    sortKey: '',
+    allCounts: null,
+    scopeEntries: null,
+    displayEntries: null,
+    sortedEntries: null,
+  };
 }
 
 function formatTimeLabel(value) {
@@ -333,6 +358,10 @@ function setListSharedCasesPage(fn) {
   listSharedCasesPageFn = typeof fn === 'function' ? fn : listSharedCasesPage;
 }
 
+function setRefreshHandler(fn) {
+  refreshCases = typeof fn === 'function' ? fn : async () => {};
+}
+
 function applyStoredFilters() {
   const state = loadUiState();
   const searchInput = document.getElementById('sharedSearchInput');
@@ -502,6 +531,64 @@ function computeBucketCounts(entries) {
   return counts;
 }
 
+function hasOwn(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function normalizeStoredEntry(entry, existing) {
+  const base = existing ? { ...existing, ...entry } : { ...entry };
+  if (!entry || typeof entry !== 'object') return base;
+  if (!hasOwn(entry, '__syncing')) {
+    delete base.__syncing;
+  }
+  if (!hasOwn(entry, '__viewBucket')) {
+    delete base.__viewBucket;
+  }
+  return base;
+}
+
+function countsToObject(counts) {
+  const summary = {};
+  counts.forEach((value, key) => {
+    summary[key] = value;
+  });
+  return summary;
+}
+
+function getFilterKey(filters) {
+  if (!filters) return '';
+  return [
+    filters.search || '',
+    filters.dateFrom || '',
+    filters.dateTo || '',
+    filters.status || '',
+    filters.kind || '',
+  ].join('|');
+}
+
+function areFiltersEqual(a, b) {
+  if (!a || !b) return false;
+  return a.search === b.search
+    && a.dateFrom === b.dateFrom
+    && a.dateTo === b.dateTo
+    && a.status === b.status
+    && a.kind === b.kind
+    && a.sort === b.sort;
+}
+
+function logFilterChange(nextFilters, { total }) {
+  if (!isDebugEnabled()) return;
+  const previous = lastFiltersSnapshot || {};
+  const changed = Object.keys(nextFilters || {}).some(key => previous[key] !== nextFilters[key]);
+  if (!changed) return;
+  debugLog('shared-cases filters changed', {
+    from: previous,
+    to: nextFilters,
+    total,
+  });
+  lastFiltersSnapshot = { ...nextFilters };
+}
+
 function formatStatusLabel(phase) {
   const bucket = resolveCasePhaseBucket(phase);
   if (bucket === WORKFLOW_PHASE.DRAFT) return 'Kladde';
@@ -602,15 +689,20 @@ function bindSessionControls(onAuthenticated, onAccessReady) {
   initAuthSession();
   let lastStatus = '';
   onSessionChange((state) => {
+    const previousTeamId = teamId;
     sessionState = state || {};
     teamId = state?.teamId ? formatTeamId(state.teamId) : '';
     displayTeamId = state?.displayTeamId || (teamId ? getDisplayTeamId(teamId) : DEFAULT_TEAM_SLUG);
     membershipRole = state?.role || '';
     membershipError = null;
     teamError = '';
+    if (previousTeamId && teamId && teamId !== previousTeamId) {
+      resetCaseState();
+    }
     const accessStatus = state?.accessStatus || TEAM_ACCESS_STATUS.CHECKING;
     if (state?.status === SESSION_STATUS.SIGNED_OUT) {
       debugMessagesSeen.clear();
+      resetCaseState();
     }
     if (state?.status === SESSION_STATUS.NO_ACCESS || state?.status === SESSION_STATUS.ERROR || accessStatus !== TEAM_ACCESS_STATUS.OK) {
       teamError = state?.message || teamError || '';
@@ -619,6 +711,7 @@ function bindSessionControls(onAuthenticated, onAccessReady) {
       }
       if (state?.status === SESSION_STATUS.NO_ACCESS || state?.status === SESSION_STATUS.ERROR) {
         debugMessagesSeen.clear();
+        resetCaseState();
       }
     }
     const hasAccess = Boolean(state?.sessionReady);
@@ -1538,6 +1631,7 @@ function resetCaseState() {
   lastDeltaAt = null;
   lastDeltaCaseId = '';
   lastDeltaSyncLabel = '';
+  touchCaseItems();
 }
 
 function resetPaginationState() {
@@ -1577,7 +1671,7 @@ function mergeEntries(entries, { prepend = false } = {}) {
       return;
     }
     const existing = casesById.get(entry.caseId);
-    const updated = existing ? { ...existing, ...entry } : entry;
+    const updated = normalizeStoredEntry(entry, existing);
     casesById.set(entry.caseId, updated);
     if (seen.has(entry.caseId)) return;
     seen.add(entry.caseId);
@@ -1588,13 +1682,36 @@ function mergeEntries(entries, { prepend = false } = {}) {
   firstBatch.forEach(add);
   secondBatch.forEach(add);
   caseItems = merged;
+  touchCaseItems();
 }
 
 function updateCaseEntry(updatedCase) {
   if (!updatedCase?.caseId) return;
   const existing = casesById.get(updatedCase.caseId);
-  const merged = existing ? { ...existing, ...updatedCase } : updatedCase;
+  const merged = normalizeStoredEntry(updatedCase, existing);
   mergeEntries([merged], { prepend: true });
+}
+
+async function handleExportedEvent(detail) {
+  if (!requireAuth()) return;
+  const caseData = detail?.case || null;
+  const caseId = caseData?.caseId || detail?.caseId || '';
+  if (caseData?.caseId) {
+    updateCaseEntry(caseData);
+    if (sharedCasesContainer) {
+      renderFromState(sharedCasesContainer, sessionState?.user?.uid || 'offline-user');
+    }
+    updateDeltaCursorFromItems([caseData]);
+    lastDeltaSyncLabel = formatTimeLabel(new Date());
+    setSharedStatus('Opdateret');
+  }
+  if (caseId) {
+    try {
+      await refreshCases({ prepend: false });
+    } catch {
+      // refreshCases handles errors
+    }
+  }
 }
 
 function buildOptimisticUpdate(entry, updates) {
@@ -1612,6 +1729,7 @@ function removeCaseEntry(caseId) {
   if (!caseId) return;
   casesById.delete(caseId);
   caseItems = caseItems.filter(entry => entry?.caseId !== caseId);
+  touchCaseItems();
 }
 
 function getActiveFilters() {
@@ -1621,7 +1739,11 @@ function getActiveFilters() {
 function handleFiltersChanged({ immediate = false, fast = false } = {}) {
   if (!sharedCasesContainer) return;
   const filters = getFilters();
+  if (activeFilters && areFiltersEqual(filters, activeFilters)) {
+    return;
+  }
   activeFilters = filters;
+  logFilterChange(filters, { total: caseItems.length });
   if (immediate) {
     renderFromState(sharedCasesContainer, sessionState?.user?.uid || 'offline-user');
     return;
@@ -1637,27 +1759,69 @@ function handleFiltersChanged({ immediate = false, fast = false } = {}) {
   renderFromState(sharedCasesContainer, sessionState?.user?.uid || 'offline-user');
 }
 
-function expandEntriesForDisplay(entries) {
-  return entries.slice();
-}
-
 function renderFromState(container, userId) {
+  const debugEnabled = isDebugEnabled();
+  const start = debugEnabled && typeof performance !== 'undefined' ? performance.now() : 0;
   const filters = getActiveFilters();
-  const expandedEntries = expandEntriesForDisplay(caseItems);
-  const allCounts = computeBucketCounts(expandedEntries);
-  const scopeEntries = expandedEntries.filter(entry => {
-    const meta = resolveCaseMeta(entry);
-    return matchesFilters(entry, meta, filters, { includeStatus: false });
-  });
-  const displayEntries = filters.status
-    ? scopeEntries.filter(entry => resolveEntryBucket(entry) === filters.status)
-    : scopeEntries;
-  const sorted = sortEntries(displayEntries, filters.sort);
+  const filterKey = getFilterKey(filters);
+  const sortKey = filters?.sort || 'newest';
+  let expandedEntries = caseItems;
+  let allCounts = null;
+  let scopeEntries = null;
+  let displayEntries = null;
+  let sorted = null;
+  if (renderCache.version === caseItemsVersion && renderCache.filterKey === filterKey) {
+    allCounts = renderCache.allCounts;
+    scopeEntries = renderCache.scopeEntries;
+    displayEntries = renderCache.displayEntries;
+  } else {
+    allCounts = computeBucketCounts(expandedEntries);
+    scopeEntries = expandedEntries.filter(entry => {
+      const meta = resolveCaseMeta(entry);
+      return matchesFilters(entry, meta, filters, { includeStatus: false });
+    });
+    displayEntries = filters.status
+      ? scopeEntries.filter(entry => resolveEntryBucket(entry) === filters.status)
+      : scopeEntries;
+    renderCache = {
+      version: caseItemsVersion,
+      filterKey,
+      sortKey: '',
+      allCounts,
+      scopeEntries,
+      displayEntries,
+      sortedEntries: null,
+    };
+  }
+  if (renderCache.version === caseItemsVersion && renderCache.filterKey === filterKey && renderCache.sortKey === sortKey) {
+    sorted = renderCache.sortedEntries || [];
+  } else {
+    sorted = sortEntries(displayEntries, sortKey);
+    renderCache.sortKey = sortKey;
+    renderCache.sortedEntries = sorted;
+  }
+  if (debugEnabled) {
+    debugLog('shared-cases grouped', {
+      total: expandedEntries.length,
+      counts: countsToObject(allCounts),
+    });
+  }
+  if (debugEnabled && expandedEntries.length > 0 && sorted.length === 0) {
+    debugWarn('shared-cases stale state guard', {
+      total: expandedEntries.length,
+      filtered: scopeEntries.length,
+      filters,
+    });
+  }
   renderSharedCases(container, sorted, filters, userId, (payload) => {
     if (payload?.updatedCase) updateCaseEntry(payload.updatedCase);
     if (payload?.removeCaseId) removeCaseEntry(payload.removeCaseId);
     renderFromState(container, userId);
   }, allCounts);
+  if (debugEnabled && start) {
+    const end = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    debugLog('shared-cases render', { durationMs: Number((end - start).toFixed(1)), visible: sorted.length });
+  }
 }
 
 function updateDeltaCursorFromItems(items) {
@@ -1728,6 +1892,8 @@ async function runDeltaSync() {
   if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
   if (sharedCard?.hidden) return;
   deltaInFlight = true;
+  const debugEnabled = isDebugEnabled();
+  const start = debugEnabled && typeof performance !== 'undefined' ? performance.now() : 0;
   try {
     if (!lastDeltaAt) {
       await refreshCases({ prepend: false });
@@ -1739,6 +1905,10 @@ async function runDeltaSync() {
       limit: 200,
     });
     const items = Array.isArray(payload?.items) ? payload.items : [];
+    if (debugEnabled && start) {
+      const end = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      debugLog('shared-cases delta fetched', { count: items.length, durationMs: Number((end - start).toFixed(1)) });
+    }
     let didChange = false;
     items.forEach(entry => {
       if (!entry?.caseId) return;
@@ -1775,6 +1945,8 @@ async function fetchCasesPage({ reset = false, prepend = false, requestId = null
   if (isLoading && !allowParallel) return null;
   if (!requireAuth()) return null;
   startLoading();
+  const debugEnabled = isDebugEnabled();
+  const start = debugEnabled && typeof performance !== 'undefined' ? performance.now() : 0;
   try {
     const filters = reset ? getFilters() : (activeFilters || getFilters());
     if (reset) {
@@ -1811,6 +1983,14 @@ async function fetchCasesPage({ reset = false, prepend = false, requestId = null
       nextCursor = newCursor;
       hasMore = Boolean(nextCursor);
     }
+    if (debugEnabled && start) {
+      const end = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      debugLog('shared-cases page fetched', {
+        count: items.length,
+        hasMore,
+        durationMs: Number((end - start).toFixed(1)),
+      });
+    }
     return { entries: caseItems.slice(), filters };
   } finally {
     stopLoading();
@@ -1827,11 +2007,12 @@ function renderSharedCases(container, entries, filters, userId, onChange, allCou
     container.appendChild(empty);
     return;
   }
-  container.appendChild(renderBoard(entries, userId, onChange, allCounts));
+  const fragment = document.createDocumentFragment();
+  fragment.appendChild(renderBoard(entries, userId, onChange, allCounts));
   const status = document.createElement('div');
   status.className = 'shared-cases-status';
   status.textContent = `Viser ${entries.length} sager${hasMore ? ' (flere kan hentes)' : ''}.`;
-  container.appendChild(status);
+  fragment.appendChild(status);
   if (hasMore) {
     loadMoreBtn = document.createElement('button');
     loadMoreBtn.type = 'button';
@@ -1856,8 +2037,9 @@ function renderSharedCases(container, entries, filters, userId, onChange, allCou
         loadMoreBtn.disabled = false;
       }
     });
-    container.appendChild(loadMoreBtn);
+    fragment.appendChild(loadMoreBtn);
   }
+  container.appendChild(fragment);
 }
 
 export function initSharedCasesPanel() {
@@ -1937,6 +2119,9 @@ export function initSharedCasesPanel() {
       const status = typeof error?.status === 'number' ? error.status : 0;
       const looksLikeAuth = status === 401 || message.includes('"iss"') || message.includes('"aud"');
       if (denied) teamError = message;
+      if (denied || looksLikeAuth) {
+        resetCaseState();
+      }
       sharedCasesContainer.textContent = looksLikeAuth
         ? `${message} (Login token matcher ikke serverens Auth0-konfig. Prøv Log ud → Log ind igen.)`
         : `${message} ${denied ? '' : 'Tjek netværk eller log ind igen.'}`.trim();
@@ -1977,21 +2162,7 @@ export function initSharedCasesPanel() {
   // keeps the list in sync without reloading all pages.
   if (typeof window !== 'undefined') {
     window.addEventListener('cssmate:exported', (event) => {
-      try {
-        if (!requireAuth()) return;
-        const detail = event?.detail || {};
-        const caseData = detail.case || null;
-        if (caseData?.caseId) {
-          updateCaseEntry(caseData);
-          renderFromState(sharedCasesContainer, sessionState?.user?.uid || 'offline-user');
-          updateDeltaCursorFromItems([caseData]);
-          lastDeltaSyncLabel = formatTimeLabel(new Date());
-          setSharedStatus('Opdateret');
-          refreshCases({ prepend: false });
-        }
-      } catch (error) {
-        // Ignore errors (likely due to no auth), since refresh will run on next auth change.
-      }
+      handleExportedEvent(event?.detail || {}).catch(() => {});
     });
 
     window.addEventListener('online', () => {
@@ -2016,8 +2187,11 @@ export function initSharedCasesPanel() {
 
 export { formatMissingMembershipMessage };
 export const __test = {
+  computeBucketCounts,
   fetchCasesPage,
+  handleExportedEvent,
   resetCaseState,
+  setRefreshHandler,
   setListSharedCasesPage,
   setTestState,
   resolveEntryBucket,
