@@ -3,6 +3,7 @@ import { apiJson } from '../src/api/client.js'
 import { updateTeamDebugState } from '../src/state/debug.js'
 import { sha256Hex } from '../src/lib/sha256.js'
 import { getDeployContext, getPreviewWriteDisabledMessage } from '../src/lib/deploy-context.js'
+import { debugLog as debugRuntimeLog, debugMeasure as debugRuntimeMeasure } from '../src/lib/debug.js'
 import { isDebugOverlayEnabled } from '../src/state/debug.js'
 import {
   DEFAULT_TEAM_ID,
@@ -478,18 +479,20 @@ export async function publishSharedCase({
   }
   if (!isOnline()) {
     upsertQueueEntry({ ...requestPayload, teamId: resolvedTeamId, operationType: 'publish' })
+    debugRuntimeLog('shared-case queued (offline)', { caseId, teamId: resolvedTeamId })
     return { queued: true, caseId }
   }
   try {
-    const payload = await apiJson(`/api/teams/${resolvedTeamId}/cases`, {
+    const payload = await debugRuntimeMeasure(`shared-case publish ${resolvedTeamId}`, () => apiJson(`/api/teams/${resolvedTeamId}/cases`, {
       method: 'POST',
       body: JSON.stringify(requestPayload),
-    })
+    }))
     const mapped = mapTeamCaseRow(payload)
     if (mapped) {
       dispatchSharedEvent({ type: 'case-updated', case: mapped })
     }
     removeQueueEntry(caseId, 'publish')
+    debugRuntimeLog('shared-case published', { caseId: mapped?.caseId || caseId, teamId: resolvedTeamId })
     return { ...(mapped || payload), queued: false, caseId: mapped?.caseId || payload?.caseId || caseId }
   } catch (error) {
     const isNetworkError = error instanceof TypeError || /network|offline|failed to fetch/i.test(error?.message || '')
@@ -719,8 +722,10 @@ export async function listSharedCasesPage(teamId, { limit = 100, cursor = null, 
   if (from) params.set('from', from)
   if (to) params.set('to', to)
   const query = params.toString()
-  const payload = await apiJson(`/api/teams/${resolvedTeamId}/cases${query ? `?${query}` : ''}`)
-  return normalizeCasesPage(payload)
+  const payload = await debugRuntimeMeasure(`shared-cases list ${resolvedTeamId}`, () => apiJson(`/api/teams/${resolvedTeamId}/cases${query ? `?${query}` : ''}`))
+  const normalized = normalizeCasesPage(payload)
+  debugRuntimeLog('shared-cases list result', { teamId: resolvedTeamId, count: normalized.items.length, hasNext: Boolean(normalized.nextCursor) })
+  return normalized
 }
 
 export async function listSharedCasesDelta(teamId, { since = '', sinceId = '', limit = 200 } = {}) {
@@ -730,8 +735,10 @@ export async function listSharedCasesDelta(teamId, { since = '', sinceId = '', l
   if (since) params.set('since', since)
   if (sinceId) params.set('sinceId', sinceId)
   const query = params.toString()
-  const payload = await apiJson(`/api/teams/${resolvedTeamId}/cases${query ? `?${query}` : ''}`)
-  return normalizeCasesDelta(payload, since)
+  const payload = await debugRuntimeMeasure(`shared-cases delta ${resolvedTeamId}`, () => apiJson(`/api/teams/${resolvedTeamId}/cases${query ? `?${query}` : ''}`))
+  const normalized = normalizeCasesDelta(payload, since)
+  debugRuntimeLog('shared-cases delta result', { teamId: resolvedTeamId, count: normalized.items.length, maxUpdatedAt: normalized.maxUpdatedAt })
+  return normalized
 }
 
 export async function listSharedCasesFirstPage(teamId, opts = {}) {
@@ -812,7 +819,10 @@ export async function importSharedBackup(teamId, payload) {
 
 export async function listTeamMembers(teamId) {
   const { teamId: resolvedTeamId } = await getTeamContext(teamId)
-  return await apiJson(`/api/teams/${resolvedTeamId}/members`)
+  const payload = await debugRuntimeMeasure(`team members ${resolvedTeamId}`, () => apiJson(`/api/teams/${resolvedTeamId}/members`))
+  const count = Array.isArray(payload) ? payload.length : 0
+  debugRuntimeLog('team members result', { teamId: resolvedTeamId, count })
+  return payload
 }
 
 export {

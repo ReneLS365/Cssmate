@@ -85,3 +85,18 @@
 ## Bundt 1 — Begrænsninger
 
 - Node-version i miljøet er v20, mens repo forventer Node 22 (EBADENGINE warnings under install).
+
+## Bundt 2 — Debug-mode (runtime instrumentation)
+
+### Aktiver debug
+- URL: `?debug=1`
+- localStorage: `localStorage.setItem('cssmate_debug', '1')`
+- ENV: `VITE_DEBUG=1`
+
+### Forventede logs
+- Fetch timings fra API wrapper (`src/api/client.js`)
+- Shared cases: fetch counts + grouping/counts + filter/sort ændringer
+- (Hvis SW controller findes) cache hit/miss logs fra service worker
+
+### Slå debug fra igen
+- Fjern query-param eller kør: `localStorage.removeItem('cssmate_debug')`

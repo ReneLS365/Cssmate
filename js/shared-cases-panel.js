@@ -8,6 +8,7 @@ import { TEAM_ACCESS_STATUS } from '../src/services/team-access.js';
 import { normalizeSearchValue, formatDateLabel } from './history-normalizer.js';
 import { showToast } from '../src/ui/toast.js';
 import { getPreviewWriteDisabledMessage } from '../src/lib/deploy-context.js';
+import { debugLog, debugWarn, isDebugEnabled } from '../src/lib/debug.js';
 
 let sharedCasesPanelInitialized = false;
 let refreshBtn;
@@ -46,6 +47,7 @@ let pollingActive = false;
 let pollingReason = '';
 let lastDeltaSyncLabel = '';
 let latestRequestId = 0;
+let lastFiltersSnapshot = null;
 let debouncedFilterRender = null;
 let debouncedQuickRender = null;
 const UI_STORAGE_KEY = 'cssmate:shared-cases:ui:v1';
@@ -500,6 +502,27 @@ function computeBucketCounts(entries) {
     counts.set(resolved, (counts.get(resolved) || 0) + 1);
   });
   return counts;
+}
+
+function countsToObject(counts) {
+  const summary = {};
+  counts.forEach((value, key) => {
+    summary[key] = value;
+  });
+  return summary;
+}
+
+function logFilterChange(nextFilters, { total }) {
+  if (!isDebugEnabled()) return;
+  const previous = lastFiltersSnapshot || {};
+  const changed = Object.keys(nextFilters || {}).some(key => previous[key] !== nextFilters[key]);
+  if (!changed) return;
+  debugLog('shared-cases filters changed', {
+    from: previous,
+    to: nextFilters,
+    total,
+  });
+  lastFiltersSnapshot = { ...nextFilters };
 }
 
 function formatStatusLabel(phase) {
@@ -1622,6 +1645,7 @@ function handleFiltersChanged({ immediate = false, fast = false } = {}) {
   if (!sharedCasesContainer) return;
   const filters = getFilters();
   activeFilters = filters;
+  logFilterChange(filters, { total: caseItems.length });
   if (immediate) {
     renderFromState(sharedCasesContainer, sessionState?.user?.uid || 'offline-user');
     return;
@@ -1642,9 +1666,17 @@ function expandEntriesForDisplay(entries) {
 }
 
 function renderFromState(container, userId) {
+  const debugEnabled = isDebugEnabled();
+  const start = debugEnabled && typeof performance !== 'undefined' ? performance.now() : 0;
   const filters = getActiveFilters();
   const expandedEntries = expandEntriesForDisplay(caseItems);
   const allCounts = computeBucketCounts(expandedEntries);
+  if (debugEnabled) {
+    debugLog('shared-cases grouped', {
+      total: expandedEntries.length,
+      counts: countsToObject(allCounts),
+    });
+  }
   const scopeEntries = expandedEntries.filter(entry => {
     const meta = resolveCaseMeta(entry);
     return matchesFilters(entry, meta, filters, { includeStatus: false });
@@ -1653,11 +1685,22 @@ function renderFromState(container, userId) {
     ? scopeEntries.filter(entry => resolveEntryBucket(entry) === filters.status)
     : scopeEntries;
   const sorted = sortEntries(displayEntries, filters.sort);
+  if (debugEnabled && expandedEntries.length > 0 && sorted.length === 0) {
+    debugWarn('shared-cases stale state guard', {
+      total: expandedEntries.length,
+      filtered: scopeEntries.length,
+      filters,
+    });
+  }
   renderSharedCases(container, sorted, filters, userId, (payload) => {
     if (payload?.updatedCase) updateCaseEntry(payload.updatedCase);
     if (payload?.removeCaseId) removeCaseEntry(payload.removeCaseId);
     renderFromState(container, userId);
   }, allCounts);
+  if (debugEnabled && start) {
+    const end = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    debugLog('shared-cases render', { durationMs: Number((end - start).toFixed(1)), visible: sorted.length });
+  }
 }
 
 function updateDeltaCursorFromItems(items) {
@@ -1728,6 +1771,8 @@ async function runDeltaSync() {
   if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
   if (sharedCard?.hidden) return;
   deltaInFlight = true;
+  const debugEnabled = isDebugEnabled();
+  const start = debugEnabled && typeof performance !== 'undefined' ? performance.now() : 0;
   try {
     if (!lastDeltaAt) {
       await refreshCases({ prepend: false });
@@ -1739,6 +1784,10 @@ async function runDeltaSync() {
       limit: 200,
     });
     const items = Array.isArray(payload?.items) ? payload.items : [];
+    if (debugEnabled && start) {
+      const end = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      debugLog('shared-cases delta fetched', { count: items.length, durationMs: Number((end - start).toFixed(1)) });
+    }
     let didChange = false;
     items.forEach(entry => {
       if (!entry?.caseId) return;
@@ -1775,6 +1824,8 @@ async function fetchCasesPage({ reset = false, prepend = false, requestId = null
   if (isLoading && !allowParallel) return null;
   if (!requireAuth()) return null;
   startLoading();
+  const debugEnabled = isDebugEnabled();
+  const start = debugEnabled && typeof performance !== 'undefined' ? performance.now() : 0;
   try {
     const filters = reset ? getFilters() : (activeFilters || getFilters());
     if (reset) {
@@ -1810,6 +1861,14 @@ async function fetchCasesPage({ reset = false, prepend = false, requestId = null
       }
       nextCursor = newCursor;
       hasMore = Boolean(nextCursor);
+    }
+    if (debugEnabled && start) {
+      const end = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      debugLog('shared-cases page fetched', {
+        count: items.length,
+        hasMore,
+        durationMs: Number((end - start).toFixed(1)),
+      });
     }
     return { entries: caseItems.slice(), filters };
   } finally {
