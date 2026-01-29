@@ -58,11 +58,11 @@
     "pg": "^8.17.2"
   },
   "devDependencies": {
-    "@playwright/test": "^1.57.0",
+    "@playwright/test": "^1.58.0",
     "@size-limit/file": "^12.0.0",
     "express": "^5.2.1",
     "express-rate-limit": "^8.2.1",
-    "html-validate": "^10.6.0",
+    "html-validate": "^10.7.0",
     "http-server": "^14.1.1",
     "jszip": "^3.10.1",
     "lighthouse": "^13.0.1",
