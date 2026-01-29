@@ -100,3 +100,29 @@
 
 ### Slå debug fra igen
 - Fjern query-param eller kør: `localStorage.removeItem('cssmate_debug')`
+
+## Bundt 3 — P0: delt sager stale state + publish-sync + auth edgecases
+
+### P0-1: Export event kunne springe refresh over
+- **Repro (lokal forventning):** Eksport/publish → gå til Delt sager → sagen vises straks.
+- **Observed issue:** Export-event payload kan mangle `detail.case`, så refresh aldrig trigges.
+- **Root cause:** Event handler i `js/shared-cases-panel.js` krævede `detail.case` før refresh. (se `handleExportedEvent`-området)
+- **Fix:** Event handler refresher altid når `caseId` findes, og opdaterer UI hvis case-data findes.
+- **Filer:** `js/shared-cases-panel.js` (export handler + refresh flow)
+- **Test:** Ny test for export event → refresh kald.
+
+### P0-2: Stale status/counts pga. persistente `__syncing` / `__viewBucket`
+- **Repro (lokal forventning):** Efter publish/status-update skal sager skifte status korrekt uden “0” glitch.
+- **Observed issue:** Merge af server-data beholdt gamle felter fra optimistic state.
+- **Root cause:** `mergeEntries` og `updateCaseEntry` beholdt `__syncing`/`__viewBucket` når server-data ikke indeholdt felterne.
+- **Fix:** Normalize merge så transient flags fjernes når server-data ikke eksplicit sætter dem.
+- **Filer:** `js/shared-cases-panel.js` (merge/update)
+- **Test:** Ny counts-test for korrekt bucket count.
+
+### P0-3: Auth/membership transitions efterlod stale cases
+- **Repro (lokal forventning):** Logout/login eller team-skift skal nulstille delt-sager state.
+- **Observed issue:** Case-cache blev ikke nulstillet ved SIGNED_OUT/NO_ACCESS eller team-skift.
+- **Root cause:** `bindSessionControls` resetter ikke `caseItems`/pagination på auth transitions.
+- **Fix:** Reset case-state ved SIGNED_OUT/NO_ACCESS/ERROR + team-skift.
+- **Filer:** `js/shared-cases-panel.js` (session change)
+- **Test:** Dækkes via refresh/publish tests + manuel check (se test-matrix).

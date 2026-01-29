@@ -335,6 +335,10 @@ function setListSharedCasesPage(fn) {
   listSharedCasesPageFn = typeof fn === 'function' ? fn : listSharedCasesPage;
 }
 
+function setRefreshHandler(fn) {
+  refreshCases = typeof fn === 'function' ? fn : async () => {};
+}
+
 function applyStoredFilters() {
   const state = loadUiState();
   const searchInput = document.getElementById('sharedSearchInput');
@@ -504,6 +508,22 @@ function computeBucketCounts(entries) {
   return counts;
 }
 
+function hasOwn(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function normalizeStoredEntry(entry, existing) {
+  const base = existing ? { ...existing, ...entry } : { ...entry };
+  if (!entry || typeof entry !== 'object') return base;
+  if (!hasOwn(entry, '__syncing')) {
+    delete base.__syncing;
+  }
+  if (!hasOwn(entry, '__viewBucket')) {
+    delete base.__viewBucket;
+  }
+  return base;
+}
+
 function countsToObject(counts) {
   const summary = {};
   counts.forEach((value, key) => {
@@ -625,15 +645,20 @@ function bindSessionControls(onAuthenticated, onAccessReady) {
   initAuthSession();
   let lastStatus = '';
   onSessionChange((state) => {
+    const previousTeamId = teamId;
     sessionState = state || {};
     teamId = state?.teamId ? formatTeamId(state.teamId) : '';
     displayTeamId = state?.displayTeamId || (teamId ? getDisplayTeamId(teamId) : DEFAULT_TEAM_SLUG);
     membershipRole = state?.role || '';
     membershipError = null;
     teamError = '';
+    if (previousTeamId && teamId && teamId !== previousTeamId) {
+      resetCaseState();
+    }
     const accessStatus = state?.accessStatus || TEAM_ACCESS_STATUS.CHECKING;
     if (state?.status === SESSION_STATUS.SIGNED_OUT) {
       debugMessagesSeen.clear();
+      resetCaseState();
     }
     if (state?.status === SESSION_STATUS.NO_ACCESS || state?.status === SESSION_STATUS.ERROR || accessStatus !== TEAM_ACCESS_STATUS.OK) {
       teamError = state?.message || teamError || '';
@@ -642,6 +667,7 @@ function bindSessionControls(onAuthenticated, onAccessReady) {
       }
       if (state?.status === SESSION_STATUS.NO_ACCESS || state?.status === SESSION_STATUS.ERROR) {
         debugMessagesSeen.clear();
+        resetCaseState();
       }
     }
     const hasAccess = Boolean(state?.sessionReady);
@@ -1600,7 +1626,7 @@ function mergeEntries(entries, { prepend = false } = {}) {
       return;
     }
     const existing = casesById.get(entry.caseId);
-    const updated = existing ? { ...existing, ...entry } : entry;
+    const updated = normalizeStoredEntry(entry, existing);
     casesById.set(entry.caseId, updated);
     if (seen.has(entry.caseId)) return;
     seen.add(entry.caseId);
@@ -1616,8 +1642,30 @@ function mergeEntries(entries, { prepend = false } = {}) {
 function updateCaseEntry(updatedCase) {
   if (!updatedCase?.caseId) return;
   const existing = casesById.get(updatedCase.caseId);
-  const merged = existing ? { ...existing, ...updatedCase } : updatedCase;
+  const merged = normalizeStoredEntry(updatedCase, existing);
   mergeEntries([merged], { prepend: true });
+}
+
+async function handleExportedEvent(detail) {
+  if (!requireAuth()) return;
+  const caseData = detail?.case || null;
+  const caseId = caseData?.caseId || detail?.caseId || '';
+  if (caseData?.caseId) {
+    updateCaseEntry(caseData);
+    if (sharedCasesContainer) {
+      renderFromState(sharedCasesContainer, sessionState?.user?.uid || 'offline-user');
+    }
+    updateDeltaCursorFromItems([caseData]);
+    lastDeltaSyncLabel = formatTimeLabel(new Date());
+    setSharedStatus('Opdateret');
+  }
+  if (caseId) {
+    try {
+      await refreshCases({ prepend: false });
+    } catch {
+      // refreshCases handles errors
+    }
+  }
 }
 
 function buildOptimisticUpdate(entry, updates) {
@@ -1996,6 +2044,9 @@ export function initSharedCasesPanel() {
       const status = typeof error?.status === 'number' ? error.status : 0;
       const looksLikeAuth = status === 401 || message.includes('"iss"') || message.includes('"aud"');
       if (denied) teamError = message;
+      if (denied || looksLikeAuth) {
+        resetCaseState();
+      }
       sharedCasesContainer.textContent = looksLikeAuth
         ? `${message} (Login token matcher ikke serverens Auth0-konfig. Prøv Log ud → Log ind igen.)`
         : `${message} ${denied ? '' : 'Tjek netværk eller log ind igen.'}`.trim();
@@ -2036,21 +2087,7 @@ export function initSharedCasesPanel() {
   // keeps the list in sync without reloading all pages.
   if (typeof window !== 'undefined') {
     window.addEventListener('cssmate:exported', (event) => {
-      try {
-        if (!requireAuth()) return;
-        const detail = event?.detail || {};
-        const caseData = detail.case || null;
-        if (caseData?.caseId) {
-          updateCaseEntry(caseData);
-          renderFromState(sharedCasesContainer, sessionState?.user?.uid || 'offline-user');
-          updateDeltaCursorFromItems([caseData]);
-          lastDeltaSyncLabel = formatTimeLabel(new Date());
-          setSharedStatus('Opdateret');
-          refreshCases({ prepend: false });
-        }
-      } catch (error) {
-        // Ignore errors (likely due to no auth), since refresh will run on next auth change.
-      }
+      handleExportedEvent(event?.detail || {}).catch(() => {});
     });
 
     window.addEventListener('online', () => {
@@ -2075,8 +2112,11 @@ export function initSharedCasesPanel() {
 
 export { formatMissingMembershipMessage };
 export const __test = {
+  computeBucketCounts,
   fetchCasesPage,
+  handleExportedEvent,
   resetCaseState,
+  setRefreshHandler,
   setListSharedCasesPage,
   setTestState,
   resolveEntryBucket,
