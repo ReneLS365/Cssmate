@@ -548,11 +548,12 @@ function updateAdminControls() {
   if (typeof document === 'undefined') return;
   const { focusEl, adminToolsEl } = getSharedCasesElements();
   if (!focusEl) return;
+  const canViewDeleted = isAdminUser();
   const deletedOption = focusEl.querySelector('option[value="deleted"]');
   if (deletedOption) {
-    deletedOption.hidden = true;
+    deletedOption.hidden = !canViewDeleted;
   }
-  if (focusEl.value === WORKFLOW_STATUS.DELETED) {
+  if (!canViewDeleted && focusEl.value === WORKFLOW_STATUS.DELETED) {
     focusEl.value = '';
   }
   if (adminToolsEl) {
@@ -562,6 +563,10 @@ function updateAdminControls() {
 
 function isAdminUser () {
   return sharedCapabilities.role === 'admin' || sharedCapabilities.role === 'owner';
+}
+
+function shouldIncludeDeleted(filters) {
+  return isAdminUser() && normalizeStatusValue(filters?.statusFocus) === WORKFLOW_STATUS.DELETED;
 }
 
 function handleActionError (error, fallbackMessage, { teamContext } = {}) {
@@ -733,13 +738,13 @@ function savePendingActions(teamIdValue, entries) {
   }
 }
 
-function normalizeStoredStatusFilter(value) {
+function normalizeStoredStatusFilter(value, { allowDeleted = false } = {}) {
   if (!value) return '';
   if (value === 'draft') return WORKFLOW_STATUS.DRAFT;
   if (value === 'ready_for_demontage') return WORKFLOW_STATUS.APPROVED;
   if (value === 'completed') return WORKFLOW_STATUS.DONE;
   if (value === WORKFLOW_STATUS.DELETED || value === 'deleted') {
-    return '';
+    return allowDeleted ? WORKFLOW_STATUS.DELETED : '';
   }
   return value;
 }
@@ -755,7 +760,9 @@ function setRefreshHandler(fn) {
 function applyStoredFilters() {
   const state = loadUiState();
   const { searchEl, fromEl, toEl, focusEl, kindEl, sortEl } = getSharedCasesElements();
-  const statusFocus = normalizeStoredStatusFilter(state.statusFocus || state.status || '');
+  const statusFocus = normalizeStoredStatusFilter(state.statusFocus || state.status || '', {
+    allowDeleted: isAdminUser(),
+  });
   if (searchEl && typeof state.search === 'string') searchEl.value = state.search;
   if (fromEl && typeof state.dateFrom === 'string') fromEl.value = state.dateFrom;
   if (toEl && typeof state.dateTo === 'string') toEl.value = state.dateTo;
@@ -1369,7 +1376,7 @@ function getFilters() {
     search: (searchEl?.value || '').trim(),
     dateFrom: fromEl?.value || '',
     dateTo: toEl?.value || '',
-    statusFocus: normalizeStoredStatusFilter(focusEl?.value || ''),
+    statusFocus: normalizeStoredStatusFilter(focusEl?.value || '', { allowDeleted: isAdminUser() }),
     kind: kindEl?.value || '',
     sort: sortEl?.value || 'updated-desc',
   };
@@ -3484,7 +3491,7 @@ function renderFromState(container, userId) {
   const filters = getActiveFilters();
   const filterKey = getFilterKey(filters);
   const sortKey = filters?.sort || 'updated-desc';
-  const includeDeleted = false;
+  const includeDeleted = shouldIncludeDeleted(filters);
   let expandedEntries = caseItems;
   if (!includeDeleted) {
     expandedEntries = expandedEntries.filter(entry => normalizeStatusValue(entry?.status) !== WORKFLOW_STATUS.DELETED);
@@ -3712,7 +3719,7 @@ async function fetchCasesPage({ reset = false, prepend = false, requestId = null
     if (reset) {
       activeFilters = filters;
     }
-    const includeDeleted = false;
+    const includeDeleted = shouldIncludeDeleted(filters);
     const page = await listSharedCasesPageFn(ensureTeamSelected(), {
       limit: 100,
       cursor: reset ? null : nextCursor,
