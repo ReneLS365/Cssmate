@@ -82,11 +82,13 @@ const WORKFLOW_STATUS = {
   DONE: 'afsluttet',
   DELETED: 'deleted',
 };
+const FALLBACK_BUCKET = 'andet';
 const BASE_BOARD_COLUMNS = [
   { id: WORKFLOW_STATUS.DRAFT, label: 'Kladde', hint: 'Kladder før deling.' },
   { id: WORKFLOW_STATUS.APPROVED, label: 'Godkendt', hint: 'Montage er godkendt og klar til demontage.' },
   { id: WORKFLOW_STATUS.DEMONTAGE, label: 'Demontage i gang', hint: 'Demontage er i gang.' },
   { id: WORKFLOW_STATUS.DONE, label: 'Afsluttet', hint: 'Sager der er afsluttet.' },
+  { id: FALLBACK_BUCKET, label: 'Andet', hint: 'Sager med ukendt/legacy status.' },
 ];
 
 function pad2(n) {
@@ -558,7 +560,7 @@ function resolveEntryBucket(entry) {
   if (statusValue === WORKFLOW_STATUS.APPROVED) return WORKFLOW_STATUS.APPROVED;
   if (statusValue === WORKFLOW_STATUS.DEMONTAGE) return WORKFLOW_STATUS.DEMONTAGE;
   if (statusValue === WORKFLOW_STATUS.DONE) return WORKFLOW_STATUS.DONE;
-  return 'andet';
+  return FALLBACK_BUCKET;
 }
 
 function computeBucketCounts(entries, { includeDeleted = false } = {}) {
@@ -569,7 +571,7 @@ function computeBucketCounts(entries, { includeDeleted = false } = {}) {
   });
   entries.forEach(entry => {
     const bucketId = resolveEntryBucket(entry);
-    const resolved = counts.has(bucketId) ? bucketId : 'andet';
+    const resolved = counts.has(bucketId) ? bucketId : FALLBACK_BUCKET;
     if (resolved === WORKFLOW_STATUS.DONE) {
       const meta = resolveCaseMeta(entry);
       const projectKey = resolveProjectKey(entry, meta);
