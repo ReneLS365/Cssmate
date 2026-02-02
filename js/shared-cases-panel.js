@@ -60,6 +60,15 @@ let renderCache = {
   displayEntries: null,
   sortedEntries: null,
 };
+let lastFocusStatus = '';
+const sharedCasesUI = {
+  search: '',
+  from: '',
+  to: '',
+  statusFocus: '',
+  isRefreshing: false,
+  lastUpdatedLabel: '',
+};
 const UI_STORAGE_KEY = 'cssmate:shared-cases:ui:v1';
 const CASE_META_CACHE = new Map();
 const DATE_INPUT_FORMATTER = new Intl.DateTimeFormat('sv-SE');
@@ -117,6 +126,31 @@ function pad2(n) {
   return String(n).padStart(2, '0');
 }
 
+function findElementByIds(...ids) {
+  if (typeof document === 'undefined') return null;
+  for (const id of ids) {
+    if (!id) continue;
+    const el = document.getElementById(id);
+    if (el) return el;
+  }
+  return null;
+}
+
+function getSharedCasesElements() {
+  return {
+    searchEl: findElementByIds('sharedCasesSearch', 'sharedSearchInput'),
+    fromEl: findElementByIds('sharedCasesFrom', 'sharedDateFrom'),
+    toEl: findElementByIds('sharedCasesTo', 'sharedDateTo'),
+    focusEl: findElementByIds('sharedCasesStatusFocus', 'sharedFilterStatus'),
+    resetBtn: findElementByIds('sharedCasesResetBtn', 'sharedResetBtn'),
+    refreshBtn: findElementByIds('sharedCasesRefreshBtn', 'refreshSharedCases'),
+    kindEl: findElementByIds('sharedFilterKind'),
+    sortEl: findElementByIds('sharedSort'),
+    countEl: findElementByIds('sharedCasesTotalCount'),
+    lastUpdatedEl: findElementByIds('sharedCasesLastUpdated'),
+  };
+}
+
 function debounce(fn, waitMs = 300) {
   let timerId;
   return (...args) => {
@@ -155,6 +189,12 @@ function formatTimeLabel(value) {
   const d = value instanceof Date ? value : new Date(value || Date.now());
   if (Number.isNaN(d.getTime())) return '';
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
+function formatTimeShort(value) {
+  const d = value instanceof Date ? value : new Date(value || Date.now());
+  if (Number.isNaN(d.getTime())) return '';
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
 function formatRelativeTime(value) {
@@ -410,14 +450,15 @@ function updateStatusCard() {
 
 function updateAdminControls() {
   if (typeof document === 'undefined') return;
-  const statusFilter = document.getElementById('sharedFilterStatus');
-  if (!statusFilter) return;
-  const deletedOption = statusFilter.querySelector('option[value="deleted"]');
+  const { focusEl } = getSharedCasesElements();
+  if (!focusEl) return;
+  const deletedOption = focusEl.querySelector('option[value="deleted"]');
+  const adminVisible = isAdminUser();
   if (deletedOption) {
-    deletedOption.hidden = !isAdminUser();
+    deletedOption.hidden = !adminVisible;
   }
-  if (!isAdminUser() && statusFilter.value === WORKFLOW_STATUS.DELETED) {
-    statusFilter.value = '';
+  if (!adminVisible && focusEl.value === WORKFLOW_STATUS.DELETED) {
+    focusEl.value = '';
   }
 }
 
@@ -504,6 +545,9 @@ function normalizeStoredStatusFilter(value) {
   if (value === 'draft') return WORKFLOW_STATUS.DRAFT;
   if (value === 'ready_for_demontage') return WORKFLOW_STATUS.APPROVED;
   if (value === 'completed') return WORKFLOW_STATUS.DONE;
+  if (value === WORKFLOW_STATUS.DELETED || value === 'deleted') {
+    return isAdminUser() ? WORKFLOW_STATUS.DELETED : '';
+  }
   return value;
 }
 
@@ -517,18 +561,18 @@ function setRefreshHandler(fn) {
 
 function applyStoredFilters() {
   const state = loadUiState();
-  const searchInput = document.getElementById('sharedSearchInput');
-  const dateFrom = document.getElementById('sharedDateFrom');
-  const dateTo = document.getElementById('sharedDateTo');
-  const status = document.getElementById('sharedFilterStatus');
-  const kind = document.getElementById('sharedFilterKind');
-  const sort = document.getElementById('sharedSort');
-  if (searchInput && typeof state.search === 'string') searchInput.value = state.search;
-  if (dateFrom && typeof state.dateFrom === 'string') dateFrom.value = state.dateFrom;
-  if (dateTo && typeof state.dateTo === 'string') dateTo.value = state.dateTo;
-  if (status && typeof state.status === 'string') status.value = normalizeStoredStatusFilter(state.status);
-  if (kind && typeof state.kind === 'string') kind.value = state.kind;
-  if (sort && typeof state.sort === 'string') sort.value = state.sort;
+  const { searchEl, fromEl, toEl, focusEl, kindEl, sortEl } = getSharedCasesElements();
+  const statusFocus = normalizeStoredStatusFilter(state.statusFocus || state.status || '');
+  if (searchEl && typeof state.search === 'string') searchEl.value = state.search;
+  if (fromEl && typeof state.dateFrom === 'string') fromEl.value = state.dateFrom;
+  if (toEl && typeof state.dateTo === 'string') toEl.value = state.dateTo;
+  if (focusEl && typeof statusFocus === 'string') focusEl.value = statusFocus;
+  if (kindEl && typeof state.kind === 'string') kindEl.value = state.kind;
+  if (sortEl && typeof state.sort === 'string') sortEl.value = state.sort;
+  sharedCasesUI.search = typeof state.search === 'string' ? state.search : '';
+  sharedCasesUI.from = typeof state.dateFrom === 'string' ? state.dateFrom : '';
+  sharedCasesUI.to = typeof state.dateTo === 'string' ? state.dateTo : '';
+  sharedCasesUI.statusFocus = statusFocus || '';
 }
 
 function cacheCaseMeta(entry, meta) {
@@ -590,9 +634,9 @@ function resolveProjectKey(entry, meta) {
 
 function formatDateInput(value) {
   if (!value) return '';
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.valueOf())) return '';
-  return DATE_INPUT_FORMATTER.format(date);
+  const timestamp = safeParseDate(value);
+  if (timestamp === null) return '';
+  return DATE_INPUT_FORMATTER.format(new Date(timestamp));
 }
 
 function parseDateInputStart(value) {
@@ -637,6 +681,65 @@ function parseCaseDate(value) {
   return date;
 }
 
+function safeParseDate(value) {
+  if (!value) return null;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.valueOf())) return null;
+    return value.getTime();
+  }
+  if (typeof value === 'number') {
+    const date = new Date(value);
+    return Number.isNaN(date.valueOf()) ? null : date.getTime();
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+    if (dateOnlyMatch) {
+      const year = Number(dateOnlyMatch[1]);
+      const month = Number(dateOnlyMatch[2]);
+      const day = Number(dateOnlyMatch[3]);
+      const date = new Date(year, month - 1, day);
+      return Number.isNaN(date.valueOf()) ? null : date.getTime();
+    }
+    const parsed = Date.parse(trimmed);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
+}
+
+function getEntryTimestamp(entry) {
+  if (!entry) return null;
+  const raw = entry.lastUpdatedAt
+    || entry.updatedAt
+    || entry.updated_at
+    || entry.last_updated_at
+    || entry.createdAt
+    || entry.created_at
+    || '';
+  return safeParseDate(raw);
+}
+
+function getSearchText(entry, meta) {
+  return [
+    entry?.jobNumber,
+    meta?.jobNumber,
+    meta?.jobName,
+    meta?.address,
+    meta?.customer,
+    meta?.montor,
+    meta?.workerNames?.join(' '),
+    entry?.caseKind,
+    meta?.jobType,
+    entry?.status,
+    meta?.system,
+    entry?.createdByName,
+    entry?.createdByEmail,
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
 function resolveCaseTotals(entry, meta) {
   const totals = meta?.totals || entry?.totals || {};
   const materials = Number(totals.materials ?? totals.materialsSum ?? totals.materialTotal ?? 0) || 0;
@@ -645,9 +748,16 @@ function resolveCaseTotals(entry, meta) {
 }
 
 function resolveCaseDate(entry, meta) {
-  const dateValue = meta?.date || entry?.createdAt || entry?.updatedAt || '';
+  const dateValue = meta?.date
+    || entry?.lastUpdatedAt
+    || entry?.updatedAt
+    || entry?.updated_at
+    || entry?.createdAt
+    || entry?.created_at
+    || '';
   const formatted = formatDateLabel(dateValue);
-  const iso = dateValue ? new Date(dateValue).toISOString() : '';
+  const timestamp = safeParseDate(dateValue);
+  const iso = timestamp ? new Date(timestamp).toISOString() : '';
   return { raw: dateValue, formatted, iso };
 }
 
@@ -721,7 +831,7 @@ function getFilterKey(filters) {
     filters.search || '',
     filters.dateFrom || '',
     filters.dateTo || '',
-    filters.status || '',
+    filters.statusFocus || '',
     filters.kind || '',
   ].join('|');
 }
@@ -731,7 +841,7 @@ function areFiltersEqual(a, b) {
   return a.search === b.search
     && a.dateFrom === b.dateFrom
     && a.dateTo === b.dateTo
-    && a.status === b.status
+    && a.statusFocus === b.statusFocus
     && a.kind === b.kind
     && a.sort === b.sort;
 }
@@ -786,16 +896,27 @@ function resolveOptimisticStatus(entry) {
 
 function updateSharedHeaderCount(total) {
   if (typeof document === 'undefined') return;
-  const countEl = document.getElementById('sharedCasesTotalCount');
+  const { countEl } = getSharedCasesElements();
   if (!countEl) return;
   const value = Number(total) || 0;
   countEl.textContent = `${value} sager`;
 }
 
+function updateSharedLastUpdatedLabel(value) {
+  if (typeof document === 'undefined') return;
+  const { lastUpdatedEl } = getSharedCasesElements();
+  const label = value ? formatTimeShort(value) : '';
+  sharedCasesUI.lastUpdatedLabel = label;
+  if (!lastUpdatedEl) return;
+  lastUpdatedEl.textContent = label ? `Sidst opdateret: ${label}` : 'Sidst opdateret: –';
+}
+
 function buildSearchIndex(entry, meta) {
   const date = resolveCaseDate(entry, meta);
   const totals = resolveCaseTotals(entry, meta);
+  const searchText = getSearchText(entry, meta);
   const values = [
+    searchText,
     entry?.jobNumber,
     meta?.jobNumber,
     meta?.jobName,
@@ -903,48 +1024,54 @@ function getFilters() {
       search: '',
       dateFrom: '',
       dateTo: '',
-      status: '',
+      statusFocus: '',
       kind: '',
       sort: 'updated-desc',
     };
   }
-  const searchInput = document.getElementById('sharedSearchInput');
-  const dateFrom = document.getElementById('sharedDateFrom');
-  const dateTo = document.getElementById('sharedDateTo');
-  const status = document.getElementById('sharedFilterStatus');
-  const kind = document.getElementById('sharedFilterKind');
-  const sort = document.getElementById('sharedSort');
+  const { searchEl, fromEl, toEl, focusEl, kindEl, sortEl } = getSharedCasesElements();
   const filters = {
-    search: (searchInput?.value || '').trim(),
-    dateFrom: dateFrom?.value || '',
-    dateTo: dateTo?.value || '',
-    status: status?.value || '',
-    kind: kind?.value || '',
-    sort: sort?.value || 'updated-desc',
+    search: (searchEl?.value || '').trim(),
+    dateFrom: fromEl?.value || '',
+    dateTo: toEl?.value || '',
+    statusFocus: normalizeStoredStatusFilter(focusEl?.value || ''),
+    kind: kindEl?.value || '',
+    sort: sortEl?.value || 'updated-desc',
   };
-  saveUiState(filters);
+  sharedCasesUI.search = filters.search;
+  sharedCasesUI.from = filters.dateFrom;
+  sharedCasesUI.to = filters.dateTo;
+  sharedCasesUI.statusFocus = filters.statusFocus;
+  saveUiState({
+    search: filters.search,
+    dateFrom: filters.dateFrom,
+    dateTo: filters.dateTo,
+    statusFocus: filters.statusFocus,
+    kind: filters.kind,
+    sort: filters.sort,
+  });
   return filters;
 }
 
-function matchesFilters(entry, meta, filters, { includeStatus = true } = {}) {
+function matchesFilters(entry, meta, filters) {
   const searchValue = normalizeSearchValue(filters.search);
   const tokens = searchValue ? searchValue.split(' ').filter(Boolean) : [];
   const searchIndex = buildSearchIndex(entry, meta);
   const matchesSearch = tokens.length === 0
     || tokens.every(token => searchIndex.some(value => value.includes(token)));
-  const statusMatch = !includeStatus
-    || !filters.status
-    || deriveBoardStatus(entry) === filters.status;
   const kindValue = (entry.caseKind || meta?.jobType || '').toLowerCase();
   const kindMatch = !filters.kind || kindValue === filters.kind;
-  const date = resolveCaseDate(entry, meta);
-  const fromKey = dayKeyFromInput(filters.dateFrom);
-  const toKey = dayKeyFromInput(filters.dateTo);
-  const entryKey = dayKeyFromInput(entry.dateDay)
-    || localDayKeyFromRaw(entry.lastUpdatedAt || entry.updatedAt || entry.createdAt || date.raw);
-  const dateMatch = (!fromKey || (entryKey && entryKey >= fromKey))
-    && (!toKey || (entryKey && entryKey <= toKey));
-  return matchesSearch && statusMatch && kindMatch && dateMatch;
+  const fromDate = parseDateInputStart(filters.dateFrom);
+  const toDate = parseDateInputEnd(filters.dateTo);
+  const entryTimestamp = getEntryTimestamp(entry);
+  const dateMatch = (() => {
+    if (!fromDate && !toDate) return true;
+    if (entryTimestamp === null) return true;
+    if (fromDate && entryTimestamp < fromDate.getTime()) return false;
+    if (toDate && entryTimestamp > toDate.getTime()) return false;
+    return true;
+  })();
+  return matchesSearch && kindMatch && dateMatch;
 }
 
 async function handleJsonDownload(caseId) {
@@ -2426,7 +2553,7 @@ function renderBoard(entries, userId, onChange, allCounts, { includeDeleted = fa
   const board = document.createElement('div');
   board.className = 'shared-board';
   if (focusStatus) {
-    board.dataset.focusStatus = focusStatus;
+    board.dataset.focus = focusStatus;
   }
   const columns = getBoardColumns({ includeDeleted });
   const buckets = buildBoardBuckets(entries, columns);
@@ -2483,8 +2610,11 @@ function setSharedStatus(text) {
 function setRefreshState(state = 'idle') {
   if (!refreshBtn) return;
   const label = state === 'loading' ? 'Opdaterer…' : state === 'error' ? 'Prøv igen' : 'Opdater';
+  sharedCasesUI.isRefreshing = state === 'loading';
   refreshBtn.textContent = label;
   refreshBtn.disabled = state === 'loading';
+  refreshBtn.classList.toggle('is-loading', state === 'loading');
+  refreshBtn.setAttribute('aria-busy', state === 'loading' ? 'true' : 'false');
 }
 
 function updateSharedStatus(message) {
@@ -2500,6 +2630,7 @@ function resetCaseState() {
   lastDeltaAt = null;
   lastDeltaCaseId = '';
   lastDeltaSyncLabel = '';
+  updateSharedLastUpdatedLabel('');
   touchCaseItems();
 }
 
@@ -2639,15 +2770,12 @@ function renderFromState(container, userId) {
   const debugEnabled = isDebugEnabled();
   const start = debugEnabled && typeof performance !== 'undefined' ? performance.now() : 0;
   const filters = getActiveFilters();
-  const includeDeleted = filters?.status === WORKFLOW_STATUS.DELETED;
   const filterKey = getFilterKey(filters);
   const sortKey = filters?.sort || 'updated-desc';
+  const includeDeleted = isAdminUser() && filters?.statusFocus === WORKFLOW_STATUS.DELETED;
   let expandedEntries = caseItems;
   if (!includeDeleted) {
     expandedEntries = expandedEntries.filter(entry => normalizeStatusValue(entry?.status) !== WORKFLOW_STATUS.DELETED);
-  }
-  if (includeDeleted && filters?.status === WORKFLOW_STATUS.DELETED) {
-    expandedEntries = expandedEntries.filter(entry => normalizeStatusValue(entry?.status) === WORKFLOW_STATUS.DELETED);
   }
   let allCounts = null;
   let scopeEntries = null;
@@ -2660,7 +2788,7 @@ function renderFromState(container, userId) {
   } else {
     scopeEntries = expandedEntries.filter(entry => {
       const meta = resolveCaseMeta(entry);
-      return matchesFilters(entry, meta, filters, { includeStatus: false });
+      return matchesFilters(entry, meta, filters);
     });
     allCounts = computeBucketCounts(scopeEntries, { includeDeleted });
     displayEntries = scopeEntries;
@@ -2701,7 +2829,7 @@ function renderFromState(container, userId) {
   };
   lastRenderUserId = userId;
   lastRenderOnChange = onChange;
-  renderSharedCases(container, sorted, filters, userId, onChange, allCounts);
+  renderSharedCases(container, sorted, filters, userId, onChange, allCounts, { includeDeleted });
   attemptOpenDeepLink();
   if (debugEnabled && start) {
     const end = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -2730,7 +2858,9 @@ function updateDeltaCursorFromPayload(payload) {
 }
 
 function markDeltaSynced(message) {
-  lastDeltaSyncLabel = formatTimeLabel(new Date());
+  const now = new Date();
+  lastDeltaSyncLabel = formatTimeLabel(now);
+  updateSharedLastUpdatedLabel(now);
   updateSharedStatus(message || '');
 }
 
@@ -2852,7 +2982,7 @@ async function fetchCasesPage({ reset = false, prepend = false, requestId = null
     if (reset) {
       activeFilters = filters;
     }
-    const includeDeleted = filters?.status === WORKFLOW_STATUS.DELETED;
+    const includeDeleted = isAdminUser() && filters?.statusFocus === WORKFLOW_STATUS.DELETED;
     const page = await listSharedCasesPageFn(ensureTeamSelected(), {
       limit: 100,
       cursor: reset ? null : nextCursor,
@@ -2899,9 +3029,8 @@ async function fetchCasesPage({ reset = false, prepend = false, requestId = null
   }
 }
 
-function renderSharedCases(container, entries, filters, userId, onChange, allCounts) {
-  const includeDeleted = filters?.status === WORKFLOW_STATUS.DELETED;
-  const focusStatus = filters?.status && filters.status !== WORKFLOW_STATUS.DELETED ? filters.status : '';
+function renderSharedCases(container, entries, filters, userId, onChange, allCounts, { includeDeleted = false } = {}) {
+  const focusStatus = filters?.statusFocus || '';
   const columns = getBoardColumns({ includeDeleted });
   const hasCounts = allCounts instanceof Map
     && Array.from(allCounts.values()).some(value => value > 0);
@@ -2930,9 +3059,9 @@ function renderSharedCases(container, entries, filters, userId, onChange, allCou
     const buckets = buildBoardBuckets(entries, columns);
     syncBoardContents(existingBoard, buckets, columns, userId, onChange, allCounts, { focusStatus });
     if (focusStatus) {
-      existingBoard.dataset.focusStatus = focusStatus;
+      existingBoard.dataset.focus = focusStatus;
     } else {
-      delete existingBoard.dataset.focusStatus;
+      delete existingBoard.dataset.focus;
     }
     requestAnimationFrame(() => {
       existingBoard.scrollLeft = scrollLeft;
@@ -2977,7 +3106,7 @@ function renderSharedCases(container, entries, filters, userId, onChange, allCou
     loadMoreBtn.remove();
     loadMoreBtn = null;
   }
-  if (focusStatus) {
+  if (focusStatus && focusStatus !== lastFocusStatus) {
     requestAnimationFrame(() => {
       const target = container.querySelector(`.shared-board-column[data-status="${focusStatus}"]`);
       if (target && typeof target.scrollIntoView === 'function') {
@@ -2985,6 +3114,7 @@ function renderSharedCases(container, entries, filters, userId, onChange, allCou
       }
     });
   }
+  lastFocusStatus = focusStatus;
 }
 
 export function initSharedCasesPanel() {
@@ -3006,11 +3136,23 @@ export function initSharedCasesPanel() {
   debugPanel = document.getElementById('sharedDebugPanel');
   debugLogOutput = document.getElementById('sharedDebugLog');
   setPanelVisibility(false);
-  refreshBtn = document.getElementById('refreshSharedCases');
-  const filters = ['sharedSearchInput', 'sharedDateFrom', 'sharedDateTo', 'sharedFilterStatus', 'sharedFilterKind', 'sharedSort']
-    .map(id => document.getElementById(id))
-    .filter(Boolean);
+  const {
+    searchEl,
+    fromEl,
+    toEl,
+    focusEl,
+    resetBtn,
+    refreshBtn: refreshBtnEl,
+    kindEl,
+    sortEl,
+    lastUpdatedEl,
+  } = getSharedCasesElements();
+  refreshBtn = refreshBtnEl;
+  const filters = [searchEl, fromEl, toEl, focusEl, kindEl, sortEl].filter(Boolean);
   applyStoredFilters();
+  if (lastUpdatedEl) {
+    updateSharedLastUpdatedLabel(sharedCasesUI.lastUpdatedLabel);
+  }
   updateSharedStatus();
   updateStatusCard();
   const initialFilters = getFilters();
@@ -3055,7 +3197,9 @@ export function initSharedCasesPanel() {
       }
       renderFromState(sharedCasesContainer, currentUser);
       updateDeltaCursorFromItems(caseItems);
-      lastDeltaSyncLabel = formatTimeLabel(new Date());
+      const now = new Date();
+      lastDeltaSyncLabel = formatTimeLabel(now);
+      updateSharedLastUpdatedLabel(now);
       setSharedStatus('Synkroniseret');
       clearInlineError();
       setRefreshState('idle');
@@ -3082,8 +3226,26 @@ export function initSharedCasesPanel() {
   };
 
   if (refreshBtn) refreshBtn.addEventListener('click', refreshCases);
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      if (searchEl) searchEl.value = '';
+      if (fromEl) fromEl.value = '';
+      if (toEl) toEl.value = '';
+      if (focusEl) focusEl.value = '';
+      if (kindEl) kindEl.value = '';
+      if (sortEl) sortEl.value = 'updated-desc';
+      handleFiltersChanged({ immediate: true });
+    });
+  }
   filters.forEach(input => {
-    const isServerInput = ['sharedSearchInput', 'sharedDateFrom', 'sharedDateTo'].includes(input.id);
+    const isServerInput = [
+      'sharedCasesSearch',
+      'sharedSearchInput',
+      'sharedCasesFrom',
+      'sharedDateFrom',
+      'sharedCasesTo',
+      'sharedDateTo',
+    ].includes(input.id);
     if (isServerInput) {
       input.addEventListener('input', () => handleFiltersChanged({ immediate: false }));
       input.addEventListener('change', () => handleFiltersChanged({ immediate: false }));

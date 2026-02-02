@@ -395,56 +395,64 @@
     <section class="card shared-cases no-print" aria-live="polite">
       <header class="card-header">
         <div class="shared-header-row">
-          <h2>Delt sager</h2>
-          <span id="sharedCasesTotalCount" class="shared-header-count" aria-live="polite"></span>
+          <div class="shared-header-title">
+            <h2>Delt sager</h2>
+            <span id="sharedCasesTotalCount" class="shared-header-count" aria-live="polite"></span>
+          </div>
+          <div class="shared-header-actions">
+            <span id="sharedCasesLastUpdated" class="shared-header-meta" aria-live="polite">Sidst opdateret: –</span>
+            <button id="sharedCasesRefreshBtn" class="shared-refresh-btn" type="button" aria-label="Opdater delte sager">Opdater</button>
+          </div>
         </div>
         <p>Fælles sager publiceret fra teamet. Importer, download JSON eller generér PDF on-demand.</p>
       </header>
-      <div class="shared-controls">
-        <label>
-          <span>Søg</span>
-          <input id="sharedSearchInput" type="search" inputmode="search" placeholder="Søg jobnr, adresse, kunde, montør">
-        </label>
-        <label>
-          <span>Fra</span>
-          <input id="sharedDateFrom" type="date">
-        </label>
-        <label>
-          <span>Til</span>
-          <input id="sharedDateTo" type="date">
-        </label>
-        <label>
-          <span>Type</span>
-          <select id="sharedFilterKind">
-            <option value="">Alle</option>
-            <option value="montage">Montage</option>
-            <option value="demontage">Demontage</option>
-          </select>
-        </label>
-        <label>
-          <span>Status</span>
-          <select id="sharedFilterStatus">
-            <option value="">Alle</option>
-            <option value="kladde">Kladde</option>
-            <option value="godkendt">Godkendt</option>
-            <option value="demontage_i_gang">Demontage i gang</option>
-            <option value="afsluttet">Afsluttet</option>
-            <option value="deleted">Slettet</option>
-          </select>
-        </label>
-        <label>
-          <span>Sortér</span>
-          <select id="sharedSort">
-            <option value="updated-desc">Senest opdateret</option>
-            <option value="updated-asc">Ældst opdateret</option>
-            <option value="total-desc">Største total</option>
-            <option value="total-asc">Mindste total</option>
-          </select>
-        </label>
-        <div class="shared-filter-actions">
-          <button id="refreshSharedCases" type="button">Opdater</button>
+      <details class="shared-filters" open>
+        <summary>Filtre</summary>
+        <div class="shared-controls">
+          <label>
+            <span>Søg</span>
+            <input id="sharedCasesSearch" type="search" inputmode="search" placeholder="Søg jobnr, adresse, kunde, montør">
+          </label>
+          <label>
+            <span>Fra</span>
+            <input id="sharedCasesFrom" type="date">
+          </label>
+          <label>
+            <span>Til</span>
+            <input id="sharedCasesTo" type="date">
+          </label>
+          <label>
+            <span>Type</span>
+            <select id="sharedFilterKind">
+              <option value="">Alle</option>
+              <option value="montage">Montage</option>
+              <option value="demontage">Demontage</option>
+            </select>
+          </label>
+          <label>
+            <span>Status (fokus)</span>
+            <select id="sharedCasesStatusFocus">
+              <option value="">Alle</option>
+              <option value="kladde">Kladde</option>
+              <option value="godkendt">Godkendt</option>
+              <option value="demontage_i_gang">Demontage i gang</option>
+              <option value="afsluttet">Afsluttet</option>
+            </select>
+          </label>
+          <label>
+            <span>Sortér</span>
+            <select id="sharedSort">
+              <option value="updated-desc">Senest opdateret</option>
+              <option value="updated-asc">Ældst opdateret</option>
+              <option value="total-desc">Største total</option>
+              <option value="total-asc">Mindste total</option>
+            </select>
+          </label>
+          <div class="shared-filter-actions">
+            <button id="sharedCasesResetBtn" type="button">Nulstil filtre</button>
+          </div>
         </div>
-      </div>
+      </details>
       <div id="sharedCasesList" class="shared-cases-board" aria-live="polite"></div>
     </section>
   </section>
