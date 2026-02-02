@@ -539,10 +539,11 @@ function removePendingAction(action) {
   setPendingActions(next);
 }
 
-async function handleConflictError(error, previousEntry, onChange, { retryAction, discardAction } = {}) {
+async function handleConflictError(error, previousEntry, onChange, { retryAction, discardAction, caseId } = {}) {
   if (!error || error?.status !== 409) return false;
   const payloadCase = error?.payload?.case || null;
   const merged = payloadCase ? normalizeStoredEntry(payloadCase, previousEntry) : previousEntry;
+  const resolvedCaseId = caseId || previousEntry?.caseId || merged?.caseId || payloadCase?.caseId || '';
   if (merged) {
     if (typeof onChange === 'function') {
       onChange({ updatedCase: { ...merged, __syncing: false } });
@@ -555,7 +556,12 @@ async function handleConflictError(error, previousEntry, onChange, { retryAction
     entry: merged,
     onDiscard: async () => {
       try {
-        const fresh = await getSharedCase(ensureTeamSelected(), previousEntry?.caseId || merged?.caseId || '');
+        if (!resolvedCaseId) {
+          if (typeof discardAction === 'function') discardAction(merged || previousEntry);
+          updateSharedStatus('Synkroniseret');
+          return;
+        }
+        const fresh = await getSharedCase(ensureTeamSelected(), resolvedCaseId);
         if (fresh) {
           updateCaseEntry({ ...fresh, __syncing: false });
         }
@@ -568,7 +574,14 @@ async function handleConflictError(error, previousEntry, onChange, { retryAction
     },
     onOverwrite: async () => {
       try {
-        const fresh = await getSharedCase(ensureTeamSelected(), previousEntry?.caseId || merged?.caseId || '');
+        if (!resolvedCaseId) {
+          if (typeof retryAction === 'function') {
+            await retryAction(merged || previousEntry);
+          }
+          updateSharedStatus('Synkroniseret');
+          return;
+        }
+        const fresh = await getSharedCase(ensureTeamSelected(), resolvedCaseId);
         if (typeof retryAction === 'function') {
           await retryAction(fresh || merged || previousEntry);
         }
@@ -3105,6 +3118,7 @@ async function flushPendingActions() {
     } catch (error) {
       if (error?.status === 409) {
         await handleConflictError(error, casesById.get(action.caseId), null, {
+          caseId: action.caseId,
           retryAction: async (freshEntry) => {
             const updatedAt = freshEntry?.updatedAt || freshEntry?.lastUpdatedAt || freshEntry?.last_updated_at || '';
             const result = await performPendingAction(action, { updatedAtOverride: updatedAt });
