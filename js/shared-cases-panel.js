@@ -625,6 +625,7 @@ function deriveBoardStatus(entry) {
   const phaseValue = normalizeStatusValue(entry?.phase || entry?.workflowPhase || entry?.workflowStatus || '');
   if (phaseValue === WORKFLOW_STATUS.DONE) return WORKFLOW_STATUS.DONE;
   if (phaseValue === WORKFLOW_STATUS.APPROVED) return WORKFLOW_STATUS.APPROVED;
+  if (phaseValue === WORKFLOW_STATUS.DEMONTAGE) return WORKFLOW_STATUS.DEMONTAGE;
   return WORKFLOW_STATUS.DRAFT;
 }
 
