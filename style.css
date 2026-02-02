@@ -993,9 +993,17 @@ input.csm-name{
 #panel-delte-sager .shared-case-menu{position:relative}
 #panel-delte-sager .shared-case-menu__button{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:var(--panel-soft);color:var(--text);font-size:18px;line-height:1}
 #panel-delte-sager .case-menu{position:absolute;right:0;top:34px;min-width:190px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:6px;box-shadow:var(--shadow-strong);display:flex;flex-direction:column;gap:4px;z-index:50}
-#panel-delte-sager .case-menu__item{text-align:left;padding:8px 10px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--text);font-size:.9rem}
+#panel-delte-sager .case-menu__item{text-align:left;padding:8px 10px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--text);font-size:.9rem;display:flex;flex-direction:column;align-items:flex-start;gap:2px}
 #panel-delte-sager .case-menu__item:hover{background:var(--panel-soft);border-color:var(--border)}
 #panel-delte-sager .case-menu__item--danger{color:#fca5a5}
+#panel-delte-sager .case-menu__item--disabled{opacity:.55;cursor:not-allowed}
+#panel-delte-sager .case-menu__item--disabled:hover{background:transparent;border-color:transparent}
+#panel-delte-sager .case-menu__hint{font-size:0.75rem;color:var(--text-muted,#94a3b8)}
+#panel-delte-sager .shared-admin-tools{margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
+#panel-delte-sager .shared-admin-tools__header{display:flex;align-items:center;gap:8px;font-size:0.85rem;color:var(--text)}
+#panel-delte-sager .shared-admin-tools__hint{font-size:0.75rem;color:var(--text-muted,#94a3b8)}
+#panel-delte-sager .shared-admin-tools__button{align-self:flex-start}
+#panel-delte-sager .shared-modal__input{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--panel);color:var(--text)}
 #panel-delte-sager .shared-case-actions{display:flex;flex-wrap:wrap;gap:8px}
 #panel-delte-sager .shared-case-actions button{flex:1 1 120px}
 #panel-delte-sager .shared-case-project{gap:10px}
