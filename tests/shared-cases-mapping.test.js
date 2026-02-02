@@ -14,10 +14,10 @@ test('mapTeamCaseRow maps case_id to id and workflow phase', () => {
   assert.equal(mapped.id, row.case_id)
   assert.equal(mapped.caseId, row.case_id)
   assert.equal(mapped.teamId, row.team_id)
-  assert.equal(mapped.phase, ledgerTest.WORKFLOW_PHASE.READY_FOR_DEMONTAGE)
+  assert.equal(mapped.phase, 'montage')
 })
 
 test('resolveEntryBucket places ready_for_demontage in correct bucket', () => {
   const entry = { caseId: 'case-1', phase: 'ready_for_demontage' }
-  assert.equal(panelTest.resolveEntryBucket(entry), panelTest.WORKFLOW_PHASE.READY_FOR_DEMONTAGE)
+  assert.equal(panelTest.resolveEntryBucket(entry), panelTest.WORKFLOW_STATUS.APPROVED)
 })

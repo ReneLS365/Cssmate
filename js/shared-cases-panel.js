@@ -64,17 +64,14 @@ const UI_STORAGE_KEY = 'cssmate:shared-cases:ui:v1';
 const CASE_META_CACHE = new Map();
 const DATE_INPUT_FORMATTER = new Intl.DateTimeFormat('sv-SE');
 const CURRENCY_FORMATTER = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const CURRENCY_FORMATTER_COMPACT = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 const HOURS_FORMATTER = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const PREVIEW_WRITE_MESSAGE = getPreviewWriteDisabledMessage();
 const POLL_INTERVAL_MS = 5000;
+let activeCaseMenu = null;
+let activeCaseMenuButton = null;
+let activeCaseMenuCleanup = null;
 
-function getBoardColumns({ includeDeleted = false } = {}) {
-  if (!includeDeleted) return BASE_BOARD_COLUMNS;
-  return [
-    ...BASE_BOARD_COLUMNS,
-    { id: WORKFLOW_STATUS.DELETED, label: 'Slettet', hint: 'Soft-deleted sager (admin).' },
-  ];
-}
 const WORKFLOW_STATUS = {
   DRAFT: 'kladde',
   APPROVED: 'godkendt',
@@ -82,14 +79,27 @@ const WORKFLOW_STATUS = {
   DONE: 'afsluttet',
   DELETED: 'deleted',
 };
-const FALLBACK_BUCKET = 'andet';
-const BASE_BOARD_COLUMNS = [
+const STATUS_COLUMNS = [
   { id: WORKFLOW_STATUS.DRAFT, label: 'Kladde', hint: 'Kladder før deling.' },
   { id: WORKFLOW_STATUS.APPROVED, label: 'Godkendt', hint: 'Montage er godkendt og klar til demontage.' },
   { id: WORKFLOW_STATUS.DEMONTAGE, label: 'Demontage i gang', hint: 'Demontage er i gang.' },
   { id: WORKFLOW_STATUS.DONE, label: 'Afsluttet', hint: 'Sager der er afsluttet.' },
-  { id: FALLBACK_BUCKET, label: 'Andet', hint: 'Sager med ukendt/legacy status.' },
 ];
+const STATUS_UI = {
+  [WORKFLOW_STATUS.DRAFT]: { label: 'Kladde' },
+  [WORKFLOW_STATUS.APPROVED]: { label: 'Godkendt' },
+  [WORKFLOW_STATUS.DEMONTAGE]: { label: 'Demontage i gang' },
+  [WORKFLOW_STATUS.DONE]: { label: 'Afsluttet' },
+  [WORKFLOW_STATUS.DELETED]: { label: 'Slettet' },
+};
+
+function getBoardColumns({ includeDeleted = false } = {}) {
+  if (!includeDeleted) return STATUS_COLUMNS;
+  return [
+    ...STATUS_COLUMNS,
+    { id: WORKFLOW_STATUS.DELETED, label: 'Slettet', hint: 'Soft-deleted sager (admin).' },
+  ];
+}
 
 function pad2(n) {
   return String(n).padStart(2, '0');
@@ -146,11 +156,39 @@ function formatRelativeTime(value) {
   return `${Math.floor(diffMs / (24 * 60 * 60 * 1000))} d siden`;
 }
 
+function formatRelativeDa(value) {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const diffMs = Date.now() - date.getTime();
+  if (diffMs < 60 * 1000) return 'cirka 1 min siden';
+  if (diffMs < 60 * 60 * 1000) {
+    const minutes = Math.max(1, Math.round(diffMs / (60 * 1000)));
+    return `cirka ${minutes} min siden`;
+  }
+  if (diffMs < 24 * 60 * 60 * 1000) {
+    const hours = Math.max(1, Math.round(diffMs / (60 * 60 * 1000)));
+    return `cirka ${hours} ${hours === 1 ? 'time' : 'timer'} siden`;
+  }
+  if (diffMs < 7 * 24 * 60 * 60 * 1000) {
+    const days = Math.max(1, Math.round(diffMs / (24 * 60 * 60 * 1000)));
+    return `cirka ${days} ${days === 1 ? 'dag' : 'dage'} siden`;
+  }
+  return `cirka ${Math.max(1, Math.round(diffMs / (24 * 60 * 60 * 1000)))} dage siden`;
+}
+
 function formatEditorLabel(value) {
   if (!value) return '–';
   const text = value.toString();
   if (text.length <= 10) return text;
   return `${text.slice(0, 6)}…${text.slice(-4)}`;
+}
+
+function formatEditorShort(value) {
+  if (!value) return 'ukendt';
+  const text = value.toString();
+  if (text.length <= 8) return text;
+  return text.slice(0, 8);
 }
 
 function isOnline() {
@@ -554,30 +592,22 @@ function normalizeStatusValue(value) {
 
 function resolveEntryBucket(entry) {
   if (entry?.__viewBucket) return entry.__viewBucket;
-  const statusValue = normalizeStatusValue(entry?.status || entry?.workflowStatus || entry?.phase);
+  const statusValue = normalizeStatusValue(entry?.status || entry?.workflowStatus || '');
   if (statusValue === WORKFLOW_STATUS.DELETED) return WORKFLOW_STATUS.DELETED;
-  if (statusValue === WORKFLOW_STATUS.DRAFT) return WORKFLOW_STATUS.DRAFT;
-  if (statusValue === WORKFLOW_STATUS.APPROVED) return WORKFLOW_STATUS.APPROVED;
-  if (statusValue === WORKFLOW_STATUS.DEMONTAGE) return WORKFLOW_STATUS.DEMONTAGE;
-  if (statusValue === WORKFLOW_STATUS.DONE) return WORKFLOW_STATUS.DONE;
-  return FALLBACK_BUCKET;
+  if (STATUS_UI[statusValue]) return statusValue;
+  const fallbackPhase = normalizeStatusValue(entry?.phase || entry?.workflowStatus || '');
+  if (STATUS_UI[fallbackPhase]) return fallbackPhase;
+  return WORKFLOW_STATUS.DRAFT;
 }
 
 function computeBucketCounts(entries, { includeDeleted = false } = {}) {
   const counts = new Map();
-  const finishedProjects = new Set();
   getBoardColumns({ includeDeleted }).forEach(column => {
     counts.set(column.id, 0);
   });
   entries.forEach(entry => {
     const bucketId = resolveEntryBucket(entry);
-    const resolved = counts.has(bucketId) ? bucketId : FALLBACK_BUCKET;
-    if (resolved === WORKFLOW_STATUS.DONE) {
-      const meta = resolveCaseMeta(entry);
-      const projectKey = resolveProjectKey(entry, meta);
-      if (!projectKey || finishedProjects.has(projectKey)) return;
-      finishedProjects.add(projectKey);
-    }
+    const resolved = counts.has(bucketId) ? bucketId : WORKFLOW_STATUS.DRAFT;
     counts.set(resolved, (counts.get(resolved) || 0) + 1);
   });
   return counts;
@@ -643,21 +673,14 @@ function logFilterChange(nextFilters, { total }) {
 
 function formatStatusLabel(status) {
   const normalized = normalizeStatusValue(status);
-  if (normalized === WORKFLOW_STATUS.DRAFT) return 'Kladde';
-  if (normalized === WORKFLOW_STATUS.APPROVED) return 'Godkendt';
-  if (normalized === WORKFLOW_STATUS.DEMONTAGE) return 'Demontage i gang';
-  if (normalized === WORKFLOW_STATUS.DONE) return 'Afsluttet';
-  if (normalized === WORKFLOW_STATUS.DELETED) return 'Slettet';
+  if (STATUS_UI[normalized]) return STATUS_UI[normalized].label;
   return 'Ukendt';
 }
 
 function formatEntryStatusLabel(entry) {
   const statusValue = normalizeStatusValue(entry?.status);
-  if (statusValue === WORKFLOW_STATUS.DONE) {
-    const demontagePayload = resolveAttachmentPayload(entry?.attachments?.demontage);
-    if (!demontagePayload) return 'Afsluttet montage';
-    return 'Afsluttet';
-  }
+  const rawStatus = (entry?.status || '').toString().trim().toLowerCase();
+  if (rawStatus === 'klar_til_deling') return 'Klar til deling';
   return formatStatusLabel(statusValue);
 }
 
@@ -680,6 +703,14 @@ function resolveOptimisticStatus(entry) {
   if (bucket === WORKFLOW_STATUS.DRAFT) return WORKFLOW_STATUS.APPROVED;
   if (bucket === WORKFLOW_STATUS.DEMONTAGE) return WORKFLOW_STATUS.DONE;
   return normalizeStatusValue(entry?.status || '');
+}
+
+function updateSharedHeaderCount(total) {
+  if (typeof document === 'undefined') return;
+  const countEl = document.getElementById('sharedCasesTotalCount');
+  if (!countEl) return;
+  const value = Number(total) || 0;
+  countEl.textContent = `${value} sager`;
 }
 
 function buildSearchIndex(entry, meta) {
@@ -1128,6 +1159,117 @@ function renderApprovalSummary(entry) {
   return wrapper;
 }
 
+async function handleApproveAction(entry, onChange, { showSummary = false } = {}) {
+  const previousEntry = casesById.get(entry.caseId) || entry;
+  const optimisticStatus = resolveOptimisticStatus(previousEntry);
+  const optimisticEntry = buildOptimisticUpdate(previousEntry, { status: optimisticStatus });
+  if (optimisticEntry && typeof onChange === 'function') {
+    onChange({ updatedCase: optimisticEntry });
+  }
+  try {
+    const updated = await approveSharedCase(ensureTeamSelected(), entry.caseId, { ifMatchUpdatedAt: entry.updatedAt });
+    if (typeof onChange === 'function') onChange({ updatedCase: { ...updated, __syncing: false } });
+    showToast('Sag er flyttet til godkendt.', { variant: 'success' });
+    if (showSummary) {
+      openSharedModal({
+        title: 'Montage delt',
+        body: renderApprovalSummary(updated || entry),
+        actions: [
+          {
+            label: 'Åbn',
+            onClick: async () => {
+              try {
+                await handleImport(updated || entry, { phase: 'demontage' });
+              } catch (error) {
+                handleActionError(error, 'Kunne ikke åbne sag', { teamContext: teamId });
+                showToast(error?.message || 'Kunne ikke åbne sag.', { variant: 'error' });
+              }
+            },
+          },
+          { label: 'Luk' },
+        ],
+      });
+    }
+  } catch (error) {
+    console.error('Godkendelse fejlede', error);
+    if (typeof onChange === 'function') {
+      onChange({ updatedCase: { ...previousEntry, __syncing: false } });
+    }
+    handleActionError(error, 'Kunne ikke godkende sag', { teamContext: teamId });
+    showToast(error?.message || 'Kunne ikke godkende sag.', { variant: 'error' });
+  }
+}
+
+async function handleDemontageAction(entry, onChange, { autoImport = false } = {}) {
+  const previousEntry = casesById.get(entry.caseId) || entry;
+  const optimisticEntry = buildOptimisticUpdate(previousEntry, { status: WORKFLOW_STATUS.DEMONTAGE });
+  if (optimisticEntry && typeof onChange === 'function') {
+    onChange({ updatedCase: optimisticEntry });
+  }
+  try {
+    const updated = await updateSharedCaseStatus(ensureTeamSelected(), entry.caseId, {
+      status: WORKFLOW_STATUS.DEMONTAGE,
+      ifMatchUpdatedAt: entry.updatedAt,
+      phase: entry.sheetPhase || 'montage',
+    });
+    if (typeof onChange === 'function' && !updated?.queued) {
+      onChange({ updatedCase: { ...updated, __syncing: false } });
+    }
+    if (autoImport) {
+      await handleImport(entry, { phase: 'demontage' });
+      showToast('Sag indlæst til demontage.', { variant: 'success' });
+    } else {
+      showToast('Sag er flyttet til demontage i gang.', { variant: 'success' });
+    }
+  } catch (error) {
+    if (typeof onChange === 'function') {
+      onChange({ updatedCase: { ...previousEntry, __syncing: false } });
+    }
+    console.error('Demontage opdatering fejlede', error);
+    handleActionError(error, 'Kunne ikke opdatere sag', { teamContext: teamId });
+    showToast(error?.message || 'Kunne ikke opdatere sag.', { variant: 'error' });
+  }
+}
+
+async function handleFinishDemontageAction(entry, onChange) {
+  const previousEntry = casesById.get(entry.caseId) || entry;
+  const optimisticStatus = resolveOptimisticStatus(previousEntry);
+  const optimisticEntry = buildOptimisticUpdate(previousEntry, { status: optimisticStatus });
+  if (optimisticEntry && typeof onChange === 'function') {
+    onChange({ updatedCase: optimisticEntry });
+  }
+  try {
+    const updated = await approveSharedCase(ensureTeamSelected(), entry.caseId, { ifMatchUpdatedAt: entry.updatedAt });
+    if (typeof onChange === 'function') onChange({ updatedCase: { ...updated, __syncing: false } });
+    showToast('Demontage godkendt og afsluttet.', { variant: 'success' });
+  } catch (error) {
+    console.error('Demontage godkendelse fejlede', error);
+    if (typeof onChange === 'function') {
+      onChange({ updatedCase: { ...previousEntry, __syncing: false } });
+    }
+    handleActionError(error, 'Kunne ikke afslutte demontage', { teamContext: teamId });
+    showToast(error?.message || 'Kunne ikke afslutte demontage.', { variant: 'error' });
+  }
+}
+
+async function handleSoftDelete(entry, onChange) {
+  const confirmed = await openConfirmModal({
+    title: 'Soft delete sag',
+    message: 'Denne sag skjules for teamet, men kan gendannes af admin.',
+    confirmLabel: 'Soft delete',
+  });
+  if (!confirmed) return;
+  try {
+    await deleteSharedCase(ensureTeamSelected(), entry.caseId);
+    if (typeof onChange === 'function') onChange({ removeCaseId: entry.caseId });
+    showToast('Sag er soft-deleted.', { variant: 'success' });
+  } catch (error) {
+    console.error('Sletning fejlede', error);
+    handleActionError(error, 'Kunne ikke slette sag', { teamContext: teamId });
+    showToast(error?.message || 'Kunne ikke slette sag.', { variant: 'error' });
+  }
+}
+
 function createCaseActions(entry, userId, onChange) {
   const container = document.createElement('div');
   container.className = 'shared-case-actions';
@@ -1242,40 +1384,8 @@ function createCaseActions(entry, userId, onChange) {
     approveBtn.textContent = 'Godkend & del';
     approveBtn.addEventListener('click', async () => {
       approveBtn.disabled = true;
-      const previousEntry = casesById.get(entry.caseId) || entry;
-      const optimisticStatus = resolveOptimisticStatus(previousEntry);
-      const optimisticEntry = buildOptimisticUpdate(previousEntry, { status: optimisticStatus });
-      if (optimisticEntry && typeof onChange === 'function') {
-        onChange({ updatedCase: optimisticEntry });
-      }
       try {
-        const updated = await approveSharedCase(ensureTeamSelected(), entry.caseId, { ifMatchUpdatedAt: entry.updatedAt });
-        if (typeof onChange === 'function') onChange({ updatedCase: { ...updated, __syncing: false } });
-        openSharedModal({
-          title: 'Montage delt',
-          body: renderApprovalSummary(updated || entry),
-          actions: [
-            {
-              label: 'Åbn',
-              onClick: async () => {
-                try {
-                  await handleImport(updated || entry, { phase: 'demontage' });
-                } catch (error) {
-                  handleActionError(error, 'Kunne ikke åbne sag', { teamContext: teamId });
-                  showToast(error?.message || 'Kunne ikke åbne sag.', { variant: 'error' });
-                }
-              },
-            },
-            { label: 'Luk' },
-          ],
-        });
-      } catch (error) {
-        console.error('Godkendelse fejlede', error);
-        if (typeof onChange === 'function') {
-          onChange({ updatedCase: { ...previousEntry, __syncing: false } });
-        }
-        handleActionError(error, 'Kunne ikke godkende sag', { teamContext: teamId });
-        showToast(error?.message || 'Kunne ikke godkende sag.', { variant: 'error' });
+        await handleApproveAction(entry, onChange, { showSummary: true });
       } finally {
         approveBtn.disabled = false;
       }
@@ -1290,32 +1400,7 @@ function createCaseActions(entry, userId, onChange) {
     demontageBtn.addEventListener('click', async () => {
       demontageBtn.disabled = true;
       try {
-        const previousEntry = casesById.get(entry.caseId) || entry;
-        const optimisticEntry = buildOptimisticUpdate(previousEntry, { status: WORKFLOW_STATUS.DEMONTAGE });
-        if (optimisticEntry && typeof onChange === 'function') {
-          onChange({ updatedCase: optimisticEntry });
-        }
-        try {
-          const updated = await updateSharedCaseStatus(ensureTeamSelected(), entry.caseId, {
-            status: WORKFLOW_STATUS.DEMONTAGE,
-            ifMatchUpdatedAt: entry.updatedAt,
-            phase: entry.sheetPhase || 'montage',
-          });
-          if (typeof onChange === 'function' && !updated?.queued) {
-            onChange({ updatedCase: { ...updated, __syncing: false } });
-          }
-        } catch (error) {
-          if (typeof onChange === 'function') {
-            onChange({ updatedCase: { ...previousEntry, __syncing: false } });
-          }
-          throw error;
-        }
-        await handleImport(entry, { phase: 'demontage' });
-        showToast('Sag indlæst til demontage.', { variant: 'success' });
-      } catch (error) {
-        console.error('Indlæsning fejlede', error);
-        handleActionError(error, 'Kunne ikke indlæse sag', { teamContext: teamId });
-        showToast(error?.message || 'Kunne ikke indlæse sag.', { variant: 'error' });
+        await handleDemontageAction(entry, onChange, { autoImport: true });
       } finally {
         demontageBtn.disabled = false;
       }
@@ -1329,23 +1414,8 @@ function createCaseActions(entry, userId, onChange) {
     finishBtn.textContent = 'Godkend demontage & afslut';
     finishBtn.addEventListener('click', async () => {
       finishBtn.disabled = true;
-      const previousEntry = casesById.get(entry.caseId) || entry;
-      const optimisticStatus = resolveOptimisticStatus(previousEntry);
-      const optimisticEntry = buildOptimisticUpdate(previousEntry, { status: optimisticStatus });
-      if (optimisticEntry && typeof onChange === 'function') {
-        onChange({ updatedCase: optimisticEntry });
-      }
       try {
-        const updated = await approveSharedCase(ensureTeamSelected(), entry.caseId, { ifMatchUpdatedAt: entry.updatedAt });
-        if (typeof onChange === 'function') onChange({ updatedCase: { ...updated, __syncing: false } });
-        showToast('Demontage godkendt og afsluttet.', { variant: 'success' });
-      } catch (error) {
-        console.error('Demontage godkendelse fejlede', error);
-        if (typeof onChange === 'function') {
-          onChange({ updatedCase: { ...previousEntry, __syncing: false } });
-        }
-        handleActionError(error, 'Kunne ikke afslutte demontage', { teamContext: teamId });
-        showToast(error?.message || 'Kunne ikke afslutte demontage.', { variant: 'error' });
+        await handleFinishDemontageAction(entry, onChange);
       } finally {
         finishBtn.disabled = false;
       }
@@ -1358,21 +1428,9 @@ function createCaseActions(entry, userId, onChange) {
     deleteBtn.type = 'button';
     deleteBtn.textContent = 'Soft delete';
     deleteBtn.addEventListener('click', async () => {
-      const confirmed = await openConfirmModal({
-        title: 'Soft delete sag',
-        message: 'Denne sag skjules for teamet, men kan gendannes af admin.',
-        confirmLabel: 'Soft delete',
-      });
-      if (!confirmed) return;
       deleteBtn.disabled = true;
       try {
-        await deleteSharedCase(ensureTeamSelected(), entry.caseId);
-        if (typeof onChange === 'function') onChange({ removeCaseId: entry.caseId });
-        showToast('Sag er soft-deleted.', { variant: 'success' });
-      } catch (error) {
-        console.error('Sletning fejlede', error);
-        handleActionError(error, 'Kunne ikke slette sag', { teamContext: teamId });
-        showToast(error?.message || 'Kunne ikke slette sag.', { variant: 'error' });
+        await handleSoftDelete(entry, onChange);
       } finally {
         deleteBtn.disabled = false;
       }
@@ -1380,134 +1438,238 @@ function createCaseActions(entry, userId, onChange) {
     container.appendChild(deleteBtn);
   }
 
-  if (isAdminUser()) {
-    const statusSelect = document.createElement('select');
-    statusSelect.className = 'shared-case-status-select';
-    statusSelect.setAttribute('aria-label', 'Skift status');
-    const statusOptions = [
-      { value: WORKFLOW_STATUS.DRAFT, label: 'Kladde' },
-      { value: WORKFLOW_STATUS.APPROVED, label: 'Godkendt' },
-      { value: WORKFLOW_STATUS.DEMONTAGE, label: 'Demontage i gang' },
-      { value: WORKFLOW_STATUS.DONE, label: 'Afsluttet' },
-      { value: WORKFLOW_STATUS.DELETED, label: 'Slettet' },
-    ];
-    statusOptions.forEach(option => {
-      const el = document.createElement('option');
-      el.value = option.value;
-      el.textContent = option.label;
-      statusSelect.appendChild(el);
-    });
-    statusSelect.value = normalizeStatusValue(entry?.status) || WORKFLOW_STATUS.DRAFT;
-    const statusBtn = document.createElement('button');
-    statusBtn.type = 'button';
-    statusBtn.textContent = 'Skift status';
-    statusBtn.setAttribute('aria-label', 'Skift status for sag');
-    statusBtn.addEventListener('click', async () => {
-      const nextStatus = statusSelect.value;
-      if (!nextStatus) return;
-      if (nextStatus === normalizeStatusValue(entry?.status)) {
-        showToast('Status er allerede valgt.', { variant: 'info' });
-        return;
-      }
-      if (nextStatus === WORKFLOW_STATUS.DELETED) {
-        const confirmed = await openConfirmModal({
-          title: 'Soft delete sag',
-          message: 'Denne sag skjules for teamet, men kan gendannes af admin.',
-          confirmLabel: 'Soft delete',
-        });
-        if (!confirmed) return;
-      }
-      statusBtn.disabled = true;
-      try {
-        const updated = await updateSharedCaseStatus(ensureTeamSelected(), entry.caseId, {
-          status: nextStatus,
-          ifMatchUpdatedAt: entry.updatedAt,
-          phase: entry.sheetPhase || entry.phase || 'montage',
-        });
-        if (typeof onChange === 'function' && !updated?.queued) {
-          onChange({ updatedCase: { ...updated, __syncing: false } });
-        }
-        if (nextStatus === WORKFLOW_STATUS.DELETED) {
-          if (typeof onChange === 'function') onChange({ removeCaseId: entry.caseId });
-          showToast('Sag er soft-deleted.', { variant: 'success' });
-        } else {
-          showToast('Status er opdateret.', { variant: 'success' });
-        }
-      } catch (error) {
-        console.error('Statusskifte fejlede', error);
-        handleActionError(error, 'Kunne ikke opdatere status', { teamContext: teamId });
-        showToast(error?.message || 'Kunne ikke opdatere status.', { variant: 'error' });
-      } finally {
-        statusBtn.disabled = false;
-      }
-    });
-    container.appendChild(statusSelect);
-    container.appendChild(statusBtn);
-  }
-
   return container;
 }
 
-function renderCaseCard(entry, userId, onChange) {
+function openCaseDetails(entry, userId, onChange) {
   const meta = resolveCaseMeta(entry);
   const totals = resolveCaseTotals(entry, meta);
-  const date = resolveCaseDate(entry, meta);
-  const card = document.createElement('div');
-  card.className = 'shared-case-card';
-  card.dataset.ifMatch = entry.updatedAt || '';
-
-  const top = document.createElement('div');
-  top.className = 'shared-case-card__top';
-  const title = document.createElement('h3');
-  title.className = 'shared-case-card__title';
-  title.textContent = meta.jobNumber || entry.jobNumber || 'Ukendt sag';
-  const badge = document.createElement('span');
-  badge.className = 'shared-case-card__badge';
-  const statusLabel = formatEntryStatusLabel(entry);
-  badge.textContent = entry?.__syncing ? `${statusLabel} · Synker…` : statusLabel;
-  top.appendChild(title);
-  top.appendChild(badge);
-
-  const metaGrid = document.createElement('div');
-  metaGrid.className = 'shared-case-card__meta';
   const updatedAt = entry.lastUpdatedAt || entry.updatedAt || entry.createdAt || '';
   const lastEditor = formatEditorLabel(entry.lastEditorSub || entry.updatedBy || entry.createdBy);
   const updatedLabel = formatRelativeTime(updatedAt) || formatDateLabel(updatedAt);
-  const lines = [
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'shared-case-detail';
+  const rows = [
+    { label: 'Status', value: formatEntryStatusLabel(entry) },
     { label: 'Type', value: meta.jobType || entry.caseKind || '–' },
     { label: 'Opgave', value: meta.jobName || '–' },
     { label: 'Adresse', value: meta.address || '–' },
     { label: 'Kunde', value: meta.customer || '–' },
     { label: 'Montører', value: meta.montor || meta.workerNames?.join(', ') || '–' },
-    { label: 'Dato', value: date.formatted || formatDateInput(date.raw) || '–' },
+    { label: 'Dato', value: formatDateInput(meta.date) || '–' },
     { label: 'System', value: meta.system || entry.system || '–' },
+    { label: 'Materialer', value: `${CURRENCY_FORMATTER.format(totals.materials)} kr.` },
+    { label: 'Total', value: `${CURRENCY_FORMATTER.format(totals.total)} kr.` },
     { label: 'Sidst opdateret', value: updatedLabel || '–' },
     { label: 'Sidste editor', value: lastEditor },
   ];
-  lines.forEach(line => {
-    const row = document.createElement('div');
+  rows.forEach(row => {
+    const line = document.createElement('div');
+    line.className = 'shared-case-detail__row';
     const label = document.createElement('span');
-    label.textContent = `${line.label}:`;
+    label.textContent = row.label;
     const value = document.createElement('strong');
-    value.textContent = line.value;
-    row.appendChild(label);
-    row.appendChild(value);
-    metaGrid.appendChild(row);
+    value.textContent = row.value;
+    line.appendChild(label);
+    line.appendChild(value);
+    wrapper.appendChild(line);
+  });
+  const actions = createCaseActions(entry, userId, onChange);
+  actions.classList.add('shared-case-detail__actions');
+  wrapper.appendChild(actions);
+
+  openSharedModal({
+    title: meta.jobNumber || entry.jobNumber || 'Ukendt sag',
+    body: wrapper,
+    actions: [{ label: 'Luk' }],
+  });
+}
+
+function closeActiveCaseMenu() {
+  if (activeCaseMenuCleanup) {
+    activeCaseMenuCleanup();
+    activeCaseMenuCleanup = null;
+  }
+  if (activeCaseMenu) {
+    activeCaseMenu.hidden = true;
+    activeCaseMenu.classList.remove('is-open');
+  }
+  if (activeCaseMenuButton) {
+    activeCaseMenuButton.setAttribute('aria-expanded', 'false');
+  }
+  activeCaseMenu = null;
+  activeCaseMenuButton = null;
+}
+
+function openCaseMenu(menu, button) {
+  closeActiveCaseMenu();
+  menu.hidden = false;
+  menu.classList.add('is-open');
+  button.setAttribute('aria-expanded', 'true');
+  activeCaseMenu = menu;
+  activeCaseMenuButton = button;
+  const onDocumentClick = (event) => {
+    if (!menu.contains(event.target) && event.target !== button) {
+      closeActiveCaseMenu();
+    }
+  };
+  const onDocumentKeydown = (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeActiveCaseMenu();
+    }
+  };
+  document.addEventListener('click', onDocumentClick);
+  document.addEventListener('keydown', onDocumentKeydown);
+  activeCaseMenuCleanup = () => {
+    document.removeEventListener('click', onDocumentClick);
+    document.removeEventListener('keydown', onDocumentKeydown);
+  };
+}
+
+function addCaseMenuItem(menu, { label, onClick, isDanger = false }) {
+  const item = document.createElement('button');
+  item.type = 'button';
+  item.className = `case-menu__item${isDanger ? ' case-menu__item--danger' : ''}`;
+  item.textContent = label;
+  item.addEventListener('click', async (event) => {
+    event.stopPropagation();
+    closeActiveCaseMenu();
+    if (typeof onClick === 'function') {
+      await onClick();
+    }
+  });
+  menu.appendChild(item);
+}
+
+function renderCaseCardCompact(entry, userId, onChange) {
+  const meta = resolveCaseMeta(entry);
+  const totals = resolveCaseTotals(entry, meta);
+  const updatedAt = entry.lastUpdatedAt || entry.updatedAt || entry.createdAt || '';
+  const lastEditor = formatEditorShort(entry.lastEditorSub || entry.updatedBy || entry.createdBy);
+  const updatedLabel = formatRelativeDa(updatedAt) || formatDateLabel(updatedAt);
+  const statusLabel = formatEntryStatusLabel(entry);
+  const statusBucket = resolveEntryBucket(entry);
+  const card = document.createElement('article');
+  card.className = 'shared-case-card shared-case-card--compact';
+  card.dataset.ifMatch = entry.updatedAt || '';
+  card.dataset.status = statusBucket;
+  card.tabIndex = 0;
+
+  const header = document.createElement('div');
+  header.className = 'shared-case-card__header';
+  const title = document.createElement('div');
+  title.className = 'shared-case-card__title';
+  title.textContent = meta.jobNumber || entry.jobNumber || 'Ukendt sag';
+  const menuWrap = document.createElement('div');
+  menuWrap.className = 'shared-case-menu';
+  const menuButton = document.createElement('button');
+  menuButton.type = 'button';
+  menuButton.className = 'shared-case-menu__button';
+  menuButton.setAttribute('aria-haspopup', 'true');
+  menuButton.setAttribute('aria-expanded', 'false');
+  menuButton.setAttribute('aria-label', 'Åbn menu');
+  menuButton.textContent = '⋮';
+  const menu = document.createElement('div');
+  menu.className = 'case-menu';
+  menu.hidden = true;
+  menu.setAttribute('role', 'menu');
+
+  if ([WORKFLOW_STATUS.DRAFT].includes(statusBucket) && isAdminUser()) {
+    addCaseMenuItem(menu, {
+      label: 'Flyt til Godkendt',
+      onClick: async () => handleApproveAction(entry, onChange, { showSummary: false }),
+    });
+  }
+  if (statusBucket === WORKFLOW_STATUS.APPROVED) {
+    addCaseMenuItem(menu, {
+      label: 'Flyt til Demontage i gang',
+      onClick: async () => handleDemontageAction(entry, onChange, { autoImport: false }),
+    });
+    addCaseMenuItem(menu, {
+      label: 'Indlæs til demontage',
+      onClick: async () => handleDemontageAction(entry, onChange, { autoImport: true }),
+    });
+  }
+  if (statusBucket === WORKFLOW_STATUS.DEMONTAGE && isAdminUser()) {
+    addCaseMenuItem(menu, {
+      label: 'Flyt til Afsluttet',
+      onClick: async () => handleFinishDemontageAction(entry, onChange),
+    });
+  }
+  if (![WORKFLOW_STATUS.DONE, WORKFLOW_STATUS.DELETED].includes(statusBucket) && isAdminUser()) {
+    addCaseMenuItem(menu, {
+      label: 'Slet sag',
+      isDanger: true,
+      onClick: async () => handleSoftDelete(entry, onChange),
+    });
+  }
+
+  menuButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (activeCaseMenu === menu) {
+      closeActiveCaseMenu();
+      return;
+    }
+    openCaseMenu(menu, menuButton);
   });
 
-  const totalsRow = document.createElement('div');
-  totalsRow.className = 'shared-case-card__totals';
-  const materials = document.createElement('div');
-  materials.innerHTML = `<span>Materialer:</span> <strong>${CURRENCY_FORMATTER.format(totals.materials)} kr.</strong>`;
-  const total = document.createElement('div');
-  total.innerHTML = `<span>Total:</span> <strong>${CURRENCY_FORMATTER.format(totals.total)} kr.</strong>`;
-  totalsRow.appendChild(materials);
-  totalsRow.appendChild(total);
+  menuWrap.appendChild(menuButton);
+  menuWrap.appendChild(menu);
+  header.appendChild(title);
+  header.appendChild(menuWrap);
 
-  card.appendChild(top);
-  card.appendChild(metaGrid);
-  card.appendChild(totalsRow);
-  card.appendChild(createCaseActions(entry, userId, onChange));
+  const type = document.createElement('div');
+  type.className = 'shared-case-card__type';
+  type.textContent = meta.jobType || entry.caseKind || 'Standard';
+
+  const tags = document.createElement('div');
+  tags.className = 'shared-case-card__tags';
+  const statusPill = document.createElement('span');
+  statusPill.className = 'shared-case-pill shared-case-pill--status';
+  statusPill.textContent = entry?.__syncing ? `${statusLabel} · Synker…` : statusLabel;
+  const systemPill = document.createElement('span');
+  systemPill.className = 'shared-case-pill shared-case-pill--system';
+  systemPill.textContent = meta.system || entry.system || '–';
+  tags.appendChild(statusPill);
+  tags.appendChild(systemPill);
+
+  const amount = document.createElement('div');
+  amount.className = 'shared-case-card__amount';
+  amount.textContent = `${CURRENCY_FORMATTER_COMPACT.format(totals.total)} kr`;
+
+  const footer = document.createElement('div');
+  footer.className = 'shared-case-card__footer';
+  const time = document.createElement('span');
+  time.className = 'shared-case-card__time';
+  time.textContent = updatedLabel || '–';
+  const editor = document.createElement('span');
+  editor.className = 'shared-case-card__editor';
+  editor.textContent = lastEditor;
+  footer.appendChild(time);
+  footer.appendChild(editor);
+
+  card.appendChild(header);
+  card.appendChild(type);
+  card.appendChild(tags);
+  card.appendChild(amount);
+  card.appendChild(footer);
+
+  const openDetails = () => {
+    closeActiveCaseMenu();
+    openCaseDetails(entry, userId, onChange);
+  };
+  card.addEventListener('click', (event) => {
+    if (menuWrap.contains(event.target)) return;
+    openDetails();
+  });
+  card.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openDetails();
+    }
+  });
   return card;
 }
 
@@ -1679,69 +1841,63 @@ function sortEntries(entries, sortKey) {
   return list.sort((a, b) => (b.lastUpdatedAt || b.updatedAt || '').localeCompare(a.lastUpdatedAt || a.updatedAt || ''));
 }
 
-function renderBoard(entries, userId, onChange, allCounts, { includeDeleted = false } = {}) {
+function renderBoard(entries, userId, onChange, allCounts, { includeDeleted = false, focusStatus = '' } = {}) {
   const board = document.createElement('div');
   board.className = 'shared-board';
+  if (focusStatus) {
+    board.dataset.focusStatus = focusStatus;
+  }
   const buckets = new Map();
-  const finishedEntries = [];
   const columns = getBoardColumns({ includeDeleted });
   columns.forEach(column => {
     buckets.set(column.id, []);
   });
   entries.forEach(entry => {
     const bucketId = resolveEntryBucket(entry);
-    if (bucketId === WORKFLOW_STATUS.DONE) {
-      finishedEntries.push(entry);
-      return;
-    }
     const bucket = buckets.get(bucketId);
     if (bucket) {
       bucket.push(entry);
     }
   });
-  const finishedGroups = buildFinishedProjectGroups(finishedEntries);
   columns.forEach(column => {
     const columnEl = document.createElement('section');
     columnEl.className = 'shared-board-column';
+    columnEl.dataset.status = column.id;
+    if (focusStatus) {
+      const isFocused = column.id === focusStatus;
+      columnEl.classList.toggle('is-focused', isFocused);
+      if (!isFocused) {
+        columnEl.classList.add('is-dimmed');
+      }
+    }
     const header = document.createElement('div');
     header.className = 'shared-board-header';
+    const titleWrap = document.createElement('div');
+    titleWrap.className = 'shared-board-title-wrap';
+    const dot = document.createElement('span');
+    dot.className = 'shared-board-dot';
+    dot.setAttribute('aria-hidden', 'true');
     const title = document.createElement('h3');
     title.className = 'shared-board-title';
     title.textContent = column.label;
-    const meta = document.createElement('span');
-    meta.className = 'shared-board-meta';
+    const count = document.createElement('span');
+    count.className = 'shared-board-count';
     const columnEntries = buckets.get(column.id) || [];
     const countValue = allCounts instanceof Map ? (allCounts.get(column.id) || 0) : columnEntries.length;
-    meta.textContent = `${countValue} sager`;
-    header.appendChild(title);
-    header.appendChild(meta);
-    if (column.hint) {
-      const hint = document.createElement('div');
-      hint.className = 'shared-board-meta';
-      hint.textContent = column.hint;
-      columnEl.appendChild(header);
-      columnEl.appendChild(hint);
-    } else {
-      columnEl.appendChild(header);
-    }
+    count.textContent = countValue;
+    titleWrap.appendChild(dot);
+    titleWrap.appendChild(title);
+    header.appendChild(titleWrap);
+    header.appendChild(count);
+    columnEl.appendChild(header);
     const list = document.createElement('div');
     list.className = 'shared-board-list';
-    if (column.id === WORKFLOW_STATUS.DONE) {
-      finishedGroups.forEach(group => list.appendChild(renderFinishedProjectCard(group, userId, onChange)));
-      if (!finishedGroups.length) {
-        const empty = document.createElement('div');
-        empty.className = 'shared-board-meta';
-        empty.textContent = 'Ingen afsluttede projekter';
-        list.appendChild(empty);
-      }
-    } else {
-      columnEntries.forEach(entry => list.appendChild(renderCaseCard(entry, userId, onChange)));
-      if (!columnEntries.length) {
-        const empty = document.createElement('div');
-        empty.className = 'shared-board-meta';
-        empty.textContent = 'Ingen sager';
-        list.appendChild(empty);
-      }
+    columnEntries.forEach(entry => list.appendChild(renderCaseCardCompact(entry, userId, onChange)));
+    if (!columnEntries.length) {
+      const empty = document.createElement('div');
+      empty.className = 'shared-board-meta';
+      empty.textContent = 'Ingen sager';
+      list.appendChild(empty);
     }
     columnEl.appendChild(list);
     board.appendChild(columnEl);
@@ -1924,14 +2080,12 @@ function renderFromState(container, userId) {
     scopeEntries = renderCache.scopeEntries;
     displayEntries = renderCache.displayEntries;
   } else {
-    allCounts = computeBucketCounts(expandedEntries, { includeDeleted });
     scopeEntries = expandedEntries.filter(entry => {
       const meta = resolveCaseMeta(entry);
       return matchesFilters(entry, meta, filters, { includeStatus: false });
     });
-    displayEntries = filters.status
-      ? scopeEntries.filter(entry => resolveEntryBucket(entry) === filters.status)
-      : scopeEntries;
+    allCounts = computeBucketCounts(scopeEntries, { includeDeleted });
+    displayEntries = scopeEntries;
     renderCache = {
       version: caseItemsVersion,
       filterKey,
@@ -2167,6 +2321,7 @@ function renderSharedCases(container, entries, filters, userId, onChange, allCou
   container.textContent = '';
   const hasCounts = allCounts instanceof Map
     && Array.from(allCounts.values()).some(value => value > 0);
+  updateSharedHeaderCount(entries.length);
   if (!entries.length && !hasCounts) {
     const empty = document.createElement('p');
     empty.textContent = 'Ingen delte sager endnu.';
@@ -2175,7 +2330,9 @@ function renderSharedCases(container, entries, filters, userId, onChange, allCou
   }
   const fragment = document.createDocumentFragment();
   const includeDeleted = filters?.status === WORKFLOW_STATUS.DELETED;
-  fragment.appendChild(renderBoard(entries, userId, onChange, allCounts, { includeDeleted }));
+  const focusStatus = filters?.status && filters.status !== WORKFLOW_STATUS.DELETED ? filters.status : '';
+  const board = renderBoard(entries, userId, onChange, allCounts, { includeDeleted, focusStatus });
+  fragment.appendChild(board);
   const status = document.createElement('div');
   status.className = 'shared-cases-status';
   status.textContent = `Viser ${entries.length} sager${hasMore ? ' (flere kan hentes)' : ''}.`;
@@ -2207,6 +2364,14 @@ function renderSharedCases(container, entries, filters, userId, onChange, allCou
     fragment.appendChild(loadMoreBtn);
   }
   container.appendChild(fragment);
+  if (focusStatus) {
+    requestAnimationFrame(() => {
+      const target = container.querySelector(`.shared-board-column[data-status="${focusStatus}"]`);
+      if (target && typeof target.scrollIntoView === 'function') {
+        target.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+      }
+    });
+  }
 }
 
 export function initSharedCasesPanel() {
