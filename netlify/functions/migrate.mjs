@@ -13,6 +13,9 @@ const MIGRATION_FILES = [
   '006_cases_defaults.sql',
   '007_cases_workflow.sql',
   '008_auth0_member_profile.sql',
+  '009_cases_attachments.sql',
+  '010_cases_legacy_columns.sql',
+  '011_cases_workflow_v2.sql',
 ]
 
 const { resolveFromFunctionsDir } = pathHelper

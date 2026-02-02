@@ -159,6 +159,9 @@ psql "$DATABASE_URL" -f netlify/functions/migrations/005_cases_indexes.sql
 psql "$DATABASE_URL" -f netlify/functions/migrations/006_cases_defaults.sql
 psql "$DATABASE_URL" -f netlify/functions/migrations/007_cases_workflow.sql
 psql "$DATABASE_URL" -f netlify/functions/migrations/008_auth0_member_profile.sql
+psql "$DATABASE_URL" -f netlify/functions/migrations/009_cases_attachments.sql
+psql "$DATABASE_URL" -f netlify/functions/migrations/010_cases_legacy_columns.sql
+psql "$DATABASE_URL" -f netlify/functions/migrations/011_cases_workflow_v2.sql
 ```
 
 Valgfri: kør migrations via Netlify Function (one-off):
@@ -186,6 +189,8 @@ Kræver env var i Netlify:
    - `netlify/functions/migrations/007_cases_workflow.sql`
    - `netlify/functions/migrations/008_auth0_member_profile.sql`
    - `netlify/functions/migrations/009_cases_attachments.sql`
+   - `netlify/functions/migrations/010_cases_legacy_columns.sql`
+   - `netlify/functions/migrations/011_cases_workflow_v2.sql`
 4. Deploy og verificér:
    - Auth0 login fungerer.
    - Team access og medlemsregistrering fungerer på default-teamet.
@@ -199,9 +204,20 @@ Kræver env var i Netlify:
 
 ## Delt sager workflow (kort)
 
-- Flow: Montage → Montage klar til demontage → Demontage i gang → Afsluttet (samlet pr. sagsnr/jobnr).
+- Status-flow: `kladde → godkendt → demontage_i_gang → afsluttet` (soft delete = `deleted`).
+- `phase` angiver montage/demontage (bruges til import og PDF).
 - Afsluttede sager grupperes pr. sagsnr/jobnr og viser seneste montage + demontage med versionhistorik.
 - Statusopdateringer bruger `ifMatchUpdatedAt` for robust samtidighed mellem brugere.
+
+## Shared cases API (kort)
+
+- `GET /api/teams/:team/cases` → `{ data, cursor, hasMore, total }`
+- `GET /api/teams/:team/cases?since=...&sinceId=...` → `{ data, deleted, cursor }`
+- `POST /api/teams/:team/cases` → opret/opfdater via `job_number`
+- `PATCH /api/teams/:team/cases/:id/status` → statusændring m. `ifMatchUpdatedAt`
+- `POST /api/teams/:team/cases/:id/approve` → godkend montage/demontage
+- `DELETE /api/teams/:team/cases/:id` → soft delete (admin/owner)
+- `POST /api/admin/teams/:team/purge` → permanent sletning af soft-deleted (admin/owner)
 
 ## Contribution flow + verification
 

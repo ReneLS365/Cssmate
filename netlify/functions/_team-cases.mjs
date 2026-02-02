@@ -45,6 +45,22 @@ export async function getTeamCase({ teamId, caseId }) {
   return result.rows[0] || null
 }
 
+export async function getTeamCaseByJobNumber({ teamId, jobNumber }) {
+  assertTeamIdUuid(teamId, 'getTeamCaseByJobNumber')
+  const result = await db.query(
+    guardTeamCasesSql(
+      `SELECT ${TEAM_CASE_COLUMNS}
+       FROM public.team_cases c
+       WHERE c.team_id = $1 AND c.job_number = $2
+       ORDER BY c.last_updated_at DESC NULLS LAST, c.updated_at DESC, c.created_at DESC
+       LIMIT 1`,
+      'getTeamCaseByJobNumber'
+    ),
+    [teamId, jobNumber]
+  )
+  return result.rows[0] || null
+}
+
 export async function listTeamCasesPage({
   teamId,
   limit,
@@ -59,26 +75,35 @@ export async function listTeamCasesPage({
   assertTeamIdUuid(teamId, 'listTeamCasesPage')
   const params = [teamId]
   let whereClause = 'WHERE c.team_id = $1'
-  if (!includeDeleted) {
+  let countWhereClause = 'WHERE c.team_id = $1'
+  if (!includeDeleted && status !== 'deleted') {
     whereClause += ' AND c.deleted_at IS NULL'
+    countWhereClause += ' AND c.deleted_at IS NULL'
   }
   if (status) {
     params.push(status)
     whereClause += ` AND c.status = $${params.length}`
+    countWhereClause += ` AND c.status = $${params.length}`
   }
   if (phase) {
     params.push(phase)
     whereClause += ` AND c.phase = $${params.length}`
+    countWhereClause += ` AND c.phase = $${params.length}`
   }
-  whereClause += buildSearchClause({ search, params })
+  const searchClause = buildSearchClause({ search, params })
+  whereClause += searchClause
+  countWhereClause += searchClause
   if (from) {
     params.push(from)
     whereClause += ` AND (c.created_at AT TIME ZONE 'Europe/Copenhagen')::date >= $${params.length}`
+    countWhereClause += ` AND (c.created_at AT TIME ZONE 'Europe/Copenhagen')::date >= $${params.length}`
   }
   if (to) {
     params.push(to)
     whereClause += ` AND (c.created_at AT TIME ZONE 'Europe/Copenhagen')::date <= $${params.length}`
+    countWhereClause += ` AND (c.created_at AT TIME ZONE 'Europe/Copenhagen')::date <= $${params.length}`
   }
+  const countParams = [...params]
   if (cursor?.caseId) {
     params.push(cursor.lastUpdatedAt)
     params.push(cursor.updatedAt)
@@ -98,6 +123,15 @@ export async function listTeamCasesPage({
     ),
     params
   )
+  const countResult = await db.query(
+    guardTeamCasesSql(
+      `SELECT COUNT(*)::int AS total
+       FROM public.team_cases c
+       ${countWhereClause}`,
+      'listTeamCasesPageCount'
+    ),
+    countParams
+  )
   const rows = result.rows || []
   const hasMore = rows.length > limit
   const pageRows = hasMore ? rows.slice(0, limit) : rows
@@ -110,7 +144,8 @@ export async function listTeamCasesPage({
       caseId: lastRow.case_id,
     }
     : null
-  return { rows: pageRows, nextCursor }
+  const total = countResult.rows[0]?.total ?? pageRows.length
+  return { rows: pageRows, nextCursor, total }
 }
 
 export async function listTeamCasesDelta({ teamId, since, sinceId = '', limit }) {
@@ -137,7 +172,24 @@ export async function listTeamCasesDelta({ teamId, since, sinceId = '', limit })
     ),
     params
   )
-  return { rows: result.rows || [] }
+  const rows = result.rows || []
+  const deleted = []
+  const activeRows = []
+  rows.forEach(row => {
+    if (row.deleted_at || row.status === 'deleted') {
+      deleted.push(row.case_id)
+      return
+    }
+    activeRows.push(row)
+  })
+  const lastRow = rows[rows.length - 1]
+  const cursor = lastRow
+    ? {
+      updatedAt: lastRow.last_updated_at ? new Date(lastRow.last_updated_at).toISOString() : new Date(0).toISOString(),
+      caseId: lastRow.case_id,
+    }
+    : null
+  return { rows: activeRows, deleted, cursor }
 }
 
 export async function upsertTeamCase({

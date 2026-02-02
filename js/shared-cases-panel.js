@@ -67,16 +67,26 @@ const CURRENCY_FORMATTER = new Intl.NumberFormat('da-DK', { minimumFractionDigit
 const HOURS_FORMATTER = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const PREVIEW_WRITE_MESSAGE = getPreviewWriteDisabledMessage();
 const POLL_INTERVAL_MS = 5000;
-const WORKFLOW_PHASE = {
-  DRAFT: 'draft',
-  READY_FOR_DEMONTAGE: 'ready_for_demontage',
-  COMPLETED: 'completed',
+
+function getBoardColumns({ includeDeleted = false } = {}) {
+  if (!includeDeleted) return BASE_BOARD_COLUMNS;
+  return [
+    ...BASE_BOARD_COLUMNS,
+    { id: WORKFLOW_STATUS.DELETED, label: 'Slettet', hint: 'Soft-deleted sager (admin).' },
+  ];
+}
+const WORKFLOW_STATUS = {
+  DRAFT: 'kladde',
+  APPROVED: 'godkendt',
+  DEMONTAGE: 'demontage_i_gang',
+  DONE: 'afsluttet',
+  DELETED: 'deleted',
 };
-const BOARD_COLUMNS = [
-  { id: WORKFLOW_PHASE.DRAFT, label: 'Kladde', hint: 'Kladder før deling.' },
-  { id: WORKFLOW_PHASE.READY_FOR_DEMONTAGE, label: 'Montage klar til demontage', hint: 'Klar til demontage-hold.' },
-  { id: WORKFLOW_PHASE.COMPLETED, label: 'Afsluttet', hint: 'Sager der er afsluttet.' },
-  { id: 'andet', label: 'Andet', hint: 'Ukendte statusser.' },
+const BASE_BOARD_COLUMNS = [
+  { id: WORKFLOW_STATUS.DRAFT, label: 'Kladde', hint: 'Kladder før deling.' },
+  { id: WORKFLOW_STATUS.APPROVED, label: 'Godkendt', hint: 'Montage er godkendt og klar til demontage.' },
+  { id: WORKFLOW_STATUS.DEMONTAGE, label: 'Demontage i gang', hint: 'Demontage er i gang.' },
+  { id: WORKFLOW_STATUS.DONE, label: 'Afsluttet', hint: 'Sager der er afsluttet.' },
 ];
 
 function pad2(n) {
@@ -121,6 +131,24 @@ function formatTimeLabel(value) {
   const d = value instanceof Date ? value : new Date(value || Date.now());
   if (Number.isNaN(d.getTime())) return '';
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
+function formatRelativeTime(value) {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const diffMs = Date.now() - date.getTime();
+  if (diffMs < 60 * 1000) return 'lige nu';
+  if (diffMs < 60 * 60 * 1000) return `${Math.floor(diffMs / (60 * 1000))} min siden`;
+  if (diffMs < 24 * 60 * 60 * 1000) return `${Math.floor(diffMs / (60 * 60 * 1000))} t siden`;
+  return `${Math.floor(diffMs / (24 * 60 * 60 * 1000))} d siden`;
+}
+
+function formatEditorLabel(value) {
+  if (!value) return '–';
+  const text = value.toString();
+  if (text.length <= 10) return text;
+  return `${text.slice(0, 6)}…${text.slice(-4)}`;
 }
 
 function isOnline() {
@@ -290,6 +318,19 @@ function updateStatusCard() {
   if (statusEmail) statusEmail.textContent = loggedIn ? (sessionState?.user?.email || '–') : '–';
 }
 
+function updateAdminControls() {
+  if (typeof document === 'undefined') return;
+  const statusFilter = document.getElementById('sharedFilterStatus');
+  if (!statusFilter) return;
+  const deletedOption = statusFilter.querySelector('option[value="deleted"]');
+  if (deletedOption) {
+    deletedOption.hidden = !isAdminUser();
+  }
+  if (!isAdminUser() && statusFilter.value === WORKFLOW_STATUS.DELETED) {
+    statusFilter.value = '';
+  }
+}
+
 function isAdminUser () {
   if (membershipRole === 'admin' || membershipRole === 'owner') return true;
   return sessionState?.role === 'admin' || sessionState?.role === 'owner';
@@ -348,9 +389,9 @@ function saveUiState(state) {
 
 function normalizeStoredStatusFilter(value) {
   if (!value) return '';
-  if (value === 'kladde') return WORKFLOW_PHASE.DRAFT;
-  if (value === 'godkendt' || value === 'demontage_i_gang') return WORKFLOW_PHASE.READY_FOR_DEMONTAGE;
-  if (value === 'afsluttet') return WORKFLOW_PHASE.COMPLETED;
+  if (value === 'draft') return WORKFLOW_STATUS.DRAFT;
+  if (value === 'ready_for_demontage') return WORKFLOW_STATUS.APPROVED;
+  if (value === 'completed') return WORKFLOW_STATUS.DONE;
   return value;
 }
 
@@ -498,29 +539,38 @@ function resolveCaseDate(entry, meta) {
   return { raw: dateValue, formatted, iso };
 }
 
-function resolveCasePhaseBucket(phase) {
-  const value = (phase || '').toLowerCase();
-  if (value === WORKFLOW_PHASE.DRAFT) return WORKFLOW_PHASE.DRAFT;
-  if (value === WORKFLOW_PHASE.READY_FOR_DEMONTAGE) return WORKFLOW_PHASE.READY_FOR_DEMONTAGE;
-  if (value === WORKFLOW_PHASE.COMPLETED) return WORKFLOW_PHASE.COMPLETED;
-  return 'andet';
+function normalizeStatusValue(value) {
+  const normalized = (value || '').toString().trim().toLowerCase();
+  if (!normalized) return '';
+  if (normalized === 'draft') return WORKFLOW_STATUS.DRAFT;
+  if (normalized === 'ready_for_demontage') return WORKFLOW_STATUS.APPROVED;
+  if (normalized === 'completed') return WORKFLOW_STATUS.DONE;
+  if (normalized === 'klar_til_deling' || normalized === 'klar') return WORKFLOW_STATUS.DRAFT;
+  if (normalized === 'klar_til_demontage' || normalized === 'ready') return WORKFLOW_STATUS.APPROVED;
+  return normalized;
 }
 
 function resolveEntryBucket(entry) {
   if (entry?.__viewBucket) return entry.__viewBucket;
-  return resolveCasePhaseBucket(entry?.phase || entry?.workflowPhase);
+  const statusValue = normalizeStatusValue(entry?.status || entry?.workflowStatus || entry?.phase);
+  if (statusValue === WORKFLOW_STATUS.DELETED) return WORKFLOW_STATUS.DELETED;
+  if (statusValue === WORKFLOW_STATUS.DRAFT) return WORKFLOW_STATUS.DRAFT;
+  if (statusValue === WORKFLOW_STATUS.APPROVED) return WORKFLOW_STATUS.APPROVED;
+  if (statusValue === WORKFLOW_STATUS.DEMONTAGE) return WORKFLOW_STATUS.DEMONTAGE;
+  if (statusValue === WORKFLOW_STATUS.DONE) return WORKFLOW_STATUS.DONE;
+  return 'andet';
 }
 
-function computeBucketCounts(entries) {
+function computeBucketCounts(entries, { includeDeleted = false } = {}) {
   const counts = new Map();
   const finishedProjects = new Set();
-  BOARD_COLUMNS.forEach(column => {
+  getBoardColumns({ includeDeleted }).forEach(column => {
     counts.set(column.id, 0);
   });
   entries.forEach(entry => {
     const bucketId = resolveEntryBucket(entry);
     const resolved = counts.has(bucketId) ? bucketId : 'andet';
-    if (resolved === WORKFLOW_PHASE.COMPLETED) {
+    if (resolved === WORKFLOW_STATUS.DONE) {
       const meta = resolveCaseMeta(entry);
       const projectKey = resolveProjectKey(entry, meta);
       if (!projectKey || finishedProjects.has(projectKey)) return;
@@ -589,31 +639,33 @@ function logFilterChange(nextFilters, { total }) {
   lastFiltersSnapshot = { ...nextFilters };
 }
 
-function formatStatusLabel(phase) {
-  const bucket = resolveCasePhaseBucket(phase);
-  if (bucket === WORKFLOW_PHASE.DRAFT) return 'Kladde';
-  if (bucket === WORKFLOW_PHASE.READY_FOR_DEMONTAGE) return 'Montage klar til demontage';
-  if (bucket === WORKFLOW_PHASE.COMPLETED) return 'Afsluttet';
+function formatStatusLabel(status) {
+  const normalized = normalizeStatusValue(status);
+  if (normalized === WORKFLOW_STATUS.DRAFT) return 'Kladde';
+  if (normalized === WORKFLOW_STATUS.APPROVED) return 'Godkendt';
+  if (normalized === WORKFLOW_STATUS.DEMONTAGE) return 'Demontage i gang';
+  if (normalized === WORKFLOW_STATUS.DONE) return 'Afsluttet';
+  if (normalized === WORKFLOW_STATUS.DELETED) return 'Slettet';
   return 'Ukendt';
 }
 
 function formatEntryStatusLabel(entry) {
-  const bucket = resolveEntryBucket(entry);
-  if (bucket === WORKFLOW_PHASE.READY_FOR_DEMONTAGE && entry?.status === 'demontage_i_gang') {
-    return 'Demontage i gang';
-  }
-  if (bucket === WORKFLOW_PHASE.COMPLETED) {
-    if (!entry?.attachments?.demontage) return 'Afsluttet montage';
+  const statusValue = normalizeStatusValue(entry?.status);
+  if (statusValue === WORKFLOW_STATUS.DONE) {
+    const demontagePayload = resolveAttachmentPayload(entry?.attachments?.demontage);
+    if (!demontagePayload) return 'Afsluttet montage';
     return 'Afsluttet';
   }
-  return formatStatusLabel(entry?.phase);
+  return formatStatusLabel(statusValue);
 }
 
 function resolveSheetPhase(entry) {
   const phase = (entry?.sheetPhase || entry?.caseKind || '').toString().trim().toLowerCase();
   if (phase === 'demontage') return 'demontage';
-  if (entry?.attachments?.demontage && !entry?.attachments?.montage) return 'demontage';
-  if (entry?.status === 'demontage_i_gang') return 'demontage';
+  const demontagePayload = resolveAttachmentPayload(entry?.attachments?.demontage);
+  const montagePayload = resolveAttachmentPayload(entry?.attachments?.montage);
+  if (demontagePayload && !montagePayload) return 'demontage';
+  if (normalizeStatusValue(entry?.status) === WORKFLOW_STATUS.DEMONTAGE) return 'demontage';
   return 'montage';
 }
 
@@ -623,9 +675,9 @@ function resolvePhaseForEntry(entry) {
 
 function resolveOptimisticStatus(entry) {
   const bucket = resolveEntryBucket(entry);
-  if (bucket === WORKFLOW_PHASE.DRAFT) return 'godkendt';
-  if (entry?.status === 'demontage_i_gang') return 'afsluttet';
-  return entry?.status || '';
+  if (bucket === WORKFLOW_STATUS.DRAFT) return WORKFLOW_STATUS.APPROVED;
+  if (bucket === WORKFLOW_STATUS.DEMONTAGE) return WORKFLOW_STATUS.DONE;
+  return normalizeStatusValue(entry?.status || '');
 }
 
 function buildSearchIndex(entry, meta) {
@@ -718,6 +770,7 @@ function bindSessionControls(onAuthenticated, onAccessReady) {
     setPanelVisibility(Boolean(state?.sessionReady));
     updateSharedStatus();
     updateStatusCard();
+    updateAdminControls();
     updatePollingState();
 
     if (hasAccess && lastStatus !== state.status) {
@@ -740,7 +793,7 @@ function getFilters() {
       dateTo: '',
       status: '',
       kind: '',
-      sort: 'newest',
+      sort: 'updated-desc',
     };
   }
   const searchInput = document.getElementById('sharedSearchInput');
@@ -755,7 +808,7 @@ function getFilters() {
     dateTo: dateTo?.value || '',
     status: status?.value || '',
     kind: kind?.value || '',
-    sort: sort?.value || 'newest',
+    sort: sort?.value || 'updated-desc',
   };
   saveUiState(filters);
   return filters;
@@ -767,7 +820,9 @@ function matchesFilters(entry, meta, filters, { includeStatus = true } = {}) {
   const searchIndex = buildSearchIndex(entry, meta);
   const matchesSearch = tokens.length === 0
     || tokens.every(token => searchIndex.some(value => value.includes(token)));
-  const statusMatch = !includeStatus || !filters.status || resolveEntryBucket(entry) === filters.status;
+  const statusMatch = !includeStatus
+    || !filters.status
+    || normalizeStatusValue(entry?.status || '') === filters.status;
   const kindValue = (entry.caseKind || meta?.jobType || '').toLowerCase();
   const kindMatch = !filters.kind || kindValue === filters.kind;
   const date = resolveCaseDate(entry, meta);
@@ -786,11 +841,20 @@ async function handleJsonDownload(caseId) {
   downloadBlob(result.blob, result.fileName);
 }
 
-function normalizeAttachmentContent(value) {
+function resolveAttachmentPayload(value) {
   if (!value) return null;
-  if (typeof value === 'string') return value;
+  if (typeof value === 'object' && value && 'payload' in value) {
+    return value.payload;
+  }
+  return value;
+}
+
+function normalizeAttachmentContent(value) {
+  const resolved = resolveAttachmentPayload(value);
+  if (!resolved) return null;
+  if (typeof resolved === 'string') return resolved;
   try {
-    return JSON.stringify(value);
+    return JSON.stringify(resolved);
   } catch {
     return null;
   }
@@ -798,8 +862,8 @@ function normalizeAttachmentContent(value) {
 
 function buildAttachmentBundle(entry) {
   const attachments = entry?.attachments || {};
-  const montage = attachments.montage || null;
-  const demontage = attachments.demontage || null;
+  const montage = resolveAttachmentPayload(attachments.montage) || null;
+  const demontage = resolveAttachmentPayload(attachments.demontage) || null;
   const receipt = attachments.receipt || null;
   if (!montage && !demontage && !receipt) return null;
   return {
@@ -821,7 +885,7 @@ function downloadAttachmentBundle(entry) {
 
 async function handleJsonDownloadForEntry(entry) {
   const statusBucket = resolveEntryBucket(entry);
-  if (statusBucket === WORKFLOW_PHASE.COMPLETED) {
+  if (statusBucket === WORKFLOW_STATUS.DONE) {
     downloadAttachmentBundle(entry);
     return;
   }
@@ -907,10 +971,9 @@ function resolveReceiptTotals(entry) {
 
 function renderReceiptSummary(entry) {
   const wrapper = document.createElement('div');
-  const receipt = entry?.attachments?.receipt || null;
   const receiptTotals = resolveReceiptTotals(entry);
-  const montageSheet = entry?.attachments?.montage || null;
-  const demontageSheet = entry?.attachments?.demontage || null;
+  const montageSheet = resolveAttachmentPayload(entry?.attachments?.montage) || null;
+  const demontageSheet = resolveAttachmentPayload(entry?.attachments?.demontage) || null;
   const hasMontage = Boolean(montageSheet);
   const hasDemontage = Boolean(demontageSheet);
   const montageTotals = extractTotalsFromSheet(montageSheet);
@@ -1068,7 +1131,7 @@ function createCaseActions(entry, userId, onChange) {
   container.className = 'shared-case-actions';
   const statusBucket = resolveEntryBucket(entry);
 
-  if (statusBucket !== WORKFLOW_PHASE.COMPLETED) {
+  if (![WORKFLOW_STATUS.DONE, WORKFLOW_STATUS.DELETED].includes(statusBucket)) {
     const importBtn = document.createElement('button');
     importBtn.type = 'button';
     importBtn.textContent = 'Importér';
@@ -1112,7 +1175,7 @@ function createCaseActions(entry, userId, onChange) {
   pdfBtn.addEventListener('click', async () => {
     pdfBtn.disabled = true;
     try {
-      if (statusBucket === WORKFLOW_PHASE.COMPLETED) {
+      if (statusBucket === WORKFLOW_STATUS.DONE) {
         const montageContent = normalizeAttachmentContent(entry?.attachments?.montage);
         const demontageContent = normalizeAttachmentContent(entry?.attachments?.demontage);
         if (!montageContent && !demontageContent) {
@@ -1157,7 +1220,7 @@ function createCaseActions(entry, userId, onChange) {
   });
   container.appendChild(pdfBtn);
 
-  if (statusBucket === WORKFLOW_PHASE.COMPLETED) {
+  if (statusBucket === WORKFLOW_STATUS.DONE) {
     const receiptBtn = document.createElement('button');
     receiptBtn.type = 'button';
     receiptBtn.textContent = 'Kvittering';
@@ -1171,7 +1234,7 @@ function createCaseActions(entry, userId, onChange) {
     container.appendChild(receiptBtn);
   }
 
-  if (statusBucket === WORKFLOW_PHASE.DRAFT && entry.createdBy === userId) {
+  if (statusBucket === WORKFLOW_STATUS.DRAFT && isAdminUser()) {
     const approveBtn = document.createElement('button');
     approveBtn.type = 'button';
     approveBtn.textContent = 'Godkend & del';
@@ -1218,7 +1281,7 @@ function createCaseActions(entry, userId, onChange) {
     container.appendChild(approveBtn);
   }
 
-  if (statusBucket === WORKFLOW_PHASE.READY_FOR_DEMONTAGE && entry?.status !== 'demontage_i_gang') {
+  if (statusBucket === WORKFLOW_STATUS.APPROVED) {
     const demontageBtn = document.createElement('button');
     demontageBtn.type = 'button';
     demontageBtn.textContent = 'Indlæs til demontage';
@@ -1226,13 +1289,13 @@ function createCaseActions(entry, userId, onChange) {
       demontageBtn.disabled = true;
       try {
         const previousEntry = casesById.get(entry.caseId) || entry;
-        const optimisticEntry = buildOptimisticUpdate(previousEntry, { status: 'demontage_i_gang' });
+        const optimisticEntry = buildOptimisticUpdate(previousEntry, { status: WORKFLOW_STATUS.DEMONTAGE });
         if (optimisticEntry && typeof onChange === 'function') {
           onChange({ updatedCase: optimisticEntry });
         }
         try {
           const updated = await updateSharedCaseStatus(ensureTeamSelected(), entry.caseId, {
-            status: 'demontage_i_gang',
+            status: WORKFLOW_STATUS.DEMONTAGE,
             ifMatchUpdatedAt: entry.updatedAt,
             phase: entry.sheetPhase || 'montage',
           });
@@ -1258,7 +1321,7 @@ function createCaseActions(entry, userId, onChange) {
     container.appendChild(demontageBtn);
   }
 
-  if (statusBucket === WORKFLOW_PHASE.READY_FOR_DEMONTAGE && entry?.status === 'demontage_i_gang') {
+  if (statusBucket === WORKFLOW_STATUS.DEMONTAGE && isAdminUser()) {
     const finishBtn = document.createElement('button');
     finishBtn.type = 'button';
     finishBtn.textContent = 'Godkend demontage & afslut';
@@ -1288,7 +1351,7 @@ function createCaseActions(entry, userId, onChange) {
     container.appendChild(finishBtn);
   }
 
-  if (statusBucket !== WORKFLOW_PHASE.COMPLETED && (entry.createdBy === userId || isAdminUser())) {
+  if (![WORKFLOW_STATUS.DONE, WORKFLOW_STATUS.DELETED].includes(statusBucket) && isAdminUser()) {
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
     deleteBtn.textContent = 'Soft delete';
@@ -1315,6 +1378,71 @@ function createCaseActions(entry, userId, onChange) {
     container.appendChild(deleteBtn);
   }
 
+  if (isAdminUser()) {
+    const statusSelect = document.createElement('select');
+    statusSelect.className = 'shared-case-status-select';
+    statusSelect.setAttribute('aria-label', 'Skift status');
+    const statusOptions = [
+      { value: WORKFLOW_STATUS.DRAFT, label: 'Kladde' },
+      { value: WORKFLOW_STATUS.APPROVED, label: 'Godkendt' },
+      { value: WORKFLOW_STATUS.DEMONTAGE, label: 'Demontage i gang' },
+      { value: WORKFLOW_STATUS.DONE, label: 'Afsluttet' },
+      { value: WORKFLOW_STATUS.DELETED, label: 'Slettet' },
+    ];
+    statusOptions.forEach(option => {
+      const el = document.createElement('option');
+      el.value = option.value;
+      el.textContent = option.label;
+      statusSelect.appendChild(el);
+    });
+    statusSelect.value = normalizeStatusValue(entry?.status) || WORKFLOW_STATUS.DRAFT;
+    const statusBtn = document.createElement('button');
+    statusBtn.type = 'button';
+    statusBtn.textContent = 'Skift status';
+    statusBtn.setAttribute('aria-label', 'Skift status for sag');
+    statusBtn.addEventListener('click', async () => {
+      const nextStatus = statusSelect.value;
+      if (!nextStatus) return;
+      if (nextStatus === normalizeStatusValue(entry?.status)) {
+        showToast('Status er allerede valgt.', { variant: 'info' });
+        return;
+      }
+      if (nextStatus === WORKFLOW_STATUS.DELETED) {
+        const confirmed = await openConfirmModal({
+          title: 'Soft delete sag',
+          message: 'Denne sag skjules for teamet, men kan gendannes af admin.',
+          confirmLabel: 'Soft delete',
+        });
+        if (!confirmed) return;
+      }
+      statusBtn.disabled = true;
+      try {
+        const updated = await updateSharedCaseStatus(ensureTeamSelected(), entry.caseId, {
+          status: nextStatus,
+          ifMatchUpdatedAt: entry.updatedAt,
+          phase: entry.sheetPhase || entry.phase || 'montage',
+        });
+        if (typeof onChange === 'function' && !updated?.queued) {
+          onChange({ updatedCase: { ...updated, __syncing: false } });
+        }
+        if (nextStatus === WORKFLOW_STATUS.DELETED) {
+          if (typeof onChange === 'function') onChange({ removeCaseId: entry.caseId });
+          showToast('Sag er soft-deleted.', { variant: 'success' });
+        } else {
+          showToast('Status er opdateret.', { variant: 'success' });
+        }
+      } catch (error) {
+        console.error('Statusskifte fejlede', error);
+        handleActionError(error, 'Kunne ikke opdatere status', { teamContext: teamId });
+        showToast(error?.message || 'Kunne ikke opdatere status.', { variant: 'error' });
+      } finally {
+        statusBtn.disabled = false;
+      }
+    });
+    container.appendChild(statusSelect);
+    container.appendChild(statusBtn);
+  }
+
   return container;
 }
 
@@ -1324,6 +1452,7 @@ function renderCaseCard(entry, userId, onChange) {
   const date = resolveCaseDate(entry, meta);
   const card = document.createElement('div');
   card.className = 'shared-case-card';
+  card.dataset.ifMatch = entry.updatedAt || '';
 
   const top = document.createElement('div');
   top.className = 'shared-case-card__top';
@@ -1339,6 +1468,9 @@ function renderCaseCard(entry, userId, onChange) {
 
   const metaGrid = document.createElement('div');
   metaGrid.className = 'shared-case-card__meta';
+  const updatedAt = entry.lastUpdatedAt || entry.updatedAt || entry.createdAt || '';
+  const lastEditor = formatEditorLabel(entry.lastEditorSub || entry.updatedBy || entry.createdBy);
+  const updatedLabel = formatRelativeTime(updatedAt) || formatDateLabel(updatedAt);
   const lines = [
     { label: 'Type', value: meta.jobType || entry.caseKind || '–' },
     { label: 'Opgave', value: meta.jobName || '–' },
@@ -1347,6 +1479,8 @@ function renderCaseCard(entry, userId, onChange) {
     { label: 'Montører', value: meta.montor || meta.workerNames?.join(', ') || '–' },
     { label: 'Dato', value: date.formatted || formatDateInput(date.raw) || '–' },
     { label: 'System', value: meta.system || entry.system || '–' },
+    { label: 'Sidst opdateret', value: updatedLabel || '–' },
+    { label: 'Sidste editor', value: lastEditor },
   ];
   lines.forEach(line => {
     const row = document.createElement('div');
@@ -1382,7 +1516,7 @@ function resolveEntryPhase(entry) {
 function buildFinishedProjectGroups(entries) {
   const groups = new Map();
   entries.forEach(entry => {
-    if (resolveEntryBucket(entry) !== WORKFLOW_PHASE.COMPLETED) return;
+    if (resolveEntryBucket(entry) !== WORKFLOW_STATUS.DONE) return;
     const meta = resolveCaseMeta(entry);
     const key = resolveProjectKey(entry, meta);
     if (!key) return;
@@ -1528,8 +1662,11 @@ function renderFinishedProjectCard(group, userId, onChange) {
 
 function sortEntries(entries, sortKey) {
   const list = entries.slice();
-  if (sortKey === 'oldest') {
-    return list.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+  if (sortKey === 'updated-asc') {
+    return list.sort((a, b) => (a.lastUpdatedAt || a.updatedAt || '').localeCompare(b.lastUpdatedAt || b.updatedAt || ''));
+  }
+  if (sortKey === 'updated-desc') {
+    return list.sort((a, b) => (b.lastUpdatedAt || b.updatedAt || '').localeCompare(a.lastUpdatedAt || a.updatedAt || ''));
   }
   if (sortKey === 'total-desc') {
     return list.sort((a, b) => resolveCaseTotals(b, resolveCaseMeta(b)).total - resolveCaseTotals(a, resolveCaseMeta(a)).total);
@@ -1537,28 +1674,31 @@ function sortEntries(entries, sortKey) {
   if (sortKey === 'total-asc') {
     return list.sort((a, b) => resolveCaseTotals(a, resolveCaseMeta(a)).total - resolveCaseTotals(b, resolveCaseMeta(b)).total);
   }
-  return list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  return list.sort((a, b) => (b.lastUpdatedAt || b.updatedAt || '').localeCompare(a.lastUpdatedAt || a.updatedAt || ''));
 }
 
-function renderBoard(entries, userId, onChange, allCounts) {
+function renderBoard(entries, userId, onChange, allCounts, { includeDeleted = false } = {}) {
   const board = document.createElement('div');
   board.className = 'shared-board';
   const buckets = new Map();
   const finishedEntries = [];
-  BOARD_COLUMNS.forEach(column => {
+  const columns = getBoardColumns({ includeDeleted });
+  columns.forEach(column => {
     buckets.set(column.id, []);
   });
   entries.forEach(entry => {
     const bucketId = resolveEntryBucket(entry);
-    if (bucketId === WORKFLOW_PHASE.COMPLETED) {
+    if (bucketId === WORKFLOW_STATUS.DONE) {
       finishedEntries.push(entry);
       return;
     }
-    const bucket = buckets.get(bucketId) || buckets.get('andet');
-    bucket.push(entry);
+    const bucket = buckets.get(bucketId);
+    if (bucket) {
+      bucket.push(entry);
+    }
   });
   const finishedGroups = buildFinishedProjectGroups(finishedEntries);
-  BOARD_COLUMNS.forEach(column => {
+  columns.forEach(column => {
     const columnEl = document.createElement('section');
     columnEl.className = 'shared-board-column';
     const header = document.createElement('div');
@@ -1584,7 +1724,7 @@ function renderBoard(entries, userId, onChange, allCounts) {
     }
     const list = document.createElement('div');
     list.className = 'shared-board-list';
-    if (column.id === WORKFLOW_PHASE.COMPLETED) {
+    if (column.id === WORKFLOW_STATUS.DONE) {
       finishedGroups.forEach(group => list.appendChild(renderFinishedProjectCard(group, userId, onChange)));
       if (!finishedGroups.length) {
         const empty = document.createElement('div');
@@ -1763,9 +1903,16 @@ function renderFromState(container, userId) {
   const debugEnabled = isDebugEnabled();
   const start = debugEnabled && typeof performance !== 'undefined' ? performance.now() : 0;
   const filters = getActiveFilters();
+  const includeDeleted = filters?.status === WORKFLOW_STATUS.DELETED;
   const filterKey = getFilterKey(filters);
-  const sortKey = filters?.sort || 'newest';
+  const sortKey = filters?.sort || 'updated-desc';
   let expandedEntries = caseItems;
+  if (!includeDeleted) {
+    expandedEntries = expandedEntries.filter(entry => normalizeStatusValue(entry?.status) !== WORKFLOW_STATUS.DELETED);
+  }
+  if (includeDeleted && filters?.status === WORKFLOW_STATUS.DELETED) {
+    expandedEntries = expandedEntries.filter(entry => normalizeStatusValue(entry?.status) === WORKFLOW_STATUS.DELETED);
+  }
   let allCounts = null;
   let scopeEntries = null;
   let displayEntries = null;
@@ -1775,7 +1922,7 @@ function renderFromState(container, userId) {
     scopeEntries = renderCache.scopeEntries;
     displayEntries = renderCache.displayEntries;
   } else {
-    allCounts = computeBucketCounts(expandedEntries);
+    allCounts = computeBucketCounts(expandedEntries, { includeDeleted });
     scopeEntries = expandedEntries.filter(entry => {
       const meta = resolveCaseMeta(entry);
       return matchesFilters(entry, meta, filters, { includeStatus: false });
@@ -1831,6 +1978,17 @@ function updateDeltaCursorFromItems(items) {
     lastDeltaAt = maxKey.updatedAt;
     lastDeltaCaseId = maxKey.caseId || lastDeltaCaseId;
   }
+}
+
+function updateDeltaCursorFromPayload(payload) {
+  const cursor = payload?.cursor || null;
+  if (!cursor) return false;
+  if (cursor.updatedAt) {
+    lastDeltaAt = cursor.updatedAt;
+    lastDeltaCaseId = cursor.caseId || lastDeltaCaseId;
+    return true;
+  }
+  return false;
 }
 
 function markDeltaSynced(message) {
@@ -1904,28 +2062,32 @@ async function runDeltaSync() {
       sinceId: lastDeltaCaseId,
       limit: 200,
     });
-    const items = Array.isArray(payload?.items) ? payload.items : [];
+    const items = Array.isArray(payload?.data) ? payload.data : (Array.isArray(payload?.items) ? payload.items : []);
+    const deleted = Array.isArray(payload?.deleted) ? payload.deleted : [];
     if (debugEnabled && start) {
       const end = typeof performance !== 'undefined' ? performance.now() : Date.now();
       debugLog('shared-cases delta fetched', { count: items.length, durationMs: Number((end - start).toFixed(1)) });
     }
     let didChange = false;
+    deleted.forEach(caseId => {
+      if (!caseId) return;
+      if (casesById.has(caseId)) {
+        removeCaseEntry(caseId);
+        didChange = true;
+      }
+    });
     items.forEach(entry => {
       if (!entry?.caseId) return;
-      if (entry.status === 'deleted') {
-        if (casesById.has(entry.caseId)) {
-          removeCaseEntry(entry.caseId);
-          didChange = true;
-        }
-        return;
-      }
+      if (normalizeStatusValue(entry.status) === WORKFLOW_STATUS.DELETED) return;
       updateCaseEntry(entry);
       didChange = true;
     });
-    if (items.length) {
-      updateDeltaCursorFromItems(items);
-    } else if (payload?.maxUpdatedAt) {
-      lastDeltaAt = payload.maxUpdatedAt;
+    if (!updateDeltaCursorFromPayload(payload)) {
+      if (items.length) {
+        updateDeltaCursorFromItems(items);
+      } else if (payload?.maxUpdatedAt) {
+        lastDeltaAt = payload.maxUpdatedAt;
+      }
     }
     if (didChange) {
       renderFromState(sharedCasesContainer, sessionState?.user?.uid || 'offline-user');
@@ -1952,12 +2114,14 @@ async function fetchCasesPage({ reset = false, prepend = false, requestId = null
     if (reset) {
       activeFilters = filters;
     }
+    const includeDeleted = filters?.status === WORKFLOW_STATUS.DELETED;
     const page = await listSharedCasesPageFn(ensureTeamSelected(), {
       limit: 100,
       cursor: reset ? null : nextCursor,
       q: '',
       from: '',
       to: '',
+      includeDeleted,
     });
     if (requestId && requestId !== latestRequestId) return null;
     const items = Array.isArray(page?.items) ? page.items : [];
@@ -1969,7 +2133,7 @@ async function fetchCasesPage({ reset = false, prepend = false, requestId = null
     } else {
       mergeEntries(items, { prepend: false });
     }
-    const newCursor = page?.nextCursor || null;
+    const newCursor = page?.nextCursor || page?.cursor || null;
     const newCursorKey = getCursorKey(newCursor);
     if (newCursorKey && seenCursorKeys.has(newCursorKey)) {
       nextCursor = null;
@@ -1981,7 +2145,7 @@ async function fetchCasesPage({ reset = false, prepend = false, requestId = null
         seenCursorKeys.add(newCursorKey);
       }
       nextCursor = newCursor;
-      hasMore = Boolean(nextCursor);
+      hasMore = Boolean(nextCursor) || Boolean(page?.hasMore);
     }
     if (debugEnabled && start) {
       const end = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -2008,7 +2172,8 @@ function renderSharedCases(container, entries, filters, userId, onChange, allCou
     return;
   }
   const fragment = document.createDocumentFragment();
-  fragment.appendChild(renderBoard(entries, userId, onChange, allCounts));
+  const includeDeleted = filters?.status === WORKFLOW_STATUS.DELETED;
+  fragment.appendChild(renderBoard(entries, userId, onChange, allCounts, { includeDeleted }));
   const status = document.createElement('div');
   status.className = 'shared-cases-status';
   status.textContent = `Viser ${entries.length} sager${hasMore ? ' (flere kan hentes)' : ''}.`;
@@ -2195,5 +2360,5 @@ export const __test = {
   setListSharedCasesPage,
   setTestState,
   resolveEntryBucket,
-  WORKFLOW_PHASE,
+  WORKFLOW_STATUS,
 };
