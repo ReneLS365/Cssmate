@@ -453,10 +453,11 @@ function updateAdminControls() {
   const { focusEl } = getSharedCasesElements();
   if (!focusEl) return;
   const deletedOption = focusEl.querySelector('option[value="deleted"]');
+  const adminVisible = isAdminUser();
   if (deletedOption) {
-    deletedOption.hidden = true;
+    deletedOption.hidden = !adminVisible;
   }
-  if (focusEl.value === WORKFLOW_STATUS.DELETED) {
+  if (!adminVisible && focusEl.value === WORKFLOW_STATUS.DELETED) {
     focusEl.value = '';
   }
 }
@@ -544,7 +545,9 @@ function normalizeStoredStatusFilter(value) {
   if (value === 'draft') return WORKFLOW_STATUS.DRAFT;
   if (value === 'ready_for_demontage') return WORKFLOW_STATUS.APPROVED;
   if (value === 'completed') return WORKFLOW_STATUS.DONE;
-  if (value === WORKFLOW_STATUS.DELETED || value === 'deleted') return '';
+  if (value === WORKFLOW_STATUS.DELETED || value === 'deleted') {
+    return isAdminUser() ? WORKFLOW_STATUS.DELETED : '';
+  }
   return value;
 }
 
@@ -2769,8 +2772,11 @@ function renderFromState(container, userId) {
   const filters = getActiveFilters();
   const filterKey = getFilterKey(filters);
   const sortKey = filters?.sort || 'updated-desc';
+  const includeDeleted = isAdminUser() && filters?.statusFocus === WORKFLOW_STATUS.DELETED;
   let expandedEntries = caseItems;
-  expandedEntries = expandedEntries.filter(entry => normalizeStatusValue(entry?.status) !== WORKFLOW_STATUS.DELETED);
+  if (!includeDeleted) {
+    expandedEntries = expandedEntries.filter(entry => normalizeStatusValue(entry?.status) !== WORKFLOW_STATUS.DELETED);
+  }
   let allCounts = null;
   let scopeEntries = null;
   let displayEntries = null;
@@ -2784,7 +2790,7 @@ function renderFromState(container, userId) {
       const meta = resolveCaseMeta(entry);
       return matchesFilters(entry, meta, filters);
     });
-    allCounts = computeBucketCounts(scopeEntries, { includeDeleted: false });
+    allCounts = computeBucketCounts(scopeEntries, { includeDeleted });
     displayEntries = scopeEntries;
     renderCache = {
       version: caseItemsVersion,
@@ -2823,7 +2829,7 @@ function renderFromState(container, userId) {
   };
   lastRenderUserId = userId;
   lastRenderOnChange = onChange;
-  renderSharedCases(container, sorted, filters, userId, onChange, allCounts);
+  renderSharedCases(container, sorted, filters, userId, onChange, allCounts, { includeDeleted });
   attemptOpenDeepLink();
   if (debugEnabled && start) {
     const end = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -2976,7 +2982,7 @@ async function fetchCasesPage({ reset = false, prepend = false, requestId = null
     if (reset) {
       activeFilters = filters;
     }
-    const includeDeleted = filters?.status === WORKFLOW_STATUS.DELETED;
+    const includeDeleted = isAdminUser() && filters?.statusFocus === WORKFLOW_STATUS.DELETED;
     const page = await listSharedCasesPageFn(ensureTeamSelected(), {
       limit: 100,
       cursor: reset ? null : nextCursor,
@@ -3023,9 +3029,9 @@ async function fetchCasesPage({ reset = false, prepend = false, requestId = null
   }
 }
 
-function renderSharedCases(container, entries, filters, userId, onChange, allCounts) {
+function renderSharedCases(container, entries, filters, userId, onChange, allCounts, { includeDeleted = false } = {}) {
   const focusStatus = filters?.statusFocus || '';
-  const columns = getBoardColumns({ includeDeleted: false });
+  const columns = getBoardColumns({ includeDeleted });
   const hasCounts = allCounts instanceof Map
     && Array.from(allCounts.values()).some(value => value > 0);
   updateSharedHeaderCount(entries.length);
@@ -3045,7 +3051,7 @@ function renderSharedCases(container, entries, filters, userId, onChange, allCou
   }
   if (!existingBoard || !matchesColumns) {
     container.textContent = '';
-    const board = renderBoard(entries, userId, onChange, allCounts, { includeDeleted: false, focusStatus });
+    const board = renderBoard(entries, userId, onChange, allCounts, { includeDeleted, focusStatus });
     container.appendChild(board);
   } else {
     const scrollLeft = existingBoard.scrollLeft;
