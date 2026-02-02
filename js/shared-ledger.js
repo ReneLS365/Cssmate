@@ -724,6 +724,7 @@ function normalizeCasesDelta(payload, since = '') {
     mode: payload?.mode || 'delta',
     serverNow: payload?.serverNow || null,
     maxUpdatedAt: payload?.maxUpdatedAt || since || null,
+    nextSinceId: payload?.nextSinceId || payload?.sinceId || payload?.cursor?.caseId || payload?.cursor?.sinceId || null,
     cursor: payload?.cursor || null,
     deleted: Array.isArray(payload?.deleted) ? payload.deleted : [],
   }
@@ -763,6 +764,7 @@ export async function listSharedCasesDelta(teamId, { since = '', sinceId = '', l
     count: normalized.items.length,
     deleted: normalized.deleted?.length || 0,
     maxUpdatedAt: normalized.maxUpdatedAt,
+    nextSinceId: normalized.nextSinceId,
   })
   return normalized
 }
