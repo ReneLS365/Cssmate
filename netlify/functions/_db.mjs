@@ -143,6 +143,7 @@ async function ensureMigrations () {
         readMigrationFile('008_auth0_member_profile.sql'),
         readMigrationFile('009_cases_attachments.sql'),
         readMigrationFile('010_cases_legacy_columns.sql'),
+        readMigrationFile('011_cases_workflow_v2.sql'),
       ])
       await client.query('BEGIN')
       for (const sql of migrations) {

@@ -958,6 +958,7 @@ input.csm-name{
 .shared-case-card__totals span{color:var(--muted)}
 .shared-case-actions{display:flex;flex-wrap:wrap;gap:8px}
 .shared-case-actions button{flex:1 1 120px}
+.shared-case-status-select{flex:1 1 160px;min-height:40px;border-radius:10px;border:1px solid var(--border);background:var(--panel);color:var(--text);padding:6px 10px}
 .shared-case-project{gap:10px}
 .shared-case-project__phase{display:flex;flex-direction:column;gap:6px;border-top:1px dashed var(--border);padding-top:8px}
 .shared-case-project__phase-title{font-weight:600;font-size:0.9rem;color:var(--text)}

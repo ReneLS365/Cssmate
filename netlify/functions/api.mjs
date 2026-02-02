@@ -1,5 +1,5 @@
 import { db, ensureDbReady } from './_db.mjs'
-import { getTeamCase, listTeamCasesDelta, listTeamCasesPage, softDeleteTeamCase, upsertTeamCase } from './_team-cases.mjs'
+import { getTeamCase, getTeamCaseByJobNumber, listTeamCasesDelta, listTeamCasesPage, softDeleteTeamCase, upsertTeamCase } from './_team-cases.mjs'
 import { generateToken, getAuth0Config, hashToken, secureCompare, verifyToken } from './_auth.mjs'
 import { safeError } from './_log.mjs'
 import { getDeployContext, isProd } from './_context.mjs'
@@ -20,20 +20,19 @@ const DEFAULT_CASES_LIMIT = 100
 const MAX_CASES_LIMIT = 500
 const ROLE_CLAIM = 'https://sscaff.app/roles'
 const ORG_CLAIM = 'https://sscaff.app/org_id'
-const ALLOWED_ROLES = new Set(['sscaff_owner', 'sscaff_admin', 'sscaff_user'])
+const ALLOWED_ROLES = new Set(['sscaff_owner', 'sscaff_admin', 'sscaff_member', 'sscaff_user'])
 const CASE_STATUS = {
   DRAFT: 'kladde',
-  READY: 'klar_til_deling',
   APPROVED: 'godkendt',
   DEMONTAGE: 'demontage_i_gang',
   DONE: 'afsluttet',
+  DELETED: 'deleted',
 }
 const CASE_PHASE = {
-  DRAFT: 'draft',
-  READY_FOR_DEMONTAGE: 'ready_for_demontage',
-  COMPLETED: 'completed',
+  MONTAGE: 'montage',
+  DEMONTAGE: 'demontage',
 }
-const DB_NOT_MIGRATED_MESSAGE = 'DB er ikke migreret. Kør netlify/functions/migrations/001_init.sql, netlify/functions/migrations/002_add_team_slug.sql, netlify/functions/migrations/003_auth0_invites.sql, netlify/functions/migrations/004_add_team_member_login.sql, netlify/functions/migrations/005_cases_indexes.sql, netlify/functions/migrations/006_cases_defaults.sql, netlify/functions/migrations/007_cases_workflow.sql, netlify/functions/migrations/008_auth0_member_profile.sql og netlify/functions/migrations/009_cases_attachments.sql mod Neon.'
+const DB_NOT_MIGRATED_MESSAGE = 'DB er ikke migreret. Kør netlify/functions/migrations/001_init.sql, netlify/functions/migrations/002_add_team_slug.sql, netlify/functions/migrations/003_auth0_invites.sql, netlify/functions/migrations/004_add_team_member_login.sql, netlify/functions/migrations/005_cases_indexes.sql, netlify/functions/migrations/006_cases_defaults.sql, netlify/functions/migrations/007_cases_workflow.sql, netlify/functions/migrations/008_auth0_member_profile.sql, netlify/functions/migrations/009_cases_attachments.sql, netlify/functions/migrations/010_cases_legacy_columns.sql og netlify/functions/migrations/011_cases_workflow_v2.sql mod Neon.'
 let cachedMgmtToken = ''
 let cachedMgmtTokenExpiry = 0
 
@@ -140,16 +139,27 @@ function normalizeCasePhase (value, fallback = '') {
   return fallback
 }
 
-function normalizeWorkflowPhase (value, status = '') {
+function normalizeCaseStatus (value = '') {
   const normalized = (value || '').toString().trim().toLowerCase()
-  if (normalized === CASE_PHASE.DRAFT) return CASE_PHASE.DRAFT
-  if (normalized === CASE_PHASE.READY_FOR_DEMONTAGE) return CASE_PHASE.READY_FOR_DEMONTAGE
-  if (normalized === CASE_PHASE.COMPLETED) return CASE_PHASE.COMPLETED
-  const statusValue = (status || '').toString().trim().toLowerCase()
-  if ([CASE_STATUS.DONE, 'done', 'completed'].includes(statusValue)) return CASE_PHASE.COMPLETED
-  if ([CASE_STATUS.APPROVED, CASE_STATUS.DEMONTAGE, 'klar_til_demontage'].includes(statusValue)) return CASE_PHASE.READY_FOR_DEMONTAGE
-  if ([CASE_STATUS.DRAFT, CASE_STATUS.READY, 'klar', 'ready'].includes(statusValue)) return CASE_PHASE.DRAFT
-  return CASE_PHASE.DRAFT
+  if (!normalized) return CASE_STATUS.DRAFT
+  if (normalized === 'draft') return CASE_STATUS.DRAFT
+  if (normalized === 'ready_for_demontage') return CASE_STATUS.APPROVED
+  if (normalized === 'completed') return CASE_STATUS.DONE
+  if (normalized === 'klar_til_deling' || normalized === 'klar') return CASE_STATUS.DRAFT
+  if (normalized === 'klar_til_demontage' || normalized === 'ready') return CASE_STATUS.APPROVED
+  if (normalized === 'deleted') return CASE_STATUS.DELETED
+  return normalized
+}
+
+function normalizeStoredPhase (value, status = '') {
+  const normalized = (value || '').toString().trim().toLowerCase()
+  if (normalized === CASE_PHASE.MONTAGE) return CASE_PHASE.MONTAGE
+  if (normalized === CASE_PHASE.DEMONTAGE) return CASE_PHASE.DEMONTAGE
+  if (normalized === 'draft' || normalized === 'ready_for_demontage') return CASE_PHASE.MONTAGE
+  if (normalized === 'completed') return CASE_PHASE.DEMONTAGE
+  const statusValue = normalizeCaseStatus(status)
+  if ([CASE_STATUS.DEMONTAGE, CASE_STATUS.DONE].includes(statusValue)) return CASE_PHASE.DEMONTAGE
+  return CASE_PHASE.MONTAGE
 }
 
 function normalizeJobNumber (value) {
@@ -171,75 +181,66 @@ function canAccessCase () {
 function resolveSheetPhase ({ caseKind, status, attachments }) {
   const normalized = normalizePhaseHint(caseKind)
   if (normalized) return normalized
-  if (attachments?.demontage && !attachments?.montage) return 'demontage'
-  if (status === CASE_STATUS.DEMONTAGE) return 'demontage'
+  const demontagePayload = normalizeAttachmentEntry(attachments?.demontage)?.payload
+  const montagePayload = normalizeAttachmentEntry(attachments?.montage)?.payload
+  if (demontagePayload && !montagePayload) return 'demontage'
+  if (normalizeCaseStatus(status) === CASE_STATUS.DEMONTAGE) return 'demontage'
   return 'montage'
 }
 
-function resolveWorkflowPhase ({ action, nextStatus, currentPhase }) {
-  if (action === 'EXPORT_MONTAGE') {
-    return nextStatus === CASE_STATUS.DRAFT ? CASE_PHASE.DRAFT : CASE_PHASE.READY_FOR_DEMONTAGE
+function resolveCasePhase ({ action, nextStatus, sheetPhase, currentPhase }) {
+  const normalizedPhase = normalizeCasePhase(sheetPhase, normalizeStoredPhase(currentPhase, nextStatus))
+  if (action === 'EXPORT_DEMONTAGE' || nextStatus === CASE_STATUS.DEMONTAGE || nextStatus === CASE_STATUS.DONE) {
+    return CASE_PHASE.DEMONTAGE
   }
-  if (action === 'EXPORT_DEMONTAGE') return CASE_PHASE.COMPLETED
-  if (action === 'APPROVE') {
-    return nextStatus === CASE_STATUS.DONE ? CASE_PHASE.COMPLETED : CASE_PHASE.READY_FOR_DEMONTAGE
+  if (action === 'EXPORT_MONTAGE' || nextStatus === CASE_STATUS.DRAFT || nextStatus === CASE_STATUS.APPROVED) {
+    return CASE_PHASE.MONTAGE
   }
-  if (nextStatus === CASE_STATUS.DONE) return CASE_PHASE.COMPLETED
-  if (nextStatus === CASE_STATUS.DEMONTAGE || nextStatus === CASE_STATUS.APPROVED) return CASE_PHASE.READY_FOR_DEMONTAGE
-  if (nextStatus === CASE_STATUS.DRAFT) return CASE_PHASE.DRAFT
-  return normalizeWorkflowPhase(currentPhase, nextStatus)
+  return normalizedPhase || CASE_PHASE.MONTAGE
 }
 
-function resolveCaseTransition ({ action, currentStatus, sheetPhase, isCreator }) {
+function resolveCaseTransition ({ action, currentStatus, sheetPhase }) {
+  const normalizedStatus = normalizeCaseStatus(currentStatus)
   const normalizedPhase = normalizeCasePhase(
     sheetPhase,
-    currentStatus === CASE_STATUS.DEMONTAGE ? 'demontage' : 'montage'
+    normalizedStatus === CASE_STATUS.DEMONTAGE ? CASE_PHASE.DEMONTAGE : CASE_PHASE.MONTAGE
   )
 
   if (action === 'EXPORT_MONTAGE') {
-    if (!isCreator) {
-      throw createError('Kun opretter kan ændre denne kladde.', 403)
+    if (normalizedStatus === CASE_STATUS.DELETED) {
+      return { status: CASE_STATUS.DRAFT, phase: CASE_PHASE.MONTAGE }
     }
-    if ([CASE_STATUS.DRAFT, CASE_STATUS.READY].includes(currentStatus)) {
-      return { status: CASE_STATUS.DRAFT, phase: normalizedPhase || 'montage' }
+    if ([CASE_STATUS.DRAFT, CASE_STATUS.APPROVED, CASE_STATUS.DEMONTAGE, CASE_STATUS.DONE].includes(normalizedStatus)) {
+      return { status: normalizedStatus, phase: normalizedPhase || CASE_PHASE.MONTAGE }
     }
-    return { status: currentStatus, phase: normalizedPhase || 'montage' }
+    return { status: CASE_STATUS.DRAFT, phase: normalizedPhase || CASE_PHASE.MONTAGE }
   }
 
   if (action === 'EXPORT_DEMONTAGE') {
-    if (currentStatus === CASE_STATUS.DONE) {
+    if (normalizedStatus === CASE_STATUS.DONE) {
       throw createError('Sagen er allerede afsluttet.', 409)
     }
-    if ([CASE_STATUS.DRAFT, CASE_STATUS.READY].includes(currentStatus)) {
-      if (normalizedPhase === 'demontage') {
-        return { status: CASE_STATUS.DONE, phase: 'demontage' }
-      }
+    if (normalizedStatus === CASE_STATUS.DRAFT) {
       throw createError('Montage skal godkendes før demontage kan påbegyndes.', 403)
     }
-    if ([CASE_STATUS.APPROVED, CASE_STATUS.DEMONTAGE].includes(currentStatus)) {
-      return { status: CASE_STATUS.DONE, phase: 'demontage' }
+    if ([CASE_STATUS.APPROVED, CASE_STATUS.DEMONTAGE].includes(normalizedStatus)) {
+      return { status: CASE_STATUS.DONE, phase: CASE_PHASE.DEMONTAGE }
     }
     throw createError('Ugyldig status for demontage.', 409)
   }
 
   if (action === 'APPROVE') {
-    if ([CASE_STATUS.DRAFT, CASE_STATUS.READY].includes(currentStatus)) {
-      if (!isCreator) {
-        throw createError('Kun opretter kan godkende kladden.', 403)
-      }
-      return { status: CASE_STATUS.APPROVED, phase: 'montage' }
+    if (normalizedStatus === CASE_STATUS.DRAFT) {
+      return { status: CASE_STATUS.APPROVED, phase: CASE_PHASE.MONTAGE }
     }
-    if (currentStatus === CASE_STATUS.DEMONTAGE && normalizedPhase === 'demontage') {
-      return { status: CASE_STATUS.DONE, phase: 'demontage' }
+    if (normalizedStatus === CASE_STATUS.DEMONTAGE) {
+      return { status: CASE_STATUS.DONE, phase: CASE_PHASE.DEMONTAGE }
     }
-    if (currentStatus === CASE_STATUS.APPROVED && normalizedPhase === 'montage') {
+    if (normalizedStatus === CASE_STATUS.APPROVED) {
       throw createError('Montage er allerede godkendt.', 409)
     }
-    if (currentStatus === CASE_STATUS.DONE) {
+    if (normalizedStatus === CASE_STATUS.DONE) {
       throw createError('Sagen er allerede afsluttet.', 409)
-    }
-    if (currentStatus === CASE_STATUS.DEMONTAGE) {
-      throw createError('Demontage er allerede i gang.', 409)
     }
     throw createError('Ugyldig status for godkendelse.', 409)
   }
@@ -253,7 +254,15 @@ function safeNumber (value) {
 }
 
 function extractTotalsFromSheet (sheet) {
-  const totals = sheet?.totals || sheet?.summary?.totals || sheet?.result?.totals
+  let source = sheet
+  if (typeof sheet === 'string') {
+    try {
+      source = JSON.parse(sheet)
+    } catch {
+      return { materials: 0, montage: 0, demontage: 0, total: 0, hours: 0 }
+    }
+  }
+  const totals = source?.totals || source?.summary?.totals || source?.result?.totals
   if (!totals) return { materials: 0, montage: 0, demontage: 0, total: 0, hours: 0 }
   return {
     materials: safeNumber(totals.materials),
@@ -261,6 +270,36 @@ function extractTotalsFromSheet (sheet) {
     demontage: safeNumber(totals.demontage),
     total: safeNumber(totals.total),
     hours: safeNumber(totals.hours || totals.timer || totals.time),
+  }
+}
+
+function normalizeAttachmentEntry(entry, fallbackTimestamp) {
+  if (!entry) return null
+  if (typeof entry === 'object' && entry) {
+    if (Object.prototype.hasOwnProperty.call(entry, 'payload') || Object.prototype.hasOwnProperty.call(entry, 'exported_at') || Object.prototype.hasOwnProperty.call(entry, 'exportedAt')) {
+      return {
+        ...entry,
+        exported_at: entry.exported_at || entry.exportedAt || fallbackTimestamp || null,
+        payload: entry.payload ?? entry.data ?? null,
+      }
+    }
+    return {
+      exported_at: fallbackTimestamp || null,
+      payload: entry,
+    }
+  }
+  return {
+    exported_at: fallbackTimestamp || null,
+    payload: entry,
+  }
+}
+
+function normalizeCaseAttachments(attachments = {}, fallbackTimestamp) {
+  return {
+    ...attachments,
+    montage: normalizeAttachmentEntry(attachments.montage, fallbackTimestamp),
+    demontage: normalizeAttachmentEntry(attachments.demontage, fallbackTimestamp),
+    receipt: attachments.receipt || null,
   }
 }
 
@@ -280,6 +319,21 @@ function computeReceipt ({ montageSheet, demontageSheet }) {
     hasMontage: Boolean(montageSheet),
     hasDemontage: Boolean(demontageSheet),
   }
+}
+
+function buildAttachmentRecord(payload, exportedAt = new Date()) {
+  return {
+    exported_at: exportedAt.toISOString(),
+    payload,
+  }
+}
+
+function resolveAttachmentPayload(entry) {
+  if (!entry) return null
+  if (typeof entry === 'object' && entry && Object.prototype.hasOwnProperty.call(entry, 'payload')) {
+    return entry.payload
+  }
+  return entry
 }
 
 function decodeCursor (value) {
@@ -313,6 +367,7 @@ function isWriteRequest (event) {
     { method: 'DELETE', pattern: /^\/teams\/[^/]+\/cases\/[^/]+$/ },
     { method: 'PATCH', pattern: /^\/teams\/[^/]+\/cases\/[^/]+\/status$/ },
     { method: 'POST', pattern: /^\/teams\/[^/]+\/cases\/[^/]+\/approve$/ },
+    { method: 'POST', pattern: /^\/admin\/teams\/[^/]+\/purge$/ },
     { method: 'POST', pattern: /^\/teams\/[^/]+\/backup$/ },
     { method: 'POST', pattern: /^\/teams\/[^/]+\/members\/self$/ },
     { method: 'POST', pattern: /^\/teams\/[^/]+\/bootstrap$/ },
@@ -410,7 +465,7 @@ function extractRoles (payload) {
 function resolveRoleFlags (roles) {
   const isOwner = roles.includes('sscaff_owner')
   const isAdmin = isOwner || roles.includes('sscaff_admin')
-  const isUser = roles.includes('sscaff_user') || isAdmin
+  const isUser = roles.includes('sscaff_user') || roles.includes('sscaff_member') || isAdmin
   return { isOwner, isAdmin, isUser }
 }
 
@@ -748,12 +803,14 @@ function serializeCaseRow (row) {
     ? { data: row.json_content, createdAt }
     : storedAttachments.json || null
   const jobNumber = row.job_number || ''
-  const workflowPhase = normalizeWorkflowPhase(row.phase, row.status)
+  const workflowStatus = normalizeCaseStatus(row.status)
+  const storedPhase = normalizeStoredPhase(row.phase, workflowStatus)
   const sheetPhase = resolveSheetPhase({
     caseKind: row.case_kind,
-    status: row.status,
+    status: workflowStatus,
     attachments: storedAttachments,
   })
+  const normalizedAttachments = normalizeCaseAttachments(storedAttachments, createdAt)
   return {
     caseId: row.case_id,
     teamId: row.team_id,
@@ -761,8 +818,8 @@ function serializeCaseRow (row) {
     caseKind: row.case_kind || '',
     system: row.system || '',
     totals: row.totals || { materials: 0, montage: 0, demontage: 0, total: 0 },
-    status: row.status || 'kladde',
-    phase: workflowPhase,
+    status: workflowStatus || CASE_STATUS.DRAFT,
+    phase: storedPhase,
     sheetPhase,
     createdAt,
     updatedAt,
@@ -775,7 +832,7 @@ function serializeCaseRow (row) {
     deletedAt: row.deleted_at ? new Date(row.deleted_at).toISOString() : null,
     deletedBy: row.deleted_by || null,
     attachments: {
-      ...storedAttachments,
+      ...normalizedAttachments,
       json: jsonAttachment,
       pdf: storedAttachments.pdf || null,
     },
@@ -803,6 +860,23 @@ async function writeAuditLog ({ teamId, actorSub, action, meta }) {
     `INSERT INTO audit_log (id, team_id, actor_sub, action, meta, created_at)
      VALUES ($1, $2, $3, $4, $5::jsonb, NOW())`,
     [crypto.randomUUID(), teamId, actorSub || null, action, JSON.stringify(meta || {})]
+  )
+}
+
+function buildAuditActor(user) {
+  return {
+    sub: user?.id || '',
+    email: user?.email || '',
+    roles: Array.isArray(user?.roles) ? user.roles : [],
+  }
+}
+
+async function writeCaseAuditLog ({ teamId, caseId, actor, action, summary }) {
+  if (!teamId || !action) return
+  await db.query(
+    `INSERT INTO team_audit (id, team_id, case_id, action, actor, summary, created_at)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6, NOW())`,
+    [crypto.randomUUID(), teamId, caseId || null, action, JSON.stringify(actor || {}), summary || '']
   )
 }
 
@@ -1167,22 +1241,35 @@ async function handleCaseCreate (event, teamSlug) {
   await requireDbReady(event)
   const { user, team } = await requireCaseTeamContext(event, teamSlug)
   const body = parseBody(event)
-  const explicitCaseId = isValidUuid(body.caseId) ? body.caseId : ''
-  const caseId = explicitCaseId || crypto.randomUUID()
+  const jobNumberInput = body.jobNumber || body.job_number || ''
+  const caseKindInput = body.caseKind || body.case_kind || ''
+  const jsonContentRaw = body.jsonContent || body.json_content || null
+  const jsonContentInput = typeof jsonContentRaw === 'string'
+    ? jsonContentRaw
+    : (jsonContentRaw ? JSON.stringify(jsonContentRaw) : null)
+  const systemInput = body.system || ''
+  const rawJobNumber = (jobNumberInput || '').toString().trim()
+  const normalizedJobNumber = rawJobNumber ? normalizeJobNumber(rawJobNumber) : 'UKENDT'
+  const explicitCaseId = isValidUuid(body.caseId || body.case_id) ? (body.caseId || body.case_id) : ''
+  let existing = null
+  if (explicitCaseId) {
+    existing = await getTeamCase({ teamId: team.id, caseId: explicitCaseId })
+  }
+  if (!existing && rawJobNumber) {
+    existing = await getTeamCaseByJobNumber({ teamId: team.id, jobNumber: normalizedJobNumber })
+  }
+  const caseId = existing?.case_id || explicitCaseId || crypto.randomUUID()
   let totals = body.totals || { materials: 0, montage: 0, demontage: 0, total: 0 }
-  const ifMatchUpdatedAt = parseIfMatchUpdatedAt(body.ifMatchUpdatedAt)
-  const action = resolveExportAction({ phaseHint: body.phaseHint, caseKind: body.caseKind })
-  const normalizedJobNumber = normalizeJobNumber(body.jobNumber)
-  const existing = await getTeamCase({ teamId: team.id, caseId })
+  const ifMatchUpdatedAt = parseIfMatchUpdatedAt(body.ifMatchUpdatedAt || body.if_match_updated_at)
+  const action = resolveExportAction({ phaseHint: body.phaseHint || body.phase_hint, caseKind: caseKindInput })
   if (ifMatchUpdatedAt && existing?.updated_at) {
     const currentUpdatedAt = new Date(existing.updated_at)
     if (currentUpdatedAt.toISOString() !== ifMatchUpdatedAt.toISOString()) {
-      throw createError('Sagen er ændret af en anden. Opdater og prøv igen.', 409)
+      return jsonResponse(409, { error: 'Sagen er ændret af en anden. Opdater og prøv igen.', case: serializeCaseRow(existing) })
     }
   }
-  const isCreator = !existing || existing.created_by === user.id
-  const currentStatus = existing?.status || CASE_STATUS.DRAFT
-  const sheetPhase = normalizePhaseHint(body.caseKind || body.phaseHint || body.phase) || 'montage'
+  const currentStatus = normalizeCaseStatus(existing?.status || CASE_STATUS.DRAFT)
+  const sheetPhase = normalizePhaseHint(caseKindInput || body.phaseHint || body.phase_hint || body.phase) || CASE_PHASE.MONTAGE
   if (!existing && action === 'EXPORT_DEMONTAGE') {
     // Allow demontage exports to create their own case entries.
   }
@@ -1190,27 +1277,37 @@ async function handleCaseCreate (event, teamSlug) {
     action,
     currentStatus,
     sheetPhase,
-    isCreator,
   })
-  const workflowPhase = resolveWorkflowPhase({
+  const resolvedPhase = resolveCasePhase({
     action,
     nextStatus,
+    sheetPhase,
     currentPhase: existing?.phase,
   })
 
   const prevAttachments = (existing && typeof existing.attachments === 'object' && existing.attachments) ? existing.attachments : {}
+  const incomingAttachments = body.attachments && typeof body.attachments === 'object' ? body.attachments : {}
   const attachments = { ...prevAttachments }
   if (action === 'EXPORT_MONTAGE') {
-    attachments.montage = body.jsonContent || null
+    const payload = jsonContentInput ?? incomingAttachments?.montage?.payload ?? incomingAttachments?.montage ?? null
+    if (payload !== null) attachments.montage = buildAttachmentRecord(payload)
   }
   if (action === 'EXPORT_DEMONTAGE') {
-    attachments.demontage = body.jsonContent || null
+    const payload = jsonContentInput ?? incomingAttachments?.demontage?.payload ?? incomingAttachments?.demontage ?? null
+    if (payload !== null) attachments.demontage = buildAttachmentRecord(payload)
     if (!attachments.montage && existing?.json_content) {
-      attachments.montage = existing.json_content
+      attachments.montage = buildAttachmentRecord(existing.json_content)
     }
   }
+  Object.keys(incomingAttachments || {}).forEach(key => {
+    if (key === 'montage' || key === 'demontage' || key === 'receipt') return
+    attachments[key] = incomingAttachments[key]
+  })
   if (nextStatus === CASE_STATUS.DONE) {
-    const receipt = computeReceipt({ montageSheet: attachments.montage, demontageSheet: attachments.demontage })
+    const receipt = computeReceipt({
+      montageSheet: resolveAttachmentPayload(attachments.montage),
+      demontageSheet: resolveAttachmentPayload(attachments.demontage),
+    })
     attachments.receipt = receipt
     totals = receipt.totals
   }
@@ -1219,35 +1316,48 @@ async function handleCaseCreate (event, teamSlug) {
     caseId,
     teamId: team.id,
     jobNumber: normalizedJobNumber,
-    caseKind: body.caseKind || '',
-    system: body.system || '',
+    caseKind: caseKindInput || '',
+    system: systemInput || '',
     totals: JSON.stringify(totals),
     status: nextStatus,
-    phase: workflowPhase,
+    phase: resolvedPhase,
     attachments: JSON.stringify(attachments),
     createdBy: user.id,
     createdByEmail: user.email,
     createdByName: body.createdByName || '',
     updatedBy: user.id,
     lastEditorSub: user.id,
-    jsonContent: body.jsonContent || null,
+    jsonContent: jsonContentInput || null,
+  })
+  await writeCaseAuditLog({
+    teamId: team.id,
+    caseId: caseId,
+    actor: buildAuditActor(user),
+    action: existing ? 'case_updated' : 'case_created',
+    summary: `${existing ? 'Opdaterede' : 'Oprettede'} sag ${normalizedJobNumber}`,
   })
   return jsonResponse(200, serializeCaseRow(upserted))
 }
 
 async function handleCaseList (event, teamSlug) {
   await requireDbReady(event)
-  const { team } = await requireCaseTeamContext(event, teamSlug)
+  const { team, user } = await requireCaseTeamContext(event, teamSlug)
   const query = event.queryStringParameters || {}
   const limit = clampCasesLimit(query.limit)
   const since = parseSinceParam(query.since)
   const sinceId = String(query.sinceId || '').trim()
-  const status = String(query.status || '').trim()
-  const phase = String(query.phase || '').trim()
+  const rawStatus = String(query.status || '').trim()
+  const status = rawStatus ? normalizeCaseStatus(rawStatus) : ''
+  const rawPhase = String(query.phase || '').trim()
+  const phase = rawPhase ? normalizeCasePhase(rawPhase) : ''
   const search = String(query.q || '').trim()
   const from = parseDateKey(query.from)
   const to = parseDateKey(query.to)
   const cursor = decodeCursor(query.cursor)
+  const includeDeleted = parseBooleanParam(query.includeDeleted) || status === CASE_STATUS.DELETED
+  if (includeDeleted && !user.isPrivileged) {
+    return jsonResponse(403, { error: 'Kun admin kan se slettede sager.' })
+  }
   if (since) {
     const sinceIso = since.toISOString()
     const delta = await listTeamCasesDelta({
@@ -1258,14 +1368,13 @@ async function handleCaseList (event, teamSlug) {
     })
     const rows = delta.rows || []
     const items = rows.map(serializeCaseDeltaRow)
-    const lastRow = rows[rows.length - 1]
-    const maxUpdatedAt = lastRow?.last_updated_at
-      ? new Date(lastRow.last_updated_at).toISOString()
-      : sinceIso
+    const cursorPayload = delta.cursor || null
     return jsonResponse(200, {
       mode: 'delta',
       serverNow: new Date().toISOString(),
-      maxUpdatedAt,
+      cursor: cursorPayload,
+      deleted: delta.deleted || [],
+      data: items,
       items,
     })
   }
@@ -1278,10 +1387,18 @@ async function handleCaseList (event, teamSlug) {
     search,
     from,
     to,
+    includeDeleted,
   })
   const items = page.rows.map(serializeCaseRow)
   const nextCursor = page.nextCursor
-  return jsonResponse(200, { items, nextCursor })
+  return jsonResponse(200, {
+    data: items,
+    items,
+    cursor: nextCursor,
+    nextCursor,
+    hasMore: Boolean(nextCursor),
+    total: page.total ?? items.length,
+  })
 }
 
 async function handleCaseGet (event, teamSlug, caseId) {
@@ -1301,17 +1418,24 @@ async function handleCaseDelete (event, teamSlug, caseId) {
   assertTeamIdUuid(team.id, 'handleCaseDelete')
   const result = await db.query(
     guardTeamCasesSql(
-      'SELECT created_by FROM public.team_cases WHERE team_id = $1 AND case_id = $2',
+      'SELECT created_by, job_number FROM public.team_cases WHERE team_id = $1 AND case_id = $2',
       'handleCaseDelete'
     ),
     [team.id, caseId]
   )
   const row = result.rows[0]
   if (!row) return jsonResponse(404, { error: 'Sag findes ikke.' })
-  if (row.created_by !== user.id && !user.isPrivileged) {
-    return jsonResponse(403, { error: 'Kun opretter eller admin kan slette sagen.' })
+  if (!user.isPrivileged) {
+    return jsonResponse(403, { error: 'Kun admin kan slette sagen.' })
   }
   const updated = await softDeleteTeamCase({ teamId: team.id, caseId, deletedBy: user.id })
+  await writeCaseAuditLog({
+    teamId: team.id,
+    caseId,
+    actor: buildAuditActor(user),
+    action: 'case_deleted',
+    summary: `Soft-deletede sag ${row.job_number || caseId}`,
+  })
   return jsonResponse(200, serializeCaseRow(updated))
 }
 
@@ -1319,14 +1443,18 @@ async function handleCaseStatus (event, teamSlug, caseId) {
   await requireDbReady(event)
   const { user, team } = await requireCaseTeamContext(event, teamSlug)
   const body = parseBody(event)
-  const requested = (body?.status || '').toString().trim().toLowerCase()
+  const requestedRaw = (body?.status || '').toString().trim()
+  if (!requestedRaw) {
+    return jsonResponse(400, { error: 'Status er påkrævet.' })
+  }
+  const requested = normalizeCaseStatus(requestedRaw)
   if (requested === CASE_STATUS.APPROVED) {
+    if (!user.isPrivileged) {
+      return jsonResponse(403, { error: 'Kun admin kan godkende sager.' })
+    }
     return handleCaseApprove(event, teamSlug, caseId)
   }
-  if (![CASE_STATUS.DEMONTAGE, CASE_STATUS.DONE].includes(requested)) {
-    return jsonResponse(400, { error: 'Ugyldig statusændring.' })
-  }
-  const ifMatchUpdatedAt = parseIfMatchUpdatedAt(body.ifMatchUpdatedAt)
+  const ifMatchUpdatedAt = parseIfMatchUpdatedAt(body.ifMatchUpdatedAt || body.if_match_updated_at)
   const row = await getTeamCase({ teamId: team.id, caseId })
   if (!row) return jsonResponse(404, { error: 'Sag findes ikke.' })
   if (ifMatchUpdatedAt && row.updated_at) {
@@ -1335,8 +1463,31 @@ async function handleCaseStatus (event, teamSlug, caseId) {
       return jsonResponse(409, { error: 'Sagen er ændret af en anden. Opdater og prøv igen.', case: serializeCaseRow(row) })
     }
   }
-  const currentStatus = row.status || CASE_STATUS.DRAFT
+  if (requested === CASE_STATUS.DELETED) {
+    if (!user.isPrivileged) {
+      return jsonResponse(403, { error: 'Kun admin kan slette sager.' })
+    }
+    const updated = await softDeleteTeamCase({ teamId: team.id, caseId, deletedBy: user.id })
+    await writeCaseAuditLog({
+      teamId: team.id,
+      caseId,
+      actor: buildAuditActor(user),
+      action: 'case_deleted',
+      summary: `Soft-deletede sag ${row.job_number || caseId}`,
+    })
+    return jsonResponse(200, serializeCaseRow(updated))
+  }
+  if (requested === CASE_STATUS.DRAFT && !user.isPrivileged) {
+    return jsonResponse(403, { error: 'Kun admin kan nulstille sager.' })
+  }
+  if (![CASE_STATUS.DRAFT, CASE_STATUS.DEMONTAGE, CASE_STATUS.DONE].includes(requested)) {
+    return jsonResponse(400, { error: 'Ugyldig statusændring.' })
+  }
+  const currentStatus = normalizeCaseStatus(row.status || CASE_STATUS.DRAFT)
   let nextStatus = currentStatus
+  if (requested === CASE_STATUS.DRAFT) {
+    nextStatus = CASE_STATUS.DRAFT
+  }
   if (requested === CASE_STATUS.DEMONTAGE) {
     if (currentStatus === CASE_STATUS.DEMONTAGE) {
       return jsonResponse(200, serializeCaseRow(row))
@@ -1359,21 +1510,42 @@ async function handleCaseStatus (event, teamSlug, caseId) {
       return jsonResponse(409, { error: 'Sagen kan ikke afsluttes endnu.', case: serializeCaseRow(row) })
     }
   }
-  const workflowPhase = resolveWorkflowPhase({
+  const phaseHint = normalizeCasePhase(body?.phase || body?.phase_hint || body?.phaseHint, row.phase || row.case_kind || '')
+  const resolvedPhase = resolveCasePhase({
     action: requested === CASE_STATUS.DONE ? 'EXPORT_DEMONTAGE' : 'EXPORT_MONTAGE',
     nextStatus,
+    sheetPhase: phaseHint,
     currentPhase: row.phase,
   })
+  const attachments = row.attachments && typeof row.attachments === 'object' ? { ...row.attachments } : {}
+  let totals = row.totals || { materials: 0, montage: 0, demontage: 0, total: 0 }
+  if (nextStatus === CASE_STATUS.DONE) {
+    const receipt = computeReceipt({
+      montageSheet: resolveAttachmentPayload(attachments.montage),
+      demontageSheet: resolveAttachmentPayload(attachments.demontage),
+    })
+    attachments.receipt = receipt
+    totals = receipt.totals
+  }
   assertTeamIdUuid(team.id, 'handleCaseStatus')
   await db.query(
     guardTeamCasesSql(
       `UPDATE public.team_cases
-       SET status = $1, phase = $2, updated_at = NOW(), last_updated_at = NOW(), updated_by = $3, last_editor_sub = $3
-       WHERE team_id = $4 AND case_id = $5`,
+       SET status = $1, phase = $2, totals = $3::jsonb, attachments = $4::jsonb,
+           deleted_at = NULL, deleted_by = NULL,
+           updated_at = NOW(), last_updated_at = NOW(), updated_by = $5, last_editor_sub = $5
+       WHERE team_id = $6 AND case_id = $7`,
       'handleCaseStatus'
     ),
-    [nextStatus, workflowPhase, user.id, team.id, caseId]
+    [nextStatus, resolvedPhase, JSON.stringify(totals), JSON.stringify(attachments), user.id, team.id, caseId]
   )
+  await writeCaseAuditLog({
+    teamId: team.id,
+    caseId,
+    actor: buildAuditActor(user),
+    action: 'case_status_changed',
+    summary: `Status ændret til ${nextStatus} for ${row.job_number || caseId}`,
+  })
   const updated = await getTeamCase({ teamId: team.id, caseId })
   return jsonResponse(200, serializeCaseRow(updated))
 }
@@ -1381,44 +1553,51 @@ async function handleCaseStatus (event, teamSlug, caseId) {
 async function handleCaseApprove (event, teamSlug, caseId) {
   await requireDbReady(event)
   const { user, team } = await requireCaseTeamContext(event, teamSlug)
+  if (!user.isPrivileged) {
+    return jsonResponse(403, { error: 'Kun admin kan godkende sager.' })
+  }
   const body = parseBody(event)
-  const ifMatchUpdatedAt = parseIfMatchUpdatedAt(body.ifMatchUpdatedAt)
+  const ifMatchUpdatedAt = parseIfMatchUpdatedAt(body.ifMatchUpdatedAt || body.if_match_updated_at)
   const row = await getTeamCase({ teamId: team.id, caseId })
   if (!row) return jsonResponse(404, { error: 'Sag findes ikke.' })
   if (ifMatchUpdatedAt && row.updated_at) {
     const currentUpdatedAt = new Date(row.updated_at)
     if (currentUpdatedAt.toISOString() !== ifMatchUpdatedAt.toISOString()) {
-      throw createError('Sagen er ændret af en anden. Opdater og prøv igen.', 409)
+      return jsonResponse(409, { error: 'Sagen er ændret af en anden. Opdater og prøv igen.', case: serializeCaseRow(row) })
     }
   }
 
-  const currentStatus = row.status || CASE_STATUS.DRAFT
+  const currentStatus = normalizeCaseStatus(row.status || CASE_STATUS.DRAFT)
   const sheetPhase = resolveSheetPhase({ caseKind: row.case_kind, status: currentStatus, attachments: row.attachments })
-  const isCreator = row.created_by === user.id
   const { status: nextStatus } = resolveCaseTransition({
     action: 'APPROVE',
     currentStatus,
     sheetPhase,
-    isCreator,
   })
-  const workflowPhase = resolveWorkflowPhase({
+  const resolvedPhase = resolveCasePhase({
     action: 'APPROVE',
     nextStatus,
+    sheetPhase,
     currentPhase: row.phase,
   })
 
   const storedAttachments = row.attachments && typeof row.attachments === 'object' ? row.attachments : {}
   const attachments = { ...storedAttachments }
   let totals = row.totals || { materials: 0, montage: 0, demontage: 0, total: 0 }
-  const approvingMontage = [CASE_STATUS.DRAFT, CASE_STATUS.READY].includes(currentStatus) && nextStatus === CASE_STATUS.APPROVED
+  const approvingMontage = currentStatus === CASE_STATUS.DRAFT && nextStatus === CASE_STATUS.APPROVED
   if (approvingMontage && !attachments.montage) {
-    attachments.montage = row.json_content || null
+    if (row.json_content) {
+      attachments.montage = buildAttachmentRecord(row.json_content)
+    }
   }
   if (nextStatus === CASE_STATUS.DONE) {
     if (!attachments.montage && row.json_content) {
-      attachments.montage = row.json_content
+      attachments.montage = buildAttachmentRecord(row.json_content)
     }
-    const receipt = computeReceipt({ montageSheet: attachments.montage, demontageSheet: attachments.demontage })
+    const receipt = computeReceipt({
+      montageSheet: resolveAttachmentPayload(attachments.montage),
+      demontageSheet: resolveAttachmentPayload(attachments.demontage),
+    })
     attachments.receipt = receipt
     totals = receipt.totals
   }
@@ -1431,10 +1610,51 @@ async function handleCaseApprove (event, teamSlug, caseId) {
        WHERE team_id = $6 AND case_id = $7`,
       'handleCaseApprove'
     ),
-    [nextStatus, workflowPhase, JSON.stringify(totals), JSON.stringify(attachments), user.id, team.id, caseId]
+    [nextStatus, resolvedPhase, JSON.stringify(totals), JSON.stringify(attachments), user.id, team.id, caseId]
   )
+  await writeCaseAuditLog({
+    teamId: team.id,
+    caseId,
+    actor: buildAuditActor(user),
+    action: nextStatus === CASE_STATUS.DONE ? 'case_completed' : 'case_approved',
+    summary: `${nextStatus === CASE_STATUS.DONE ? 'Afsluttede' : 'Godkendte'} sag ${row.job_number || caseId}`,
+  })
   const updated = await getTeamCase({ teamId: team.id, caseId })
   return jsonResponse(200, serializeCaseRow(updated))
+}
+
+async function handleAdminPurge (event, teamSlug) {
+  await requireDbReady(event)
+  const { user, team } = await requireCaseTeamContext(event, teamSlug, { requireAdmin: true })
+  assertTeamIdUuid(team.id, 'handleAdminPurge')
+  const result = await db.withTransaction(async (client) => {
+    const countResult = await client.query(
+      guardTeamCasesSql(
+        `SELECT case_id
+         FROM public.team_cases
+         WHERE team_id = $1 AND (status = $2 OR deleted_at IS NOT NULL)`,
+        'handleAdminPurgeCount'
+      ),
+      [team.id, CASE_STATUS.DELETED]
+    )
+    const deleteResult = await client.query(
+      guardTeamCasesSql(
+        `DELETE FROM public.team_cases
+         WHERE team_id = $1 AND (status = $2 OR deleted_at IS NOT NULL)`,
+        'handleAdminPurgeDelete'
+      ),
+      [team.id, CASE_STATUS.DELETED]
+    )
+    return { deleted: deleteResult.rowCount || 0, total: countResult.rowCount || 0 }
+  })
+  await writeCaseAuditLog({
+    teamId: team.id,
+    caseId: null,
+    actor: buildAuditActor(user),
+    action: 'case_purged',
+    summary: `Purge fjernede ${result.deleted} slettede sager`,
+  })
+  return jsonResponse(200, { deleted: result.deleted, total: result.total })
 }
 
 async function handleBackupExport (event, teamSlug) {
@@ -1506,9 +1726,9 @@ async function handleBackupImport (event, teamSlug) {
     await db.query(
       guardTeamCasesSql(
         `INSERT INTO public.team_cases
-          (case_id, team_id, job_number, case_kind, system, totals, status, phase, created_at, updated_at, last_updated_at,
+          (case_id, team_id, job_number, case_kind, system, totals, status, phase, attachments, created_at, updated_at, last_updated_at,
            created_by, created_by_email, created_by_name, updated_by, last_editor_sub, json_content, deleted_at, deleted_by)
-         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9::jsonb, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
          ON CONFLICT (case_id) DO UPDATE SET
            job_number = EXCLUDED.job_number,
            case_kind = EXCLUDED.case_kind,
@@ -1516,6 +1736,7 @@ async function handleBackupImport (event, teamSlug) {
            totals = EXCLUDED.totals,
            status = EXCLUDED.status,
            phase = EXCLUDED.phase,
+           attachments = EXCLUDED.attachments,
            updated_at = EXCLUDED.updated_at,
            last_updated_at = EXCLUDED.last_updated_at,
            updated_by = EXCLUDED.updated_by,
@@ -1532,8 +1753,9 @@ async function handleBackupImport (event, teamSlug) {
         entry.caseKind || '',
         entry.system || '',
         JSON.stringify(entry.totals || { materials: 0, montage: 0, demontage: 0, total: 0 }),
-        entry.status || 'kladde',
-        entry.phase || null,
+        normalizeCaseStatus(entry.status || CASE_STATUS.DRAFT),
+        normalizeStoredPhase(entry.phase || entry.sheetPhase || entry.caseKind || '', entry.status || CASE_STATUS.DRAFT),
+        JSON.stringify(entry.attachments || {}),
         entry.createdAt ? new Date(entry.createdAt) : new Date(),
         entry.updatedAt ? new Date(entry.updatedAt) : new Date(),
         entry.lastUpdatedAt ? new Date(entry.lastUpdatedAt) : new Date(),
@@ -1628,6 +1850,9 @@ export async function handler (event) {
 
     const caseApproveMatch = path.match(/^\/teams\/([^/]+)\/cases\/([^/]+)\/approve$/)
     if (caseApproveMatch && method === 'POST') return withTiming(await handleCaseApprove(event, caseApproveMatch[1], caseApproveMatch[2]))
+
+    const adminPurgeMatch = path.match(/^\/admin\/teams\/([^/]+)\/purge$/)
+    if (adminPurgeMatch && method === 'POST') return withTiming(await handleAdminPurge(event, adminPurgeMatch[1]))
 
     const backupMatch = path.match(/^\/teams\/([^/]+)\/backup$/)
     if (backupMatch && method === 'GET') return withTiming(await handleBackupExport(event, backupMatch[1]))

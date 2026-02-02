@@ -27,12 +27,13 @@ const SHARED_CASE_CONTEXT_KEY = 'cssmate:shared-case:context:v1'
 
 const CASE_ID_NAMESPACE = 'cssmate:shared-case'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const WORKFLOW_PHASE = {
-  DRAFT: 'draft',
-  READY_FOR_DEMONTAGE: 'ready_for_demontage',
-  COMPLETED: 'completed',
+const WORKFLOW_STATUS = {
+  DRAFT: 'kladde',
+  APPROVED: 'godkendt',
+  DEMONTAGE: 'demontage_i_gang',
+  DONE: 'afsluttet',
+  DELETED: 'deleted',
 }
-const WORKFLOW_PHASE_VALUES = new Set(Object.values(WORKFLOW_PHASE))
 
 class PermissionDeniedError extends Error {
   constructor(message) {
@@ -258,14 +259,26 @@ function normalizePhase(value) {
   return 'montage'
 }
 
-function normalizeWorkflowPhase(value, status = '') {
+function normalizeStatusValue(value) {
   const normalized = (value || '').toString().trim().toLowerCase()
-  if (WORKFLOW_PHASE_VALUES.has(normalized)) return normalized
-  const statusValue = (status || '').toString().trim().toLowerCase()
-  if (['afsluttet', 'done', 'completed'].includes(statusValue)) return WORKFLOW_PHASE.COMPLETED
-  if (['godkendt', 'demontage_i_gang', 'klar_til_demontage', 'ready'].includes(statusValue)) return WORKFLOW_PHASE.READY_FOR_DEMONTAGE
-  if (['kladde', 'klar_til_deling', 'klar', 'draft'].includes(statusValue)) return WORKFLOW_PHASE.DRAFT
-  return WORKFLOW_PHASE.DRAFT
+  if (!normalized) return ''
+  if (normalized === 'draft') return WORKFLOW_STATUS.DRAFT
+  if (normalized === 'ready_for_demontage') return WORKFLOW_STATUS.APPROVED
+  if (normalized === 'completed') return WORKFLOW_STATUS.DONE
+  if (normalized === 'klar_til_deling' || normalized === 'klar') return WORKFLOW_STATUS.DRAFT
+  if (normalized === 'klar_til_demontage' || normalized === 'ready') return WORKFLOW_STATUS.APPROVED
+  return normalized
+}
+
+function normalizeStoredPhase(value, status = '') {
+  const normalized = (value || '').toString().trim().toLowerCase()
+  if (normalized === 'demontage') return 'demontage'
+  if (normalized === 'montage') return 'montage'
+  if (normalized === 'draft' || normalized === 'ready_for_demontage') return 'montage'
+  if (normalized === 'completed') return 'demontage'
+  const statusValue = normalizeStatusValue(status)
+  if ([WORKFLOW_STATUS.DEMONTAGE, WORKFLOW_STATUS.DONE].includes(statusValue)) return 'demontage'
+  return 'montage'
 }
 
 function mapTeamCaseRow(row) {
@@ -273,18 +286,18 @@ function mapTeamCaseRow(row) {
   const caseId = row.caseId || row.case_id || row.id || ''
   if (!caseId) return null
   const teamId = row.teamId || row.team_id || row.team_slug || row.team || ''
-  const status = row.status || ''
-  const workflowPhase = normalizeWorkflowPhase(row.phase || row.workflowPhase || row.workflow_phase, status)
+  const status = normalizeStatusValue(row.status || '')
   const caseKind = row.caseKind || row.case_kind || ''
-  const sheetPhase = normalizePhase(row.sheetPhase || row.phaseHint || caseKind)
+  const storedPhase = normalizeStoredPhase(row.phase || row.sheetPhase || row.phaseHint || caseKind, status)
+  const sheetPhase = normalizePhase(row.sheetPhase || row.phaseHint || storedPhase || caseKind)
   return {
     ...row,
     id: caseId,
     caseId,
     teamId,
     caseKind,
-    phase: workflowPhase,
-    workflowPhase,
+    status: status || row.status || '',
+    phase: storedPhase,
     sheetPhase,
   }
 }
@@ -683,33 +696,40 @@ function encodeCursorPayload(cursor) {
 
 function normalizeCasesPage(payload) {
   if (Array.isArray(payload)) {
-    return { items: payload.map(mapTeamCaseRow).filter(Boolean), nextCursor: null }
+    return { items: payload.map(mapTeamCaseRow).filter(Boolean), nextCursor: null, hasMore: false, total: null }
+  }
+  if (payload && Array.isArray(payload.data)) {
+    return {
+      items: payload.data.map(mapTeamCaseRow).filter(Boolean),
+      nextCursor: payload.cursor || null,
+      hasMore: Boolean(payload.hasMore),
+      total: Number.isFinite(payload.total) ? payload.total : null,
+    }
   }
   if (payload && Array.isArray(payload.items)) {
-    return { items: payload.items.map(mapTeamCaseRow).filter(Boolean), nextCursor: payload.nextCursor || null }
+    return {
+      items: payload.items.map(mapTeamCaseRow).filter(Boolean),
+      nextCursor: payload.nextCursor || payload.cursor || null,
+      hasMore: Boolean(payload.hasMore),
+      total: Number.isFinite(payload.total) ? payload.total : null,
+    }
   }
-  return { items: [], nextCursor: null }
+  return { items: [], nextCursor: null, hasMore: false, total: null }
 }
 
 function normalizeCasesDelta(payload, since = '') {
   const base = normalizeCasesPage(payload)
-  if (payload && payload.mode === 'delta') {
-    return {
-      ...base,
-      mode: 'delta',
-      serverNow: payload.serverNow || null,
-      maxUpdatedAt: payload.maxUpdatedAt || since || null,
-    }
-  }
   return {
     ...base,
     mode: payload?.mode || 'delta',
     serverNow: payload?.serverNow || null,
     maxUpdatedAt: payload?.maxUpdatedAt || since || null,
+    cursor: payload?.cursor || null,
+    deleted: Array.isArray(payload?.deleted) ? payload.deleted : [],
   }
 }
 
-export async function listSharedCasesPage(teamId, { limit = 100, cursor = null, status = '', q = '', from = '', to = '' } = {}) {
+export async function listSharedCasesPage(teamId, { limit = 100, cursor = null, status = '', q = '', from = '', to = '', includeDeleted = false } = {}) {
   const { teamId: resolvedTeamId } = await getTeamContext(teamId)
   const params = new URLSearchParams()
   if (limit) params.set('limit', String(limit))
@@ -721,6 +741,7 @@ export async function listSharedCasesPage(teamId, { limit = 100, cursor = null, 
   if (q) params.set('q', q)
   if (from) params.set('from', from)
   if (to) params.set('to', to)
+  if (includeDeleted) params.set('includeDeleted', '1')
   const query = params.toString()
   const payload = await debugRuntimeMeasure(`shared-cases list ${resolvedTeamId}`, () => apiJson(`/api/teams/${resolvedTeamId}/cases${query ? `?${query}` : ''}`))
   const normalized = normalizeCasesPage(payload)
@@ -737,7 +758,12 @@ export async function listSharedCasesDelta(teamId, { since = '', sinceId = '', l
   const query = params.toString()
   const payload = await debugRuntimeMeasure(`shared-cases delta ${resolvedTeamId}`, () => apiJson(`/api/teams/${resolvedTeamId}/cases${query ? `?${query}` : ''}`))
   const normalized = normalizeCasesDelta(payload, since)
-  debugRuntimeLog('shared-cases delta result', { teamId: resolvedTeamId, count: normalized.items.length, maxUpdatedAt: normalized.maxUpdatedAt })
+  debugRuntimeLog('shared-cases delta result', {
+    teamId: resolvedTeamId,
+    count: normalized.items.length,
+    deleted: normalized.deleted?.length || 0,
+    maxUpdatedAt: normalized.maxUpdatedAt,
+  })
   return normalized
 }
 
@@ -772,6 +798,14 @@ export async function approveSharedCase(teamId, caseId, { ifMatchUpdatedAt } = {
   return await apiJson(`/api/teams/${resolvedTeamId}/cases/${caseId}/approve`, {
     method: 'POST',
     body: JSON.stringify({ ifMatchUpdatedAt }),
+  })
+}
+
+export async function purgeSharedCases(teamId) {
+  ensureWritesAllowed('purgeSharedCases')
+  const { teamId: resolvedTeamId } = await getTeamContext(teamId, { requireAdmin: true })
+  return await apiJson(`/api/admin/teams/${resolvedTeamId}/purge`, {
+    method: 'POST',
   })
 }
 
@@ -825,6 +859,14 @@ export async function listTeamMembers(teamId) {
   return payload
 }
 
+export const getCases = listSharedCasesPage
+export const getCasesDelta = listSharedCasesDelta
+export const createOrUpdateCase = publishSharedCase
+export const updateCaseStatus = updateSharedCaseStatus
+export const approveCase = approveSharedCase
+export const deleteCase = deleteSharedCase
+export const purgeCases = purgeSharedCases
+
 export {
   PermissionDeniedError,
   MembershipMissingError,
@@ -845,6 +887,6 @@ export {
 export const __ledgerVersion = LEDGER_VERSION
 export const __test = {
   mapTeamCaseRow,
-  normalizeWorkflowPhase,
-  WORKFLOW_PHASE,
+  normalizeStatusValue,
+  WORKFLOW_STATUS,
 }
