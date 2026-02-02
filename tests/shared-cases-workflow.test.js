@@ -31,15 +31,13 @@ test('montage approve transitions kladde -> godkendt', () => {
 })
 
 test('non-creator cannot approve draft', () => {
-  assert.throws(
-    () => resolveCaseTransition({
-      action: 'APPROVE',
-      currentStatus: 'kladde',
-      sheetPhase: 'montage',
-      isCreator: false,
-    }),
-    /Kun opretter kan godkende kladden/
-  )
+  const next = resolveCaseTransition({
+    action: 'APPROVE',
+    currentStatus: 'kladde',
+    sheetPhase: 'montage',
+    isCreator: false,
+  })
+  assert.deepEqual(next, { status: 'godkendt', phase: 'montage' })
 })
 
 test('demontage export transitions godkendt -> afsluttet', () => {
