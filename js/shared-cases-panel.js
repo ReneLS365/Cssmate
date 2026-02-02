@@ -1,4 +1,4 @@
-import { listSharedCasesPage, listSharedCasesDelta, downloadCaseJson, importCasePayload, approveSharedCase, deleteSharedCase, getSharedCase, getSharedCaseAudit, formatTeamId, PermissionDeniedError, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG, setSharedCaseContext, updateSharedCaseStatus } from './shared-ledger.js';
+import { listSharedCasesPage, listSharedCasesDelta, downloadCaseJson, importCasePayload, approveSharedCase, deleteSharedCase, getSharedCase, getSharedCaseAudit, formatTeamId, PermissionDeniedError, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG, setSharedCaseContext, updateSharedCaseStatus, purgeSharedCases } from './shared-ledger.js';
 import { exportPDFBlob } from './export-pdf.js';
 import { buildExportModel } from './export-model.js';
 import { downloadBlob } from './utils/downloadBlob.js';
@@ -99,6 +99,15 @@ let pendingDeepLinkCaseId = '';
 let deepLinkHandled = false;
 let lastRenderUserId = '';
 let lastRenderOnChange = null;
+let sharedCapabilities = {
+  role: 'member',
+  canApprove: false,
+  canStartDemontage: false,
+  canComplete: false,
+  canDelete: false,
+  canPurge: false,
+  canEditDraft: false,
+};
 
 const WORKFLOW_STATUS = {
   DRAFT: 'kladde',
@@ -161,6 +170,8 @@ function getSharedCasesElements() {
     sortEl: findElementByIds('sharedSort'),
     countEl: findElementByIds('sharedCasesTotalCount'),
     lastUpdatedEl: findElementByIds('sharedCasesLastUpdated'),
+    adminToolsEl: findElementByIds('sharedAdminTools'),
+    purgeBtn: findElementByIds('sharedCasesPurgeBtn'),
   };
 }
 
@@ -433,6 +444,20 @@ function describePermissionError (error, attemptedTeamId) {
   return '';
 }
 
+function isAccessDeniedError(error) {
+  const status = error?.status;
+  if (status === 401 || status === 403) return true;
+  if (error?.code === 'permission-denied' || error instanceof PermissionDeniedError) return true;
+  const message = (error?.message || '').toString().toLowerCase();
+  return message.includes('forbidden') || message.includes('unauthorized');
+}
+
+function getActionErrorMessage(error, fallbackMessage, { teamContext } = {}) {
+  const permissionMessage = describePermissionError(error, teamContext);
+  if (isAccessDeniedError(error)) return 'Du har ikke adgang til denne handling.';
+  return permissionMessage || error?.message || fallbackMessage;
+}
+
 function setInlineError (message) {
   if (!errorBanner) return;
   if (message) {
@@ -476,28 +501,76 @@ function updateStatusCard() {
   if (statusEmail) statusEmail.textContent = loggedIn ? (sessionState?.user?.email || '–') : '–';
 }
 
+function normalizeRole(value) {
+  const normalized = (value || '').toString().trim().toLowerCase();
+  if (normalized === 'owner') return 'owner';
+  if (normalized === 'admin') return 'admin';
+  if (normalized === 'member') return 'member';
+  return '';
+}
+
+function resolveRoleFromClaims(user) {
+  const roles = Array.isArray(user?.roles) ? user.roles : [];
+  if (roles.includes('sscaff_owner')) return 'owner';
+  if (roles.includes('sscaff_admin')) return 'admin';
+  const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
+  if (permissions.includes('admin:app') || permissions.includes('admin:all')) return 'admin';
+  return '';
+}
+
+function buildCapabilities(state = sessionState) {
+  const resolvedRole = normalizeRole(membershipRole)
+    || normalizeRole(state?.role)
+    || normalizeRole(state?.member?.role)
+    || resolveRoleFromClaims(state?.user);
+  const role = resolvedRole || 'member';
+  const isAdmin = role === 'admin' || role === 'owner';
+  return {
+    role,
+    canApprove: isAdmin,
+    canStartDemontage: isAdmin || role === 'member',
+    canComplete: isAdmin || role === 'member',
+    canDelete: isAdmin,
+    canPurge: isAdmin,
+    canEditDraft: isAdmin,
+  };
+}
+
+function setCapabilities(state) {
+  sharedCapabilities = buildCapabilities(state);
+}
+
+function getCapabilities() {
+  return sharedCapabilities;
+}
+
 function updateAdminControls() {
   if (typeof document === 'undefined') return;
-  const { focusEl } = getSharedCasesElements();
+  const { focusEl, adminToolsEl } = getSharedCasesElements();
   if (!focusEl) return;
+  const canViewDeleted = isAdminUser();
   const deletedOption = focusEl.querySelector('option[value="deleted"]');
-  const adminVisible = isAdminUser();
   if (deletedOption) {
-    deletedOption.hidden = !adminVisible;
+    deletedOption.hidden = !canViewDeleted;
   }
-  if (!adminVisible && focusEl.value === WORKFLOW_STATUS.DELETED) {
+  if (!canViewDeleted && focusEl.value === WORKFLOW_STATUS.DELETED) {
     focusEl.value = '';
+  }
+  if (adminToolsEl) {
+    adminToolsEl.hidden = !getCapabilities().canPurge;
   }
 }
 
 function isAdminUser () {
-  if (membershipRole === 'admin' || membershipRole === 'owner') return true;
-  return sessionState?.role === 'admin' || sessionState?.role === 'owner';
+  return sharedCapabilities.role === 'admin' || sharedCapabilities.role === 'owner';
+}
+
+function shouldIncludeDeleted(filters) {
+  return isAdminUser() && normalizeStatusValue(filters?.statusFocus) === WORKFLOW_STATUS.DELETED;
 }
 
 function handleActionError (error, fallbackMessage, { teamContext } = {}) {
-  const permissionMessage = describePermissionError(error, teamContext);
-  const message = permissionMessage || error?.message || fallbackMessage;
+  const message = getActionErrorMessage(error, fallbackMessage, { teamContext });
   setInlineError(message);
 }
 
@@ -665,13 +738,13 @@ function savePendingActions(teamIdValue, entries) {
   }
 }
 
-function normalizeStoredStatusFilter(value) {
+function normalizeStoredStatusFilter(value, { allowDeleted = false } = {}) {
   if (!value) return '';
   if (value === 'draft') return WORKFLOW_STATUS.DRAFT;
   if (value === 'ready_for_demontage') return WORKFLOW_STATUS.APPROVED;
   if (value === 'completed') return WORKFLOW_STATUS.DONE;
   if (value === WORKFLOW_STATUS.DELETED || value === 'deleted') {
-    return isAdminUser() ? WORKFLOW_STATUS.DELETED : '';
+    return allowDeleted ? WORKFLOW_STATUS.DELETED : '';
   }
   return value;
 }
@@ -687,7 +760,9 @@ function setRefreshHandler(fn) {
 function applyStoredFilters() {
   const state = loadUiState();
   const { searchEl, fromEl, toEl, focusEl, kindEl, sortEl } = getSharedCasesElements();
-  const statusFocus = normalizeStoredStatusFilter(state.statusFocus || state.status || '');
+  const statusFocus = normalizeStoredStatusFilter(state.statusFocus || state.status || '', {
+    allowDeleted: isAdminUser(),
+  });
   if (searchEl && typeof state.search === 'string') searchEl.value = state.search;
   if (fromEl && typeof state.dateFrom === 'string') fromEl.value = state.dateFrom;
   if (toEl && typeof state.dateTo === 'string') toEl.value = state.dateTo;
@@ -913,6 +988,108 @@ function resolveEntryBucket(entry) {
   return deriveBoardStatus(entry);
 }
 
+function normalizeUserIdentifier(user = {}) {
+  return {
+    uid: (user.uid || user.sub || user.id || '').toString(),
+    email: (user.email || '').toString().trim().toLowerCase(),
+  };
+}
+
+function isCreator(entry, user) {
+  if (!entry || !user) return false;
+  const { uid, email } = normalizeUserIdentifier(user);
+  const createdBy = (entry.createdBy || entry.created_by || '').toString();
+  const createdByEmail = (entry.createdByEmail || entry.created_by_email || '').toString().trim().toLowerCase();
+  return (uid && createdBy && uid === createdBy) || (email && createdByEmail && email === createdByEmail);
+}
+
+function isLastEditor(entry, user) {
+  if (!entry || !user) return false;
+  const { uid } = normalizeUserIdentifier(user);
+  const lastEditor = (entry.lastEditorSub || entry.last_editor_sub || entry.updatedBy || entry.updated_by || '').toString();
+  return Boolean(uid && lastEditor && uid === lastEditor);
+}
+
+function getEntryActionItems(entry, onChange) {
+  const caps = getCapabilities();
+  const statusBucket = deriveBoardStatus(entry);
+  const user = sessionState?.user || null;
+  const creator = isCreator(entry, user);
+  const lastEditor = isLastEditor(entry, user);
+  const actions = [];
+  const addAction = (label, { enabled, reason, isDanger = false, onClick = null } = {}) => {
+    actions.push({
+      label,
+      enabled: Boolean(enabled),
+      reason: enabled ? '' : (reason || 'Kræver admin'),
+      isDanger,
+      onClick,
+    });
+  };
+  const addDeleteAction = () => {
+    if (caps.canDelete) {
+      addAction('Slet sag', {
+        enabled: true,
+        isDanger: true,
+        onClick: async () => handleSoftDelete(entry, onChange),
+      });
+      return;
+    }
+    const reason = creator
+      ? 'Kun admin kan slette, selv opretter.'
+      : 'Kræver admin';
+    addAction('Slet sag', { enabled: false, reason, isDanger: true });
+  };
+
+  if (statusBucket === WORKFLOW_STATUS.DRAFT) {
+    if (caps.canApprove) {
+      addAction('Godkend', {
+        enabled: true,
+        onClick: async () => handleApproveAction(entry, onChange, { showSummary: false }),
+      });
+    } else {
+      addAction('Godkend', { enabled: false, reason: 'Kræver admin' });
+    }
+    addDeleteAction();
+  } else if (statusBucket === WORKFLOW_STATUS.APPROVED) {
+    if (caps.canStartDemontage) {
+      addAction('Sæt til demontage i gang', {
+        enabled: true,
+        onClick: async () => handleDemontageAction(entry, onChange, { autoImport: false }),
+      });
+    } else {
+      addAction('Sæt til demontage i gang', { enabled: false, reason: 'Kræver admin' });
+    }
+    addDeleteAction();
+  } else if (statusBucket === WORKFLOW_STATUS.DEMONTAGE) {
+    if (caps.canComplete) {
+      addAction('Afslut', {
+        enabled: true,
+        onClick: async () => handleFinishDemontageAction(entry, onChange),
+      });
+    } else {
+      addAction('Afslut', { enabled: false, reason: 'Kræver admin' });
+    }
+    addDeleteAction();
+  } else if (statusBucket === WORKFLOW_STATUS.DONE) {
+    if (caps.canDelete) {
+      addAction('Slet sag', {
+        enabled: true,
+        isDanger: true,
+        onClick: async () => handleSoftDelete(entry, onChange),
+      });
+    } else {
+      addAction('Ingen handlinger', { enabled: false, reason: 'Sagen er afsluttet.' });
+    }
+  } else if (statusBucket === WORKFLOW_STATUS.DELETED) {
+    addAction('Sagen er slettet', { enabled: false, reason: 'Afventer admin purge.' });
+  } else if (!lastEditor) {
+    addAction('Ingen handlinger', { enabled: false, reason: 'Ingen tilladte handlinger.' });
+  }
+
+  return actions;
+}
+
 function computeBucketCounts(entries, { includeDeleted = false } = {}) {
   const counts = new Map();
   getBoardColumns({ includeDeleted }).forEach(column => {
@@ -1130,6 +1307,7 @@ function bindSessionControls(onAuthenticated, onAccessReady) {
     teamId = state?.teamId ? formatTeamId(state.teamId) : '';
     displayTeamId = state?.displayTeamId || (teamId ? getDisplayTeamId(teamId) : DEFAULT_TEAM_SLUG);
     membershipRole = state?.role || '';
+    setCapabilities(state);
     membershipError = null;
     teamError = '';
     if (teamId) {
@@ -1198,7 +1376,7 @@ function getFilters() {
     search: (searchEl?.value || '').trim(),
     dateFrom: fromEl?.value || '',
     dateTo: toEl?.value || '',
-    statusFocus: normalizeStoredStatusFilter(focusEl?.value || ''),
+    statusFocus: normalizeStoredStatusFilter(focusEl?.value || '', { allowDeleted: isAdminUser() }),
     kind: kindEl?.value || '',
     sort: sortEl?.value || 'updated-desc',
   };
@@ -1592,6 +1770,81 @@ function openConfirmModal({ title, message, confirmLabel = 'OK', cancelLabel = '
   });
 }
 
+function openTypedConfirmModal({
+  title,
+  message,
+  confirmLabel = 'Slet',
+  cancelLabel = 'Annuller',
+  requiredText = 'SLET',
+}) {
+  return new Promise(resolve => {
+    if (typeof document === 'undefined') {
+      resolve(false);
+      return;
+    }
+    const overlay = document.createElement('div');
+    overlay.className = 'shared-modal';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+
+    const card = document.createElement('div');
+    card.className = 'shared-modal__card';
+
+    const heading = document.createElement('h3');
+    heading.className = 'shared-modal__title';
+    heading.textContent = title || 'Bekræft';
+
+    const bodyEl = document.createElement('div');
+    bodyEl.className = 'shared-modal__body';
+    const text = document.createElement('p');
+    text.textContent = message || 'Bekræft handlingen.';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.inputMode = 'text';
+    input.placeholder = requiredText;
+    input.autocomplete = 'off';
+    input.className = 'shared-modal__input';
+    bodyEl.appendChild(text);
+    bodyEl.appendChild(input);
+
+    const actionsEl = document.createElement('div');
+    actionsEl.className = 'shared-modal__actions';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = cancelLabel;
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.textContent = confirmLabel;
+    confirmBtn.disabled = true;
+
+    const close = (value) => {
+      overlay.remove();
+      resolve(value);
+    };
+
+    const updateState = () => {
+      const match = input.value.trim().toUpperCase() === requiredText;
+      confirmBtn.disabled = !match;
+    };
+
+    input.addEventListener('input', updateState);
+    cancelBtn.addEventListener('click', () => close(false));
+    confirmBtn.addEventListener('click', () => close(true));
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) close(false);
+    });
+
+    actionsEl.appendChild(cancelBtn);
+    actionsEl.appendChild(confirmBtn);
+    card.appendChild(heading);
+    card.appendChild(bodyEl);
+    card.appendChild(actionsEl);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    input.focus();
+  });
+}
+
 function buildConflictBody(entry) {
   const wrapper = document.createElement('div');
   const meta = entry ? resolveCaseMeta(entry) : {};
@@ -1708,8 +1961,9 @@ async function handleApproveAction(entry, onChange, { showSummary = false } = {}
     if (typeof onChange === 'function') {
       onChange({ updatedCase: { ...previousEntry, __syncing: false } });
     }
+    const message = getActionErrorMessage(error, 'Kunne ikke godkende sag.', { teamContext: teamId });
     handleActionError(error, 'Kunne ikke godkende sag', { teamContext: teamId });
-    showToast(error?.message || 'Kunne ikke godkende sag.', { variant: 'error' });
+    showToast(message, { variant: 'error' });
   }
 }
 
@@ -1770,8 +2024,9 @@ async function handleDemontageAction(entry, onChange, { autoImport = false } = {
     if (typeof onChange === 'function') {
       onChange({ updatedCase: { ...previousEntry, __syncing: false } });
     }
+    const message = getActionErrorMessage(error, 'Kunne ikke opdatere sag.', { teamContext: teamId });
     handleActionError(error, 'Kunne ikke opdatere sag', { teamContext: teamId });
-    showToast(error?.message || 'Kunne ikke opdatere sag.', { variant: 'error' });
+    showToast(message, { variant: 'error' });
   }
 }
 
@@ -1828,8 +2083,9 @@ async function handleFinishDemontageAction(entry, onChange) {
     if (typeof onChange === 'function') {
       onChange({ updatedCase: { ...previousEntry, __syncing: false } });
     }
+    const message = getActionErrorMessage(error, 'Kunne ikke afslutte demontage.', { teamContext: teamId });
     handleActionError(error, 'Kunne ikke afslutte demontage', { teamContext: teamId });
-    showToast(error?.message || 'Kunne ikke afslutte demontage.', { variant: 'error' });
+    showToast(message, { variant: 'error' });
   }
 }
 
@@ -1863,8 +2119,37 @@ async function handleSoftDelete(entry, onChange) {
         if (typeof onChange === 'function') onChange({ removeCaseId: entry.caseId });
       },
     })) return;
+    const message = getActionErrorMessage(error, 'Kunne ikke slette sag.', { teamContext: teamId });
     handleActionError(error, 'Kunne ikke slette sag', { teamContext: teamId });
-    showToast(error?.message || 'Kunne ikke slette sag.', { variant: 'error' });
+    showToast(message, { variant: 'error' });
+  }
+}
+
+async function handlePurgeDeletedCases() {
+  const caps = getCapabilities();
+  if (!caps.canPurge) {
+    showToast('Du har ikke adgang til denne handling.', { variant: 'error' });
+    return;
+  }
+  const confirmed = await openTypedConfirmModal({
+    title: 'Purge slettede sager',
+    message: 'Skriv SLET for at fjerne alle slettede sager permanent.',
+    confirmLabel: 'Purge',
+    requiredText: 'SLET',
+  });
+  if (!confirmed) return;
+  try {
+    const result = await purgeSharedCases(ensureTeamSelected());
+    await refreshCases?.({ prepend: false });
+    const deletedCount = typeof result?.deleted === 'number' ? result.deleted : null;
+    const toastLabel = deletedCount === null
+      ? 'Purge færdig.'
+      : `Purge færdig (${deletedCount} slettet).`;
+    showToast(toastLabel, { variant: 'success' });
+  } catch (error) {
+    const message = getActionErrorMessage(error, 'Kunne ikke purge slettede sager.', { teamContext: teamId });
+    handleActionError(error, 'Kunne ikke purge slettede sager', { teamContext: teamId });
+    showToast(message, { variant: 'error' });
   }
 }
 
@@ -1976,7 +2261,9 @@ function createCaseActions(entry, userId, onChange) {
     container.appendChild(receiptBtn);
   }
 
-  if (statusBucket === WORKFLOW_STATUS.DRAFT && isAdminUser()) {
+  const caps = getCapabilities();
+
+  if (statusBucket === WORKFLOW_STATUS.DRAFT && caps.canApprove) {
     const approveBtn = document.createElement('button');
     approveBtn.type = 'button';
     approveBtn.textContent = 'Godkend & del';
@@ -1991,7 +2278,7 @@ function createCaseActions(entry, userId, onChange) {
     container.appendChild(approveBtn);
   }
 
-  if (statusBucket === WORKFLOW_STATUS.APPROVED) {
+  if (statusBucket === WORKFLOW_STATUS.APPROVED && caps.canStartDemontage) {
     const demontageBtn = document.createElement('button');
     demontageBtn.type = 'button';
     demontageBtn.textContent = 'Indlæs til demontage';
@@ -2006,7 +2293,7 @@ function createCaseActions(entry, userId, onChange) {
     container.appendChild(demontageBtn);
   }
 
-  if (statusBucket === WORKFLOW_STATUS.DEMONTAGE && isAdminUser()) {
+  if (statusBucket === WORKFLOW_STATUS.DEMONTAGE && caps.canComplete) {
     const finishBtn = document.createElement('button');
     finishBtn.type = 'button';
     finishBtn.textContent = 'Godkend demontage & afslut';
@@ -2021,7 +2308,7 @@ function createCaseActions(entry, userId, onChange) {
     container.appendChild(finishBtn);
   }
 
-  if (![WORKFLOW_STATUS.DONE, WORKFLOW_STATUS.DELETED].includes(statusBucket) && isAdminUser()) {
+  if (![WORKFLOW_STATUS.DELETED].includes(statusBucket) && caps.canDelete) {
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
     deleteBtn.textContent = 'Soft delete';
@@ -2480,18 +2767,34 @@ function openCaseMenu(menu, button) {
   };
 }
 
-function addCaseMenuItem(menu, { label, onClick, isDanger = false }) {
+function addCaseMenuItem(menu, { label, onClick, isDanger = false, disabled = false, hint = '' }) {
   const item = document.createElement('button');
   item.type = 'button';
-  item.className = `case-menu__item${isDanger ? ' case-menu__item--danger' : ''}`;
-  item.textContent = label;
-  item.addEventListener('click', async (event) => {
-    event.stopPropagation();
-    closeActiveCaseMenu();
-    if (typeof onClick === 'function') {
-      await onClick();
-    }
-  });
+  item.className = `case-menu__item${isDanger ? ' case-menu__item--danger' : ''}${disabled ? ' case-menu__item--disabled' : ''}`;
+  if (disabled) {
+    item.disabled = true;
+    item.setAttribute('aria-disabled', 'true');
+  }
+  const labelEl = document.createElement('span');
+  labelEl.className = 'case-menu__label';
+  labelEl.textContent = label;
+  item.appendChild(labelEl);
+  if (hint) {
+    const hintEl = document.createElement('span');
+    hintEl.className = 'case-menu__hint';
+    hintEl.textContent = hint;
+    item.appendChild(hintEl);
+    item.title = hint;
+  }
+  if (!disabled) {
+    item.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      closeActiveCaseMenu();
+      if (typeof onClick === 'function') {
+        await onClick();
+      }
+    });
+  }
   menu.appendChild(item);
 }
 
@@ -2528,29 +2831,22 @@ function renderCaseCardCompact(entry, userId, onChange) {
   menu.hidden = true;
   menu.setAttribute('role', 'menu');
 
-  if (statusBucket === WORKFLOW_STATUS.DRAFT && isAdminUser()) {
-    addCaseMenuItem(menu, {
-      label: 'Godkend',
-      onClick: async () => handleApproveAction(entry, onChange, { showSummary: false }),
+  const actionItems = getEntryActionItems(entry, onChange);
+  if (actionItems.length) {
+    actionItems.forEach(action => {
+      addCaseMenuItem(menu, {
+        label: action.label,
+        onClick: action.onClick,
+        isDanger: action.isDanger,
+        disabled: !action.enabled,
+        hint: action.reason,
+      });
     });
-  }
-  if (statusBucket === WORKFLOW_STATUS.APPROVED) {
+  } else {
     addCaseMenuItem(menu, {
-      label: 'Sæt til demontage i gang',
-      onClick: async () => handleDemontageAction(entry, onChange, { autoImport: false }),
-    });
-  }
-  if (statusBucket === WORKFLOW_STATUS.DEMONTAGE && isAdminUser()) {
-    addCaseMenuItem(menu, {
-      label: 'Afslut',
-      onClick: async () => handleFinishDemontageAction(entry, onChange),
-    });
-  }
-  if (![WORKFLOW_STATUS.DONE, WORKFLOW_STATUS.DELETED].includes(statusBucket) && isAdminUser()) {
-    addCaseMenuItem(menu, {
-      label: 'Slet sag',
-      isDanger: true,
-      onClick: async () => handleSoftDelete(entry, onChange),
+      label: 'Ingen handlinger',
+      disabled: true,
+      hint: 'Ingen tilladte handlinger.',
     });
   }
 
@@ -2948,6 +3244,7 @@ function setTestState({ session, teamIdValue, role } = {}) {
   teamId = teamIdValue || sessionState?.teamId || teamId || formatTeamId(DEFAULT_TEAM_SLUG);
   displayTeamId = sessionState.displayTeamId || getDisplayTeamId(teamId);
   membershipRole = role || sessionState.role || membershipRole;
+  setCapabilities(sessionState);
   membershipError = null;
   teamError = '';
   activeFilters = null;
@@ -3194,7 +3491,7 @@ function renderFromState(container, userId) {
   const filters = getActiveFilters();
   const filterKey = getFilterKey(filters);
   const sortKey = filters?.sort || 'updated-desc';
-  const includeDeleted = isAdminUser() && filters?.statusFocus === WORKFLOW_STATUS.DELETED;
+  const includeDeleted = shouldIncludeDeleted(filters);
   let expandedEntries = caseItems;
   if (!includeDeleted) {
     expandedEntries = expandedEntries.filter(entry => normalizeStatusValue(entry?.status) !== WORKFLOW_STATUS.DELETED);
@@ -3422,7 +3719,7 @@ async function fetchCasesPage({ reset = false, prepend = false, requestId = null
     if (reset) {
       activeFilters = filters;
     }
-    const includeDeleted = isAdminUser() && filters?.statusFocus === WORKFLOW_STATUS.DELETED;
+    const includeDeleted = shouldIncludeDeleted(filters);
     const page = await listSharedCasesPageFn(ensureTeamSelected(), {
       limit: 100,
       cursor: reset ? null : nextCursor,
@@ -3568,6 +3865,7 @@ export function initSharedCasesPanel() {
   displayTeamId = sessionState.displayTeamId || displayTeamId || DEFAULT_TEAM_SLUG;
   teamId = sessionState.teamId || teamId || formatTeamId(DEFAULT_TEAM_SLUG);
   membershipRole = sessionState.role || membershipRole;
+  setCapabilities(sessionState);
   sharedCasesPanelInitialized = true;
   sharedCard = document.querySelector('#panel-delte-sager .shared-cases');
   statusBox = document.getElementById('sharedStatus');
@@ -3590,10 +3888,15 @@ export function initSharedCasesPanel() {
     kindEl,
     sortEl,
     lastUpdatedEl,
+    adminToolsEl,
+    purgeBtn,
   } = getSharedCasesElements();
   refreshBtn = refreshBtnEl;
   const filters = [searchEl, fromEl, toEl, focusEl, kindEl, sortEl].filter(Boolean);
   applyStoredFilters();
+  if (adminToolsEl) {
+    adminToolsEl.hidden = !getCapabilities().canPurge;
+  }
   if (lastUpdatedEl) {
     updateSharedLastUpdatedLabel(sharedCasesUI.lastUpdatedLabel);
   }
@@ -3689,6 +3992,16 @@ export function initSharedCasesPanel() {
       if (kindEl) kindEl.value = '';
       if (sortEl) sortEl.value = 'updated-desc';
       handleFiltersChanged({ immediate: true });
+    });
+  }
+  if (purgeBtn) {
+    purgeBtn.addEventListener('click', async () => {
+      purgeBtn.disabled = true;
+      try {
+        await handlePurgeDeletedCases();
+      } finally {
+        purgeBtn.disabled = false;
+      }
     });
   }
   filters.forEach(input => {
