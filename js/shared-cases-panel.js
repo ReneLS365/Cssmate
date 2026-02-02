@@ -69,14 +69,27 @@ const sharedCasesUI = {
   isRefreshing: false,
   lastUpdatedLabel: '',
 };
+let statusMessage = '';
 const UI_STORAGE_KEY = 'cssmate:shared-cases:ui:v1';
+const PENDING_ACTIONS_KEY = 'cssmate:shared-cases:pending-actions:v1';
 const CASE_META_CACHE = new Map();
 const DATE_INPUT_FORMATTER = new Intl.DateTimeFormat('sv-SE');
 const CURRENCY_FORMATTER = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const CURRENCY_FORMATTER_COMPACT = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 const HOURS_FORMATTER = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const PREVIEW_WRITE_MESSAGE = getPreviewWriteDisabledMessage();
-const POLL_INTERVAL_MS = 5000;
+const POLL_INTERVAL_MS = 30000;
+const BACKOFF_BASE_MS = 5000;
+const BACKOFF_MAX_MS = 60000;
+const syncState = {
+  online: isOnline(),
+  isSyncing: false,
+  lastSyncAt: null,
+  since: null,
+  sinceId: null,
+  backoffMs: 0,
+  pendingActions: [],
+};
 let activeCaseMenu = null;
 let activeCaseMenuButton = null;
 let activeCaseMenuCleanup = null;
@@ -308,7 +321,7 @@ function warnMissingCaseId(entry) {
 function getDeltaKey(entry) {
   if (!entry) return { updatedAt: '', caseId: '' };
   return {
-    updatedAt: entry.lastUpdatedAt || entry.updatedAt || entry.createdAt || '',
+    updatedAt: entry.last_updated_at || entry.lastUpdatedAt || entry.updatedAt || entry.createdAt || '',
     caseId: entry.caseId || '',
   };
 }
@@ -338,10 +351,25 @@ function getLiveStatusLabel() {
   return `Live: tjekker hvert ${Math.round(POLL_INTERVAL_MS / 1000)}s${lastLabel}`;
 }
 
+function getSyncStatusLabel() {
+  const pendingCount = syncState.pendingActions.length;
+  if (!syncState.online) {
+    return pendingCount > 0
+      ? `Offline – afventer sync (${pendingCount})`
+      : 'Offline';
+  }
+  if (syncState.isSyncing) return 'Synkroniserer…';
+  if (pendingCount > 0) return `Afventer sync (${pendingCount})`;
+  if (syncState.lastSyncAt) return 'Synkroniseret';
+  return '';
+}
+
 function composeStatusMessage(message) {
+  const syncLabel = getSyncStatusLabel();
   const liveLabel = getLiveStatusLabel();
-  if (message && liveLabel) return `${message} · ${liveLabel}`;
-  return message || liveLabel;
+  const parts = [message, syncLabel, liveLabel].filter(Boolean);
+  const unique = parts.filter((part, index) => parts.indexOf(part) === index);
+  return unique.join(' · ');
 }
 
 function localDayKeyFromDate(d) {
@@ -473,24 +501,83 @@ function handleActionError (error, fallbackMessage, { teamContext } = {}) {
   setInlineError(message);
 }
 
-function handleConflictError(error, previousEntry, onChange) {
+function setPendingActions(actions, { persist = true } = {}) {
+  const normalized = Array.isArray(actions) ? actions.filter(action => action && action.caseId && action.type) : [];
+  syncState.pendingActions = normalized;
+  if (persist) {
+    savePendingActions(teamId, normalized);
+  }
+  applyPendingMarkers(casesById);
+  touchCaseItems();
+  if (sharedCasesContainer) {
+    renderFromState(sharedCasesContainer, sessionState?.user?.uid || 'offline-user');
+  }
+  updateSyncStatus();
+}
+
+function loadPendingActionsForTeam(teamIdValue) {
+  const stored = loadPendingActions(teamIdValue);
+  setPendingActions(stored, { persist: false });
+  return stored;
+}
+
+function enqueuePendingAction(action) {
+  if (!action?.caseId || !action?.type) return;
+  const current = syncState.pendingActions.slice();
+  const filtered = current.filter(entry => {
+    if (!entry || entry.caseId !== action.caseId) return true;
+    if (action.type === 'delete') return false;
+    return entry.type !== action.type;
+  });
+  filtered.push(action);
+  setPendingActions(filtered);
+}
+
+function removePendingAction(action) {
+  if (!action?.caseId || !action?.type) return;
+  const next = syncState.pendingActions.filter(entry => !(entry.caseId === action.caseId && entry.type === action.type));
+  setPendingActions(next);
+}
+
+async function handleConflictError(error, previousEntry, onChange, { retryAction, discardAction } = {}) {
   if (!error || error?.status !== 409) return false;
   const payloadCase = error?.payload?.case || null;
-  if (payloadCase) {
-    const merged = normalizeStoredEntry(payloadCase, previousEntry);
+  const merged = payloadCase ? normalizeStoredEntry(payloadCase, previousEntry) : previousEntry;
+  if (merged) {
     if (typeof onChange === 'function') {
       onChange({ updatedCase: { ...merged, __syncing: false } });
     } else {
       updateCaseEntry({ ...merged, __syncing: false });
     }
-  } else if (typeof onChange === 'function' && previousEntry) {
-    onChange({ updatedCase: { ...previousEntry, __syncing: false } });
   }
-  setInlineError('Sagen er ændret af en anden. Opdater og prøv igen.');
-  showToast('Sagen er ændret af en anden – tryk Opdater.', {
-    variant: 'info',
-    actionLabel: 'Opdater',
-    onAction: () => refreshCases({ prepend: false }),
+  setInlineError('Sagen er ændret af en anden.');
+  openConflictModal({
+    entry: merged,
+    onDiscard: async () => {
+      try {
+        const fresh = await getSharedCase(ensureTeamSelected(), previousEntry?.caseId || merged?.caseId || '');
+        if (fresh) {
+          updateCaseEntry({ ...fresh, __syncing: false });
+        }
+        if (typeof discardAction === 'function') discardAction(fresh);
+        updateSharedStatus('Synkroniseret');
+      } catch (err) {
+        handleActionError(err, 'Kunne ikke hente sag', { teamContext: teamId });
+        showToast(err?.message || 'Kunne ikke hente sag.', { variant: 'error' });
+      }
+    },
+    onOverwrite: async () => {
+      try {
+        const fresh = await getSharedCase(ensureTeamSelected(), previousEntry?.caseId || merged?.caseId || '');
+        if (typeof retryAction === 'function') {
+          await retryAction(fresh || merged || previousEntry);
+        }
+        updateSharedStatus('Synkroniseret');
+      } catch (err) {
+        handleActionError(err, 'Kunne ikke overskrive sag', { teamContext: teamId });
+        showToast(err?.message || 'Kunne ikke overskrive sag.', { variant: 'error' });
+      }
+    },
   });
   return true;
 }
@@ -535,6 +622,31 @@ function saveUiState(state) {
   if (typeof window === 'undefined' || !window.localStorage) return;
   try {
     window.localStorage.setItem(UI_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function getPendingActionsKey(teamIdValue) {
+  const resolved = teamIdValue || teamId || formatTeamId(DEFAULT_TEAM_SLUG);
+  return `${PENDING_ACTIONS_KEY}:${resolved}`;
+}
+
+function loadPendingActions(teamIdValue) {
+  if (typeof window === 'undefined' || !window.localStorage) return [];
+  try {
+    const raw = window.localStorage.getItem(getPendingActionsKey(teamIdValue));
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePendingActions(teamIdValue, entries) {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(getPendingActionsKey(teamIdValue), JSON.stringify(entries));
   } catch {
     // ignore storage errors
   }
@@ -808,13 +920,39 @@ function hasOwn(obj, key) {
 function normalizeStoredEntry(entry, existing) {
   const base = existing ? { ...existing, ...entry } : { ...entry };
   if (!entry || typeof entry !== 'object') return base;
+  const updatedAtValue = entry.lastUpdatedAt
+    || entry.last_updated_at
+    || entry.updatedAt
+    || entry.createdAt
+    || base.lastUpdatedAt
+    || base.updatedAt
+    || base.createdAt
+    || '';
+  if (updatedAtValue) {
+    base.lastUpdatedAt = updatedAtValue;
+    if (!base.updatedAt) base.updatedAt = updatedAtValue;
+  }
   if (!hasOwn(entry, '__syncing')) {
     delete base.__syncing;
+  }
+  if (!hasOwn(entry, '__pendingAction')) {
+    delete base.__pendingAction;
   }
   if (!hasOwn(entry, '__viewBucket')) {
     delete base.__viewBucket;
   }
   return base;
+}
+
+function applyPendingMarkers(map) {
+  const pendingIds = new Set(syncState.pendingActions.map(action => action.caseId));
+  map.forEach((value, key) => {
+    if (pendingIds.has(key)) {
+      value.__pendingAction = true;
+    } else if (value.__pendingAction) {
+      delete value.__pendingAction;
+    }
+  });
 }
 
 function countsToObject(counts) {
@@ -981,6 +1119,11 @@ function bindSessionControls(onAuthenticated, onAccessReady) {
     membershipRole = state?.role || '';
     membershipError = null;
     teamError = '';
+    if (teamId) {
+      loadPendingActionsForTeam(teamId);
+    } else {
+      setPendingActions([], { persist: false });
+    }
     if (previousTeamId && teamId && teamId !== previousTeamId) {
       resetCaseState();
     }
@@ -1012,6 +1155,14 @@ function bindSessionControls(onAuthenticated, onAccessReady) {
 
     if (hasAccess && typeof onAuthenticated === 'function') {
       onAuthenticated();
+    }
+
+    if (hasAccess) {
+      syncState.online = isOnline();
+      updateSyncStatus();
+      if (syncState.online) {
+        flushPendingActions().catch(() => {});
+      }
     }
 
     lastStatus = state?.status || '';
@@ -1428,6 +1579,40 @@ function openConfirmModal({ title, message, confirmLabel = 'OK', cancelLabel = '
   });
 }
 
+function buildConflictBody(entry) {
+  const wrapper = document.createElement('div');
+  const meta = entry ? resolveCaseMeta(entry) : {};
+  const jobNumber = meta?.jobNumber || entry?.jobNumber || '–';
+  const status = entry?.status || '–';
+  const text = document.createElement('p');
+  text.textContent = 'Sagen er ændret af en anden. Vælg hvordan du vil fortsætte:';
+  const details = document.createElement('div');
+  details.className = 'shared-case-conflict';
+  details.appendChild(buildSummaryRow('Jobnr', jobNumber));
+  details.appendChild(buildSummaryRow('Status', STATUS_UI[normalizeStatusValue(status)]?.label || status));
+  wrapper.appendChild(text);
+  wrapper.appendChild(details);
+  return wrapper;
+}
+
+function openConflictModal({ entry, onDiscard, onOverwrite }) {
+  openSharedModal({
+    title: 'Konflikt',
+    body: buildConflictBody(entry),
+    actions: [
+      {
+        label: 'Genindlæs fra server',
+        onClick: onDiscard,
+        autoFocus: true,
+      },
+      {
+        label: 'Overskriv med min ændring',
+        onClick: onOverwrite,
+      },
+    ],
+  });
+}
+
 function renderApprovalSummary(entry) {
   const meta = resolveCaseMeta(entry);
   const totals = resolveCaseTotals(entry, meta);
@@ -1458,13 +1643,26 @@ function renderApprovalSummary(entry) {
 async function handleApproveAction(entry, onChange, { showSummary = false } = {}) {
   const previousEntry = casesById.get(entry.caseId) || entry;
   const optimisticStatus = resolveOptimisticStatus(previousEntry);
+  if (!isOnline()) {
+    const queuedEntry = buildPendingUpdate(previousEntry, { status: optimisticStatus });
+    if (queuedEntry && typeof onChange === 'function') {
+      onChange({ updatedCase: queuedEntry });
+    }
+    enqueuePendingAction(buildPendingAction('approve', entry, {
+      ifMatchUpdatedAt: resolveIfMatchUpdatedAt(entry),
+    }));
+    showToast('Godkendelse er sat i kø og synkes, når du er online.', { variant: 'info' });
+    updateSyncStatus();
+    return;
+  }
   const optimisticEntry = buildOptimisticUpdate(previousEntry, { status: optimisticStatus });
   if (optimisticEntry && typeof onChange === 'function') {
     onChange({ updatedCase: optimisticEntry });
   }
   try {
-    const updated = await approveSharedCase(ensureTeamSelected(), entry.caseId, { ifMatchUpdatedAt: entry.updatedAt });
+    const updated = await approveSharedCase(ensureTeamSelected(), entry.caseId, { ifMatchUpdatedAt: resolveIfMatchUpdatedAt(entry) });
     if (typeof onChange === 'function') onChange({ updatedCase: { ...updated, __syncing: false } });
+    removePendingAction({ caseId: entry.caseId, type: 'approve' });
     showToast('Sag er flyttet til godkendt.', { variant: 'success' });
     if (showSummary) {
       openSharedModal({
@@ -1487,8 +1685,13 @@ async function handleApproveAction(entry, onChange, { showSummary = false } = {}
       });
     }
   } catch (error) {
-    if (handleConflictError(error, previousEntry, onChange)) return;
-    console.error('Godkendelse fejlede', error);
+    if (await handleConflictError(error, previousEntry, onChange, {
+      retryAction: async (freshEntry) => {
+        const updatedAt = freshEntry?.updatedAt || freshEntry?.lastUpdatedAt || freshEntry?.last_updated_at || '';
+        const updated = await approveSharedCase(ensureTeamSelected(), entry.caseId, { ifMatchUpdatedAt: updatedAt });
+        if (typeof onChange === 'function') onChange({ updatedCase: { ...updated, __syncing: false } });
+      },
+    })) return;
     if (typeof onChange === 'function') {
       onChange({ updatedCase: { ...previousEntry, __syncing: false } });
     }
@@ -1499,6 +1702,20 @@ async function handleApproveAction(entry, onChange, { showSummary = false } = {}
 
 async function handleDemontageAction(entry, onChange, { autoImport = false } = {}) {
   const previousEntry = casesById.get(entry.caseId) || entry;
+  if (!isOnline()) {
+    const queuedEntry = buildPendingUpdate(previousEntry, { status: WORKFLOW_STATUS.DEMONTAGE });
+    if (queuedEntry && typeof onChange === 'function') {
+      onChange({ updatedCase: queuedEntry });
+    }
+    enqueuePendingAction(buildPendingAction('status', entry, {
+      status: WORKFLOW_STATUS.DEMONTAGE,
+      phase: entry.sheetPhase || 'montage',
+      ifMatchUpdatedAt: resolveIfMatchUpdatedAt(entry),
+    }));
+    showToast('Ændringen er sat i kø og synkes, når du er online.', { variant: 'info' });
+    updateSyncStatus();
+    return;
+  }
   const optimisticEntry = buildOptimisticUpdate(previousEntry, { status: WORKFLOW_STATUS.DEMONTAGE });
   if (optimisticEntry && typeof onChange === 'function') {
     onChange({ updatedCase: optimisticEntry });
@@ -1506,7 +1723,7 @@ async function handleDemontageAction(entry, onChange, { autoImport = false } = {
   try {
     const updated = await updateSharedCaseStatus(ensureTeamSelected(), entry.caseId, {
       status: WORKFLOW_STATUS.DEMONTAGE,
-      ifMatchUpdatedAt: entry.updatedAt,
+      ifMatchUpdatedAt: resolveIfMatchUpdatedAt(entry),
       phase: entry.sheetPhase || 'montage',
     });
     if (typeof onChange === 'function' && !updated?.queued) {
@@ -1516,6 +1733,7 @@ async function handleDemontageAction(entry, onChange, { autoImport = false } = {
       showToast('Ændringen er sat i kø og synkes, når du er online.', { variant: 'info' });
       return;
     }
+    removePendingAction({ caseId: entry.caseId, type: 'status' });
     if (autoImport) {
       await handleImport(entry, { phase: 'demontage' });
       showToast('Sag indlæst til demontage.', { variant: 'success' });
@@ -1523,11 +1741,22 @@ async function handleDemontageAction(entry, onChange, { autoImport = false } = {
       showToast('Sag er flyttet til demontage i gang.', { variant: 'success' });
     }
   } catch (error) {
-    if (handleConflictError(error, previousEntry, onChange)) return;
+    if (await handleConflictError(error, previousEntry, onChange, {
+      retryAction: async (freshEntry) => {
+        const updatedAt = freshEntry?.updatedAt || freshEntry?.lastUpdatedAt || freshEntry?.last_updated_at || '';
+        const updated = await updateSharedCaseStatus(ensureTeamSelected(), entry.caseId, {
+          status: WORKFLOW_STATUS.DEMONTAGE,
+          ifMatchUpdatedAt: updatedAt,
+          phase: entry.sheetPhase || 'montage',
+        });
+        if (typeof onChange === 'function' && !updated?.queued) {
+          onChange({ updatedCase: { ...updated, __syncing: false } });
+        }
+      },
+    })) return;
     if (typeof onChange === 'function') {
       onChange({ updatedCase: { ...previousEntry, __syncing: false } });
     }
-    console.error('Demontage opdatering fejlede', error);
     handleActionError(error, 'Kunne ikke opdatere sag', { teamContext: teamId });
     showToast(error?.message || 'Kunne ikke opdatere sag.', { variant: 'error' });
   }
@@ -1536,6 +1765,20 @@ async function handleDemontageAction(entry, onChange, { autoImport = false } = {
 async function handleFinishDemontageAction(entry, onChange) {
   const previousEntry = casesById.get(entry.caseId) || entry;
   const optimisticStatus = resolveOptimisticStatus(previousEntry);
+  if (!isOnline()) {
+    const queuedEntry = buildPendingUpdate(previousEntry, { status: WORKFLOW_STATUS.DONE });
+    if (queuedEntry && typeof onChange === 'function') {
+      onChange({ updatedCase: queuedEntry });
+    }
+    enqueuePendingAction(buildPendingAction('status', entry, {
+      status: WORKFLOW_STATUS.DONE,
+      phase: entry.sheetPhase || 'demontage',
+      ifMatchUpdatedAt: resolveIfMatchUpdatedAt(entry),
+    }));
+    showToast('Afslutningen er sat i kø og synkes, når du er online.', { variant: 'info' });
+    updateSyncStatus();
+    return;
+  }
   const optimisticEntry = buildOptimisticUpdate(previousEntry, { status: optimisticStatus });
   if (optimisticEntry && typeof onChange === 'function') {
     onChange({ updatedCase: optimisticEntry });
@@ -1543,7 +1786,7 @@ async function handleFinishDemontageAction(entry, onChange) {
   try {
     const updated = await updateSharedCaseStatus(ensureTeamSelected(), entry.caseId, {
       status: WORKFLOW_STATUS.DONE,
-      ifMatchUpdatedAt: entry.updatedAt,
+      ifMatchUpdatedAt: resolveIfMatchUpdatedAt(entry),
       phase: entry.sheetPhase || 'demontage',
     });
     if (typeof onChange === 'function' && !updated?.queued) {
@@ -1553,10 +1796,22 @@ async function handleFinishDemontageAction(entry, onChange) {
       showToast('Afslutningen er sat i kø og synkes, når du er online.', { variant: 'info' });
       return;
     }
+    removePendingAction({ caseId: entry.caseId, type: 'status' });
     showToast('Sag er afsluttet.', { variant: 'success' });
   } catch (error) {
-    if (handleConflictError(error, previousEntry, onChange)) return;
-    console.error('Demontage godkendelse fejlede', error);
+    if (await handleConflictError(error, previousEntry, onChange, {
+      retryAction: async (freshEntry) => {
+        const updatedAt = freshEntry?.updatedAt || freshEntry?.lastUpdatedAt || freshEntry?.last_updated_at || '';
+        const updated = await updateSharedCaseStatus(ensureTeamSelected(), entry.caseId, {
+          status: WORKFLOW_STATUS.DONE,
+          ifMatchUpdatedAt: updatedAt,
+          phase: entry.sheetPhase || 'demontage',
+        });
+        if (typeof onChange === 'function' && !updated?.queued) {
+          onChange({ updatedCase: { ...updated, __syncing: false } });
+        }
+      },
+    })) return;
     if (typeof onChange === 'function') {
       onChange({ updatedCase: { ...previousEntry, __syncing: false } });
     }
@@ -1572,12 +1827,29 @@ async function handleSoftDelete(entry, onChange) {
     confirmLabel: 'Soft delete',
   });
   if (!confirmed) return;
+  if (!isOnline()) {
+    const previousEntry = casesById.get(entry.caseId) || entry;
+    const queuedEntry = buildPendingUpdate(previousEntry, { status: WORKFLOW_STATUS.DELETED });
+    if (queuedEntry && typeof onChange === 'function') {
+      onChange({ updatedCase: queuedEntry });
+    }
+    enqueuePendingAction(buildPendingAction('delete', entry, {}));
+    showToast('Sletningen er sat i kø og synkes, når du er online.', { variant: 'info' });
+    updateSyncStatus();
+    return;
+  }
   try {
     await deleteSharedCase(ensureTeamSelected(), entry.caseId);
     if (typeof onChange === 'function') onChange({ removeCaseId: entry.caseId });
+    removePendingAction({ caseId: entry.caseId, type: 'delete' });
     showToast('Sag er soft-deleted.', { variant: 'success' });
   } catch (error) {
-    console.error('Sletning fejlede', error);
+    if (await handleConflictError(error, entry, onChange, {
+      retryAction: async () => {
+        await deleteSharedCase(ensureTeamSelected(), entry.caseId);
+        if (typeof onChange === 'function') onChange({ removeCaseId: entry.caseId });
+      },
+    })) return;
     handleActionError(error, 'Kunne ikke slette sag', { teamContext: teamId });
     showToast(error?.message || 'Kunne ikke slette sag.', { variant: 'error' });
   }
@@ -1841,7 +2113,7 @@ function renderCaseDetailSummary(entry) {
   const meta = resolveCaseMeta(entry);
   const totals = resolveCaseTotals(entry, meta);
   const statusLabel = formatEntryStatusLabel(entry);
-  const updatedAt = entry.lastUpdatedAt || entry.updatedAt || entry.createdAt || '';
+  const updatedAt = entry.last_updated_at || entry.lastUpdatedAt || entry.updatedAt || entry.createdAt || '';
   const createdAt = entry.createdAt || entry.created_at || '';
   const lastEditor = formatEditorLabel(entry.lastEditorSub || entry.updatedBy || entry.createdBy);
   const creator = entry.createdByName || entry.createdByEmail || entry.createdBy || '–';
@@ -2213,7 +2485,7 @@ function addCaseMenuItem(menu, { label, onClick, isDanger = false }) {
 function renderCaseCardCompact(entry, userId, onChange) {
   const meta = resolveCaseMeta(entry);
   const totals = resolveCaseTotals(entry, meta);
-  const updatedAt = entry.lastUpdatedAt || entry.updatedAt || entry.createdAt || '';
+  const updatedAt = entry.last_updated_at || entry.lastUpdatedAt || entry.updatedAt || entry.createdAt || '';
   const lastEditor = formatEditorShort(entry.lastEditorSub || entry.updatedBy || entry.createdBy);
   const updatedLabel = formatRelativeDa(updatedAt) || formatDateLabel(updatedAt);
   const statusLabel = formatEntryStatusLabel(entry);
@@ -2291,7 +2563,9 @@ function renderCaseCardCompact(entry, userId, onChange) {
   tags.className = 'shared-case-card__tags';
   const statusPill = document.createElement('span');
   statusPill.className = 'shared-case-pill shared-case-pill--status';
-  statusPill.textContent = entry?.__syncing ? `${statusLabel} · Synker…` : statusLabel;
+  statusPill.textContent = entry?.__pendingAction
+    ? `${statusLabel} · Afventer sync`
+    : entry?.__syncing ? `${statusLabel} · Synker…` : statusLabel;
   const systemPill = document.createElement('span');
   systemPill.className = 'shared-case-pill shared-case-pill--system';
   systemPill.textContent = meta.system || entry.system || '–';
@@ -2347,7 +2621,7 @@ function buildFinishedProjectGroups(entries) {
     const meta = resolveCaseMeta(entry);
     const key = resolveProjectKey(entry, meta);
     if (!key) return;
-    const timestamp = entry.lastUpdatedAt || entry.updatedAt || entry.createdAt || '';
+    const timestamp = entry.last_updated_at || entry.lastUpdatedAt || entry.updatedAt || entry.createdAt || '';
     const phase = resolveEntryPhase(entry);
     const existing = groups.get(key) || {
       projectKey: key,
@@ -2618,8 +2892,13 @@ function setRefreshState(state = 'idle') {
 }
 
 function updateSharedStatus(message) {
-  const summaryMessage = message || '';
-  setSharedStatus(summaryMessage);
+  statusMessage = message || '';
+  setSharedStatus(statusMessage);
+  updateStatusCard();
+}
+
+function updateSyncStatus() {
+  setSharedStatus(statusMessage);
   updateStatusCard();
 }
 
@@ -2629,8 +2908,19 @@ function resetCaseState() {
   resetPaginationState();
   lastDeltaAt = null;
   lastDeltaCaseId = '';
+  syncState.since = null;
+  syncState.sinceId = null;
   lastDeltaSyncLabel = '';
   updateSharedLastUpdatedLabel('');
+  touchCaseItems();
+}
+
+function replaceCaseState(entries) {
+  casesById.clear();
+  resetPaginationState();
+  const { map, list } = mergeCasesById(new Map(), entries);
+  map.forEach((value, key) => casesById.set(key, value));
+  caseItems = list;
   touchCaseItems();
 }
 
@@ -2662,26 +2952,44 @@ function getCursorKey(cursor) {
   }
 }
 
-function mergeEntries(entries, { prepend = false } = {}) {
-  const seen = new Set();
-  const merged = [];
-  const add = (entry) => {
+function mergeCasesById(existingMap, incomingList, { deletedIds = [] } = {}) {
+  const nextMap = new Map(existingMap || []);
+  deletedIds.forEach(caseId => {
+    if (caseId) nextMap.delete(caseId);
+  });
+  (incomingList || []).forEach(entry => {
     if (!entry?.caseId) {
       warnMissingCaseId(entry);
       return;
     }
-    const existing = casesById.get(entry.caseId);
+    if (normalizeStatusValue(entry.status) === WORKFLOW_STATUS.DELETED) {
+      nextMap.delete(entry.caseId);
+      return;
+    }
+    const existing = nextMap.get(entry.caseId);
     const updated = normalizeStoredEntry(entry, existing);
-    casesById.set(entry.caseId, updated);
-    if (seen.has(entry.caseId)) return;
-    seen.add(entry.caseId);
-    merged.push(updated);
-  };
-  const firstBatch = prepend ? entries : caseItems;
-  const secondBatch = prepend ? caseItems : entries;
-  firstBatch.forEach(add);
-  secondBatch.forEach(add);
-  caseItems = merged;
+    if (!existing) {
+      nextMap.set(entry.caseId, updated);
+      return;
+    }
+    const existingKey = getDeltaKey(existing);
+    const incomingKey = getDeltaKey(updated);
+    if (compareDeltaKeys(existingKey, incomingKey) <= 0) {
+      nextMap.set(entry.caseId, updated);
+    }
+  });
+  applyPendingMarkers(nextMap);
+  const mergedList = Array.from(nextMap.values()).sort((a, b) => {
+    return compareDeltaKeys(getDeltaKey(b), getDeltaKey(a));
+  });
+  return { map: nextMap, list: mergedList };
+}
+
+function mergeEntries(entries, { prepend = false } = {}) {
+  const { map, list } = mergeCasesById(casesById, entries);
+  casesById.clear();
+  map.forEach((value, key) => casesById.set(key, value));
+  caseItems = list;
   touchCaseItems();
 }
 
@@ -2707,7 +3015,7 @@ async function handleExportedEvent(detail) {
     }
     updateDeltaCursorFromItems([caseData]);
     lastDeltaSyncLabel = formatTimeLabel(new Date());
-    setSharedStatus('Opdateret');
+    updateSharedStatus('Opdateret');
   }
   if (caseId) {
     try {
@@ -2729,13 +3037,113 @@ function buildOptimisticUpdate(entry, updates) {
   };
 }
 
+function resolveIfMatchUpdatedAt(entry) {
+  return entry?.updatedAt || entry?.lastUpdatedAt || entry?.last_updated_at || '';
+}
+
+function buildPendingUpdate(entry, updates) {
+  if (!entry?.caseId) return null;
+  const base = { ...entry };
+  delete base.__viewBucket;
+  return {
+    ...base,
+    ...updates,
+    __syncing: false,
+    __pendingAction: true,
+  };
+}
+
+function buildPendingAction(type, entry, payload = {}) {
+  return {
+    type,
+    caseId: entry?.caseId || '',
+    payload,
+    localTs: Date.now(),
+  };
+}
+
+async function performPendingAction(action, { updatedAtOverride } = {}) {
+  if (!action || !action.caseId) return null;
+  if (action.type === 'approve') {
+    return await approveSharedCase(ensureTeamSelected(), action.caseId, {
+      ifMatchUpdatedAt: updatedAtOverride || action.payload?.ifMatchUpdatedAt || '',
+    });
+  }
+  if (action.type === 'status') {
+    return await updateSharedCaseStatus(ensureTeamSelected(), action.caseId, {
+      status: action.payload?.status,
+      phase: action.payload?.phase,
+      ifMatchUpdatedAt: updatedAtOverride || action.payload?.ifMatchUpdatedAt || '',
+    });
+  }
+  if (action.type === 'delete') {
+    return await deleteSharedCase(ensureTeamSelected(), action.caseId);
+  }
+  return null;
+}
+
+async function flushPendingActions() {
+  if (!syncState.online || syncState.isSyncing || !syncState.pendingActions.length) return;
+  syncState.isSyncing = true;
+  updateSyncStatus();
+  const pending = syncState.pendingActions.slice();
+  const remaining = [];
+  let appliedCount = 0;
+  for (const action of pending) {
+    try {
+      const result = await performPendingAction(action);
+      if (result?.queued) {
+        remaining.push(action);
+        break;
+      }
+      if (action.type === 'delete') {
+        removeCaseEntry(action.caseId);
+      } else if (result) {
+        updateCaseEntry({ ...result, __syncing: false });
+      }
+      appliedCount += 1;
+    } catch (error) {
+      if (error?.status === 409) {
+        await handleConflictError(error, casesById.get(action.caseId), null, {
+          retryAction: async (freshEntry) => {
+            const updatedAt = freshEntry?.updatedAt || freshEntry?.lastUpdatedAt || freshEntry?.last_updated_at || '';
+            const result = await performPendingAction(action, { updatedAtOverride: updatedAt });
+            if (action.type === 'delete') {
+              removeCaseEntry(action.caseId);
+            } else if (result) {
+              updateCaseEntry({ ...result, __syncing: false });
+            }
+            removePendingAction(action);
+          },
+          discardAction: () => {
+            removePendingAction(action);
+          },
+        });
+        syncState.isSyncing = false;
+        updateSyncStatus();
+        return;
+      }
+      const isNetworkError = error instanceof TypeError || /network|offline|failed to fetch/i.test(error?.message || '');
+      remaining.push(action);
+      if (isNetworkError) break;
+    }
+  }
+  setPendingActions(remaining);
+  if (appliedCount > 0) {
+    syncState.lastSyncAt = new Date().toISOString();
+  }
+  syncState.isSyncing = false;
+  updateSyncStatus();
+}
+
 function removeCaseEntry(caseId) {
   if (!caseId) return;
   if (activeCaseDetail?.caseId === caseId && typeof activeCaseDetail.close === 'function') {
     activeCaseDetail.close();
   }
   casesById.delete(caseId);
-  caseItems = caseItems.filter(entry => entry?.caseId !== caseId);
+  const { list } = mergeCasesById(casesById, []);
+  caseItems = list;
   touchCaseItems();
 }
 
@@ -2843,18 +3251,22 @@ function updateDeltaCursorFromItems(items) {
   if (maxKey.updatedAt) {
     lastDeltaAt = maxKey.updatedAt;
     lastDeltaCaseId = maxKey.caseId || lastDeltaCaseId;
+    syncState.since = lastDeltaAt;
+    syncState.sinceId = lastDeltaCaseId;
   }
 }
 
 function updateDeltaCursorFromPayload(payload) {
-  const cursor = payload?.cursor || null;
-  if (!cursor) return false;
-  if (cursor.updatedAt) {
-    lastDeltaAt = cursor.updatedAt;
-    lastDeltaCaseId = cursor.caseId || lastDeltaCaseId;
-    return true;
+  const maxUpdatedAt = payload?.maxUpdatedAt || payload?.cursor?.updatedAt || payload?.cursor?.maxUpdatedAt || '';
+  const nextSinceId = payload?.nextSinceId || payload?.cursor?.caseId || payload?.cursor?.sinceId || '';
+  if (!maxUpdatedAt) return false;
+  lastDeltaAt = maxUpdatedAt;
+  syncState.since = maxUpdatedAt;
+  if (nextSinceId) {
+    lastDeltaCaseId = nextSinceId;
+    syncState.sinceId = nextSinceId;
   }
-  return false;
+  return true;
 }
 
 function markDeltaSynced(message) {
@@ -2866,31 +3278,40 @@ function markDeltaSynced(message) {
 
 function stopDeltaPolling(reason) {
   if (deltaTimer) {
-    clearInterval(deltaTimer);
+    clearTimeout(deltaTimer);
     deltaTimer = null;
   }
   pollingActive = false;
   pollingReason = reason || '';
-  updateSharedStatus('');
+  syncState.isSyncing = false;
+  updateSyncStatus();
 }
 
-function startDeltaPolling() {
-  if (deltaTimer) return;
-  pollingActive = true;
-  pollingReason = '';
-  deltaTimer = setInterval(() => {
+function scheduleNextDelta({ immediate = false } = {}) {
+  if (deltaTimer) {
+    clearTimeout(deltaTimer);
+    deltaTimer = null;
+  }
+  if (!pollingActive) return;
+  const delay = immediate ? 0 : (syncState.backoffMs || POLL_INTERVAL_MS);
+  deltaTimer = setTimeout(() => {
     runDeltaSync().catch(() => {
       // handled in runDeltaSync
     });
-  }, POLL_INTERVAL_MS);
-  updateSharedStatus('');
-  runDeltaSync().catch(() => {
-    // handled in runDeltaSync
-  });
+  }, delay);
+}
+
+function startDeltaPolling() {
+  if (pollingActive) return;
+  pollingActive = true;
+  pollingReason = '';
+  scheduleNextDelta({ immediate: true });
+  updateSyncStatus();
 }
 
 function updatePollingState() {
   if (!sharedCard || !sharedCasesContainer) return;
+  syncState.online = isOnline();
   if (!requireAuth()) {
     stopDeltaPolling('ingen adgang');
     return;
@@ -2917,7 +3338,10 @@ async function runDeltaSync() {
   if (!isOnline()) return;
   if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
   if (sharedCard?.hidden) return;
+  if (syncState.isSyncing && syncState.pendingActions.length) return;
   deltaInFlight = true;
+  syncState.isSyncing = true;
+  updateSyncStatus();
   const debugEnabled = isDebugEnabled();
   const start = debugEnabled && typeof performance !== 'undefined' ? performance.now() : 0;
   try {
@@ -2937,24 +3361,20 @@ async function runDeltaSync() {
       debugLog('shared-cases delta fetched', { count: items.length, durationMs: Number((end - start).toFixed(1)) });
     }
     let didChange = false;
-    deleted.forEach(caseId => {
-      if (!caseId) return;
-      if (casesById.has(caseId)) {
-        removeCaseEntry(caseId);
-        didChange = true;
-      }
-    });
-    items.forEach(entry => {
-      if (!entry?.caseId) return;
-      if (normalizeStatusValue(entry.status) === WORKFLOW_STATUS.DELETED) return;
-      updateCaseEntry(entry);
+    if (deleted.length || items.length) {
+      const { map, list } = mergeCasesById(casesById, items, { deletedIds: deleted });
+      casesById.clear();
+      map.forEach((value, key) => casesById.set(key, value));
+      caseItems = list;
+      touchCaseItems();
       didChange = true;
-    });
+    }
     if (!updateDeltaCursorFromPayload(payload)) {
       if (items.length) {
         updateDeltaCursorFromItems(items);
       } else if (payload?.maxUpdatedAt) {
         lastDeltaAt = payload.maxUpdatedAt;
+        syncState.since = lastDeltaAt;
       }
     }
     if (didChange) {
@@ -2963,11 +3383,17 @@ async function runDeltaSync() {
     } else {
       markDeltaSynced('Synkroniseret');
     }
+    syncState.backoffMs = 0;
+    syncState.lastSyncAt = new Date().toISOString();
     clearInlineError();
   } catch (error) {
     appendDebug(`Delta sync fejl: ${error?.message || 'Ukendt fejl'}`);
+    syncState.backoffMs = Math.min(syncState.backoffMs ? syncState.backoffMs * 2 : BACKOFF_BASE_MS, BACKOFF_MAX_MS);
   } finally {
     deltaInFlight = false;
+    syncState.isSyncing = false;
+    updateSyncStatus();
+    scheduleNextDelta();
   }
 }
 
@@ -2994,11 +3420,13 @@ async function fetchCasesPage({ reset = false, prepend = false, requestId = null
     if (requestId && requestId !== latestRequestId) return null;
     const items = Array.isArray(page?.items) ? page.items : [];
     if (reset && replace) {
-      resetCaseState();
-    }
-    if (reset && prepend) {
+      replaceCaseState(items);
+    } else if (reset && prepend) {
       mergeEntries(items, { prepend: true });
-    } else {
+    } else if (reset) {
+      mergeEntries(items, { prepend: false });
+    }
+    if (!reset) {
       mergeEntries(items, { prepend: false });
     }
     const newCursor = page?.nextCursor || page?.cursor || null;
@@ -3089,10 +3517,9 @@ function renderSharedCases(container, entries, filters, userId, onChange, allCou
           const page = await fetchCasesPage({ reset: false, prepend: false });
           if (!page) return;
           renderFromState(container, userId);
-          setSharedStatus('Synkroniseret');
+          updateSharedStatus('Synkroniseret');
           clearInlineError();
         } catch (error) {
-          console.error('Kunne ikke hente flere delte sager', error);
           handleActionError(error, 'Kunne ikke hente flere sager', { teamContext: teamId });
           appendDebug(`Load more fejl: ${error?.message || 'Ukendt fejl'}`);
           loadMoreBtn.textContent = 'Hent flere';
@@ -3135,6 +3562,9 @@ export function initSharedCasesPanel() {
   statusEmail = document.getElementById('sharedStatusEmail');
   debugPanel = document.getElementById('sharedDebugPanel');
   debugLogOutput = document.getElementById('sharedDebugLog');
+  loadPendingActionsForTeam(teamId);
+  syncState.online = isOnline();
+  updateSyncStatus();
   setPanelVisibility(false);
   const {
     searchEl,
@@ -3173,6 +3603,8 @@ export function initSharedCasesPanel() {
       setRefreshState('idle');
       return;
     }
+    const existingBoard = sharedCasesContainer.querySelector('.shared-board');
+    const previousScroll = existingBoard ? { left: existingBoard.scrollLeft, top: existingBoard.scrollTop } : null;
     setRefreshState('loading');
     if (!prepend && !caseItems.length) {
       sharedCasesContainer.textContent = 'Henter sager…';
@@ -3197,14 +3629,22 @@ export function initSharedCasesPanel() {
       }
       renderFromState(sharedCasesContainer, currentUser);
       updateDeltaCursorFromItems(caseItems);
+      const refreshedBoard = sharedCasesContainer.querySelector('.shared-board');
+      if (previousScroll && refreshedBoard) {
+        requestAnimationFrame(() => {
+          refreshedBoard.scrollLeft = previousScroll.left;
+          refreshedBoard.scrollTop = previousScroll.top;
+        });
+      }
       const now = new Date();
+      syncState.lastSyncAt = now.toISOString();
+      syncState.backoffMs = 0;
       lastDeltaSyncLabel = formatTimeLabel(now);
       updateSharedLastUpdatedLabel(now);
-      setSharedStatus('Synkroniseret');
+      updateSharedStatus('');
       clearInlineError();
       setRefreshState('idle');
     } catch (error) {
-      console.error('Kunne ikke hente delte sager', error);
       const denied = error?.code === 'permission-denied' || error instanceof PermissionDeniedError;
       const message = describePermissionError(error, teamId) || error?.message || 'Kunne ikke hente delte sager.';
       const status = typeof error?.status === 'number' ? error.status : 0;
@@ -3217,7 +3657,7 @@ export function initSharedCasesPanel() {
         ? `${message} (Login token matcher ikke serverens Auth0-konfig. Prøv Log ud → Log ind igen.)`
         : `${message} ${denied ? '' : 'Tjek netværk eller log ind igen.'}`.trim();
       setInlineError(message);
-      setSharedStatus(`Fejl: ${message}`);
+      updateSharedStatus(`Fejl: ${message}`);
       if (requestId === latestRequestId) {
         setRefreshState('error');
       }
@@ -3275,11 +3715,16 @@ export function initSharedCasesPanel() {
     });
 
     window.addEventListener('online', () => {
+      syncState.online = true;
+      updateSyncStatus();
+      flushPendingActions().catch(() => {});
       updatePollingState();
       runDeltaSync().catch(() => {});
     });
 
     window.addEventListener('offline', () => {
+      syncState.online = false;
+      updateSyncStatus();
       updatePollingState();
     });
   }
