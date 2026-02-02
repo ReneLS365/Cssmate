@@ -18,6 +18,8 @@ const ACCEPT_RATE_LIMIT = 30
 const ACCEPT_RATE_WINDOW_MS = 60 * 60 * 1000
 const DEFAULT_CASES_LIMIT = 100
 const MAX_CASES_LIMIT = 500
+const DEFAULT_AUDIT_LIMIT = 50
+const MAX_AUDIT_LIMIT = 100
 const ROLE_CLAIM = 'https://sscaff.app/roles'
 const ORG_CLAIM = 'https://sscaff.app/org_id'
 const ALLOWED_ROLES = new Set(['sscaff_owner', 'sscaff_admin', 'sscaff_member', 'sscaff_user'])
@@ -99,6 +101,12 @@ function clampCasesLimit (value) {
   const parsed = Number.parseInt(value, 10)
   if (Number.isNaN(parsed) || parsed <= 0) return DEFAULT_CASES_LIMIT
   return Math.min(parsed, MAX_CASES_LIMIT)
+}
+
+function clampAuditLimit (value) {
+  const parsed = Number.parseInt(value, 10)
+  if (Number.isNaN(parsed) || parsed <= 0) return DEFAULT_AUDIT_LIMIT
+  return Math.min(parsed, MAX_AUDIT_LIMIT)
 }
 
 function parseDateKey (value) {
@@ -1412,6 +1420,42 @@ async function handleCaseGet (event, teamSlug, caseId) {
   return jsonResponse(200, serializeCaseRow(row))
 }
 
+async function handleCaseAudit (event, teamSlug, caseId) {
+  await requireDbReady(event)
+  const { team, user } = await requireCaseTeamContext(event, teamSlug)
+  const row = await getTeamCase({ teamId: team.id, caseId })
+  if (!row) return jsonResponse(404, { error: 'Sag findes ikke.' })
+  if (!canAccessCase({ status: row.status, createdBy: row.created_by, userSub: user.id, isPrivileged: user.isPrivileged })) {
+    return jsonResponse(403, { error: 'Kun opretter kan se kladden.' })
+  }
+  const query = event.queryStringParameters || {}
+  const limit = clampAuditLimit(query.limit)
+  try {
+    const result = await db.query(
+      `SELECT id, action, summary, actor, created_at
+       FROM team_audit
+       WHERE team_id = $1 AND case_id = $2
+       ORDER BY created_at DESC
+       LIMIT $3`,
+      [team.id, caseId, limit]
+    )
+    return jsonResponse(200, {
+      items: result.rows.map(rowItem => ({
+        id: rowItem.id,
+        action: rowItem.action,
+        summary: rowItem.summary,
+        actor: rowItem.actor,
+        createdAt: rowItem.created_at ? new Date(rowItem.created_at).toISOString() : null,
+      })),
+    })
+  } catch (error) {
+    if (error?.code === '42P01') {
+      return jsonResponse(200, { items: [], unavailable: true })
+    }
+    throw error
+  }
+}
+
 async function handleCaseDelete (event, teamSlug, caseId) {
   await requireDbReady(event)
   const { user, team } = await requireCaseTeamContext(event, teamSlug)
@@ -1844,6 +1888,9 @@ export async function handler (event) {
     const caseGetMatch = path.match(/^\/teams\/([^/]+)\/cases\/([^/]+)$/)
     if (caseGetMatch && method === 'GET') return withTiming(await handleCaseGet(event, caseGetMatch[1], caseGetMatch[2]))
     if (caseGetMatch && method === 'DELETE') return withTiming(await handleCaseDelete(event, caseGetMatch[1], caseGetMatch[2]))
+
+    const caseAuditMatch = path.match(/^\/teams\/([^/]+)\/cases\/([^/]+)\/audit$/)
+    if (caseAuditMatch && method === 'GET') return withTiming(await handleCaseAudit(event, caseAuditMatch[1], caseAuditMatch[2]))
 
     const caseStatusMatch = path.match(/^\/teams\/([^/]+)\/cases\/([^/]+)\/status$/)
     if (caseStatusMatch && method === 'PATCH') return withTiming(await handleCaseStatus(event, caseStatusMatch[1], caseStatusMatch[2]))

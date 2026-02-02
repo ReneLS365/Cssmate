@@ -783,6 +783,22 @@ export async function getSharedCase(teamId, caseId) {
   }
 }
 
+export async function getSharedCaseAudit(teamId, caseId, { limit = 50 } = {}) {
+  try {
+    const { teamId: resolvedTeamId } = await getTeamContext(teamId)
+    const params = new URLSearchParams()
+    if (limit) params.set('limit', String(limit))
+    const query = params.toString()
+    const payload = await apiJson(`/api/teams/${resolvedTeamId}/cases/${caseId}/audit${query ? `?${query}` : ''}`)
+    const items = Array.isArray(payload?.items) ? payload.items : []
+    return { items, unavailable: Boolean(payload?.unavailable) }
+  } catch (error) {
+    console.warn('Kunne ikke hente audit log', error)
+    if (error?.code === 'permission-denied') throw error
+    return { items: [], unavailable: true }
+  }
+}
+
 export async function deleteSharedCase(teamId, caseId) {
   ensureWritesAllowed('deleteSharedCase')
   const entry = await getSharedCase(teamId, caseId)

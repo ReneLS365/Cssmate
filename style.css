@@ -1000,6 +1000,38 @@ input.csm-name{
 #panel-delte-sager .shared-case-detail__row{display:flex;justify-content:space-between;gap:10px;font-size:.95rem}
 #panel-delte-sager .shared-case-detail__row span{color:var(--muted)}
 #panel-delte-sager .shared-case-detail__actions{margin-top:4px}
+#panel-delte-sager .shared-case-detail-modal{position:fixed;inset:0;z-index:50;display:flex;justify-content:center;align-items:flex-end}
+#panel-delte-sager .shared-case-detail-modal__backdrop{position:absolute;inset:0;background:rgba(15,23,42,0.45)}
+#panel-delte-sager .shared-case-detail-modal__sheet{position:relative;width:100%;max-height:100%;background:var(--panel);border-radius:18px 18px 0 0;display:flex;flex-direction:column;box-shadow:var(--shadow-2)}
+#panel-delte-sager .shared-case-detail-modal__header{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--panel);z-index:2}
+#panel-delte-sager .shared-case-detail-modal__back{border:none;background:transparent;font-weight:600;color:var(--text);cursor:pointer}
+#panel-delte-sager .shared-case-detail-modal__title{flex:1;font-weight:700;font-size:1rem;letter-spacing:.02em}
+#panel-delte-sager .shared-case-detail-modal__body{padding:16px;overflow:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;gap:16px}
+#panel-delte-sager .shared-case-detail-modal__actions{padding:12px 16px;border-top:1px solid var(--border);background:var(--panel);position:sticky;bottom:0}
+#panel-delte-sager .shared-case-detail-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+#panel-delte-sager .shared-case-detail-action--primary{background:var(--accent);color:#fff;border-color:transparent}
+#panel-delte-sager .shared-case-detail-summary{display:flex;flex-direction:column;gap:10px}
+#panel-delte-sager .shared-case-detail-summary__badges{display:flex;flex-wrap:wrap;gap:8px}
+#panel-delte-sager .shared-case-detail-summary__grid{display:grid;gap:8px}
+#panel-delte-sager .shared-case-detail-summary__grid .shared-case-detail__row{border:1px solid var(--border);border-radius:12px;padding:8px 10px;background:var(--panel-soft)}
+#panel-delte-sager .shared-case-pill--status[data-status="kladde"]{background:rgba(148,163,184,0.18);color:#94a3b8;border-color:rgba(148,163,184,0.35)}
+#panel-delte-sager .shared-case-pill--status[data-status="godkendt"]{background:rgba(59,130,246,0.14);color:#3b82f6;border-color:rgba(59,130,246,0.35)}
+#panel-delte-sager .shared-case-pill--status[data-status="demontage_i_gang"]{background:rgba(245,158,11,0.16);color:#f59e0b;border-color:rgba(245,158,11,0.4)}
+#panel-delte-sager .shared-case-pill--status[data-status="afsluttet"]{background:rgba(34,197,94,0.14);color:#22c55e;border-color:rgba(34,197,94,0.35)}
+#panel-delte-sager .shared-case-detail-preview{display:flex;flex-direction:column;gap:10px}
+#panel-delte-sager .shared-case-detail-preview__cards{display:grid;gap:12px}
+#panel-delte-sager .shared-case-detail-card{border:1px solid var(--border);border-radius:14px;padding:12px;display:grid;gap:8px;background:var(--panel-soft)}
+#panel-delte-sager .shared-case-detail-card__title{font-weight:600}
+#panel-delte-sager .shared-case-detail-card__raw summary{cursor:pointer;font-weight:600;color:var(--text)}
+#panel-delte-sager .shared-case-detail-card__raw pre{margin:8px 0 0;background:#0f172a;color:#e2e8f0;border-radius:10px;padding:10px;overflow:auto;max-height:220px;font-size:.75rem}
+#panel-delte-sager .shared-case-detail-audit{display:flex;flex-direction:column;gap:8px}
+#panel-delte-sager .shared-case-detail-audit__list{display:grid;gap:8px}
+#panel-delte-sager .shared-case-detail-audit__item{border:1px solid var(--border);border-radius:12px;padding:10px;display:flex;justify-content:space-between;gap:12px;background:var(--panel-soft);font-size:.85rem}
+#panel-delte-sager .shared-case-detail-audit__meta{display:flex;flex-direction:column;gap:4px}
+#panel-delte-sager .shared-case-detail-audit__time{color:var(--muted);white-space:nowrap}
+#panel-delte-sager .shared-case-detail__empty{color:var(--muted);font-size:.85rem}
+#panel-delte-sager .shared-case-detail-skeleton{padding:12px;border-radius:12px;background:var(--panel-soft);color:var(--muted);font-size:.85rem}
+@media (min-width: 900px){#panel-delte-sager .shared-case-detail-modal{align-items:center}#panel-delte-sager .shared-case-detail-modal__sheet{max-width:720px;border-radius:18px}#panel-delte-sager .shared-case-detail-modal__body{max-height:70vh}}
 .shared-status{margin-bottom:8px;color:var(--muted)}
 .shared-status-card{display:grid;gap:6px;margin:8px 0;padding:10px;border:1px solid var(--border);border-radius:12px;background:var(--panel)}
 .shared-status-row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:0.9rem;color:var(--text)}

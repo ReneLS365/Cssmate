@@ -1,4 +1,4 @@
-import { listSharedCasesPage, listSharedCasesDelta, downloadCaseJson, importCasePayload, approveSharedCase, deleteSharedCase, formatTeamId, PermissionDeniedError, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG, setSharedCaseContext, updateSharedCaseStatus } from './shared-ledger.js';
+import { listSharedCasesPage, listSharedCasesDelta, downloadCaseJson, importCasePayload, approveSharedCase, deleteSharedCase, getSharedCase, getSharedCaseAudit, formatTeamId, PermissionDeniedError, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG, setSharedCaseContext, updateSharedCaseStatus } from './shared-ledger.js';
 import { exportPDFBlob } from './export-pdf.js';
 import { buildExportModel } from './export-model.js';
 import { downloadBlob } from './utils/downloadBlob.js';
@@ -71,6 +71,12 @@ const POLL_INTERVAL_MS = 5000;
 let activeCaseMenu = null;
 let activeCaseMenuButton = null;
 let activeCaseMenuCleanup = null;
+let activeCaseDetail = null;
+let activeCaseDetailRequestId = 0;
+let pendingDeepLinkCaseId = '';
+let deepLinkHandled = false;
+let lastRenderUserId = '';
+let lastRenderOnChange = null;
 
 const WORKFLOW_STATUS = {
   DRAFT: 'kladde',
@@ -195,6 +201,44 @@ function formatEditorShort(value) {
   const text = value.toString();
   if (text.length <= 8) return text;
   return text.slice(0, 8);
+}
+
+function sanitizeFileName(value) {
+  return (value || 'case')
+    .toString()
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-zA-Z0-9-_]+/g, '') || 'case';
+}
+
+function buildCaseDetailLink(caseId) {
+  if (typeof window === 'undefined') return '';
+  const url = new URL(window.location.href);
+  url.searchParams.set('tab', 'delte-sager');
+  url.searchParams.set('caseId', caseId);
+  return url.toString();
+}
+
+function updateCaseIdInUrl(caseId) {
+  if (typeof window === 'undefined' || !window.history?.replaceState) return;
+  const url = new URL(window.location.href);
+  if (caseId) {
+    url.searchParams.set('tab', 'delte-sager');
+    url.searchParams.set('caseId', caseId);
+  } else {
+    url.searchParams.delete('caseId');
+  }
+  window.history.replaceState({}, '', url.toString());
+}
+
+function readDeepLinkCaseId() {
+  if (typeof window === 'undefined') return '';
+  const params = new URLSearchParams(window.location.search);
+  const caseId = params.get('caseId') || '';
+  const tab = params.get('tab') || '';
+  if (!caseId) return '';
+  if (tab && tab !== 'delte-sager') return '';
+  return caseId;
 }
 
 function isOnline() {
@@ -917,6 +961,32 @@ function resolveAttachmentPayload(value) {
   return value;
 }
 
+function safeParseJsonMaybe(value) {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function normalizeAttachmentEntry(value) {
+  if (!value) return null;
+  if (typeof value === 'object' && value) {
+    if ('payload' in value || 'exported_at' in value || 'exportedAt' in value) {
+      return {
+        exportedAt: value.exported_at || value.exportedAt || '',
+        payload: value.payload ?? value.data ?? null,
+      };
+    }
+  }
+  return { exportedAt: '', payload: value };
+}
+
 function normalizeAttachmentContent(value) {
   const resolved = resolveAttachmentPayload(value);
   if (!resolved) return null;
@@ -1035,6 +1105,70 @@ function resolveReceiptTotals(entry) {
     total: safeNumber(totals.total),
     hours: safeNumber(totals.hours),
   };
+}
+
+function countPayloadLines(payload) {
+  const parsed = safeParseJsonMaybe(payload);
+  if (!parsed) return null;
+  const candidates = [
+    parsed.lines,
+    parsed.items,
+    parsed.materials,
+    parsed.materialer,
+    parsed.rows,
+  ];
+  for (const list of candidates) {
+    if (Array.isArray(list)) return list.length;
+  }
+  return null;
+}
+
+function buildCaseExportPayload(entry) {
+  const clone = JSON.parse(JSON.stringify(entry || {}));
+  delete clone.__syncing;
+  delete clone.createdByEmail;
+  delete clone.createdByName;
+  delete clone.createdBy;
+  delete clone.updatedBy;
+  delete clone.lastEditorSub;
+  delete clone.deletedBy;
+  return clone;
+}
+
+function downloadCaseExport(entry) {
+  if (!entry) throw new Error('Ingen sag valgt');
+  const jobNumber = entry.jobNumber || resolveCaseMeta(entry)?.jobNumber || 'JOB';
+  const fileName = `${sanitizeFileName(jobNumber)}_sharedcase.json`;
+  const payload = JSON.stringify(buildCaseExportPayload(entry), null, 2);
+  downloadBlob(new Blob([payload], { type: 'application/json' }), fileName);
+}
+
+async function copyCaseSummary(entry) {
+  if (!entry) throw new Error('Ingen sag valgt');
+  const meta = resolveCaseMeta(entry);
+  const jobNumber = meta.jobNumber || entry.jobNumber || 'Ukendt';
+  const statusLabel = formatEntryStatusLabel(entry);
+  const link = buildCaseDetailLink(entry.caseId);
+  const lines = [
+    `Case ID: ${entry.caseId}`,
+    `Jobnr: ${jobNumber}`,
+    `Status: ${statusLabel}`,
+    link ? `Link: ${link}` : '',
+  ].filter(Boolean);
+  const text = lines.join('\n');
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', 'true');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  textarea.remove();
 }
 
 function renderReceiptSummary(entry) {
@@ -1493,49 +1627,403 @@ function createCaseActions(entry, userId, onChange) {
   return container;
 }
 
-function openCaseDetails(entry, userId, onChange) {
+function formatAuditActor(actor) {
+  if (!actor) return 'ukendt';
+  const name = actor.name || actor.displayName || '';
+  if (name) return name;
+  if (actor.email) return actor.email;
+  return actor.sub || actor.uid || 'ukendt';
+}
+
+function buildSummaryRow(label, value) {
+  const row = document.createElement('div');
+  row.className = 'shared-case-detail__row';
+  const labelEl = document.createElement('span');
+  labelEl.textContent = label;
+  const valueEl = document.createElement('strong');
+  valueEl.textContent = value;
+  row.appendChild(labelEl);
+  row.appendChild(valueEl);
+  return row;
+}
+
+function renderAttachmentPreview(title, attachment, { showTotals = true } = {}) {
+  const normalized = normalizeAttachmentEntry(attachment);
+  if (!normalized?.payload && !normalized?.exportedAt) return null;
+  const card = document.createElement('div');
+  card.className = 'shared-case-detail-card';
+  const header = document.createElement('div');
+  header.className = 'shared-case-detail-card__title';
+  header.textContent = title;
+  card.appendChild(header);
+
+  const exportedAt = normalized.exportedAt ? formatDateLabel(normalized.exportedAt) || formatDateInput(normalized.exportedAt) : '';
+  if (exportedAt) {
+    card.appendChild(buildSummaryRow('Eksporteret', exportedAt));
+  }
+
+  const lineCount = countPayloadLines(normalized.payload);
+  if (typeof lineCount === 'number') {
+    card.appendChild(buildSummaryRow('Linjer', String(lineCount)));
+  }
+
+  if (showTotals) {
+    const totals = extractTotalsFromSheet(normalized.payload);
+    if (totals.materials || totals.total) {
+      card.appendChild(buildSummaryRow('Materialesum', `${CURRENCY_FORMATTER.format(totals.materials)} kr.`));
+      card.appendChild(buildSummaryRow('Sum', `${CURRENCY_FORMATTER.format(totals.total)} kr.`));
+    }
+  }
+
+  const rawPayload = safeParseJsonMaybe(normalized.payload);
+  if (rawPayload) {
+    const rawDetails = document.createElement('details');
+    rawDetails.className = 'shared-case-detail-card__raw';
+    const summary = document.createElement('summary');
+    summary.textContent = 'Åbn rå JSON';
+    const pre = document.createElement('pre');
+    pre.textContent = JSON.stringify(rawPayload, null, 2);
+    rawDetails.appendChild(summary);
+    rawDetails.appendChild(pre);
+    card.appendChild(rawDetails);
+  }
+
+  return card;
+}
+
+function renderReceiptPreview(entry) {
+  const receipt = entry?.attachments?.receipt || null;
+  if (!receipt) return null;
+  const totals = resolveReceiptTotals(entry);
+  const card = document.createElement('div');
+  card.className = 'shared-case-detail-card';
+  const header = document.createElement('div');
+  header.className = 'shared-case-detail-card__title';
+  header.textContent = 'Kvittering';
+  card.appendChild(header);
+  if (totals) {
+    card.appendChild(buildSummaryRow('Materialesum', `${CURRENCY_FORMATTER.format(totals.materials)} kr.`));
+    card.appendChild(buildSummaryRow('Montage', `${CURRENCY_FORMATTER.format(totals.montage)} kr.`));
+    card.appendChild(buildSummaryRow('Demontage', `${CURRENCY_FORMATTER.format(totals.demontage)} kr.`));
+    card.appendChild(buildSummaryRow('Total', `${CURRENCY_FORMATTER.format(totals.total)} kr.`));
+  }
+  return card;
+}
+
+function renderCaseDetailSummary(entry) {
   const meta = resolveCaseMeta(entry);
   const totals = resolveCaseTotals(entry, meta);
+  const statusLabel = formatEntryStatusLabel(entry);
   const updatedAt = entry.lastUpdatedAt || entry.updatedAt || entry.createdAt || '';
+  const createdAt = entry.createdAt || entry.created_at || '';
   const lastEditor = formatEditorLabel(entry.lastEditorSub || entry.updatedBy || entry.createdBy);
-  const updatedLabel = formatRelativeTime(updatedAt) || formatDateLabel(updatedAt);
+  const creator = entry.createdByName || entry.createdByEmail || entry.createdBy || '–';
 
+  const section = document.createElement('section');
+  section.className = 'shared-case-detail-summary';
+  const badgeRow = document.createElement('div');
+  badgeRow.className = 'shared-case-detail-summary__badges';
+  const statusBadge = document.createElement('span');
+  statusBadge.className = 'shared-case-pill shared-case-pill--status';
+  statusBadge.dataset.status = entry.status || '';
+  statusBadge.textContent = statusLabel;
+  const systemBadge = document.createElement('span');
+  systemBadge.className = 'shared-case-pill shared-case-pill--system';
+  systemBadge.textContent = meta.system || entry.system || '–';
+  badgeRow.appendChild(statusBadge);
+  badgeRow.appendChild(systemBadge);
+  section.appendChild(badgeRow);
+
+  const info = document.createElement('div');
+  info.className = 'shared-case-detail-summary__grid';
+  info.appendChild(buildSummaryRow('Jobnr', meta.jobNumber || entry.jobNumber || '–'));
+  info.appendChild(buildSummaryRow('Type', meta.jobType || entry.caseKind || '–'));
+  info.appendChild(buildSummaryRow('Status', statusLabel));
+  info.appendChild(buildSummaryRow('Total', `${CURRENCY_FORMATTER.format(totals.total)} kr.`));
+  info.appendChild(buildSummaryRow('Materialer', `${CURRENCY_FORMATTER.format(totals.materials)} kr.`));
+  info.appendChild(buildSummaryRow('Opdateret', formatRelativeDa(updatedAt) || formatDateLabel(updatedAt) || '–'));
+  info.appendChild(buildSummaryRow('Oprettet', formatDateInput(createdAt) || formatDateLabel(createdAt) || '–'));
+  info.appendChild(buildSummaryRow('Oprettet af', creator));
+  info.appendChild(buildSummaryRow('Sidste editor', lastEditor));
+  section.appendChild(info);
+  return section;
+}
+
+function renderCaseDetailPreview(entry) {
+  const section = document.createElement('section');
+  section.className = 'shared-case-detail-preview';
+  const title = document.createElement('h4');
+  title.textContent = 'Vedhæftninger';
+  section.appendChild(title);
+  const cards = document.createElement('div');
+  cards.className = 'shared-case-detail-preview__cards';
+  const montage = renderAttachmentPreview('Montage', entry?.attachments?.montage);
+  const demontage = renderAttachmentPreview('Demontage', entry?.attachments?.demontage);
+  const receipt = renderReceiptPreview(entry);
+  [montage, demontage, receipt].filter(Boolean).forEach(card => cards.appendChild(card));
+  if (!cards.childNodes.length) {
+    const empty = document.createElement('p');
+    empty.className = 'shared-case-detail__empty';
+    empty.textContent = 'Ingen attachments er klar endnu.';
+    section.appendChild(empty);
+  } else {
+    section.appendChild(cards);
+  }
+  return section;
+}
+
+function renderCaseDetailAudit({ items = [], unavailable = false, loading = false } = {}) {
+  const section = document.createElement('section');
+  section.className = 'shared-case-detail-audit';
+  const title = document.createElement('h4');
+  title.textContent = 'Audit log';
+  section.appendChild(title);
+  if (loading) {
+    const skeleton = document.createElement('div');
+    skeleton.className = 'shared-case-detail-skeleton';
+    skeleton.textContent = 'Henter audit...';
+    section.appendChild(skeleton);
+    return section;
+  }
+  if (unavailable) {
+    const empty = document.createElement('p');
+    empty.className = 'shared-case-detail__empty';
+    empty.textContent = 'Audit er ikke tilgængelig endnu.';
+    section.appendChild(empty);
+    return section;
+  }
+  if (!items.length) {
+    const empty = document.createElement('p');
+    empty.className = 'shared-case-detail__empty';
+    empty.textContent = 'Ingen audit events endnu.';
+    section.appendChild(empty);
+    return section;
+  }
+  const list = document.createElement('div');
+  list.className = 'shared-case-detail-audit__list';
+  items.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'shared-case-detail-audit__item';
+    const meta = document.createElement('div');
+    meta.className = 'shared-case-detail-audit__meta';
+    const action = document.createElement('strong');
+    action.textContent = item.summary || item.action || 'Hændelse';
+    const actor = document.createElement('span');
+    actor.textContent = formatAuditActor(item.actor);
+    meta.appendChild(action);
+    meta.appendChild(actor);
+    const time = document.createElement('div');
+    time.className = 'shared-case-detail-audit__time';
+    const timestamp = item.createdAt || item.timestamp || '';
+    time.textContent = formatRelativeDa(timestamp) || formatDateLabel(timestamp) || '–';
+    row.appendChild(meta);
+    row.appendChild(time);
+    list.appendChild(row);
+  });
+  section.appendChild(list);
+  return section;
+}
+
+function buildDetailActionButton(label, handler, { disabled = false, variant = '' } = {}) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = label;
+  if (variant) button.classList.add(`shared-case-detail-action--${variant}`);
+  button.disabled = disabled;
+  button.addEventListener('click', async () => {
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      await handler();
+    } finally {
+      button.disabled = false;
+    }
+  });
+  return button;
+}
+
+function renderCaseDetailActions(entry, onChange) {
+  const container = document.createElement('div');
+  container.className = 'shared-case-detail-actions';
+  const statusBucket = resolveEntryBucket(entry);
+  if (statusBucket === WORKFLOW_STATUS.DRAFT) {
+    container.appendChild(buildDetailActionButton('Indlæs til montage', async () => {
+      await handleImport(entry, { phase: 'montage' });
+      showToast('Sag indlæst til montage.', { variant: 'success' });
+    }, { variant: 'primary' }));
+  }
+  if ([WORKFLOW_STATUS.APPROVED, WORKFLOW_STATUS.DEMONTAGE].includes(statusBucket)) {
+    container.appendChild(buildDetailActionButton('Indlæs til demontage', async () => {
+      if (statusBucket === WORKFLOW_STATUS.APPROVED) {
+        await handleDemontageAction(entry, onChange, { autoImport: true });
+      } else {
+        await handleImport(entry, { phase: 'demontage' });
+        showToast('Sag indlæst til demontage.', { variant: 'success' });
+      }
+    }, { variant: 'primary' }));
+  }
+  container.appendChild(buildDetailActionButton('Eksporter JSON', async () => {
+    downloadCaseExport(entry);
+    showToast('JSON er downloadet.', { variant: 'success' });
+  }));
+  container.appendChild(buildDetailActionButton('Kopiér', async () => {
+    await copyCaseSummary(entry);
+    showToast('Sag kopieret til udklipsholder.', { variant: 'success' });
+  }));
+  return container;
+}
+
+function renderCaseDetailBody(entry, auditState = {}) {
   const wrapper = document.createElement('div');
-  wrapper.className = 'shared-case-detail';
-  const rows = [
-    { label: 'Status', value: formatEntryStatusLabel(entry) },
-    { label: 'Type', value: meta.jobType || entry.caseKind || '–' },
-    { label: 'Opgave', value: meta.jobName || '–' },
-    { label: 'Adresse', value: meta.address || '–' },
-    { label: 'Kunde', value: meta.customer || '–' },
-    { label: 'Montører', value: meta.montor || meta.workerNames?.join(', ') || '–' },
-    { label: 'Dato', value: formatDateInput(meta.date) || '–' },
-    { label: 'System', value: meta.system || entry.system || '–' },
-    { label: 'Materialer', value: `${CURRENCY_FORMATTER.format(totals.materials)} kr.` },
-    { label: 'Total', value: `${CURRENCY_FORMATTER.format(totals.total)} kr.` },
-    { label: 'Sidst opdateret', value: updatedLabel || '–' },
-    { label: 'Sidste editor', value: lastEditor },
-  ];
-  rows.forEach(row => {
-    const line = document.createElement('div');
-    line.className = 'shared-case-detail__row';
-    const label = document.createElement('span');
-    label.textContent = row.label;
-    const value = document.createElement('strong');
-    value.textContent = row.value;
-    line.appendChild(label);
-    line.appendChild(value);
-    wrapper.appendChild(line);
-  });
-  const actions = createCaseActions(entry, userId, onChange);
-  actions.classList.add('shared-case-detail__actions');
-  wrapper.appendChild(actions);
+  wrapper.className = 'shared-case-detail-body';
+  wrapper.appendChild(renderCaseDetailSummary(entry));
+  wrapper.appendChild(renderCaseDetailPreview(entry));
+  wrapper.appendChild(renderCaseDetailAudit(auditState));
+  return wrapper;
+}
 
-  openSharedModal({
-    title: meta.jobNumber || entry.jobNumber || 'Ukendt sag',
-    body: wrapper,
-    actions: [{ label: 'Luk' }],
+function refreshActiveCaseDetail({ loadingAudit = false } = {}) {
+  if (!activeCaseDetail) return;
+  const { entry, audit, body, actions, onChange } = activeCaseDetail;
+  if (!body || !actions) return;
+  body.textContent = '';
+  body.appendChild(renderCaseDetailBody(entry, { ...audit, loading: loadingAudit }));
+  actions.textContent = '';
+  actions.appendChild(renderCaseDetailActions(entry, onChange));
+}
+
+function openCaseDetails(entry, userId, onChange, { focusReturnEl } = {}) {
+  if (!entry?.caseId) return;
+  if (activeCaseDetail?.close) {
+    activeCaseDetail.close();
+  }
+  const overlay = document.createElement('div');
+  overlay.className = 'shared-case-detail-modal';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  const backdrop = document.createElement('div');
+  backdrop.className = 'shared-case-detail-modal__backdrop';
+  const sheet = document.createElement('div');
+  sheet.className = 'shared-case-detail-modal__sheet';
+  const header = document.createElement('div');
+  header.className = 'shared-case-detail-modal__header';
+  const backBtn = document.createElement('button');
+  backBtn.type = 'button';
+  backBtn.className = 'shared-case-detail-modal__back';
+  backBtn.textContent = '← Tilbage';
+  const title = document.createElement('div');
+  title.className = 'shared-case-detail-modal__title';
+  title.textContent = entry.jobNumber || resolveCaseMeta(entry)?.jobNumber || 'Sag';
+  const headerActions = document.createElement('div');
+  headerActions.className = 'shared-case-detail-modal__header-actions';
+  header.appendChild(backBtn);
+  header.appendChild(title);
+  header.appendChild(headerActions);
+
+  const body = document.createElement('div');
+  body.className = 'shared-case-detail-modal__body';
+
+  const actions = document.createElement('div');
+  actions.className = 'shared-case-detail-modal__actions';
+
+  sheet.appendChild(header);
+  sheet.appendChild(body);
+  sheet.appendChild(actions);
+  overlay.appendChild(backdrop);
+  overlay.appendChild(sheet);
+
+  const onKeyDown = (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      close();
+    }
+  };
+
+  const close = () => {
+    if (activeCaseDetail?.caseId !== entry.caseId) return;
+    updateCaseIdInUrl('');
+    overlay.remove();
+    document.removeEventListener('keydown', onKeyDown);
+    if (focusReturnEl && typeof focusReturnEl.focus === 'function') {
+      focusReturnEl.focus();
+    }
+    activeCaseDetail = null;
+  };
+
+  backBtn.addEventListener('click', close);
+  backdrop.addEventListener('click', close);
+  document.addEventListener('keydown', onKeyDown);
+  document.body.appendChild(overlay);
+  updateCaseIdInUrl(entry.caseId);
+  backBtn.focus();
+
+  const detailState = {
+    caseId: entry.caseId,
+    entry,
+    audit: { items: [], unavailable: false },
+    overlay,
+    body,
+    actions,
+    close,
+    onChange,
+  };
+  activeCaseDetail = detailState;
+  refreshActiveCaseDetail({ loadingAudit: true });
+
+  const requestId = ++activeCaseDetailRequestId;
+  Promise.all([
+    getSharedCase(ensureTeamSelected(), entry.caseId),
+    getSharedCaseAudit(ensureTeamSelected(), entry.caseId, { limit: 50 }),
+  ])
+    .then(([freshEntry, auditResult]) => {
+      if (!activeCaseDetail || activeCaseDetail.caseId !== entry.caseId || requestId !== activeCaseDetailRequestId) return;
+      if (freshEntry) {
+        updateCaseEntry(freshEntry);
+        activeCaseDetail.entry = freshEntry;
+      }
+      activeCaseDetail.audit = auditResult || { items: [], unavailable: true };
+      refreshActiveCaseDetail({ loadingAudit: false });
+    })
+    .catch(() => {
+      if (!activeCaseDetail || activeCaseDetail.caseId !== entry.caseId) return;
+      activeCaseDetail.audit = { items: [], unavailable: true };
+      refreshActiveCaseDetail({ loadingAudit: false });
+    });
+}
+
+async function openCaseDetailsById(caseId) {
+  if (!caseId) return;
+  const cached = casesById.get(caseId);
+  const userId = lastRenderUserId || sessionState?.user?.uid || 'offline-user';
+  const onChange = lastRenderOnChange || ((payload) => {
+    if (payload?.updatedCase) updateCaseEntry(payload.updatedCase);
+    if (payload?.removeCaseId) removeCaseEntry(payload.removeCaseId);
+    if (sharedCasesContainer) renderFromState(sharedCasesContainer, userId);
   });
+  if (cached) {
+    openCaseDetails(cached, userId, onChange, {});
+    return;
+  }
+  try {
+    const entry = await getSharedCase(ensureTeamSelected(), caseId);
+    if (!entry) {
+      showToast('Sag findes ikke længere.', { variant: 'error' });
+      return;
+    }
+    updateCaseEntry(entry);
+    openCaseDetails(entry, userId, onChange, {});
+  } catch (error) {
+    console.error('Kunne ikke hente sag', error);
+    showToast(error?.message || 'Kunne ikke åbne sag.', { variant: 'error' });
+  }
+}
+
+function attemptOpenDeepLink() {
+  if (!pendingDeepLinkCaseId || deepLinkHandled || !lastRenderOnChange) return;
+  const caseId = pendingDeepLinkCaseId;
+  pendingDeepLinkCaseId = '';
+  deepLinkHandled = true;
+  openCaseDetailsById(caseId);
 }
 
 function closeActiveCaseMenu() {
@@ -1706,7 +2194,7 @@ function renderCaseCardCompact(entry, userId, onChange) {
 
   const openDetails = () => {
     closeActiveCaseMenu();
-    openCaseDetails(entry, userId, onChange);
+    openCaseDetails(entry, userId, onChange, { focusReturnEl: card });
   };
   card.addEventListener('click', (event) => {
     if (menuWrap.contains(event.target)) return;
@@ -2071,6 +2559,10 @@ function updateCaseEntry(updatedCase) {
   const existing = casesById.get(updatedCase.caseId);
   const merged = normalizeStoredEntry(updatedCase, existing);
   mergeEntries([merged], { prepend: true });
+  if (activeCaseDetail?.caseId === merged.caseId) {
+    activeCaseDetail.entry = merged;
+    refreshActiveCaseDetail();
+  }
 }
 
 async function handleExportedEvent(detail) {
@@ -2108,6 +2600,9 @@ function buildOptimisticUpdate(entry, updates) {
 
 function removeCaseEntry(caseId) {
   if (!caseId) return;
+  if (activeCaseDetail?.caseId === caseId && typeof activeCaseDetail.close === 'function') {
+    activeCaseDetail.close();
+  }
   casesById.delete(caseId);
   caseItems = caseItems.filter(entry => entry?.caseId !== caseId);
   touchCaseItems();
@@ -2199,11 +2694,15 @@ function renderFromState(container, userId) {
       filters,
     });
   }
-  renderSharedCases(container, sorted, filters, userId, (payload) => {
+  const onChange = (payload) => {
     if (payload?.updatedCase) updateCaseEntry(payload.updatedCase);
     if (payload?.removeCaseId) removeCaseEntry(payload.removeCaseId);
     renderFromState(container, userId);
-  }, allCounts);
+  };
+  lastRenderUserId = userId;
+  lastRenderOnChange = onChange;
+  renderSharedCases(container, sorted, filters, userId, onChange, allCounts);
+  attemptOpenDeepLink();
   if (debugEnabled && start) {
     const end = typeof performance !== 'undefined' ? performance.now() : Date.now();
     debugLog('shared-cases render', { durationMs: Number((end - start).toFixed(1)), visible: sorted.length });
@@ -2492,6 +2991,8 @@ export function initSharedCasesPanel() {
   if (sharedCasesPanelInitialized) return;
   sharedCasesContainer = document.getElementById('sharedCasesList');
   if (!sharedCasesContainer) return;
+  pendingDeepLinkCaseId = readDeepLinkCaseId();
+  deepLinkHandled = false;
   sessionState = getSessionState?.() || {};
   displayTeamId = sessionState.displayTeamId || displayTeamId || DEFAULT_TEAM_SLUG;
   teamId = sessionState.teamId || teamId || formatTeamId(DEFAULT_TEAM_SLUG);
@@ -2643,4 +3144,5 @@ export const __test = {
   deriveBoardStatus,
   resolveEntryBucket,
   WORKFLOW_STATUS,
+  openCaseDetails,
 };
