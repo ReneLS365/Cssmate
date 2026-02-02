@@ -933,17 +933,32 @@ input.csm-name{
 .history-item__body{margin-top:0.35rem;border:1px solid var(--border);border-radius:10px;padding:0.65rem 0.75rem;background:var(--panel)}
 .history-item__actions{justify-content:flex-end}
 
-#panel-delte-sager .shared-header-row{display:flex;align-items:center;gap:10px}
+#panel-delte-sager .shared-header-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+#panel-delte-sager .shared-header-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#panel-delte-sager .shared-header-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#panel-delte-sager .shared-header-meta{font-size:.85rem;color:var(--muted)}
 #panel-delte-sager .shared-header-count{font-size:.9rem;color:var(--muted);background:var(--panel-soft);border-radius:999px;padding:4px 10px}
-#panel-delte-sager .shared-controls{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));align-items:end;margin-bottom:12px}
+#panel-delte-sager .shared-refresh-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:999px;padding:6px 14px}
+#panel-delte-sager .shared-refresh-btn.is-loading{opacity:.7}
+#panel-delte-sager .shared-refresh-btn.is-loading::after{content:"";width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:999px;animation:button-spin .9s linear infinite}
+#panel-delte-sager .shared-filters{margin-bottom:12px;border:1px solid var(--border);border-radius:14px;background:var(--panel-soft);padding:8px 10px}
+#panel-delte-sager .shared-filters summary{cursor:pointer;font-weight:600;list-style:none}
+#panel-delte-sager .shared-filters summary::-webkit-details-marker{display:none}
+#panel-delte-sager .shared-controls{display:flex;flex-direction:column;gap:10px;margin-top:10px}
 #panel-delte-sager .shared-controls label{min-width:0}
 #panel-delte-sager .shared-filter-actions{display:flex;justify-content:flex-end}
+#panel-delte-sager .shared-filter-actions button{width:100%}
 #panel-delte-sager .shared-view-toggle{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 #panel-delte-sager .shared-view-toggle button{flex:1 1 120px;padding:8px 12px;border-radius:999px;border:1px solid var(--border);background:var(--panel-soft);color:var(--text);font-weight:600}
 #panel-delte-sager .shared-view-toggle button.is-active{background:var(--accent);color:var(--text-on-accent);border-color:var(--accent)}
 #panel-delte-sager .shared-cases-board{display:grid;gap:12px}
 #panel-delte-sager .shared-board{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(260px,1fr);gap:12px;overflow-x:auto;padding:4px 4px 10px;scroll-snap-type:x proximity}
 #panel-delte-sager .shared-board-column{border:1px solid var(--border);border-radius:16px;background:var(--panel);padding:10px;display:flex;flex-direction:column;gap:10px;scroll-snap-align:start;min-height:180px}
+#panel-delte-sager .shared-board[data-focus="kladde"] .shared-board-column:not([data-status="kladde"]){opacity:.45;filter:saturate(.7)}
+#panel-delte-sager .shared-board[data-focus="godkendt"] .shared-board-column:not([data-status="godkendt"]){opacity:.45;filter:saturate(.7)}
+#panel-delte-sager .shared-board[data-focus="demontage_i_gang"] .shared-board-column:not([data-status="demontage_i_gang"]){opacity:.45;filter:saturate(.7)}
+#panel-delte-sager .shared-board[data-focus="afsluttet"] .shared-board-column:not([data-status="afsluttet"]){opacity:.45;filter:saturate(.7)}
+#panel-delte-sager .shared-board[data-focus] .shared-board-column.is-focused{opacity:1;filter:none}
 #panel-delte-sager .shared-board-column.is-dimmed{opacity:.45;filter:saturate(.7)}
 #panel-delte-sager .shared-board-header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:12px;background:var(--panel-soft)}
 #panel-delte-sager .shared-board-title-wrap{display:flex;align-items:center;gap:8px}
@@ -1032,6 +1047,7 @@ input.csm-name{
 #panel-delte-sager .shared-case-detail__empty{color:var(--muted);font-size:.85rem}
 #panel-delte-sager .shared-case-detail-skeleton{padding:12px;border-radius:12px;background:var(--panel-soft);color:var(--muted);font-size:.85rem}
 @media (min-width: 900px){#panel-delte-sager .shared-case-detail-modal{align-items:center}#panel-delte-sager .shared-case-detail-modal__sheet{max-width:720px;border-radius:18px}#panel-delte-sager .shared-case-detail-modal__body{max-height:70vh}}
+@media (min-width: 900px){#panel-delte-sager .shared-controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));align-items:end}#panel-delte-sager .shared-filter-actions button{width:auto}}
 .shared-status{margin-bottom:8px;color:var(--muted)}
 .shared-status-card{display:grid;gap:6px;margin:8px 0;padding:10px;border:1px solid var(--border);border-radius:12px;background:var(--panel)}
 .shared-status-row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:0.9rem;color:var(--text)}
