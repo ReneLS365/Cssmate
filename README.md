@@ -155,6 +155,35 @@ Bemærk: Ændringer til disse værdier kræver et fresh deploy, så `auth0-confi
 - Netlify Functions undgår `import.meta` så bundling til CJS ikke advarer.
 - `MaxListenersExceededWarning` og `wasm streaming compile failed` fra Netlify tooling/redirector er kendt build-noise og påvirker ikke runtime.
 
+## Observability
+
+**/api/health (public):**
+- Returnerer altid `200` hvis funktionen svarer.
+- Indeholder drift-warnings (fx manglende env vars), men crasher ikke selv hvis noget mangler.
+
+**/api/health/deep (token-beskyttet i production):**
+- Kræver `HEALTHCHECK_TOKEN` i production og header `x-healthcheck-token`.
+- I non-prod er token kun nødvendig hvis du selv har sat `HEALTHCHECK_TOKEN`.
+- Udfører DB checks uden migrations og svarer med `ok` baseret på DB-tilstanden.
+
+**X-Request-Id:**
+- Alle API-responses inkluderer `X-Request-Id`.
+- Du kan sende `x-request-id` på requesten for at korrelere logs.
+
+**Netlify env import (UI):**
+- Vælg **Skip conflicts** når du kun vil tilføje manglende keys.
+- Vælg **Update conflicts** når du bevidst vil overskrive eksisterende værdier.
+
+**Eksempler (relative paths):**
+```bash
+curl -i /api/health
+curl -i /api/health/deep
+curl -i -H "x-healthcheck-token: $HEALTHCHECK_TOKEN" /api/health/deep
+```
+
+**Production token (Netlify):**
+- Sæt `HEALTHCHECK_TOKEN` kun i Production context for at beskytte `/api/health/deep`.
+
 ## DB setup (Neon) + migrations
 
 Sørg for at Netlify Functions har adgang til databasen via env var:

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './_test'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import { createConsoleCollector } from './helpers/console-collector'
@@ -14,13 +14,8 @@ const SCENARIO_DIRS = {
 async function ensureLoggedIn (page) {
   const gate = page.locator('#authGate')
   if (await gate.count() === 0) return
-  if (await gate.isHidden()) return
-  await gate.waitFor({ state: 'visible' })
-  const googleButton = page.getByRole('button', { name: /Google/i })
-  if (await googleButton.isVisible()) {
-    await googleButton.click()
-  }
-  await gate.waitFor({ state: 'hidden' })
+  await page.waitForTimeout(50)
+  await expect(gate).toBeHidden()
 }
 
 async function ensureScenarioFolders() {

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './_test'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { createConsoleCollector } from './helpers/console-collector'
@@ -8,18 +8,6 @@ async function persistDownload(download, testInfo, fallbackName) {
   const targetPath = testInfo.outputPath(path.basename(suggested))
   await download.saveAs(targetPath)
   return targetPath
-}
-
-async function ensureLoggedIn (page) {
-  const gate = page.locator('#authGate')
-  if (await gate.count() === 0) return
-  if (await gate.isHidden()) return
-  await gate.waitFor({ state: 'visible' })
-  const googleButton = page.getByRole('button', { name: /Google/i })
-  if (await googleButton.isVisible()) {
-    await googleButton.click()
-  }
-  await gate.waitFor({ state: 'hidden' })
 }
 
 test.afterEach(async ({ page }, testInfo) => {
@@ -52,7 +40,6 @@ test('eksport af akkordseddel downloader PDF og JSON', async ({ page }, testInfo
     page.setDefaultNavigationTimeout(45000)
 
     await page.goto('/', { waitUntil: 'domcontentloaded' })
-    await ensureLoggedIn(page)
     await page.waitForSelector('#sagsnummer', { state: 'visible' })
 
     await page.getByLabel('Sagsnummer').fill(uniqueJob)

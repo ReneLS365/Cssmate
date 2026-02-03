@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './_test'
 import { createConsoleCollector } from './helpers/console-collector'
 
 test('runtime sanity check', async ({ page }, testInfo) => {

@@ -1,4 +1,7 @@
+import crypto from 'node:crypto'
+
 const REDACTED = '[REDACTED]'
+const REDACT_KEYS = ['token', 'authorization', 'cookie', 'secret', 'key', 'password']
 
 function redactAuth (value) {
   return value
@@ -42,9 +45,38 @@ export function sanitizeObject (value, seen = new WeakSet()) {
   }
   const output = {}
   for (const [key, entry] of Object.entries(value)) {
+    if (shouldRedactKey(key)) {
+      output[key] = REDACTED
+      continue
+    }
     output[key] = sanitizeObject(entry, seen)
   }
   return output
+}
+
+function shouldRedactKey (key) {
+  const normalized = String(key || '').toLowerCase()
+  return REDACT_KEYS.some(token => normalized.includes(token))
+}
+
+export function makeRequestId (req) {
+  const headers = req?.headers || {}
+  return (
+    headers['x-request-id']
+    || headers['x-nf-request-id']
+    || headers['x-amzn-trace-id']
+    || crypto.randomUUID()
+  )
+}
+
+export function logJson (level, message, fields = {}) {
+  const payload = sanitizeObject({
+    level,
+    message,
+    time: new Date().toISOString(),
+    ...fields,
+  })
+  console.log(JSON.stringify(payload))
 }
 
 export function safeError (error) {

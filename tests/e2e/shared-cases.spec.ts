@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './_test'
 import { installSharedCasesMock, loadSharedCasesFixture } from './helpers/shared-cases'
 
 const fixture = loadSharedCasesFixture()
