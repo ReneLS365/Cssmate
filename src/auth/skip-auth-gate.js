@@ -33,5 +33,19 @@ export function shouldSkipAuthGate () {
   if (!isSkipAuthGateAllowed()) return false
   const params = new URLSearchParams(window.location.search || '')
   const flag = params.get('skipAuthGate')
-  return flag === '1' || flag === 'true'
+  const skipViaQuery = flag === '1' || flag === 'true'
+
+  const embeddedEnv = window.__ENV__ || {}
+  const e2eFlag = readEnvFlag(
+    embeddedEnv.VITE_E2E_BYPASS_AUTH
+      || window.VITE_E2E_BYPASS_AUTH
+  )
+  if (e2eFlag && isLocalHost()) return true
+
+  return skipViaQuery
+}
+
+function isLocalHost () {
+  const host = String(window.location?.hostname || '').toLowerCase()
+  return host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === '::1'
 }
