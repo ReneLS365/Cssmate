@@ -1,11 +1,15 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:4173'
+const baseURL = process.env.E2E_BASE_URL
+  || process.env.PLAYWRIGHT_BASE_URL
+  || 'http://127.0.0.1:4173'
 const shouldStartServer = !process.env.PLAYWRIGHT_SKIP_WEBSERVER
+
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
-  timeout: 120_000,
+  timeout: 60_000,
+  retries: process.env.CI ? 1 : 0,
   expect: {
     timeout: 10_000,
   },
@@ -14,6 +18,8 @@ export default defineConfig({
     headless: true,
     ...devices['Pixel 5'],
     trace: 'retain-on-failure',
+    video: 'retain-on-failure',
+    screenshot: 'only-on-failure',
     viewport: { width: 393, height: 851 },
   },
   projects: [

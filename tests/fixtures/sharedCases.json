@@ -1,0 +1,88 @@
+{
+  "cases": [
+    {
+      "caseId": "11111111-1111-1111-1111-111111111111",
+      "jobNumber": "JOB-1001",
+      "status": "kladde",
+      "caseKind": "montage",
+      "system": "Haki",
+      "updatedAt": "2025-01-10T10:00:00.000Z",
+      "createdAt": "2025-01-10T09:30:00.000Z",
+      "totals": {
+        "materials": 5200,
+        "total": 12800
+      }
+    },
+    {
+      "caseId": "22222222-2222-2222-2222-222222222222",
+      "jobNumber": "JOB-2001",
+      "status": "godkendt",
+      "caseKind": "montage",
+      "system": "Haki",
+      "updatedAt": "2025-01-11T11:15:00.000Z",
+      "createdAt": "2025-01-11T10:10:00.000Z",
+      "totals": {
+        "materials": 8400,
+        "total": 19400
+      }
+    },
+    {
+      "caseId": "33333333-3333-3333-3333-333333333333",
+      "jobNumber": "JOB-3001",
+      "status": "demontage_i_gang",
+      "caseKind": "demontage",
+      "system": "Haki",
+      "updatedAt": "2025-01-12T08:25:00.000Z",
+      "createdAt": "2025-01-12T07:40:00.000Z",
+      "totals": {
+        "materials": 6100,
+        "total": 17100
+      }
+    },
+    {
+      "caseId": "44444444-4444-4444-4444-444444444444",
+      "jobNumber": "JOB-4001",
+      "status": "afsluttet",
+      "caseKind": "demontage",
+      "system": "Haki",
+      "updatedAt": "2025-01-13T12:30:00.000Z",
+      "createdAt": "2025-01-13T11:05:00.000Z",
+      "totals": {
+        "materials": 12200,
+        "montage": 15500,
+        "demontage": 8300,
+        "total": 23800
+      },
+      "attachments": {
+        "json": {
+          "data": "{\"type\":\"montage\",\"jobId\":\"JOB-4001\",\"jobName\":\"Afsluttet sag\",\"createdAt\":\"2025-01-13T11:05:00.000Z\",\"materials\":[],\"extras\":{},\"wage\":{\"totalHours\":0,\"workers\":[]}}"
+        },
+        "receipt": {
+          "totals": {
+            "materials": 12200,
+            "montage": 15500,
+            "demontage": 8300,
+            "total": 23800,
+            "hours": 32
+          }
+        }
+      }
+    },
+    {
+      "caseId": "55555555-5555-5555-5555-555555555555",
+      "jobNumber": "JOB-4002",
+      "status": "afsluttet",
+      "caseKind": "montage",
+      "system": "Haki",
+      "updatedAt": "2025-01-14T15:05:00.000Z",
+      "createdAt": "2025-01-14T14:20:00.000Z",
+      "totals": {
+        "materials": 4500,
+        "total": 9800
+      }
+    }
+  ],
+  "deleted": [
+    "66666666-6666-6666-6666-666666666666"
+  ]
+}

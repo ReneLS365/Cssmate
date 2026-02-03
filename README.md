@@ -94,6 +94,20 @@ Kør Playwright-testen der sikrer klikbare tabs i authenticated state:
 VITE_E2E_BYPASS_AUTH=1 npm run test:e2e -- tests/e2e/admin-tabs-unlocked.spec.ts
 ```
 
+## E2E — Delte sager (lokalt)
+
+Kør Playwright-regressionerne for Delte sager:
+
+```bash
+VITE_E2E_BYPASS_AUTH=1 E2E_BASE_URL=http://127.0.0.1:4173 npm run test:e2e -- tests/e2e/shared-cases.spec.ts
+```
+
+Hvis du allerede har en preview-server kørende, så undgå at starte en ekstra server:
+
+```bash
+PLAYWRIGHT_SKIP_WEBSERVER=1 VITE_E2E_BYPASS_AUTH=1 E2E_BASE_URL=http://127.0.0.1:4173 npm run test:e2e -- tests/e2e/shared-cases.spec.ts
+```
+
 Lokalt: opret en `.env` i repo-roden med ovenstående værdier og kør `npm run preview`.
 Universal Login kører via redirect-flow, så **ingen client secret må bruges i frontend**.
 I Auth0-appen skal callback/logout-URLs matche checklisten øverst:
