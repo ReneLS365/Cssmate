@@ -60,6 +60,23 @@ let renderCache = {
   displayEntries: null,
   sortedEntries: null,
 };
+let displayState = null;
+const casesByStatus = new Map();
+const SEARCH_INDEX_CACHE = new Map();
+const DATE_TS_CACHE = new Map();
+let renderScheduled = false;
+let scheduledRenderPayload = null;
+let boardEventBound = false;
+let virtualScrollBound = false;
+const VIRTUAL_OVERSCAN = 10;
+const VIRTUAL_DEFAULT_HEIGHT = 92;
+const VIRTUAL_MIN_HEIGHT = 72;
+const VIRTUAL_STATE = new Map();
+const perfStats = {
+  lastRenderMs: 0,
+  longestRenderMs: 0,
+};
+let perfBaselineLogged = false;
 let lastFocusStatus = '';
 const sharedCasesUI = {
   search: '',
@@ -73,6 +90,7 @@ let statusMessage = '';
 const UI_STORAGE_KEY = 'cssmate:shared-cases:ui:v1';
 const PENDING_ACTIONS_KEY = 'cssmate:shared-cases:pending-actions:v1';
 const CASE_META_CACHE = new Map();
+const CASE_ACTION_CALLBACKS = new Map();
 const DATE_INPUT_FORMATTER = new Intl.DateTimeFormat('sv-SE');
 const CURRENCY_FORMATTER = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const CURRENCY_FORMATTER_COMPACT = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -184,6 +202,23 @@ function debounce(fn, waitMs = 300) {
       fn(...args);
     }, waitMs);
   };
+}
+
+function isPerfModeEnabled() {
+  if (typeof window === 'undefined') return false;
+  const params = new URLSearchParams(window.location.search || '');
+  if (params.get('perf') !== '1') return false;
+  if (isDebugEnabled()) return true;
+  const host = window.location.hostname;
+  return host === 'localhost' || host === '127.0.0.1';
+}
+
+function getPerfCaseCount() {
+  if (typeof window === 'undefined') return 0;
+  const params = new URLSearchParams(window.location.search || '');
+  const value = Number(params.get('cases') || 0);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.min(Math.max(Math.floor(value), 1), 5000);
 }
 
 function startLoading() {
@@ -780,6 +815,45 @@ function cacheCaseMeta(entry, meta) {
   CASE_META_CACHE.set(entry.caseId, meta);
 }
 
+function clearEntryCaches(caseId) {
+  if (!caseId) return;
+  CASE_META_CACHE.delete(caseId);
+  SEARCH_INDEX_CACHE.delete(caseId);
+  DATE_TS_CACHE.delete(caseId);
+}
+
+function updateEntryCaches(entry) {
+  if (!entry?.caseId) return;
+  const meta = resolveCaseMeta(entry);
+  const searchText = buildSearchIndex(entry, meta).join(' ');
+  SEARCH_INDEX_CACHE.set(entry.caseId, normalizeSearchValue(searchText));
+  const timestamp = getEntryTimestamp(entry);
+  if (timestamp !== null) {
+    DATE_TS_CACHE.set(entry.caseId, timestamp);
+  } else {
+    DATE_TS_CACHE.delete(entry.caseId);
+  }
+}
+
+function getCachedSearchText(entry, meta) {
+  if (!entry?.caseId) return '';
+  if (SEARCH_INDEX_CACHE.has(entry.caseId)) return SEARCH_INDEX_CACHE.get(entry.caseId);
+  const searchText = buildSearchIndex(entry, meta).join(' ');
+  const normalized = normalizeSearchValue(searchText);
+  SEARCH_INDEX_CACHE.set(entry.caseId, normalized);
+  return normalized;
+}
+
+function getCachedEntryTimestamp(entry) {
+  if (!entry?.caseId) return getEntryTimestamp(entry);
+  if (DATE_TS_CACHE.has(entry.caseId)) return DATE_TS_CACHE.get(entry.caseId);
+  const timestamp = getEntryTimestamp(entry);
+  if (timestamp !== null) {
+    DATE_TS_CACHE.set(entry.caseId, timestamp);
+  }
+  return timestamp;
+}
+
 function parseCasePayload(entry) {
   const raw = entry?.attachments?.json?.data;
   if (!raw || typeof raw !== 'string') return null;
@@ -1269,11 +1343,177 @@ function buildSearchIndex(entry, meta) {
   return Array.from(new Set(values));
 }
 
+function createPerfCase(index, seed) {
+  const now = Date.now();
+  const statusRoll = (index + seed) % 100;
+  const status = statusRoll < 45
+    ? WORKFLOW_STATUS.DRAFT
+    : statusRoll < 70
+      ? WORKFLOW_STATUS.APPROVED
+      : statusRoll < 90
+        ? WORKFLOW_STATUS.DEMONTAGE
+        : WORKFLOW_STATUS.DONE;
+  const systems = ['Bosta', 'Layher', 'Alfix', 'Haki'];
+  const cities = ['Aarhus', 'Odense', 'København', 'Aalborg', 'Esbjerg'];
+  const system = systems[index % systems.length];
+  const jobNumber = `JOB-${String(index + 1).padStart(4, '0')}`;
+  const updatedAt = new Date(now - ((index * 37) % 86400000)).toISOString();
+  const materials = 2000 + (index % 4000);
+  const total = materials + 4500 + ((index * 17) % 10000);
+  return {
+    caseId: `perf-${index}-${seed}`,
+    jobNumber,
+    caseKind: index % 3 === 0 ? 'montage' : 'demontage',
+    status,
+    updatedAt,
+    lastUpdatedAt: updatedAt,
+    createdAt: updatedAt,
+    createdByName: `Montør ${index % 18}`,
+    createdByEmail: `montor${index % 18}@team.dk`,
+    system,
+    attachments: {
+      json: {
+        data: JSON.stringify({
+          job: {
+            info: {
+              navn: `Projekt ${jobNumber}`,
+              sagsnummer: jobNumber,
+              adresse: `${cities[index % cities.length]}vej ${index % 120 + 1}`,
+              kunde: `Kunde ${index % 30}`,
+              montoer: `Montør ${index % 18}`,
+              dato: new Date(now - ((index * 59) % 2592000000)).toISOString(),
+            },
+            meta: {
+              system,
+              jobType: index % 2 === 0 ? 'montage' : 'demontage',
+            },
+            totals: {
+              materials,
+              total,
+            },
+          },
+        }),
+      },
+    },
+    totals: { materials, total },
+  };
+}
+
+function buildPerfCases(count) {
+  const seed = Math.floor(Date.now() / 1000) % 9999;
+  const list = [];
+  for (let i = 0; i < count; i += 1) {
+    list.push(createPerfCase(i, seed));
+  }
+  return list;
+}
+
+function renderPerfStats(panel) {
+  if (!panel) return;
+  const total = caseItems.length;
+  const status = panel.querySelector('[data-perf="status"]');
+  if (status) {
+    status.textContent = `Cases: ${total} · Render: ${perfStats.lastRenderMs}ms · Max: ${perfStats.longestRenderMs}ms`;
+  }
+}
+
+function simulatePerfDelta({ updates = 0, moves = 0, deletes = 0 } = {}) {
+  const allCases = Array.from(casesById.values());
+  if (!allCases.length) return;
+  const now = Date.now();
+  const updatesList = [];
+  const deletedIds = [];
+  const pick = (idx) => allCases[idx % allCases.length];
+
+  for (let i = 0; i < updates; i += 1) {
+    const entry = pick(i + now);
+    updatesList.push({
+      ...entry,
+      totals: {
+        ...entry.totals,
+        total: Number(entry.totals?.total || 0) + ((i + 1) * 37),
+      },
+      updatedAt: new Date(now + i * 1000).toISOString(),
+      lastUpdatedAt: new Date(now + i * 1000).toISOString(),
+    });
+  }
+
+  for (let i = 0; i < moves; i += 1) {
+    const entry = pick(i + 101);
+    const nextStatus = entry.status === WORKFLOW_STATUS.DRAFT
+      ? WORKFLOW_STATUS.APPROVED
+      : entry.status === WORKFLOW_STATUS.APPROVED
+        ? WORKFLOW_STATUS.DEMONTAGE
+        : entry.status === WORKFLOW_STATUS.DEMONTAGE
+          ? WORKFLOW_STATUS.DONE
+          : WORKFLOW_STATUS.DRAFT;
+    updatesList.push({
+      ...entry,
+      status: nextStatus,
+      updatedAt: new Date(now + i * 1200).toISOString(),
+      lastUpdatedAt: new Date(now + i * 1200).toISOString(),
+    });
+  }
+
+  for (let i = 0; i < deletes; i += 1) {
+    const entry = pick(i + 202);
+    if (entry?.caseId) deletedIds.push(entry.caseId);
+  }
+
+  const start = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const filters = getActiveFilters();
+  const diff = applyDeltaToDisplayState(updatesList, deletedIds, filters);
+  if (diff?.didChange) {
+    const userId = sessionState?.user?.uid || 'offline-user';
+    scheduleRender(sharedCasesContainer, userId, { full: false, statuses: diff.changedStatuses });
+  }
+  const end = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const deltaMs = Number((end - start).toFixed(1));
+  perfStats.lastRenderMs = deltaMs;
+  perfStats.longestRenderMs = Math.max(perfStats.longestRenderMs, deltaMs);
+  return deltaMs;
+}
+
+function initPerfHarness() {
+  if (!sharedCard || !isPerfModeEnabled()) return null;
+  const panel = document.createElement('div');
+  panel.className = 'shared-perf-panel';
+  panel.innerHTML = `
+    <div class="shared-perf-panel__row">
+      <strong>Perf mode</strong>
+      <span data-perf="status">Cases: 0</span>
+    </div>
+    <div class="shared-perf-panel__actions">
+      <button type="button" data-perf-action="delta-200">Simulér 200 delta updates</button>
+      <button type="button" data-perf-action="moves-50">Simulér 50 status moves</button>
+      <button type="button" data-perf-action="deletes-10">Simulér 10 deletes</button>
+    </div>
+  `;
+  sharedCard.appendChild(panel);
+  panel.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const action = target.dataset.perfAction;
+    if (!action) return;
+    if (action === 'delta-200') simulatePerfDelta({ updates: 200 });
+    if (action === 'moves-50') simulatePerfDelta({ moves: 50 });
+    if (action === 'deletes-10') simulatePerfDelta({ deletes: 10 });
+    renderPerfStats(panel);
+  });
+  renderPerfStats(panel);
+  return panel;
+}
+
 function setPanelVisibility(isReady) {
   if (sharedCard) sharedCard.hidden = !isReady;
 }
 
 function requireAuth() {
+  if (isPerfModeEnabled()) {
+    setPanelVisibility(true);
+    clearInlineError();
+    return true;
+  }
   const accessStatus = sessionState?.accessStatus || TEAM_ACCESS_STATUS.CHECKING;
   const hasAccess = Boolean(accessStatus === TEAM_ACCESS_STATUS.OK && sessionState?.sessionReady);
   if (sessionState?.status === SESSION_STATUS.SIGNING_IN || accessStatus === TEAM_ACCESS_STATUS.CHECKING) {
@@ -1398,14 +1638,14 @@ function getFilters() {
 function matchesFilters(entry, meta, filters) {
   const searchValue = normalizeSearchValue(filters.search);
   const tokens = searchValue ? searchValue.split(' ').filter(Boolean) : [];
-  const searchIndex = buildSearchIndex(entry, meta);
+  const searchIndex = getCachedSearchText(entry, meta);
   const matchesSearch = tokens.length === 0
-    || tokens.every(token => searchIndex.some(value => value.includes(token)));
+    || tokens.every(token => searchIndex.includes(token));
   const kindValue = (entry.caseKind || meta?.jobType || '').toLowerCase();
   const kindMatch = !filters.kind || kindValue === filters.kind;
   const fromDate = parseDateInputStart(filters.dateFrom);
   const toDate = parseDateInputEnd(filters.dateTo);
-  const entryTimestamp = getEntryTimestamp(entry);
+  const entryTimestamp = getCachedEntryTimestamp(entry);
   const dateMatch = (() => {
     if (!fromDate && !toDate) return true;
     if (entryTimestamp === null) return true;
@@ -2767,13 +3007,68 @@ function openCaseMenu(menu, button) {
   };
 }
 
-function addCaseMenuItem(menu, { label, onClick, isDanger = false, disabled = false, hint = '' }) {
+function handleBoardClick(event) {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const actionEl = target.closest('[data-action]');
+  if (!actionEl) return;
+  const action = actionEl.dataset.action || '';
+  if (!action) return;
+  if (action === 'toggle-case-menu') {
+    event.stopPropagation();
+    const button = actionEl;
+    const menu = button.closest('.shared-case-menu')?.querySelector('.case-menu');
+    if (!menu) return;
+    if (activeCaseMenu === menu) {
+      closeActiveCaseMenu();
+      return;
+    }
+    openCaseMenu(menu, button);
+    return;
+  }
+  if (action === 'case-menu-item') {
+    event.stopPropagation();
+    const actionKey = actionEl.dataset.actionKey || '';
+    closeActiveCaseMenu();
+    const handler = CASE_ACTION_CALLBACKS.get(actionKey);
+    if (typeof handler === 'function') {
+      handler().catch(() => {});
+    }
+    return;
+  }
+  if (action === 'open-case') {
+    if (target.closest('.shared-case-menu')) return;
+    const caseId = actionEl.dataset.caseId || actionEl.closest('[data-case-id]')?.dataset.caseId || '';
+    if (!caseId) return;
+    closeActiveCaseMenu();
+    openCaseDetailsById(caseId);
+  }
+}
+
+function handleBoardKeydown(event) {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const actionEl = target.closest('[data-action="open-case"]');
+  if (!actionEl) return;
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  const caseId = actionEl.dataset.caseId || '';
+  if (!caseId) return;
+  closeActiveCaseMenu();
+  openCaseDetailsById(caseId);
+}
+
+function addCaseMenuItem(menu, { label, onClick, isDanger = false, disabled = false, hint = '', actionKey = '' } = {}) {
   const item = document.createElement('button');
   item.type = 'button';
   item.className = `case-menu__item${isDanger ? ' case-menu__item--danger' : ''}${disabled ? ' case-menu__item--disabled' : ''}`;
   if (disabled) {
     item.disabled = true;
     item.setAttribute('aria-disabled', 'true');
+  }
+  if (actionKey) {
+    item.dataset.action = 'case-menu-item';
+    item.dataset.actionKey = actionKey;
   }
   const labelEl = document.createElement('span');
   labelEl.className = 'case-menu__label';
@@ -2786,30 +3081,24 @@ function addCaseMenuItem(menu, { label, onClick, isDanger = false, disabled = fa
     item.appendChild(hintEl);
     item.title = hint;
   }
-  if (!disabled) {
-    item.addEventListener('click', async (event) => {
-      event.stopPropagation();
-      closeActiveCaseMenu();
-      if (typeof onClick === 'function') {
-        await onClick();
-      }
-    });
-  }
   menu.appendChild(item);
 }
 
-function renderCaseCardCompact(entry, userId, onChange) {
+function renderCaseCardCompact(entry, userId, onChange, statusBucketOverride) {
   const meta = resolveCaseMeta(entry);
   const totals = resolveCaseTotals(entry, meta);
   const updatedAt = entry.last_updated_at || entry.lastUpdatedAt || entry.updatedAt || entry.createdAt || '';
   const lastEditor = formatEditorShort(entry.lastEditorSub || entry.updatedBy || entry.createdBy);
   const updatedLabel = formatRelativeDa(updatedAt) || formatDateLabel(updatedAt);
   const statusLabel = formatEntryStatusLabel(entry);
-  const statusBucket = deriveBoardStatus(entry);
+  const statusBucket = statusBucketOverride || deriveBoardStatus(entry);
+  const caseId = entry.caseId || '';
   const card = document.createElement('article');
   card.className = 'shared-case-card shared-case-card--compact';
   card.dataset.ifMatch = entry.updatedAt || '';
   card.dataset.status = statusBucket;
+  if (caseId) card.dataset.caseId = caseId;
+  card.dataset.action = 'open-case';
   card.tabIndex = 0;
 
   const header = document.createElement('div');
@@ -2826,6 +3115,10 @@ function renderCaseCardCompact(entry, userId, onChange) {
   menuButton.setAttribute('aria-expanded', 'false');
   menuButton.setAttribute('aria-label', 'Åbn menu');
   menuButton.textContent = '⋮';
+  if (caseId) {
+    menuButton.dataset.action = 'toggle-case-menu';
+    menuButton.dataset.caseId = caseId;
+  }
   const menu = document.createElement('div');
   menu.className = 'case-menu';
   menu.hidden = true;
@@ -2833,13 +3126,17 @@ function renderCaseCardCompact(entry, userId, onChange) {
 
   const actionItems = getEntryActionItems(entry, onChange);
   if (actionItems.length) {
-    actionItems.forEach(action => {
+    actionItems.forEach((action, index) => {
+      const actionKey = `${statusBucket}|${caseId}|${index}`;
+      if (actionKey && typeof action.onClick === 'function') {
+        CASE_ACTION_CALLBACKS.set(actionKey, action.onClick);
+      }
       addCaseMenuItem(menu, {
         label: action.label,
-        onClick: action.onClick,
         isDanger: action.isDanger,
         disabled: !action.enabled,
         hint: action.reason,
+        actionKey: action.enabled ? actionKey : '',
       });
     });
   } else {
@@ -2849,15 +3146,6 @@ function renderCaseCardCompact(entry, userId, onChange) {
       hint: 'Ingen tilladte handlinger.',
     });
   }
-
-  menuButton.addEventListener('click', (event) => {
-    event.stopPropagation();
-    if (activeCaseMenu === menu) {
-      closeActiveCaseMenu();
-      return;
-    }
-    openCaseMenu(menu, menuButton);
-  });
 
   menuWrap.appendChild(menuButton);
   menuWrap.appendChild(menu);
@@ -2901,21 +3189,6 @@ function renderCaseCardCompact(entry, userId, onChange) {
   card.appendChild(tags);
   card.appendChild(amount);
   card.appendChild(footer);
-
-  const openDetails = () => {
-    closeActiveCaseMenu();
-    openCaseDetails(entry, userId, onChange, { focusReturnEl: card });
-  };
-  card.addEventListener('click', (event) => {
-    if (menuWrap.contains(event.target)) return;
-    openDetails();
-  });
-  card.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      openDetails();
-    }
-  });
   return card;
 }
 
@@ -3102,6 +3375,138 @@ function buildBoardBuckets(entries, columns) {
   return buckets;
 }
 
+function clearCasesByStatus() {
+  casesByStatus.clear();
+  getBoardColumns({ includeDeleted: true }).forEach(column => {
+    casesByStatus.set(column.id, []);
+  });
+}
+
+function pruneActionCallbacks(status) {
+  if (!status) return;
+  const prefix = `${status}|`;
+  Array.from(CASE_ACTION_CALLBACKS.keys()).forEach(key => {
+    if (key.startsWith(prefix)) CASE_ACTION_CALLBACKS.delete(key);
+  });
+}
+
+function buildDisplayState(entries, filters, { includeDeleted = false } = {}) {
+  const columns = getBoardColumns({ includeDeleted });
+  const buckets = new Map();
+  columns.forEach(column => buckets.set(column.id, []));
+  entries.forEach(entry => {
+    const bucketId = deriveBoardStatus(entry);
+    if (!buckets.has(bucketId)) return;
+    buckets.get(bucketId).push(entry);
+  });
+  const sortKey = filters?.sort || 'updated-desc';
+  buckets.forEach((value, key) => {
+    buckets.set(key, sortEntries(value, sortKey));
+  });
+  const counts = computeBucketCounts(entries, { includeDeleted });
+  return {
+    filterKey: getFilterKey(filters),
+    sortKey,
+    includeDeleted,
+    counts,
+    buckets,
+    total: entries.length,
+  };
+}
+
+function updateCasesByStatusFromDisplay(state) {
+  clearCasesByStatus();
+  state.buckets.forEach((entries, status) => {
+    casesByStatus.set(status, entries.slice());
+  });
+}
+
+function getVirtualStateFor(list, status) {
+  if (!VIRTUAL_STATE.has(status)) {
+    VIRTUAL_STATE.set(status, {
+      itemHeight: VIRTUAL_DEFAULT_HEIGHT,
+      lastRange: null,
+    });
+  }
+  return VIRTUAL_STATE.get(status);
+}
+
+function measureVirtualItemHeight(list) {
+  const firstCard = list.querySelector('.shared-case-card');
+  if (!firstCard) return null;
+  const rect = firstCard.getBoundingClientRect();
+  if (!rect || !rect.height) return null;
+  return Math.max(VIRTUAL_MIN_HEIGHT, Math.round(rect.height));
+}
+
+function invalidateVirtualRange(status) {
+  const virtualState = VIRTUAL_STATE.get(status);
+  if (!virtualState) return;
+  virtualState.lastRange = null;
+}
+
+function computeVirtualRange(list, totalCount, itemHeight) {
+  const viewportHeight = list.clientHeight || 0;
+  const scrollTop = list.scrollTop || 0;
+  const overscan = VIRTUAL_OVERSCAN;
+  const visibleCount = itemHeight > 0 ? Math.ceil(viewportHeight / itemHeight) : 0;
+  const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - overscan);
+  const endIndex = Math.min(totalCount, startIndex + visibleCount + overscan * 2);
+  return {
+    startIndex,
+    endIndex,
+    topSpacer: startIndex * itemHeight,
+    bottomSpacer: (totalCount - endIndex) * itemHeight,
+  };
+}
+
+function renderVirtualizedColumn(list, columnEntries, userId, onChange, status) {
+  if (!list) return;
+  pruneActionCallbacks(status);
+  if (!columnEntries.length) {
+    list.textContent = '';
+    const empty = document.createElement('div');
+    empty.className = 'shared-board-meta';
+    empty.textContent = 'Ingen sager';
+    list.appendChild(empty);
+    return;
+  }
+
+  const virtualState = getVirtualStateFor(list, status);
+  const range = computeVirtualRange(list, columnEntries.length, virtualState.itemHeight);
+  const rangeKey = `${range.startIndex}:${range.endIndex}:${columnEntries.length}`;
+  if (virtualState.lastRange === rangeKey) return;
+  virtualState.lastRange = rangeKey;
+
+  list.textContent = '';
+  const topSpacer = document.createElement('div');
+  topSpacer.className = 'shared-board-spacer';
+  topSpacer.style.height = `${range.topSpacer}px`;
+  list.appendChild(topSpacer);
+
+  columnEntries.slice(range.startIndex, range.endIndex).forEach(entry => {
+    list.appendChild(renderCaseCardCompact(entry, userId, onChange, status));
+  });
+
+  const bottomSpacer = document.createElement('div');
+  bottomSpacer.className = 'shared-board-spacer';
+  bottomSpacer.style.height = `${range.bottomSpacer}px`;
+  list.appendChild(bottomSpacer);
+
+  const measured = measureVirtualItemHeight(list);
+  if (measured && measured !== virtualState.itemHeight) {
+    virtualState.itemHeight = measured;
+    virtualState.lastRange = null;
+  }
+}
+
+function scheduleVirtualRenderForColumn(columnEl, entries, userId, onChange, status) {
+  if (!columnEl) return;
+  const list = columnEl.querySelector('.shared-board-list');
+  if (!list) return;
+  renderVirtualizedColumn(list, entries, userId, onChange, status);
+}
+
 function syncBoardContents(board, buckets, columns, userId, onChange, allCounts, { focusStatus = '' } = {}) {
   columns.forEach(column => {
     const columnEl = board.querySelector(`.shared-board-column[data-status="${column.id}"]`);
@@ -3121,14 +3526,7 @@ function syncBoardContents(board, buckets, columns, userId, onChange, allCounts,
     }
     const list = columnEl.querySelector('.shared-board-list');
     if (!list) return;
-    list.textContent = '';
-    columnEntries.forEach(entry => list.appendChild(renderCaseCardCompact(entry, userId, onChange)));
-    if (!columnEntries.length) {
-      const empty = document.createElement('div');
-      empty.className = 'shared-board-meta';
-      empty.textContent = 'Ingen sager';
-      list.appendChild(empty);
-    }
+    renderVirtualizedColumn(list, columnEntries, userId, onChange, column.id);
   });
 }
 
@@ -3173,13 +3571,7 @@ function renderBoard(entries, userId, onChange, allCounts, { includeDeleted = fa
     columnEl.appendChild(header);
     const list = document.createElement('div');
     list.className = 'shared-board-list';
-    columnEntries.forEach(entry => list.appendChild(renderCaseCardCompact(entry, userId, onChange)));
-    if (!columnEntries.length) {
-      const empty = document.createElement('div');
-      empty.className = 'shared-board-meta';
-      empty.textContent = 'Ingen sager';
-      list.appendChild(empty);
-    }
+    renderVirtualizedColumn(list, columnEntries, userId, onChange, column.id);
     columnEl.appendChild(list);
     board.appendChild(columnEl);
   });
@@ -3214,6 +3606,10 @@ function updateSyncStatus() {
 function resetCaseState() {
   casesById.clear();
   caseItems = [];
+  CASE_META_CACHE.clear();
+  SEARCH_INDEX_CACHE.clear();
+  DATE_TS_CACHE.clear();
+  clearCasesByStatus();
   resetPaginationState();
   lastDeltaAt = null;
   lastDeltaCaseId = '';
@@ -3226,6 +3622,9 @@ function resetCaseState() {
 
 function replaceCaseState(entries) {
   casesById.clear();
+  CASE_META_CACHE.clear();
+  SEARCH_INDEX_CACHE.clear();
+  DATE_TS_CACHE.clear();
   resetPaginationState();
   const { map, list } = mergeCasesById(new Map(), entries);
   map.forEach((value, key) => casesById.set(key, value));
@@ -3266,6 +3665,7 @@ function mergeCasesById(existingMap, incomingList, { deletedIds = [] } = {}) {
   const nextMap = new Map(existingMap || []);
   deletedIds.forEach(caseId => {
     if (caseId) nextMap.delete(caseId);
+    clearEntryCaches(caseId);
   });
   (incomingList || []).forEach(entry => {
     if (!entry?.caseId) {
@@ -3280,12 +3680,14 @@ function mergeCasesById(existingMap, incomingList, { deletedIds = [] } = {}) {
     const updated = normalizeStoredEntry(entry, existing);
     if (!existing) {
       nextMap.set(entry.caseId, updated);
+      updateEntryCaches(updated);
       return;
     }
     const existingKey = getDeltaKey(existing);
     const incomingKey = getDeltaKey(updated);
     if (compareDeltaKeys(existingKey, incomingKey) <= 0) {
       nextMap.set(entry.caseId, updated);
+      updateEntryCaches(updated);
     }
   });
   applyPendingMarkers(nextMap);
@@ -3321,7 +3723,7 @@ async function handleExportedEvent(detail) {
   if (caseData?.caseId) {
     updateCaseEntry(caseData);
     if (sharedCasesContainer) {
-      renderFromState(sharedCasesContainer, sessionState?.user?.uid || 'offline-user');
+      scheduleRender(sharedCasesContainer, sessionState?.user?.uid || 'offline-user', { full: true });
     }
     updateDeltaCursorFromItems([caseData]);
     lastDeltaSyncLabel = formatTimeLabel(new Date());
@@ -3453,6 +3855,7 @@ function removeCaseEntry(caseId) {
     activeCaseDetail.close();
   }
   casesById.delete(caseId);
+  clearEntryCaches(caseId);
   const { list } = mergeCasesById(casesById, []);
   caseItems = list;
   touchCaseItems();
@@ -3483,6 +3886,36 @@ function handleFiltersChanged({ immediate = false, fast = false } = {}) {
     return;
   }
   renderFromState(sharedCasesContainer, sessionState?.user?.uid || 'offline-user');
+}
+
+function scheduleRender(container, userId, { full = false, statuses = null } = {}) {
+  if (!container) return;
+  if (renderScheduled) {
+    if (full) {
+      scheduledRenderPayload = { full: true, statuses: null };
+    } else if (scheduledRenderPayload && Array.isArray(statuses)) {
+      const next = new Set(scheduledRenderPayload.statuses || []);
+      statuses.forEach(status => next.add(status));
+      scheduledRenderPayload.statuses = Array.from(next);
+    } else if (!scheduledRenderPayload) {
+      scheduledRenderPayload = { full: false, statuses };
+    }
+    return;
+  }
+  renderScheduled = true;
+  scheduledRenderPayload = { full, statuses };
+  requestAnimationFrame(() => {
+    renderScheduled = false;
+    const payload = scheduledRenderPayload || {};
+    scheduledRenderPayload = null;
+    if (payload.full) {
+      renderFromState(container, userId);
+    } else if (Array.isArray(payload.statuses) && payload.statuses.length) {
+      renderChangedColumns(container, userId, payload.statuses);
+    } else {
+      renderFromState(container, userId);
+    }
+  });
 }
 
 function renderFromState(container, userId) {
@@ -3544,16 +3977,195 @@ function renderFromState(container, userId) {
   const onChange = (payload) => {
     if (payload?.updatedCase) updateCaseEntry(payload.updatedCase);
     if (payload?.removeCaseId) removeCaseEntry(payload.removeCaseId);
-    renderFromState(container, userId);
+    scheduleRender(container, userId, { full: true });
   };
   lastRenderUserId = userId;
   lastRenderOnChange = onChange;
+  displayState = buildDisplayState(sorted, filters, { includeDeleted });
+  updateCasesByStatusFromDisplay(displayState);
   renderSharedCases(container, sorted, filters, userId, onChange, allCounts, { includeDeleted });
   attemptOpenDeepLink();
   if (debugEnabled && start) {
     const end = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    debugLog('shared-cases render', { durationMs: Number((end - start).toFixed(1)), visible: sorted.length });
+    const durationMs = Number((end - start).toFixed(1));
+    debugLog('shared-cases render', { durationMs, visible: sorted.length });
+    perfStats.lastRenderMs = durationMs;
+    perfStats.longestRenderMs = Math.max(perfStats.longestRenderMs, durationMs);
   }
+}
+
+function renderChangedColumns(container, userId, statuses = []) {
+  const measurePerf = isPerfModeEnabled() && typeof performance !== 'undefined';
+  const start = measurePerf ? performance.now() : 0;
+  if (!container || !displayState) {
+    renderFromState(container, userId);
+    return;
+  }
+  const board = container.querySelector('.shared-board');
+  if (!board) {
+    renderFromState(container, userId);
+    return;
+  }
+  const filters = getActiveFilters();
+  const focusStatus = filters?.statusFocus || '';
+  const includeDeleted = shouldIncludeDeleted(filters);
+  const columns = getBoardColumns({ includeDeleted });
+  updateSharedHeaderCount(displayState.total);
+  statuses.forEach(status => {
+    const columnEl = board.querySelector(`.shared-board-column[data-status="${status}"]`);
+    if (!columnEl) return;
+    if (focusStatus) {
+      const isFocused = status === focusStatus;
+      columnEl.classList.toggle('is-focused', isFocused);
+      columnEl.classList.toggle('is-dimmed', !isFocused);
+    } else {
+      columnEl.classList.remove('is-focused', 'is-dimmed');
+    }
+    const count = columnEl.querySelector('.shared-board-count');
+    const entries = casesByStatus.get(status) || [];
+    if (count) {
+      const countValue = displayState.counts instanceof Map ? (displayState.counts.get(status) || 0) : entries.length;
+      count.textContent = countValue;
+    }
+    scheduleVirtualRenderForColumn(columnEl, entries, userId, lastRenderOnChange, status);
+  });
+  if (focusStatus) {
+    board.dataset.focus = focusStatus;
+  } else {
+    delete board.dataset.focus;
+  }
+  const statusText = `Viser ${displayState.total} sager${hasMore ? ' (flere kan hentes)' : ''}.`;
+  let status = container.querySelector('.shared-cases-status');
+  if (!status) {
+    status = document.createElement('div');
+    status.className = 'shared-cases-status';
+    container.appendChild(status);
+  }
+  status.textContent = statusText;
+  const existingColumns = Array.from(board.querySelectorAll('.shared-board-column')).map(col => col.dataset.status);
+  if (columns.length !== existingColumns.length) {
+    renderFromState(container, userId);
+  }
+  if (measurePerf && start) {
+    const end = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const durationMs = Number((end - start).toFixed(1));
+    perfStats.lastRenderMs = durationMs;
+    perfStats.longestRenderMs = Math.max(perfStats.longestRenderMs, durationMs);
+  }
+}
+
+function rebuildCaseItemsFromMap() {
+  caseItems = Array.from(casesById.values()).sort((a, b) => {
+    return compareDeltaKeys(getDeltaKey(b), getDeltaKey(a));
+  });
+  touchCaseItems();
+}
+
+function removeEntryFromBucket(bucket, caseId) {
+  if (!Array.isArray(bucket) || !caseId) return false;
+  const index = bucket.findIndex(entry => entry?.caseId === caseId);
+  if (index === -1) return false;
+  bucket.splice(index, 1);
+  return true;
+}
+
+function applyDeltaToDisplayState(items, deletedIds, filters) {
+  const filterKey = getFilterKey(filters);
+  const sortKey = filters?.sort || 'updated-desc';
+  const includeDeleted = shouldIncludeDeleted(filters);
+  if (!displayState || displayState.filterKey !== filterKey || displayState.sortKey !== sortKey || displayState.includeDeleted !== includeDeleted) {
+    return null;
+  }
+  const changedStatuses = new Set();
+  let didChange = false;
+  const counts = displayState.counts;
+
+  const deleteEntry = (caseId) => {
+    if (!caseId) return;
+    const existing = casesById.get(caseId);
+    if (!existing) return;
+    const meta = resolveCaseMeta(existing);
+    const prevMatches = matchesFilters(existing, meta, filters)
+      && (includeDeleted || normalizeStatusValue(existing?.status) !== WORKFLOW_STATUS.DELETED);
+    const prevStatus = deriveBoardStatus(existing);
+    casesById.delete(caseId);
+    clearEntryCaches(caseId);
+    if (prevMatches) {
+      const bucket = displayState.buckets.get(prevStatus);
+      if (bucket && removeEntryFromBucket(bucket, caseId)) {
+        counts.set(prevStatus, Math.max(0, (counts.get(prevStatus) || 0) - 1));
+        changedStatuses.add(prevStatus);
+        didChange = true;
+      }
+    }
+  };
+
+  (deletedIds || []).forEach(deleteEntry);
+
+  (items || []).forEach(entry => {
+    if (!entry?.caseId) {
+      warnMissingCaseId(entry);
+      return;
+    }
+    const existing = casesById.get(entry.caseId);
+    const updated = normalizeStoredEntry(entry, existing);
+    if (normalizeStatusValue(updated.status) === WORKFLOW_STATUS.DELETED) {
+      deleteEntry(entry.caseId);
+      return;
+    }
+    if (existing) {
+      const existingKey = getDeltaKey(existing);
+      const incomingKey = getDeltaKey(updated);
+      if (compareDeltaKeys(existingKey, incomingKey) > 0) {
+        return;
+      }
+    }
+    const prevStatus = existing ? deriveBoardStatus(existing) : null;
+    const prevMeta = existing ? resolveCaseMeta(existing) : null;
+    const prevMatches = existing
+      ? matchesFilters(existing, prevMeta, filters)
+      && (includeDeleted || normalizeStatusValue(existing?.status) !== WORKFLOW_STATUS.DELETED)
+      : false;
+    casesById.set(entry.caseId, updated);
+    updateEntryCaches(updated);
+    const nextMeta = resolveCaseMeta(updated);
+    const nextMatches = matchesFilters(updated, nextMeta, filters)
+      && (includeDeleted || normalizeStatusValue(updated?.status) !== WORKFLOW_STATUS.DELETED);
+    const nextStatus = deriveBoardStatus(updated);
+
+    if (prevMatches) {
+      const prevBucket = displayState.buckets.get(prevStatus);
+      if (prevBucket && removeEntryFromBucket(prevBucket, entry.caseId)) {
+        counts.set(prevStatus, Math.max(0, (counts.get(prevStatus) || 0) - 1));
+        changedStatuses.add(prevStatus);
+        didChange = true;
+      }
+    }
+    if (nextMatches) {
+      const nextBucket = displayState.buckets.get(nextStatus);
+      if (nextBucket) {
+        nextBucket.push(updated);
+        counts.set(nextStatus, (counts.get(nextStatus) || 0) + 1);
+        changedStatuses.add(nextStatus);
+        didChange = true;
+      }
+    }
+  });
+
+  if (!didChange) return { didChange: false, changedStatuses: [] };
+
+  rebuildCaseItemsFromMap();
+  displayState.total = 0;
+  displayState.buckets.forEach((bucket, status) => {
+    if (changedStatuses.has(status)) {
+      displayState.buckets.set(status, sortEntries(bucket, sortKey));
+      invalidateVirtualRange(status);
+    }
+    displayState.total += bucket.length;
+    casesByStatus.set(status, bucket.slice());
+  });
+  displayState.counts = counts;
+  return { didChange: true, changedStatuses: Array.from(changedStatuses) };
 }
 
 function updateDeltaCursorFromItems(items) {
@@ -3622,6 +4234,10 @@ function startDeltaPolling() {
 
 function updatePollingState() {
   if (!sharedCard || !sharedCasesContainer) return;
+  if (isPerfModeEnabled()) {
+    stopDeltaPolling('perf mode');
+    return;
+  }
   syncState.online = isOnline();
   if (!requireAuth()) {
     stopDeltaPolling('ingen adgang');
@@ -3644,6 +4260,7 @@ function updatePollingState() {
 
 async function runDeltaSync() {
   if (deltaInFlight || isLoading) return;
+  if (isPerfModeEnabled()) return;
   if (!sharedCasesContainer) return;
   if (!requireAuth()) return;
   if (!isOnline()) return;
@@ -3672,13 +4289,21 @@ async function runDeltaSync() {
       debugLog('shared-cases delta fetched', { count: items.length, durationMs: Number((end - start).toFixed(1)) });
     }
     let didChange = false;
+    let changedStatuses = null;
     if (deleted.length || items.length) {
-      const { map, list } = mergeCasesById(casesById, items, { deletedIds: deleted });
-      casesById.clear();
-      map.forEach((value, key) => casesById.set(key, value));
-      caseItems = list;
-      touchCaseItems();
-      didChange = true;
+      const filters = getActiveFilters();
+      const diff = applyDeltaToDisplayState(items, deleted, filters);
+      if (diff) {
+        didChange = diff.didChange;
+        changedStatuses = diff.changedStatuses;
+      } else {
+        const { map, list } = mergeCasesById(casesById, items, { deletedIds: deleted });
+        casesById.clear();
+        map.forEach((value, key) => casesById.set(key, value));
+        caseItems = list;
+        touchCaseItems();
+        didChange = true;
+      }
     }
     if (!updateDeltaCursorFromPayload(payload)) {
       if (items.length) {
@@ -3689,7 +4314,12 @@ async function runDeltaSync() {
       }
     }
     if (didChange) {
-      renderFromState(sharedCasesContainer, sessionState?.user?.uid || 'offline-user');
+      const userId = sessionState?.user?.uid || 'offline-user';
+      if (Array.isArray(changedStatuses) && changedStatuses.length) {
+        scheduleRender(sharedCasesContainer, userId, { full: false, statuses: changedStatuses });
+      } else {
+        scheduleRender(sharedCasesContainer, userId, { full: true });
+      }
       markDeltaSynced('Opdateret');
     } else {
       markDeltaSynced('Synkroniseret');
@@ -3768,12 +4398,37 @@ async function fetchCasesPage({ reset = false, prepend = false, requestId = null
   }
 }
 
+function bindBoardInteractions(container, board, userId, onChange) {
+  if (!container || !board) return;
+  if (!boardEventBound) {
+    container.addEventListener('click', handleBoardClick);
+    container.addEventListener('keydown', handleBoardKeydown);
+    boardEventBound = true;
+  }
+  const lists = Array.from(board.querySelectorAll('.shared-board-list'));
+  lists.forEach(list => {
+    if (list.dataset.scrollBound === 'true') return;
+    list.dataset.scrollBound = 'true';
+    let rafId = 0;
+    list.addEventListener('scroll', () => {
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        const status = list.closest('.shared-board-column')?.dataset.status || '';
+        const entries = casesByStatus.get(status) || [];
+        renderVirtualizedColumn(list, entries, userId, onChange, status);
+      });
+    });
+  });
+}
+
 function renderSharedCases(container, entries, filters, userId, onChange, allCounts, { includeDeleted = false } = {}) {
   const focusStatus = filters?.statusFocus || '';
   const columns = getBoardColumns({ includeDeleted });
   const hasCounts = allCounts instanceof Map
     && Array.from(allCounts.values()).some(value => value > 0);
   updateSharedHeaderCount(entries.length);
+  CASE_ACTION_CALLBACKS.clear();
   const existingBoard = container.querySelector('.shared-board');
   const existingColumns = existingBoard
     ? Array.from(existingBoard.querySelectorAll('.shared-board-column')).map(col => col.dataset.status)
@@ -3792,10 +4447,11 @@ function renderSharedCases(container, entries, filters, userId, onChange, allCou
     container.textContent = '';
     const board = renderBoard(entries, userId, onChange, allCounts, { includeDeleted, focusStatus });
     container.appendChild(board);
+    bindBoardInteractions(container, board, userId, onChange);
   } else {
     const scrollLeft = existingBoard.scrollLeft;
     const scrollTop = existingBoard.scrollTop;
-    const buckets = buildBoardBuckets(entries, columns);
+    const buckets = displayState?.buckets || buildBoardBuckets(entries, columns);
     syncBoardContents(existingBoard, buckets, columns, userId, onChange, allCounts, { focusStatus });
     if (focusStatus) {
       existingBoard.dataset.focus = focusStatus;
@@ -3806,6 +4462,7 @@ function renderSharedCases(container, entries, filters, userId, onChange, allCou
       existingBoard.scrollLeft = scrollLeft;
       existingBoard.scrollTop = scrollTop;
     });
+    bindBoardInteractions(container, existingBoard, userId, onChange);
   }
   let status = container.querySelector('.shared-cases-status');
   if (!status) {
@@ -3894,6 +4551,17 @@ export function initSharedCasesPanel() {
   refreshBtn = refreshBtnEl;
   const filters = [searchEl, fromEl, toEl, focusEl, kindEl, sortEl].filter(Boolean);
   applyStoredFilters();
+  const perfEnabled = isPerfModeEnabled();
+  const perfPanel = perfEnabled ? initPerfHarness() : null;
+  if (perfEnabled) {
+    const perfCount = getPerfCaseCount() || 2000;
+    const perfCases = buildPerfCases(perfCount);
+    listSharedCasesPageFn = async () => ({
+      items: perfCases,
+      nextCursor: null,
+      hasMore: false,
+    });
+  }
   if (adminToolsEl) {
     adminToolsEl.hidden = !getCapabilities().canPurge;
   }
@@ -3945,6 +4613,14 @@ export function initSharedCasesPanel() {
         return;
       }
       renderFromState(sharedCasesContainer, currentUser);
+      if (perfEnabled && perfPanel && !perfBaselineLogged) {
+        requestAnimationFrame(() => {
+          const deltaMs = simulatePerfDelta({ updates: 50 });
+          console.info(`[perf] Initial render: ${perfStats.lastRenderMs}ms · Delta merge (50): ${deltaMs || 0}ms`);
+          renderPerfStats(perfPanel);
+        });
+        perfBaselineLogged = true;
+      }
       updateDeltaCursorFromItems(caseItems);
       const refreshedBoard = sharedCasesContainer.querySelector('.shared-board');
       if (previousScroll && refreshedBoard) {
