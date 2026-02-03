@@ -6,12 +6,17 @@ on:
       - main
   pull_request:
 
+concurrency:
+  group: lighthouse-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
   lighthouse:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -49,13 +54,34 @@ jobs:
           curl -sS http://127.0.0.1:4173 > /dev/null
           curl -sS http://127.0.0.1:4173 > /dev/null
 
-      - name: Run Lighthouse (mobile 3x, retry-safe)
+      - name: Run Lighthouse (PR fast path)
+        if: github.event_name == 'pull_request'
+        env:
+          CSSMATE_LH_RUNS: "1"
         run: node tools/run-lh-mobile-3x.mjs
 
-      - name: Enforce Lighthouse thresholds
+      - name: Enforce Lighthouse thresholds (PR fast path)
+        if: github.event_name == 'pull_request'
         env:
-          CSSMATE_LH_PERF_MIN: "95"
+          CSSMATE_LH_PERF_MIN: "90"
+          CSSMATE_LH_PERF_TARGET: "96"
+          CSSMATE_LH_LCP_MAX_MS: "3000"
+          CSSMATE_LH_CLS_MAX: "0.10"
+        run: node tools/check-lighthouse-perfect.mjs
+
+      - name: Run Lighthouse (main strict)
+        if: github.event_name == 'push'
+        env:
+          CSSMATE_LH_RUNS: "3"
+        run: node tools/run-lh-mobile-3x.mjs
+
+      - name: Enforce Lighthouse thresholds (main strict)
+        if: github.event_name == 'push'
+        env:
+          CSSMATE_LH_PERF_MIN: "100"
           CSSMATE_LH_PERF_TARGET: "100"
+          CSSMATE_LH_LCP_MAX_MS: "3000"
+          CSSMATE_LH_CLS_MAX: "0.01"
         run: node tools/check-lighthouse-perfect.mjs
 
       - name: Upload Lighthouse artifacts

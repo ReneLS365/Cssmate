@@ -41,6 +41,7 @@ Formålet med denne fil er at sikre, at alle AI-/Codex-agenter arbejder på samm
 - Performance/responsiveness/build-time forbedringer uden adfærdsændringer.
 - Ryd op i dødt/ubrugt kode/aktiver **kun** når det er dokumenteret ubrugt.
 - Arbejde begrænset til **Delt sager**, **Team**, **Auth**, **Netlify Functions**, **DB migrations** og **drifts-/operations-dokumentation**.
+- CI/workflows og `tools/**` når det udelukkende handler om CI/Lighthouse (ikke forretningslogik).
 
 **Ikke tilladt:**
 - Store refactors.

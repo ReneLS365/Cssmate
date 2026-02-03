@@ -4,7 +4,14 @@ import path from 'node:path';
 
 const DIR = 'reports/lighthouse';
 const URL = 'http://127.0.0.1:4173/';
-const RUNS = 3;
+const parsePositiveInt = (value, fallback) => {
+  const number = Number(value);
+  if (Number.isFinite(number) && number > 0) return Math.floor(number);
+  return fallback;
+};
+
+const RUNS = parsePositiveInt(process.env.CSSMATE_LH_RUNS, 3);
+const RUN_TIMEOUT_MS = parsePositiveInt(process.env.CSSMATE_LH_RUN_TIMEOUT_MS, 180000);
 const MAX_ATTEMPTS = 3;
 const BACKOFF = [3000, 7000];
 const BETWEEN = 3000;
@@ -39,9 +46,11 @@ const CHROME_FLAGS = [
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-const runCmd = (cmd, args, env) => new Promise(resolve => {
+const runCmd = (cmd, args, env, options = {}) => new Promise(resolve => {
   const child = spawn(cmd, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
   let log = '';
+  let timedOut = false;
+  let timeoutId = null;
 
   child.stdout.on('data', data => {
     log += data.toString();
@@ -49,8 +58,23 @@ const runCmd = (cmd, args, env) => new Promise(resolve => {
   child.stderr.on('data', data => {
     log += data.toString();
   });
+  child.on('error', error => {
+    log += `\n${error?.message || String(error)}`;
+  });
 
-  child.on('close', code => resolve({ code, log }));
+  if (options.timeoutMs) {
+    timeoutId = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGKILL');
+    }, options.timeoutMs);
+  }
+
+  child.on('close', code => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    resolve({ code, log, timedOut });
+  });
 });
 
 const retryable = log => (
@@ -146,7 +170,9 @@ const lighthouseCmd = await lighthouseBin();
 const results = [];
 
 for (let i = 1; i <= RUNS; i += 1) {
-  const out = path.join(DIR, `mobile-run${i}.json`);
+  const out = RUNS === 1
+    ? path.join(DIR, 'mobile.json')
+    : path.join(DIR, `mobile-run${i}.json`);
   let ok = false;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
@@ -166,7 +192,7 @@ for (let i = 1; i <= RUNS; i += 1) {
       CHROME_PATH,
     };
 
-    const { code, log } = await runCmd(
+    const { code, log, timedOut } = await runCmd(
       lighthouseCmd,
       [
         URL,
@@ -180,10 +206,14 @@ for (let i = 1; i <= RUNS; i += 1) {
         '--no-enable-error-reporting',
       ],
       env,
+      { timeoutMs: RUN_TIMEOUT_MS },
     );
     const tail = log.slice(-2000);
 
     console.log(`\n== LH run${i} attempt${attempt} exit=${code} ==`);
+    if (timedOut) {
+      console.log(`(timeout after ${RUN_TIMEOUT_MS}ms)`);
+    }
     console.log(tail);
 
     const json = await readJsonIfExists(out);
@@ -194,7 +224,7 @@ for (let i = 1; i <= RUNS; i += 1) {
       break;
     }
 
-    if (attempt < MAX_ATTEMPTS && retryable(log)) {
+    if (attempt < MAX_ATTEMPTS && (timedOut || retryable(log))) {
       await sleep(BACKOFF[Math.min(attempt - 1, BACKOFF.length - 1)]);
       continue;
     }
@@ -227,7 +257,10 @@ if (!okReports.length) {
 const pick = okReports.find(result => result.i === 2)
   ?? okReports.slice().sort((a, b) => (b.score ?? -1) - (a.score ?? -1))[0];
 
-await fs.copyFile(pick.out, path.join(DIR, 'mobile.json'));
+const summaryPath = path.join(DIR, 'mobile.json');
+if (pick.out !== summaryPath) {
+  await fs.copyFile(pick.out, summaryPath);
+}
 
 console.log('\nLighthouse summary:');
 for (const result of results) {
