@@ -1,7 +1,8 @@
 import { db, ensureDbReady } from './_db.mjs'
+import { collectDriftWarnings, getDbConfigStatus, runDeepHealthChecks } from './_health.mjs'
 import { getTeamCase, getTeamCaseByJobNumber, listTeamCasesDelta, listTeamCasesPage, softDeleteTeamCase, upsertTeamCase } from './_team-cases.mjs'
 import { generateToken, getAuth0Config, hashToken, secureCompare, verifyToken } from './_auth.mjs'
-import { safeError } from './_log.mjs'
+import { logJson, makeRequestId, safeError } from './_log.mjs'
 import { getDeployContext, isProd } from './_context.mjs'
 import { assertTeamIdUuid, getTeamById, isUuidV4, resolveTeamId } from './_team.mjs'
 import { guardTeamCasesSql, TEAM_CASES_SCHEMA_INFO } from './_team-cases-guard.mjs'
@@ -445,6 +446,31 @@ function getRoutePath (event) {
     return rawPath.replace('/api', '') || '/'
   }
   return rawPath || '/'
+}
+
+function resolveRequestId (event) {
+  const requestId = makeRequestId(event)
+  event.__requestId = requestId
+  return requestId
+}
+
+function applyRequestId (response, requestId) {
+  if (!response) return response
+  response.headers = { ...(response.headers || {}), 'X-Request-Id': requestId }
+  return response
+}
+
+function getHealthToken (event, isProduction) {
+  const headers = event.headers || {}
+  const headerToken = headers['x-healthcheck-token'] || headers['X-Healthcheck-Token'] || ''
+  if (headerToken) return headerToken
+  if (isProduction) return ''
+  return event.queryStringParameters?.token || ''
+}
+
+function runtimeMemoryMb () {
+  const memory = process.memoryUsage?.().rss || 0
+  return Math.round(memory / (1024 * 1024))
 }
 
 function getAuthHeader (event) {
@@ -1817,6 +1843,71 @@ async function handleBackupImport (event, teamSlug) {
   return emptyResponse(204)
 }
 
+function collectEnvMissingKeys () {
+  return [
+    'APP_ORIGIN',
+    'AUTH0_DOMAIN',
+    'AUTH0_AUDIENCE',
+    'AUTH0_ISSUER',
+  ].filter((key) => !process.env[key])
+}
+
+function handleHealth (event) {
+  const requestId = event.__requestId || ''
+  const deployContext = getDeployContext()
+  const dbConfig = getDbConfigStatus()
+  const driftWarnings = collectDriftWarnings()
+  return jsonResponse(200, {
+    ok: true,
+    service: 'cssmate',
+    time: new Date().toISOString(),
+    uptimeSec: Math.floor(process.uptime()),
+    requestId,
+    deploy: {
+      context: deployContext,
+      isProd: isProd(),
+      commitRef: process.env.COMMIT_REF || '',
+      deployId: process.env.DEPLOY_ID || '',
+      buildId: process.env.BUILD_ID || '',
+    },
+    runtime: {
+      node: process.version,
+      memoryMb: runtimeMemoryMb(),
+    },
+    checks: {
+      env: { missingKeys: collectEnvMissingKeys() },
+      db: { configured: dbConfig.configured },
+      drift: { warnings: driftWarnings },
+    },
+  }, {
+    'Cache-Control': 'no-store',
+  })
+}
+
+async function handleHealthDeep (event) {
+  const isProduction = isProd()
+  const tokenEnv = process.env.HEALTHCHECK_TOKEN || ''
+  if (!tokenEnv && isProduction) {
+    return jsonResponse(503, { ok: false, error: 'missing HEALTHCHECK_TOKEN' }, { 'Cache-Control': 'no-store' })
+  }
+  if (tokenEnv) {
+    const provided = getHealthToken(event, isProduction)
+    if (!provided || !secureCompare(provided, tokenEnv)) {
+      return jsonResponse(401, { ok: false, error: 'unauthorized' }, { 'Cache-Control': 'no-store' })
+    }
+  }
+
+  const result = await runDeepHealthChecks()
+  return jsonResponse(200, {
+    ok: result.ok,
+    requestId: event.__requestId || '',
+    db: result.db,
+    warnings: result.warnings,
+  }, {
+    'Cache-Control': 'no-store',
+  })
+}
+
 export const __test = {
   canAccessCase,
   ensureTeam,
@@ -1839,87 +1930,122 @@ export async function handler (event) {
   if (!isProd() && process.env.DEBUG_TEAM_CASES === '1') {
     console.log('[team_cases] schema', TEAM_CASES_SCHEMA_INFO)
   }
+  const requestId = resolveRequestId(event)
   const handlerStart = Date.now()
   event.__timings = []
-  const withTiming = (response) => applyServerTiming(event, response, handlerStart)
   const method = event.httpMethod || 'GET'
   const path = getRoutePath(event)
   const isProduction = isProd()
   const isWriteMethod = isWriteRequest(event)
+  let routePath = ''
+  const deployContext = getDeployContext()
+  const withTiming = (response) => applyServerTiming(event, applyRequestId(response, requestId), handlerStart)
+  const finalizeResponse = (response) => {
+    const finalized = withTiming(response)
+    const status = finalized?.statusCode || 200
+    const durationMs = Math.max(0, Date.now() - handlerStart)
+    logJson('info', 'request.finish', {
+      requestId,
+      method,
+      path,
+      routePath: routePath || path,
+      status,
+      durationMs,
+      deployContext,
+      isProd: isProduction,
+    })
+    return finalized
+  }
+  const respond = async (matchedRoute, responsePromise) => {
+    routePath = matchedRoute
+    const response = await responsePromise
+    return finalizeResponse(response)
+  }
+
+  logJson('info', 'request.start', {
+    requestId,
+    method,
+    path,
+    routePath: path,
+    deployContext,
+    isProd: isProduction,
+  })
 
   try {
     if (!isProduction && isWriteMethod) {
-      return withTiming(jsonResponse(403, { error: 'Writes disabled in preview deployments.' }))
+      return finalizeResponse(jsonResponse(403, { error: 'Writes disabled in preview deployments.' }))
     }
-    if (method === 'GET' && path === '/me') return withTiming(await handleMe(event))
-    if (method === 'GET' && path === '/team') return withTiming(await handleTeamGet(event))
-    if (method === 'GET' && path === '/team/members') return withTiming(await handleTeamMembersListRoot(event))
+    if (method === 'GET' && path === '/health') return respond('/health', handleHealth(event))
+    if (method === 'GET' && path === '/health/deep') return respond('/health/deep', handleHealthDeep(event))
+    if (method === 'GET' && path === '/me') return respond('/me', handleMe(event))
+    if (method === 'GET' && path === '/team') return respond('/team', handleTeamGet(event))
+    if (method === 'GET' && path === '/team/members') return respond('/team/members', handleTeamMembersListRoot(event))
     if (method === 'PATCH' && path.startsWith('/team/members/')) {
       const memberSub = decodeURIComponent(path.replace('/team/members/', ''))
-      return withTiming(await handleTeamMemberPatchRoot(event, memberSub))
+      return respond('/team/members/:memberSub', handleTeamMemberPatchRoot(event, memberSub))
     }
 
     const isInviteRoute = path.startsWith('/invites') || /\/invites$/.test(path) || /\/invites\//.test(path)
     if (isInviteRoute) {
-      return withTiming(jsonResponse(410, { error: 'Invites er fjernet. Team/roller styres i Auth0.' }))
+      return respond('/invites', jsonResponse(410, { error: 'Invites er fjernet. Team/roller styres i Auth0.' }))
     }
 
     const teamAccessMatch = path.match(/^\/teams\/([^/]+)\/access$/)
-    if (teamAccessMatch && method === 'GET') return withTiming(await handleTeamAccess(event, teamAccessMatch[1]))
+    if (teamAccessMatch && method === 'GET') return respond('/teams/:teamId/access', handleTeamAccess(event, teamAccessMatch[1]))
 
     const teamBootstrapMatch = path.match(/^\/teams\/([^/]+)\/bootstrap$/)
-    if (teamBootstrapMatch && method === 'POST') return withTiming(await handleTeamBootstrap(event, teamBootstrapMatch[1]))
+    if (teamBootstrapMatch && method === 'POST') return respond('/teams/:teamId/bootstrap', handleTeamBootstrap(event, teamBootstrapMatch[1]))
 
     const teamMembersMatch = path.match(/^\/teams\/([^/]+)\/members$/)
-    if (teamMembersMatch && method === 'GET') return withTiming(await handleTeamMembersList(event, teamMembersMatch[1]))
+    if (teamMembersMatch && method === 'GET') return respond('/teams/:teamId/members', handleTeamMembersList(event, teamMembersMatch[1]))
 
     const teamMemberSelfMatch = path.match(/^\/teams\/([^/]+)\/members\/self$/)
-    if (teamMemberSelfMatch && method === 'POST') return withTiming(await handleTeamMemberSelfUpsert(event, teamMemberSelfMatch[1]))
+    if (teamMemberSelfMatch && method === 'POST') return respond('/teams/:teamId/members/self', handleTeamMemberSelfUpsert(event, teamMemberSelfMatch[1]))
 
     const teamMemberPatchMatch = path.match(/^\/teams\/([^/]+)\/members\/([^/]+)$/)
     if (teamMemberPatchMatch && (method === 'PATCH' || method === 'DELETE')) {
-      return withTiming(jsonResponse(410, { error: 'Team medlemmer styres i Auth0.' }))
+      return respond('/teams/:teamId/members/:memberId', jsonResponse(410, { error: 'Team medlemmer styres i Auth0.' }))
     }
 
     const caseListMatch = path.match(/^\/teams\/([^/]+)\/cases$/)
-    if (caseListMatch && method === 'GET') return withTiming(await handleCaseList(event, caseListMatch[1]))
-    if (caseListMatch && method === 'POST') return withTiming(await handleCaseCreate(event, caseListMatch[1]))
+    if (caseListMatch && method === 'GET') return respond('/teams/:teamId/cases', handleCaseList(event, caseListMatch[1]))
+    if (caseListMatch && method === 'POST') return respond('/teams/:teamId/cases', handleCaseCreate(event, caseListMatch[1]))
 
     const caseGetMatch = path.match(/^\/teams\/([^/]+)\/cases\/([^/]+)$/)
-    if (caseGetMatch && method === 'GET') return withTiming(await handleCaseGet(event, caseGetMatch[1], caseGetMatch[2]))
-    if (caseGetMatch && method === 'DELETE') return withTiming(await handleCaseDelete(event, caseGetMatch[1], caseGetMatch[2]))
+    if (caseGetMatch && method === 'GET') return respond('/teams/:teamId/cases/:caseId', handleCaseGet(event, caseGetMatch[1], caseGetMatch[2]))
+    if (caseGetMatch && method === 'DELETE') return respond('/teams/:teamId/cases/:caseId', handleCaseDelete(event, caseGetMatch[1], caseGetMatch[2]))
 
     const caseAuditMatch = path.match(/^\/teams\/([^/]+)\/cases\/([^/]+)\/audit$/)
-    if (caseAuditMatch && method === 'GET') return withTiming(await handleCaseAudit(event, caseAuditMatch[1], caseAuditMatch[2]))
+    if (caseAuditMatch && method === 'GET') return respond('/teams/:teamId/cases/:caseId/audit', handleCaseAudit(event, caseAuditMatch[1], caseAuditMatch[2]))
 
     const caseStatusMatch = path.match(/^\/teams\/([^/]+)\/cases\/([^/]+)\/status$/)
-    if (caseStatusMatch && method === 'PATCH') return withTiming(await handleCaseStatus(event, caseStatusMatch[1], caseStatusMatch[2]))
+    if (caseStatusMatch && method === 'PATCH') return respond('/teams/:teamId/cases/:caseId/status', handleCaseStatus(event, caseStatusMatch[1], caseStatusMatch[2]))
 
     const caseApproveMatch = path.match(/^\/teams\/([^/]+)\/cases\/([^/]+)\/approve$/)
-    if (caseApproveMatch && method === 'POST') return withTiming(await handleCaseApprove(event, caseApproveMatch[1], caseApproveMatch[2]))
+    if (caseApproveMatch && method === 'POST') return respond('/teams/:teamId/cases/:caseId/approve', handleCaseApprove(event, caseApproveMatch[1], caseApproveMatch[2]))
 
     const adminPurgeMatch = path.match(/^\/admin\/teams\/([^/]+)\/purge$/)
-    if (adminPurgeMatch && method === 'POST') return withTiming(await handleAdminPurge(event, adminPurgeMatch[1]))
+    if (adminPurgeMatch && method === 'POST') return respond('/admin/teams/:teamId/purge', handleAdminPurge(event, adminPurgeMatch[1]))
 
     const backupMatch = path.match(/^\/teams\/([^/]+)\/backup$/)
-    if (backupMatch && method === 'GET') return withTiming(await handleBackupExport(event, backupMatch[1]))
-    if (backupMatch && method === 'POST') return withTiming(await handleBackupImport(event, backupMatch[1]))
+    if (backupMatch && method === 'GET') return respond('/teams/:teamId/backup', handleBackupExport(event, backupMatch[1]))
+    if (backupMatch && method === 'POST') return respond('/teams/:teamId/backup', handleBackupImport(event, backupMatch[1]))
 
-    return withTiming(jsonResponse(404, { error: 'Endpoint findes ikke.' }))
+    return respond('not_found', jsonResponse(404, { error: 'Endpoint findes ikke.' }))
   } catch (error) {
     const status = error?.status || 500
     const message = error?.message || 'Serverfejl'
-    const requestId = event.headers?.['x-nf-request-id']
-      || event.headers?.['x-request-id']
-      || event.headers?.['x-amzn-trace-id']
-      || ''
-    console.error('[api] handler error', safeError(error), {
-      path,
-      method,
-      status,
+    logJson('error', 'request.error', {
       requestId,
+      method,
+      path,
+      status,
+      routePath: routePath || path,
+      deployContext,
+      isProd: isProduction,
+      error: safeError(error),
     })
-    return withTiming(jsonResponse(status, {
+    return finalizeResponse(jsonResponse(status, {
       error: message,
       ...(error?.code ? { code: error.code } : {}),
       ...(error?.invitedEmail ? { invitedEmail: error.invitedEmail } : {}),
