@@ -3439,6 +3439,12 @@ function measureVirtualItemHeight(list) {
   return Math.max(VIRTUAL_MIN_HEIGHT, Math.round(rect.height));
 }
 
+function invalidateVirtualRange(status) {
+  const virtualState = VIRTUAL_STATE.get(status);
+  if (!virtualState) return;
+  virtualState.lastRange = null;
+}
+
 function computeVirtualRange(list, totalCount, itemHeight) {
   const viewportHeight = list.clientHeight || 0;
   const scrollTop = list.scrollTop || 0;
@@ -4153,6 +4159,7 @@ function applyDeltaToDisplayState(items, deletedIds, filters) {
   displayState.buckets.forEach((bucket, status) => {
     if (changedStatuses.has(status)) {
       displayState.buckets.set(status, sortEntries(bucket, sortKey));
+      invalidateVirtualRange(status);
     }
     displayState.total += bucket.length;
     casesByStatus.set(status, bucket.slice());
