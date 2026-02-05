@@ -50,7 +50,9 @@
   --materials-grid-mobile:1.4fr minmax(56px,0.8fr) minmax(64px,0.9fr) minmax(64px,0.9fr);
   --header-height:56px;
   --tab-bar-height:52px;
-  --tab-panels-min-height:calc(100svh - var(--header-height) - var(--tab-bar-height) - 24px);
+  --app-vh:1vh;
+  --app-height:100dvh;
+  --tab-panels-min-height:calc(var(--app-height) - var(--header-height) - var(--tab-bar-height) - 24px);
 }
 
 [data-theme="light"]{
@@ -114,7 +116,8 @@ body{font-size:16px;line-height:1.45;font-weight:400;background-color:var(--bg,#
   overscroll-behavior:contain;
 }
 @supports not (height: 100dvh){
-  .app-shell{height:var(--app-vh,100vh)}
+  :root{--app-height:calc(var(--app-vh, 1vh) * 100)}
+  .app-shell{height:calc(var(--app-vh, 1vh) * 100);min-height:calc(var(--app-vh, 1vh) * 100)}
 }
 header{position:sticky;top:0;background:var(--elev);border-bottom:1px solid var(--border);z-index:5}
 header .bar{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px 10px;min-height:var(--header-height)}
@@ -132,11 +135,11 @@ header .ttl{font-weight:700;font-size:1.4rem;line-height:1.1;margin:0}
 .ui-scale-value{font-weight:700;flex:1 1 auto;text-align:center}
 .ui-scale-reset{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--panel-soft);color:var(--text);font-weight:600}
 .ui-scale-popover[hidden]{display:none}
-.tabs{display:flex;flex-wrap:wrap;gap:8px;overflow:visible;padding:0.25rem 0;border-radius:0.75rem;max-width:100%}
+.tabs{display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;padding:0.25rem 0;border-radius:0.75rem;max-width:100%;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:var(--accent) transparent;scrollbar-gutter:stable}
 .materials-list,
 .table-wrapper,
 .scroll-area{overscroll-behavior:auto}
-.tab{flex:1 1 140px;min-width:140px;max-width:100%;padding:0.5rem 0.85rem;font-size:0.95rem;border-radius:0.6rem;border:1px solid rgba(255,255,255,0.08);background:var(--panel);color:var(--muted);font-weight:600;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.1;transition:background-color .15s ease,color .15s ease,border-color .15s ease,transform .12s ease}
+.tab{flex:0 0 auto;min-width:4.5rem;max-width:100%;padding:0.5rem 0.85rem;font-size:0.95rem;border-radius:0.6rem;border:1px solid rgba(255,255,255,0.08);background:var(--panel);color:var(--muted);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.1;transition:background-color .15s ease,color .15s ease,border-color .15s ease,transform .12s ease}
 .tab:not(.tab--active):hover{color:var(--text);border-color:rgba(255,255,255,0.18)}
 .tab--active{background:var(--accent);color:var(--text-on-accent);border-color:var(--accent);box-shadow:0 0 0 1px rgba(0,0,0,0.08) inset}
 .tab-panel{display:none;width:100%;min-height:0}
@@ -302,7 +305,7 @@ button{cursor:pointer}
   .history-item__header{padding:0.75rem 1rem}
   .history-item__body{padding:0.75rem 1rem 1rem}
 }
-.table-wrapper{width:100%;overflow-x:auto}
+.table-wrapper{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
 .table-wrapper table{width:100%;border-collapse:collapse;font-size:0.85rem}
 .table-wrapper th,.table-wrapper td{padding:0.25rem 0.35rem;text-align:left;white-space:nowrap}
 .table-wrapper th{font-weight:600}
@@ -1160,3 +1163,17 @@ html.auth-locked #app{pointer-events:none;user-select:none}
 .app-guard__debug{margin:0;color:var(--muted);font-size:.85rem;line-height:1.4;word-break:break-word}
 
 /* Debug outlines for material rows (kept to visualize rendered layout) */
+#panel-delte-sager .shared-board{-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+#panel-delte-sager .shared-board-column{max-height:none}
+#panel-delte-sager .shared-board-list{overflow:visible}
+#panel-delte-sager table{display:block;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+img,svg{max-width:100%;height:auto}
+
+@media (max-width:600px){
+  :root{--header-height:48px;--tab-bar-height:44px}
+  header .bar{padding:6px 8px}
+  .tabs{gap:6px}
+  .tab{min-width:4rem;font-size:0.9rem;padding:0.4rem 0.7rem}
+  .ui-scale-toggle{min-width:40px;min-height:40px}
+}

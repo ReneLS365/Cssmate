@@ -6,6 +6,32 @@ function runWhenIdle(fn) {
   setTimeout(fn, 150);
 }
 
+function updateAppViewportHeight() {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return;
+  const height = window.visualViewport?.height || window.innerHeight;
+  if (!height) return;
+  document.documentElement.style.setProperty('--app-vh', `${height * 0.01}px`);
+}
+
+function registerViewportHeightListener() {
+  if (typeof window === 'undefined') return;
+  let resizeTimer = null;
+  const scheduleUpdate = () => {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      resizeTimer = null;
+      updateAppViewportHeight();
+    }, 120);
+  };
+
+  updateAppViewportHeight();
+  window.addEventListener('resize', scheduleUpdate, { passive: true });
+  window.addEventListener('orientationchange', scheduleUpdate, { passive: true });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', scheduleUpdate, { passive: true });
+  }
+}
+
 let bootstrapPromise = null;
 
 function shouldMountDiagnostics() {
@@ -55,6 +81,7 @@ function scheduleBootstrap() {
     document.documentElement.classList.add('app-booting');
   }
 
+  registerViewportHeightListener();
   bootstrapDiagnostics();
 
   const start = () => {
