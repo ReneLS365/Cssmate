@@ -269,30 +269,31 @@ export async function getClient () {
   if (clientPromise) return clientPromise
 
   clientPromise = (async () => {
-    if (isLighthouseMode()) {
-      return createFallbackClient()
-    }
-    if (isE2eBypassEnabled()) {
-      return createFallbackClient({
-        isAuthenticated: true,
-        user: BYPASS_USER,
-        token: 'e2e-token',
-        idTokenClaims: {},
-      })
-    }
     try {
+      if (isLighthouseMode()) {
+        return createFallbackClient()
+      }
+
+      if (isE2eBypassEnabled()) {
+        console.info('[auth0] E2E Bypass aktiv: bruger fallback-klient')
+        return createFallbackClient({
+          isAuthenticated: true,
+          user: BYPASS_USER,
+          token: 'e2e-token',
+          idTokenClaims: {},
+        })
+      }
+
       installOrgDebugHooks()
       const { createAuth0Client } = await loadAuth0Module()
       const { domain, clientId, audience, redirectUri, isConfigured } = resolveAuth0Config()
       const orgConfig = resolveOrgConfig()
       logAuth0ConfigStatus(isConfigured)
       if (!isConfigured) {
-        if (typeof window !== 'undefined') {
-          console.warn('[auth0] Mangler domain eller client id. Tjek VITE_AUTH0_DOMAIN og VITE_AUTH0_CLIENT_ID.')
-          hardClearUiLocks()
-          if (typeof document !== 'undefined') {
-            ensureUiInteractive('auth0-missing-config')
-          }
+        console.warn('[auth0] Mangler konfiguration. Tjek VITE_AUTH0_DOMAIN.')
+        hardClearUiLocks()
+        if (typeof document !== 'undefined') {
+          ensureUiInteractive('auth0-missing-config')
         }
         throw createMissingConfigError()
       }
