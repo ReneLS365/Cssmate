@@ -25,6 +25,7 @@ let keyboardBlockActive = false
 let commitInProgress = false
 let lastPointerDownAt = 0
 const POINTER_FOCUS_GUARD_MS = 450
+let pointerRequestedInput = null
 const DEBUG_NUMPAD = Boolean(
   (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV) ||
   (typeof import.meta !== 'undefined' && import.meta.env && String(import.meta.env.VITE_DEBUG_NUMPAD ?? '') === '1')
@@ -86,6 +87,11 @@ function initNumpad () {
 
   overlay = document.querySelector('[data-numpad-overlay]') || document.getElementById('numpad-overlay')
   if (!overlay) return
+
+  overlay.classList.add('numpad-hidden')
+  overlay.setAttribute('aria-hidden', 'true')
+  overlay.setAttribute('hidden', '')
+  overlay.setAttribute('inert', '')
 
   // Ensure overlay is not trapped inside transformed/scaled containers (Android fixed-position bug)
   try {
@@ -219,6 +225,8 @@ function recordPointerDown () {
 
 function shouldOpenOnFocus (input) {
   if (!input) return false
+  if (pointerRequestedInput === input) return true
+  if (input.dataset.numpad === 'true' || input.type === 'number') return true
   if (typeof input.matches === 'function' && input.matches(':focus-visible')) {
     return true
   }
@@ -230,8 +238,16 @@ function handleNumpadPointerDown (event) {
   const input = event.currentTarget
   if (!(input instanceof HTMLInputElement)) return
   if (isNumpadOpen()) return
-  if (document.activeElement !== input) return
-  showNumpadForInput(input)
+  pointerRequestedInput = input
+  requestAnimationFrame(() => {
+    if (!pointerRequestedInput || pointerRequestedInput !== input) return
+    pointerRequestedInput = null
+    if (isNumpadOpen()) return
+    if (typeof input.focus === 'function') {
+      input.focus({ preventScroll: true })
+    }
+    showNumpadForInput(input)
+  })
 }
 
 function handleOverlayPointerDown (event) {
@@ -257,6 +273,7 @@ function bindInputElement (input) {
 
   if (wantsNumpad) {
     input.addEventListener('focus', handleNumpadFocus)
+    input.addEventListener('pointerdown', handleNumpadPointerDown)
     input.addEventListener('click', handleNumpadPointerDown)
     input.addEventListener('beforeinput', blockNativeInput)
   }
@@ -353,6 +370,7 @@ function showNumpadForInput (input) {
 
 function hideNumpad ({ commit = false } = {}) {
   if (!overlay) return
+  pointerRequestedInput = null
 
   let focusTarget = lastFocusedInput
   const commitTarget = activeInput
