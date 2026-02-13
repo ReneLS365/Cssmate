@@ -3,6 +3,7 @@ import { handleImportAkkord } from './import-akkord.js';
 import { buildAkkordJsonPayload } from './export-json.js';
 import { buildExportModel } from './export-model.js';
 import { buildExportFileBaseName, buildJobSnapshot } from './job-snapshot.js';
+import { runExport } from './run-export.js';
 import { appendHistoryEntry } from './storageHistory.js';
 import { publishSharedCase, resolveTeamId, getSharedCaseContext, clearSharedCaseContext, updateSharedCaseStatus } from './shared-ledger.js';
 import { waitForAccess, getState as getSessionState } from '../src/auth/session.js';
@@ -62,6 +63,8 @@ let buildAkkordJsonPayloadImpl = buildAkkordJsonPayload;
 let handleImportAkkordImpl = handleImportAkkord;
 let buildJobSnapshotImpl = buildJobSnapshot;
 let publishSharedCaseFn = publishSharedCase;
+let runExportFn = runExport;
+let waitForAccessFn = waitForAccess;
 
 const sagsinfoFieldIds = ['sagsnummer', 'sagsnavn', 'sagsadresse', 'sagskunde', 'sagsdato', 'sagsmontoer'];
 
@@ -177,14 +180,18 @@ function requireSagsinfoForSharing() {
 }
 
 export async function exportAkkordJsonAndPdf(options = {}) {
-  if (!requireSagsinfoForSharing()) return null;
+  if (!options?.skipSagsinfoCheck && !requireSagsinfoForSharing()) return null;
   const button = options?.button || options?.currentTarget;
-  const done = setBusy(button, true, { busyText: 'Publicerer…', doneText: 'Publiceret' });
+  const done = options?.skipBusy
+    ? () => {}
+    : setBusy(button, true, { busyText: 'Publicerer…', doneText: 'Publiceret' });
   const exportErrors = [];
   try {
-    notifyAction('Publicerer sag til fælles ledger…', 'info');
+    if (!options?.silentPublish) {
+      notifyAction('Publicerer sag til fælles ledger…', 'info');
+    }
     try {
-      await waitForAccess();
+      await waitForAccessFn();
     } catch (error) {
       throw new Error(error?.message || 'Ingen adgang til delt team.');
     }
@@ -271,7 +278,9 @@ export async function exportAkkordJsonAndPdf(options = {}) {
         sharedMessage = 'Sag gemt.';
       }
     }
-    notifyAction(sharedMessage, 'success');
+    if (!options?.silentPublish) {
+      notifyAction(sharedMessage, 'success');
+    }
     return { jsonFileName: jsonResult.fileName };
   } catch (error) {
     console.error('Export failed', error);
@@ -279,7 +288,9 @@ export async function exportAkkordJsonAndPdf(options = {}) {
       ? 'Du har ikke adgang til at dele sager for dette team.'
       : 'Der opstod en fejl under eksporten. Prøv igen – eller kontakt kontoret.';
     const message = error?.message && error.message !== fallback ? `${fallback} (${error.message})` : fallback;
-    notifyAction(message, 'error');
+    if (!options?.silentPublish) {
+      notifyAction(message, 'error');
+    }
     throw error;
   } finally {
     done();
@@ -295,7 +306,33 @@ function handlePrintAkkord(event) {
 }
 
 async function handleExportAkkordPDF(event) {
-  return exportAkkordJsonAndPdf({ button: event?.currentTarget });
+  const button = event?.currentTarget;
+  if (!requireSagsinfoForSharing()) return null;
+  const done = setBusy(button, true, { busyText: 'Eksporterer…', doneText: 'Eksporteret' });
+  try {
+    const result = await runExportFn();
+    await exportAkkordJsonAndPdf({ button, skipBusy: true, silentPublish: true, skipSagsinfoCheck: true });
+    if (result?.pdf?.blob && result?.pdf?.fileName) {
+      downloadBlob(result.pdf.blob, result.pdf.fileName);
+    }
+    if (result?.json?.blob && result?.json?.fileName) {
+      downloadBlob(result.json.blob, result.json.fileName);
+    }
+    notifyAction('Akkordseddel (PDF + JSON) er gemt.', 'success');
+    notifyHistory('artifacts', {
+      baseName: result?.pdf?.baseName || '',
+      pdf: result?.pdf?.fileName || '',
+      json: result?.json?.fileName || '',
+    });
+    return result;
+  } catch (error) {
+    const fallback = 'Der opstod en fejl under eksporten. Prøv igen – eller kontakt kontoret.';
+    const message = error?.message ? `${fallback} (${error.message})` : fallback;
+    notifyAction(message, 'error');
+    throw error;
+  } finally {
+    done();
+  }
 }
 
 async function handleImportAkkordAction(event) {
@@ -431,6 +468,12 @@ export function setExportDependencies(overrides = {}) {
   publishSharedCaseFn = typeof overrides.publishSharedCase === 'function'
     ? overrides.publishSharedCase
     : publishSharedCase;
+  runExportFn = typeof overrides.runExport === 'function'
+    ? overrides.runExport
+    : runExport;
+  waitForAccessFn = typeof overrides.waitForAccess === 'function'
+    ? overrides.waitForAccess
+    : waitForAccess;
 }
 
 export {

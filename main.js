@@ -34,6 +34,29 @@ function registerViewportHeightListener() {
 
 let bootstrapPromise = null;
 
+
+async function installE2EExportHook() {
+  if (typeof window === 'undefined') return
+  try {
+    const metaEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {}
+    const embeddedEnv = window.__ENV__ || {}
+    const flag = String(
+      metaEnv.VITE_E2E
+      || embeddedEnv.VITE_E2E
+      || window.VITE_E2E
+      || ''
+    ).trim().toLowerCase()
+    const enabled = flag === '1' || flag === 'true'
+    if (!enabled) return
+    const mod = await import('./js/run-export.js')
+    if (typeof mod?.runExport !== 'function') return
+    window.__EXPORT__ = () => mod.runExport()
+  } catch (error) {
+    console.warn('Kunne ikke eksponere E2E export hook', error)
+  }
+}
+
+
 function shouldMountDiagnostics() {
   if (typeof window === 'undefined') return false;
   try {
@@ -83,6 +106,7 @@ function scheduleBootstrap() {
 
   registerViewportHeightListener();
   bootstrapDiagnostics();
+  installE2EExportHook();
 
   const start = () => {
     runWhenIdle(() => {

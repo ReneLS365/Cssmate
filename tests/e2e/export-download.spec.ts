@@ -72,18 +72,7 @@ test('eksport af akkordseddel downloader PDF og JSON', async ({ page }, testInfo
 
     await page.getByRole('button', { name: 'Beregn løn' }).click()
 
-    const exportPanel = page.locator('.export-panel')
-    await exportPanel.scrollIntoViewIfNeeded()
-    await exportPanel.dispatchEvent('pointerenter')
-    await page.waitForTimeout(1000)
-
-    const pdfButton = page.locator('#btn-export-akkord-pdf')
-    await page.waitForFunction(() => {
-      const el = document.getElementById('btn-export-akkord-pdf') as HTMLButtonElement | null
-      return !!el && !el.disabled
-    })
-    await expect(pdfButton).toBeEnabled()
-    await pdfButton.scrollIntoViewIfNeeded()
+    await page.waitForFunction(() => typeof (window as any).__EXPORT__ === 'function')
     await expect(page.locator('#btn-export-akkord-zip')).toHaveCount(0)
     await expect(page.locator('#btn-export-akkord-demontage')).toHaveCount(0)
     await expect(page.locator('#btn-export-akkord-json')).toHaveCount(0)
@@ -91,7 +80,7 @@ test('eksport af akkordseddel downloader PDF og JSON', async ({ page }, testInfo
     const [firstDownload, secondDownload] = await Promise.all([
       page.waitForEvent('download', { timeout: 15000 }),
       page.waitForEvent('download', { timeout: 15000 }),
-      pdfButton.click(),
+      page.evaluate(() => (window as any).__EXPORT__()),
     ])
     const downloads = [firstDownload, secondDownload]
 

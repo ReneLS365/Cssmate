@@ -378,8 +378,6 @@ function bindLazyExportAction (elementId, handlerName) {
 
 function setupLazyExportPanelTriggers () {
   if (typeof document === 'undefined') return
-  const exportPanel = document.querySelector('.export-panel')
-  if (!exportPanel) return
 
   const warmup = () => {
     ensureExportPanelModule().catch(error => {
@@ -389,27 +387,12 @@ function setupLazyExportPanelTriggers () {
     ensureZipLibLazy()?.catch?.(error => console.warn('Kunne ikke loade ZIP-lib', error))
   }
 
-  ;['pointerenter', 'touchstart', 'focusin'].forEach(eventName => {
-    exportPanel.addEventListener(eventName, warmup, {
-      once: true,
-      passive: eventName === 'touchstart',
-    })
-  })
+  warmup()
 
-  if ('IntersectionObserver' in window) {
-    const observer = new IntersectionObserver(entries => {
-      if (entries.some(entry => entry.isIntersecting)) {
-        warmup()
-        observer.disconnect()
-      }
-    }, { rootMargin: '128px' })
-    observer.observe(exportPanel)
-  }
-
-    bindLazyExportAction('btn-export-akkord-pdf', 'handleExportAkkordPDF')
-    bindLazyExportAction('btn-import-akkord', 'handleImportAkkordAction')
-    bindLazyExportAction('btn-print-akkord', 'handlePrintAkkord')
-  }
+  bindLazyExportAction('btn-export-akkord-pdf', 'handleExportAkkordPDF')
+  bindLazyExportAction('btn-import-akkord', 'handleImportAkkordAction')
+  bindLazyExportAction('btn-print-akkord', 'handlePrintAkkord')
+}
 
 async function ensureExportLibsLazy () {
   if (!exportLibsLoader) {
