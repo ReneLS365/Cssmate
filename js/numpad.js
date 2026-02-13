@@ -72,9 +72,6 @@ function isNumpadDisabledForE2E () {
     metaEnv.VITE_E2E_DISABLE_NUMPAD
       || embeddedEnv.VITE_E2E_DISABLE_NUMPAD
       || windowEnv.VITE_E2E_DISABLE_NUMPAD
-      || metaEnv.VITE_E2E_BYPASS_AUTH
-      || embeddedEnv.VITE_E2E_BYPASS_AUTH
-      || windowEnv.VITE_E2E_BYPASS_AUTH
       || ''
   ).trim().toLowerCase()
   return raw === '1' || raw === 'true'
