@@ -71,6 +71,8 @@ export async function listTeamCasesPage({
   from = '',
   to = '',
   includeDeleted = false,
+  userSub = '',
+  isPrivileged = false,
 }) {
   assertTeamIdUuid(teamId, 'listTeamCasesPage')
   const params = [teamId]
@@ -89,6 +91,11 @@ export async function listTeamCasesPage({
     params.push(phase)
     whereClause += ` AND c.phase = $${params.length}`
     countWhereClause += ` AND c.phase = $${params.length}`
+  }
+  if (!isPrivileged) {
+    params.push(userSub)
+    whereClause += ` AND (c.status <> 'kladde' OR c.created_by = $${params.length})`
+    countWhereClause += ` AND (c.status <> 'kladde' OR c.created_by = $${params.length})`
   }
   const searchClause = buildSearchClause({ search, params })
   whereClause += searchClause
@@ -148,7 +155,7 @@ export async function listTeamCasesPage({
   return { rows: pageRows, nextCursor, total }
 }
 
-export async function listTeamCasesDelta({ teamId, since, sinceId = '', limit }) {
+export async function listTeamCasesDelta({ teamId, since, sinceId = '', limit, userSub = '', isPrivileged = false }) {
   assertTeamIdUuid(teamId, 'listTeamCasesDelta')
   const params = [teamId]
   let whereClause = 'WHERE c.team_id = $1'
@@ -176,11 +183,14 @@ export async function listTeamCasesDelta({ teamId, since, sinceId = '', limit })
   const deleted = []
   const activeRows = []
   rows.forEach(row => {
-    if (row.deleted_at || row.status === 'deleted') {
+    const classification = classifyDeltaRow({ row, userSub, isPrivileged })
+    if (classification === 'deleted') {
       deleted.push(row.case_id)
       return
     }
-    activeRows.push(row)
+    if (classification === 'active') {
+      activeRows.push(row)
+    }
   })
   const lastRow = rows[rows.length - 1]
   const cursor = lastRow
@@ -190,6 +200,16 @@ export async function listTeamCasesDelta({ teamId, since, sinceId = '', limit })
     }
     : null
   return { rows: activeRows, deleted, cursor }
+}
+
+export function classifyDeltaRow({ row, userSub = '', isPrivileged = false }) {
+  if (row.deleted_at || row.status === 'deleted') {
+    return 'deleted'
+  }
+  if (!isPrivileged && row.status === 'kladde' && row.created_by !== userSub) {
+    return 'deleted'
+  }
+  return 'active'
 }
 
 export async function upsertTeamCase({

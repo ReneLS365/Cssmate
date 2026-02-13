@@ -12,7 +12,7 @@ test('draft visibility is team-scoped for shared cases', () => {
   )
   assert.equal(
     canAccessCase({ status: 'kladde', createdBy: 'user-a', userSub: 'user-b', isPrivileged: false }),
-    true
+    false
   )
   assert.equal(
     canAccessCase({ status: 'godkendt', createdBy: 'user-a', userSub: 'user-b', isPrivileged: false }),
