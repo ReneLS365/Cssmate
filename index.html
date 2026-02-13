@@ -65,14 +65,18 @@
         <h1 class="ttl">akkordseddel</h1>
         <div class="topbar-nav">
           <nav class="tabs" role="tablist" aria-label="SSCaff sektioner">
-              <button id="tab-sagsinfo" class="tab tab--active" type="button" role="tab" data-tab-id="sagsinfo" aria-controls="panel-sagsinfo" aria-selected="true">Sagsinfo</button>
+              <button id="tab-delte-sager" class="tab tab--active" type="button" role="tab" data-tab-id="delte-sager" aria-controls="panel-delte-sager" aria-selected="true">Delt sager</button>
               <button id="tab-optaelling" class="tab" type="button" role="tab" data-tab-id="optaelling" aria-controls="panel-optaelling" aria-selected="false">Optælling</button>
               <button id="tab-lon" class="tab" type="button" role="tab" data-tab-id="lon" aria-controls="panel-lon" aria-selected="false">Løn</button>
+              <button id="tab-sagsinfo" class="tab" type="button" role="tab" data-tab-id="sagsinfo" aria-controls="panel-sagsinfo" aria-selected="false">Sagsinfo</button>
               <button id="tab-historik" class="tab" type="button" role="tab" data-tab-id="historik" aria-controls="panel-historik" aria-selected="false">Historik</button>
-              <button id="tab-delte-sager" class="tab" type="button" role="tab" data-tab-id="delte-sager" aria-controls="panel-delte-sager" aria-selected="false">Delt sager</button>
               <button id="tab-team" class="tab" type="button" role="tab" data-tab-id="team" aria-controls="panel-team" aria-selected="false">Team</button>
               <button id="tab-hjaelp" class="tab" type="button" role="tab" data-tab-id="hjaelp" aria-controls="panel-hjaelp" aria-selected="false">Hjælp</button>
             </nav>
+            <div class="tab-select-wrap" aria-label="Navigation">
+              <label class="sr-only" for="tabSelect">Vælg fane</label>
+              <select id="tabSelect" class="tab-select"></select>
+            </div>
           <div class="topbar-actions">
             <div class="ui-scale-control no-print" data-allow-click>
               <button id="uiScaleToggle" class="icon-button ui-scale-toggle" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="uiScalePopover" aria-label="Juster zoom">🔍</button>
