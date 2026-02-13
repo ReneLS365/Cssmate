@@ -167,10 +167,6 @@ export async function listTeamCasesDelta({ teamId, since, sinceId = '', limit, u
     params.push(since)
     whereClause += ` AND c.last_updated_at > $${params.length}`
   }
-  if (!isPrivileged) {
-    params.push(userSub)
-    whereClause += ` AND (c.status <> 'kladde' OR c.created_by = $${params.length})`
-  }
   params.push(limit)
   const result = await db.query(
     guardTeamCasesSql(
@@ -187,11 +183,14 @@ export async function listTeamCasesDelta({ teamId, since, sinceId = '', limit, u
   const deleted = []
   const activeRows = []
   rows.forEach(row => {
-    if (row.deleted_at || row.status === 'deleted') {
+    const classification = classifyDeltaRow({ row, userSub, isPrivileged })
+    if (classification === 'deleted') {
       deleted.push(row.case_id)
       return
     }
-    activeRows.push(row)
+    if (classification === 'active') {
+      activeRows.push(row)
+    }
   })
   const lastRow = rows[rows.length - 1]
   const cursor = lastRow
@@ -201,6 +200,16 @@ export async function listTeamCasesDelta({ teamId, since, sinceId = '', limit, u
     }
     : null
   return { rows: activeRows, deleted, cursor }
+}
+
+export function classifyDeltaRow({ row, userSub = '', isPrivileged = false }) {
+  if (row.deleted_at || row.status === 'deleted') {
+    return 'deleted'
+  }
+  if (!isPrivileged && row.status === 'kladde' && row.created_by !== userSub) {
+    return 'deleted'
+  }
+  return 'active'
 }
 
 export async function upsertTeamCase({
