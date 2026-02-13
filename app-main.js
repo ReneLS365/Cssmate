@@ -1153,6 +1153,27 @@ let lastLoensum = 0;
 let lastMaterialSum = 0;
 let lastExportModel = null;
 let lastEkompletData = null;
+
+function hasValidCalculation () {
+  if (typeof window === 'undefined') return false
+  return Boolean(window.__lastCalculationModel)
+}
+
+function setLastCalculationModel (model) {
+  if (typeof window === 'undefined') return
+  window.__lastCalculationModel = model || null
+  const publishBtn = document.getElementById('btn-publish-from-sagsinfo')
+  if (!publishBtn) return
+  if (window.__lastCalculationModel) {
+    publishBtn.removeAttribute('disabled')
+  } else {
+    publishBtn.setAttribute('disabled', 'true')
+  }
+}
+
+function invalidateLastCalculationModel () {
+  setLastCalculationModel(null)
+}
 let lastJobSummary = null;
 let recentCasesCache = [];
 
@@ -2033,6 +2054,7 @@ function renderOptaelling() {
 function handleOptaellingInput(event) {
   const target = event.target;
   if (!target || !target.classList) return;
+  invalidateLastCalculationModel();
   if (target.classList.contains('qty')) {
     handleQuantityChange(event);
   } else if (target.classList.contains('price')) {
@@ -3676,6 +3698,7 @@ function collectJobType() {
 }
 
 function handleJobTypeChange(event) {
+  invalidateLastCalculationModel();
   const selectedType = (event?.target?.value || collectJobType() || '').toLowerCase();
   if (selectedType === 'demontage') {
     const boringField = document.getElementById('antalBoringHuller');
@@ -4250,6 +4273,7 @@ async function resetCurrentJob() {
     lastMaterialSum = 0;
     lastLoensum = 0;
     lastJobSummary = null;
+    setLastCalculationModel(null);
     updateTotals(true);
     validateSagsinfo();
     updateActionHint('Ny sag klar.', 'success');
@@ -4322,6 +4346,7 @@ async function applyImportedAkkordData(data, options = {}) {
   }
 
   markExportModelDirty();
+  setLastCalculationModel(null);
   actionHint('Akkordseddel er importeret. Bekræft arbejdstype og tal.', 'success');
   updateExportButtonsState();
   persistSnapshot({ type: 'import', source: payload?.meta?.source || 'json' });
@@ -4919,7 +4944,8 @@ function beregnLon() {
   showLonOutputSections();
   try {
     if (typeof buildAkkordData === 'function') {
-      buildAkkordData();
+      const model = buildAkkordData();
+      setLastCalculationModel(model);
     }
   } catch (err) {
     console.warn('Kunne ikke opdatere eksportdata', err);
@@ -5847,6 +5873,54 @@ function markAppReady () {
   if (typeof document === 'undefined') return
   document.documentElement.classList.remove('app-booting')
   document.documentElement.classList.add('app-ready')
+
+  try { window.__CSMATE_READY__ = true } catch {}
+}
+
+async function publishCaseFromSagsinfo () {
+  if (!hasValidCalculation()) {
+    window.alert('Du skal først lave en beregning i Løn fanen.')
+    return
+  }
+
+  const sagsinfoValidity = computeSagsinfoValidity()
+  if (!sagsinfoValidity.isValid) {
+    validateSagsinfo()
+    window.alert('Udfyld alle felter i Sagsinfo før publicering.')
+    return
+  }
+
+  const { publishSharedCase, resolveTeamId } = await import('./js/shared-ledger.js')
+  const resolvedTeamId = resolveTeamId(typeof window !== 'undefined' ? window.TEAM_ID : undefined)
+  const model = window.__lastCalculationModel
+  const info = { ...(model?.info || {}), ...collectSagsinfo() }
+  const meta = model?.meta || {}
+  const jobType = String(model?.jobType || meta?.jobType || 'montage').toLowerCase()
+  const jobNumber = String(info.sagsnummer || meta.caseNumber || '').trim()
+
+  if (!jobNumber) {
+    window.alert('Sagsnummer mangler. Udfyld Sagsnummer før publicering.')
+    return
+  }
+
+  await publishSharedCase({
+    teamId: resolvedTeamId,
+    phaseHint: jobType,
+    phase: jobType,
+    jobNumber,
+    caseKind: jobType,
+    system: meta.system || (Array.isArray(meta.systems) ? (meta.systems[0] || '') : ''),
+    status: 'kladde',
+    totals: {
+      materials: model?.totals?.materials || 0,
+      montage: jobType === 'montage' ? model?.totals?.project || 0 : 0,
+      demontage: jobType === 'demontage' ? model?.totals?.project || 0 : 0,
+      total: model?.totals?.project || model?.totals?.akkord || model?.totals?.totalAkkord || 0,
+    },
+    jsonContent: JSON.stringify(model),
+  })
+
+  window.alert('Akkordseddel publiceret.')
 }
 
 async function initApp() {
@@ -5883,6 +5957,18 @@ async function initApp() {
 
   document.getElementById('btnBeregnLon')?.addEventListener('click', () => beregnLon());
 
+  setLastCalculationModel(null);
+  const publishFromSagsinfoBtn = document.getElementById('btn-publish-from-sagsinfo');
+  publishFromSagsinfoBtn?.setAttribute('disabled', 'true');
+  publishFromSagsinfoBtn?.addEventListener('click', async () => {
+    try {
+      await publishCaseFromSagsinfo();
+    } catch (error) {
+      const message = error?.message || 'Publicering fejlede.';
+      window.alert(message);
+    }
+  });
+
   document.getElementById('btnAddWorker')?.addEventListener('click', () => addWorker());
 
   const historySelect = getDomElement('jobHistorySelect');
@@ -5901,18 +5987,24 @@ async function initApp() {
   ['traelleloeft35', 'traelleloeft50'].forEach(id => {
     const input = document.getElementById(id);
     if (input) {
-      input.addEventListener('input', () => updateTotals());
-      input.addEventListener('change', () => updateTotals(true));
+      input.addEventListener('input', () => { invalidateLastCalculationModel(); updateTotals(); });
+      input.addEventListener('change', () => { invalidateLastCalculationModel(); updateTotals(true); });
     }
   });
 
   ['antalBoringHuller', 'antalLukHuller', 'antalBoringBeton', 'antalOpskydeligt', 'km', 'slaebePct'].forEach(id => {
     const input = document.getElementById(id);
     if (input) {
-      input.addEventListener('input', () => updateTotals());
-      input.addEventListener('change', () => updateTotals(true));
+      input.addEventListener('input', () => { invalidateLastCalculationModel(); updateTotals(); });
+      input.addEventListener('change', () => { invalidateLastCalculationModel(); updateTotals(true); });
     }
   });
+
+  const workersContainer = document.getElementById('workers');
+  if (workersContainer) {
+    workersContainer.addEventListener('input', () => invalidateLastCalculationModel());
+    workersContainer.addEventListener('change', () => invalidateLastCalculationModel());
+  }
 
   const jobTypeSelect = document.getElementById('jobType');
   if (jobTypeSelect) {
@@ -5928,8 +6020,8 @@ async function initApp() {
   sagsinfoFieldIds.forEach(id => {
     const el = document.getElementById(id);
     if (el) {
-      el.addEventListener('input', () => { validateSagsinfo(); scheduleDraftSave(); });
-      el.addEventListener('change', () => { validateSagsinfo(); scheduleDraftSave(); });
+      el.addEventListener('input', () => { invalidateLastCalculationModel(); validateSagsinfo(); scheduleDraftSave(); });
+      el.addEventListener('change', () => { invalidateLastCalculationModel(); validateSagsinfo(); scheduleDraftSave(); });
     }
   });
 

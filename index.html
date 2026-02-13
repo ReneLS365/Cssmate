@@ -163,6 +163,12 @@
         Udfyld Sagsinfo for at fortsætte.
       </p>
     </fieldset>
+
+    <div class="panel-actions no-print">
+      <button id="btn-publish-from-sagsinfo" class="btn primary" type="button" disabled>
+        Publicér akkordseddel til Delt sager
+      </button>
+    </div>
   </section>
 
   <section
@@ -289,7 +295,7 @@
 
     <section class="lon-section lon-calc no-print">
       <div class="row btn-group">
-        <button id="btnBeregnLon" type="button" data-role="primary">Beregn løn</button>
+        <button id="btnBeregnLon" type="button" data-role="primary">Beregning akkordseddel</button>
       </div>
     </section>
 
@@ -317,20 +323,21 @@
       </div>
     </section>
 
-      <section class="lon-section lon-export no-print export-panel" data-lon-output hidden>
-        <fieldset>
-            <legend>Eksport &amp; deling</legend>
-            <div class="export-actions" role="group" aria-label="Eksport muligheder">
-              <button id="btn-print-akkord" type="button" disabled data-role="primary">Print</button>
-              <button id="btn-export-akkord-pdf" type="button">Eksporter akkordseddel</button>
-            </div>
-          </fieldset>
-        <fieldset class="export-comment">
-          <legend>Kommentar</legend>
-          <textarea id="akkordComment" name="comment" rows="4" placeholder="Tilføj noter til akkorden…"></textarea>
-        </fieldset>
-      </section>
+    <section class="lon-section lon-export no-print export-panel" data-lon-output hidden>
+      <fieldset>
+        <legend>Eksport &amp; deling</legend>
+        <div class="export-actions" role="group" aria-label="Eksport muligheder">
+          <button id="btn-print-akkord" type="button" disabled data-role="primary">Print</button>
+          <button id="btn-export-akkord-pdf" type="button">Eksporter akkordseddel</button>
+        </div>
+      </fieldset>
+      <fieldset class="export-comment">
+        <legend>Kommentar</legend>
+        <textarea id="akkordComment" name="comment" rows="4" placeholder="Tilføj noter til akkorden…"></textarea>
+      </fieldset>
+    </section>
 
+      
   </section>
 
     <section

@@ -1260,3 +1260,32 @@ img,svg{max-width:100%;height:auto}
     display: block;
   }
 }
+
+/* ===== Compact Optælling Layout ===== */
+@media (max-width: 520px) {
+  #panel-optaelling .materials-list {
+    gap: 4px;
+  }
+
+  #panel-optaelling .material-row {
+    padding: 4px 6px;
+    min-height: 36px;
+  }
+
+  #panel-optaelling .material-row .material-name {
+    font-size: 0.9rem;
+    line-height: 1.1;
+  }
+
+  #panel-optaelling .material-row input[type="number"],
+  #panel-optaelling .material-row input[type="text"] {
+    min-height: 32px;
+    padding: 4px 6px;
+    font-size: 0.9rem;
+  }
+
+  #panel-optaelling .material-row button {
+    min-height: 32px;
+    padding: 4px 6px;
+  }
+}
