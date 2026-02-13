@@ -413,9 +413,9 @@ async function ensureZipLibLazy () {
 const IOS_INSTALL_PROMPT_DISMISSED_KEY = 'csmate.iosInstallPromptDismissed'
 const TAB_STORAGE_KEY = 'csmate:lastTab'
 const LEGACY_TAB_STORAGE_KEYS = ['sscaff:lastTab', 'cssmate:lastActiveTab']
-const KNOWN_TAB_ID_ORDER = ['sagsinfo', 'optaelling', 'lon', 'historik', 'delte-sager', 'team', 'hjaelp']
+const KNOWN_TAB_ID_ORDER = ['delte-sager', 'optaelling', 'lon', 'sagsinfo', 'historik', 'team', 'hjaelp']
 const KNOWN_TAB_IDS = new Set(KNOWN_TAB_ID_ORDER)
-const DEFAULT_TAB_ID = KNOWN_TAB_ID_ORDER[0]
+const DEFAULT_TAB_ID = 'delte-sager'
 const INSTALL_BUTTON_DISABLED_TOOLTIP = 'Tilføj via browsermenu på denne platform'
 const PWA_INSTALL_AVAILABLE_EVENT = 'csmate:pwa-install-available'
 const PWA_INSTALL_CONSUMED_EVENT = 'csmate:pwa-install-consumed'
@@ -625,6 +625,28 @@ function getStoredTabId() {
   return '';
 }
 
+
+function getTabIdFromLocationHash () {
+  if (typeof window === 'undefined') return ''
+  const hash = String(window.location?.hash || '').replace(/^#/, '').trim()
+  if (!hash) return ''
+
+  let direct = hash
+  try {
+    direct = decodeURIComponent(hash)
+  } catch {
+    direct = hash
+  }
+  if (isKnownTabId(direct)) return direct
+  if (isKnownTabId(hash)) return hash
+
+  const params = new URLSearchParams(direct)
+  const fromParam = params.get('tab')
+  if (isKnownTabId(fromParam)) return fromParam
+
+  return ''
+}
+
 function focusTabByIndex(index) {
   if (!ensureTabCollections()) return;
   const normalized = (index + tabButtons.length) % tabButtons.length;
@@ -818,6 +840,33 @@ function findFirstAvailableTabId() {
   return tabButtons[0]?.dataset.tabId || DEFAULT_TAB_ID
 }
 
+function syncTabSelect () {
+  const select = (typeof document !== 'undefined' && typeof document.getElementById === 'function')
+    ? document.getElementById('tabSelect')
+    : null
+  if (!select) return
+
+  select.innerHTML = ''
+
+  tabButtons.forEach(button => {
+    const tabId = button.dataset.tabId
+    const label = (button.textContent || '').trim()
+    if (!tabId || !label) return
+
+    const option = document.createElement('option')
+    option.value = tabId
+    option.textContent = label
+    select.appendChild(option)
+  })
+
+  const fallbackId = currentTabId || findFirstAvailableTabId()
+  if (fallbackId) {
+    select.value = fallbackId
+  }
+
+  select.onchange = () => setActiveTab(select.value, { focus: false })
+}
+
 function ensureActiveTabAvailable () {
   if (!ensureTabCollections()) return
   const hasActive = tabButtons.some(button => button.dataset.tabId === currentTabId)
@@ -853,6 +902,7 @@ function setActiveTab(tabId, { focus = false } = {}) {
   }
 
   if (currentTabId === nextTabId) {
+    syncTabSelect()
     if (focus && typeof nextButton.focus === 'function') {
       nextButton.focus();
     }
@@ -927,6 +977,8 @@ function setActiveTab(tabId, { focus = false } = {}) {
   if (focus && typeof nextButton.focus === 'function') {
     nextButton.focus();
   }
+
+  syncTabSelect()
 }
 
 // Initier faner og tastaturnavigation
@@ -946,11 +998,16 @@ function initTabs() {
   const bindTabs = () => {
     if (tabsInitialized) return
     if (!ensureTabsBound()) return
+    const hashTabId = getTabIdFromLocationHash()
     const storedTabId = getStoredTabId();
-    const initialTabId = tabButtons.some(button => button.dataset.tabId === storedTabId)
-      ? storedTabId
-      : (tabButtons.find(button => button.getAttribute('aria-selected') === 'true')?.dataset.tabId || findFirstAvailableTabId());
+    const selectedMarkupTabId = tabButtons.find(button => button.getAttribute('aria-selected') === 'true')?.dataset.tabId || ''
+    const initialTabId = tabButtons.some(button => button.dataset.tabId === hashTabId)
+      ? hashTabId
+      : (tabButtons.some(button => button.dataset.tabId === storedTabId)
+          ? storedTabId
+          : (tabButtons.some(button => button.dataset.tabId === selectedMarkupTabId) ? selectedMarkupTabId : DEFAULT_TAB_ID))
 
+    syncTabSelect()
     tabsInitialized = true
     setActiveTab(initialTabId, { focus: false })
 

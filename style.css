@@ -1222,3 +1222,41 @@ img,svg{max-width:100%;height:auto}
   .tab{min-width:4rem;font-size:0.9rem;padding:0.4rem 0.7rem}
   .ui-scale-toggle{min-width:40px;min-height:40px}
 }
+
+
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+/* Topbar: mobil dropdown til faner */
+.topbar-nav .tab-select-wrap {
+  display: none;
+  width: 100%;
+}
+
+.topbar-nav .tab-select {
+  width: 100%;
+  max-width: 100%;
+  font: inherit;
+  padding: .45rem .6rem;
+  border-radius: .5rem;
+}
+
+/* Mobil: skjul tab-strip, vis select */
+@media (max-width: 520px) {
+  header .topbar-nav .tabs {
+    display: none !important;
+  }
+
+  header .topbar-nav .tab-select-wrap {
+    display: block;
+  }
+}
