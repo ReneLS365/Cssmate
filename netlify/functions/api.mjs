@@ -1455,7 +1455,7 @@ async function handleCaseGet (event, teamSlug, caseId) {
   const row = await getTeamCase({ teamId: team.id, caseId })
   if (!row) return jsonResponse(404, { error: 'Sag findes ikke.' })
   if (!canAccessCase({ status: row.status, createdBy: row.created_by, userSub: user.id, isPrivileged: user.isPrivileged })) {
-    return jsonResponse(403, { error: 'Kun opretter kan se kladden.' })
+    return jsonResponse(404, { error: 'Sag findes ikke.' })
   }
   return jsonResponse(200, serializeCaseRow(row))
 }
@@ -1466,7 +1466,7 @@ async function handleCaseAudit (event, teamSlug, caseId) {
   const row = await getTeamCase({ teamId: team.id, caseId })
   if (!row) return jsonResponse(404, { error: 'Sag findes ikke.' })
   if (!canAccessCase({ status: row.status, createdBy: row.created_by, userSub: user.id, isPrivileged: user.isPrivileged })) {
-    return jsonResponse(403, { error: 'Kun opretter kan se kladden.' })
+    return jsonResponse(404, { error: 'Sag findes ikke.' })
   }
   const query = event.queryStringParameters || {}
   const limit = clampAuditLimit(query.limit)

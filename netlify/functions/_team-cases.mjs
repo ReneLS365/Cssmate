@@ -155,7 +155,14 @@ export async function listTeamCasesPage({
   return { rows: pageRows, nextCursor, total }
 }
 
-export async function listTeamCasesDelta({ teamId, since, sinceId = '', limit, userSub = '', isPrivileged = false }) {
+export async function listTeamCasesDelta({
+  teamId,
+  since,
+  sinceId = '',
+  limit,
+  userSub = '',
+  isPrivileged = false,
+}) {
   assertTeamIdUuid(teamId, 'listTeamCasesDelta')
   const params = [teamId]
   let whereClause = 'WHERE c.team_id = $1'
