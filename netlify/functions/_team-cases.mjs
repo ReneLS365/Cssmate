@@ -174,10 +174,6 @@ export async function listTeamCasesDelta({
     params.push(since)
     whereClause += ` AND c.last_updated_at > $${params.length}`
   }
-  if (!isPrivileged) {
-    params.push(userSub)
-    whereClause += ` AND (c.status <> 'kladde' OR c.created_by = $${params.length})`
-  }
   params.push(limit)
   const result = await db.query(
     guardTeamCasesSql(
