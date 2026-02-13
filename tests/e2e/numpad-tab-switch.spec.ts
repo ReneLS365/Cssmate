@@ -1,13 +1,12 @@
 import { test, expect } from '@playwright/test'
+import { gotoApp, openTab } from './helpers/tab-nav'
 
 test('numpad closes on tab switch', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('/', { waitUntil: 'domcontentloaded' })
+  await gotoApp(page, { tabId: 'lon' })
   await page.waitForLoadState('networkidle')
 
-  const lonTab = page.locator('[role="tab"][data-tab-id="lon"]')
-  await expect(lonTab).toBeVisible()
-  await lonTab.click()
+  await openTab(page, { id: 'lon', label: 'Løn' })
 
   const kmInput = page.locator('#km')
   await expect(kmInput).toBeVisible()
@@ -17,9 +16,7 @@ test('numpad closes on tab switch', async ({ page }) => {
   await expect(overlay).toBeVisible()
   await expect(overlay).toHaveAttribute('aria-hidden', 'false')
 
-  const sagsinfoTab = page.locator('[role="tab"][data-tab-id="sagsinfo"]')
-  await expect(sagsinfoTab).toBeVisible()
-  await sagsinfoTab.click()
+  await openTab(page, { id: 'sagsinfo', label: 'Sagsinfo' })
 
   await expect(overlay).toHaveAttribute('hidden', '')
   await expect(overlay).toHaveClass(/numpad-hidden/)

@@ -1,5 +1,6 @@
 import { expect, test } from './_test'
 import { createConsoleCollector } from './helpers/console-collector'
+import { gotoApp } from './helpers/tab-nav'
 
 async function ensureLoggedIn (page) {
   const gate = page.locator('#authGate')
@@ -8,7 +9,7 @@ async function ensureLoggedIn (page) {
 }
 
 async function resetClientState (page) {
-  await page.goto('/')
+  await gotoApp(page, { tabId: 'sagsinfo' })
   await ensureLoggedIn(page)
   await page.waitForSelector('#sagsnummer')
 }

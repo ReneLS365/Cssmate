@@ -2,6 +2,7 @@ import { expect, test } from './_test'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import { createConsoleCollector } from './helpers/console-collector'
+import { gotoApp, openTab } from './helpers/tab-nav'
 
 const ARTIFACT_ROOT = path.resolve('release-artifacts/v2025.12.10')
 const SCENARIO_DIRS = {
@@ -53,7 +54,7 @@ test.afterEach(async ({ page }, testInfo) => {
 })
 
 async function selectSystems(page, labels) {
-  await page.getByRole('tab', { name: 'Optælling' }).click()
+  await openTab(page, { id: 'optaelling', label: 'Optælling' })
   await page.waitForSelector('#listSelectors input[type="checkbox"]', { state: 'visible' })
   for (const label of labels) {
     const resolvedLabel = SYSTEM_LABELS[label] || label
@@ -97,7 +98,7 @@ async function fillStamdata(page, overrides = {}) {
 }
 
 async function populateMaterials(page, quantities) {
-  await page.getByRole('tab', { name: 'Optælling' }).click()
+  await openTab(page, { id: 'optaelling', label: 'Optælling' })
   await page.waitForSelector('#optaellingContainer .material-row input.csm-qty')
 
   const inputs = page.locator('#optaellingContainer .material-row input.csm-qty')
@@ -108,7 +109,7 @@ async function populateMaterials(page, quantities) {
 }
 
 async function populateLon(page) {
-  await page.getByRole('tab', { name: 'Løn' }).click()
+  await openTab(page, { id: 'lon', label: 'Løn' })
   await page.waitForSelector('#km')
   await setNumberInput(page.locator('#km'), '5')
   await setNumberInput(page.locator('.worker-row input.worker-hours').first(), '1.5')
@@ -148,7 +149,7 @@ async function exportPdfAndJson(page, scenarioKey, baseName) {
 }
 
 async function importJson(page, filePath, expected = {}) {
-  await page.getByRole('tab', { name: 'Sag' }).click()
+  await openTab(page, { id: 'sagsinfo', label: 'Sagsinfo' })
   await page.getByRole('button', { name: /Importér akkordseddel/i }).click()
   const absolutePath = path.resolve(filePath)
   const content = await fs.readFile(absolutePath, 'utf8')
@@ -220,7 +221,7 @@ async function createBasicJob(page) {
 
 async function createMultiSystemJob(page) {
   await fillStamdata(page, { navn: 'Multisystem', kunde: 'Flere systemer' })
-  await page.getByRole('tab', { name: 'Optælling' }).click()
+  await openTab(page, { id: 'optaelling', label: 'Optælling' })
   await selectSystems(page, ['Bosta', 'HAKI', 'MODEX'])
   await populateMaterials(page, [2, 4, 1, 3])
   await populateLon(page)
@@ -228,10 +229,10 @@ async function createMultiSystemJob(page) {
 
 async function createCombinedJob(page) {
   await fillStamdata(page, { navn: 'Kombineret liste', kunde: 'Kombineret kunde' })
-  await page.getByRole('tab', { name: 'Optælling' }).click()
+  await openTab(page, { id: 'optaelling', label: 'Optælling' })
   await selectSystems(page, ['Bosta', 'Alfix'])
   await populateMaterials(page, [1, 2, 3])
-  await page.getByRole('tab', { name: 'Løn' }).click()
+  await openTab(page, { id: 'lon', label: 'Løn' })
   await page.locator('#jobType').selectOption('demontage')
   await populateLon(page)
 }
@@ -239,13 +240,13 @@ async function createCombinedJob(page) {
 test('basic job: export/import generates artifacts', async ({ page }, testInfo) => {
   const collector = createConsoleCollector(page)
   try {
-    await page.goto('/')
+    await gotoApp(page, { tabId: 'sagsinfo' })
     await ensureLoggedIn(page)
     await createBasicJob(page)
 
     const { jsonPath } = await exportPdfAndJson(page, 'basic', 'basic')
 
-    await page.goto('/')
+    await gotoApp(page, { tabId: 'sagsinfo' })
     await ensureLoggedIn(page)
     await importJson(page, jsonPath, { navn: 'Basisjob', kunde: 'Basis kunde' })
 
@@ -266,13 +267,13 @@ test('basic job: export/import generates artifacts', async ({ page }, testInfo) 
 test('multi-system job exports and imports with artifacts', async ({ page }, testInfo) => {
   const collector = createConsoleCollector(page)
   try {
-    await page.goto('/')
+    await gotoApp(page, { tabId: 'sagsinfo' })
     await ensureLoggedIn(page)
     await createMultiSystemJob(page)
 
     const { jsonPath } = await exportPdfAndJson(page, 'multi', 'multi')
 
-    await page.goto('/')
+    await gotoApp(page, { tabId: 'sagsinfo' })
     await ensureLoggedIn(page)
     await importJson(page, jsonPath, { navn: 'Multisystem', kunde: 'Flere systemer' })
 
@@ -289,13 +290,13 @@ test('multi-system job exports and imports with artifacts', async ({ page }, tes
 test('combined lists job exports and imports with artifacts', async ({ page }, testInfo) => {
   const collector = createConsoleCollector(page)
   try {
-    await page.goto('/')
+    await gotoApp(page, { tabId: 'sagsinfo' })
     await ensureLoggedIn(page)
     await createCombinedJob(page)
 
     const { jsonPath } = await exportPdfAndJson(page, 'combined', 'combined')
 
-    await page.goto('/')
+    await gotoApp(page, { tabId: 'sagsinfo' })
     await ensureLoggedIn(page)
     await importJson(page, jsonPath, { navn: 'Kombineret liste', kunde: 'Kombineret kunde' })
 
