@@ -2,6 +2,7 @@ import { expect, test } from './_test'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { createConsoleCollector } from './helpers/console-collector'
+import { gotoApp, openTab } from './helpers/tab-nav'
 
 async function persistDownload(download, testInfo, fallbackName) {
   const suggested = download.suggestedFilename() || fallbackName
@@ -39,7 +40,7 @@ test('eksport af akkordseddel downloader PDF og JSON', async ({ page }, testInfo
     page.setDefaultTimeout(30000)
     page.setDefaultNavigationTimeout(45000)
 
-    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    await gotoApp(page, { tabId: 'sagsinfo' })
     await page.waitForSelector('#sagsnummer', { state: 'visible' })
 
     await page.getByLabel('Sagsnummer').fill(uniqueJob)
@@ -49,11 +50,11 @@ test('eksport af akkordseddel downloader PDF og JSON', async ({ page }, testInfo
     await page.getByLabel('Dato').fill('2025-01-01')
     await page.getByLabel('Montørnavne').fill('Tester 1')
 
-    await page.getByRole('tab', { name: 'Optælling' }).click()
+    await openTab(page, { id: 'optaelling', label: 'Optælling' })
     const qtyInput = page.locator('#optaellingContainer .material-row input.csm-qty').first()
     await setNumberInput(qtyInput, '2')
 
-    await page.getByRole('tab', { name: 'Løn' }).click()
+    await openTab(page, { id: 'lon', label: 'Løn' })
 
     const kmInput = page.locator('#km')
     await setNumberInput(kmInput, '5')
@@ -106,18 +107,18 @@ test('eksport af akkordseddel downloader PDF og JSON', async ({ page }, testInfo
     expect(jsonDownload!.suggestedFilename()).toMatch(/\.json$/i)
     expect(jsonStats.size).toBeGreaterThan(0)
 
-    await page.getByRole('tab', { name: 'Sag' }).click()
+    await openTab(page, { id: 'sagsinfo', label: 'Sagsinfo' })
     await page.getByLabel('Sagsnummer').fill('TØMT')
 
-    await page.getByRole('tab', { name: 'Optælling' }).click()
+    await openTab(page, { id: 'optaelling', label: 'Optælling' })
     const qtyVerify = page.locator('#optaellingContainer .material-row input.csm-qty').first()
     await setNumberInput(qtyVerify, '0')
 
-    await page.getByRole('tab', { name: 'Løn' }).click()
+    await openTab(page, { id: 'lon', label: 'Løn' })
     await setNumberInput(kmInput, '0')
     await setNumberInput(hoursInput, '0')
 
-    await page.getByRole('tab', { name: 'Sag' }).click()
+    await openTab(page, { id: 'sagsinfo', label: 'Sagsinfo' })
     await page.setInputFiles('#akkordImportInput', jsonPath)
 
     await page.waitForFunction((expected) => {
@@ -125,10 +126,10 @@ test('eksport af akkordseddel downloader PDF og JSON', async ({ page }, testInfo
       return !!numberField && numberField.value === expected
     }, uniqueJob)
 
-    await page.getByRole('tab', { name: 'Optælling' }).click()
+    await openTab(page, { id: 'optaelling', label: 'Optælling' })
     await expect(qtyVerify).toHaveValue('2')
 
-    await page.getByRole('tab', { name: 'Løn' }).click()
+    await openTab(page, { id: 'lon', label: 'Løn' })
     await expect(kmInput).toHaveValue('5')
     await expect(hoursInput).toHaveValue('1.5')
   } finally {

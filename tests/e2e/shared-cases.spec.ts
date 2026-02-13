@@ -1,5 +1,6 @@
 import { expect, test } from './_test'
 import { installSharedCasesMock, loadSharedCasesFixture } from './helpers/shared-cases'
+import { openTab } from './helpers/tab-nav'
 
 const fixture = loadSharedCasesFixture()
 
@@ -35,7 +36,7 @@ async function openSharedCases(page, { withClockControl = false, conflictCaseId 
   const mock = await installSharedCasesMock(page, { fixture, conflictCaseId })
 
   await page.goto('/?tab=delte-sager&skipAuthGate=1', { waitUntil: 'domcontentloaded' })
-  await page.getByRole('tab', { name: 'Delt sager' }).click()
+  await openTab(page, { id: 'delte-sager', label: 'Delt sager' })
 
   await expect(page.locator('#panel-delte-sager')).toBeVisible()
   await expect(page.locator('#sharedCasesList .shared-board')).toBeVisible()
