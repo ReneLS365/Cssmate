@@ -63,11 +63,27 @@ function shouldHandleKeyPress (key, source) {
   return true
 }
 
+
+function isNumpadDisabledForE2E () {
+  const metaEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {}
+  const windowEnv = typeof window !== 'undefined' ? window : {}
+  const embeddedEnv = windowEnv.__ENV__ || {}
+  const raw = String(
+    metaEnv.VITE_E2E_DISABLE_NUMPAD
+      || embeddedEnv.VITE_E2E_DISABLE_NUMPAD
+      || windowEnv.VITE_E2E_DISABLE_NUMPAD
+      || ''
+  ).trim().toLowerCase()
+  return raw === '1' || raw === 'true'
+}
+
 function isNumpadOpen () {
   return Boolean(overlay && !overlay.classList.contains('numpad-hidden'))
 }
 
 function initNumpad () {
+  if (isNumpadDisabledForE2E()) return
+
   overlay = document.querySelector('[data-numpad-overlay]') || document.getElementById('numpad-overlay')
   if (!overlay) return
 

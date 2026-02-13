@@ -13,6 +13,11 @@ jobs:
   playwright:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      VITE_E2E_BYPASS_AUTH: '1'
+      VITE_E2E_DISABLE_NUMPAD: '1'
+      VITE_AUTH0_DOMAIN: 'example.invalid'
+      VITE_AUTH0_CLIENT_ID: 'example'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,9 +50,6 @@ jobs:
         env:
           E2E_BASE_URL: http://127.0.0.1:4173
           PLAYWRIGHT_SKIP_WEBSERVER: '1'
-          VITE_E2E_BYPASS_AUTH: '1'
-          VITE_AUTH0_DOMAIN: "e2e-test.auth0.com"
-          VITE_AUTH0_CLIENT_ID: "e2e_client_id"
         run: npm run test:e2e
 
       - name: Upload Playwright artifacts
