@@ -64,6 +64,20 @@ test('saveDraft and loadDraft roundtrip data with metadata', () => {
   })
 })
 
+
+test('loadDraft migrates legacy cssmate key to csmate key', () => {
+  withMockWindow((storage) => {
+    const payload = { schemaVersion: 1, data: { sagsinfo: { sagsnummer: '99' } } }
+    storage.setItem('cssmate:draftJob:v1', JSON.stringify(payload))
+
+    const loaded = loadDraft()
+
+    assert.deepEqual(loaded, payload.data)
+    assert.equal(storage.getItem('cssmate:draftJob:v1'), null)
+    assert.equal(storage.getItem('csmate:draftJob:v1'), JSON.stringify(payload))
+  })
+})
+
 test('loadDraft tolerates invalid payloads', () => {
   withMockWindow((storage) => {
     assert.equal(loadDraft(), null)
