@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 20
     env:
       VITE_E2E_BYPASS_AUTH: '1'
-      VITE_E2E_DISABLE_NUMPAD: '1'
+      VITE_E2E_DISABLE_NUMPAD: '0'
       VITE_AUTH0_DOMAIN: 'example.invalid'
       VITE_AUTH0_CLIENT_ID: 'example'
     steps:

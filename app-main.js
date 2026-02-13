@@ -40,6 +40,25 @@ function readCiFlag () {
 let IS_CI = false
 let IS_LIGHTHOUSE = false
 let IS_AUTOMATED = false
+
+function isE2EBypassAuthEnabled () {
+  try {
+    const metaEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {}
+    const windowEnv = typeof window !== 'undefined' ? window : {}
+    const embeddedEnv = windowEnv.__ENV__ || {}
+    const raw = String(
+      metaEnv.VITE_E2E_BYPASS_AUTH
+        || embeddedEnv.VITE_E2E_BYPASS_AUTH
+        || windowEnv.VITE_E2E_BYPASS_AUTH
+        || ''
+    ).trim().toLowerCase()
+    return raw === '1' || raw === 'true'
+  } catch {
+    return false
+  }
+}
+
+const IS_E2E = isE2EBypassAuthEnabled()
 function isDevBuild () {
   try {
     return Boolean(typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV)
@@ -1203,7 +1222,7 @@ let normalizedHistoryCache = [];
 let filteredHistoryCache = [];
 let draftSaveTimer = null;
 let lastDraftSerialized = '';
-const DRAFT_SAVE_DEBOUNCE = 350;
+const DRAFT_SAVE_DEBOUNCE = IS_E2E ? 50 : 350;
 
 function clampUiScale(value) {
   const numeric = Number.parseFloat(value);
@@ -2229,6 +2248,11 @@ function persistDraftSnapshot() {
 
 function scheduleDraftSave() {
   if (draftPersistencePaused) return;
+  if (IS_E2E) {
+    queueMicrotask(() => {
+      persistDraftSnapshot();
+    });
+  }
   if (draftSaveTimer) {
     clearTimeout(draftSaveTimer);
   }
