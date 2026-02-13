@@ -69,6 +69,8 @@ test('export buttons trigger their actions correctly', async t => {
   };
 
   const handleImportAkkordMock = mock.fn();
+  const publishSharedCaseMock = mock.fn(async () => ({ status: 'kladde', caseId: 'case-1' }));
+  const waitForAccessMock = mock.fn(async () => {});
   const runExportMock = mock.fn(async () => ({
     pdf: { blob: new Blob(['pdf']), fileName: 'custom.pdf', baseName: 'custom' },
     json: { blob: new Blob(['{}']), fileName: 'custom.json' },
@@ -76,6 +78,11 @@ test('export buttons trigger their actions correctly', async t => {
 
   setExportDependencies({
     handleImportAkkord: handleImportAkkordMock,
+    buildAkkordData: () => ({ info: { sagsnummer: 'SA-1', dato: '2024-05-10' }, meta: {}, linjer: [], totals: { projektsum: 0 } }),
+    buildAkkordJsonPayload: () => ({ content: '{}', fileName: 'shared.json' }),
+    buildJobSnapshot: () => ({ baseName: 'shared', payload: {} }),
+    publishSharedCase: publishSharedCaseMock,
+    waitForAccess: waitForAccessMock,
     runExport: runExportMock,
   });
 
@@ -100,6 +107,8 @@ test('export buttons trigger their actions correctly', async t => {
 
   await buttons['#btn-export-akkord-pdf'].click();
   assert.equal(runExportMock.mock.calls.length, 1, 'runExport invoked once');
+  assert.equal(waitForAccessMock.mock.calls.length, 1, 'waitForAccess invoked once');
+  assert.equal(publishSharedCaseMock.mock.calls.length, 1, 'shared case publish invoked once');
   const pdfDownload = downloads.find(entry => entry.download.endsWith('.pdf'));
   const jsonDownload = downloads.find(entry => entry.download.endsWith('.json'));
   assert.ok(pdfDownload, 'PDF download findes');

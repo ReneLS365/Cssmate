@@ -127,10 +127,12 @@ test('generates and validates JSON and PDF exports', async t => {
 
   const { downloads, anchors, restore } = setupDownloadSpies()
   const publishSharedCaseMock = () => Promise.resolve()
+  const waitForAccessMock = () => Promise.resolve()
 
   setExportDependencies({
     buildAkkordData: () => data,
     publishSharedCase: publishSharedCaseMock,
+    waitForAccess: waitForAccessMock,
   })
 
   t.after(() => {
