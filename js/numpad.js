@@ -350,7 +350,7 @@ function showNumpadForInput (input) {
   overlay.classList.remove('numpad-hidden')
   overlay.setAttribute('aria-hidden', 'false')
   if (document?.documentElement) {
-    document.documentElement.classList.remove('np-open')
+    document.documentElement.classList.add('np-open')
   }
   if (dialog && typeof dialog.focus === 'function') {
     dialog.focus()
