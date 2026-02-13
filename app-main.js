@@ -631,8 +631,14 @@ function getTabIdFromLocationHash () {
   const hash = String(window.location?.hash || '').replace(/^#/, '').trim()
   if (!hash) return ''
 
-  const direct = decodeURIComponent(hash)
+  let direct = hash
+  try {
+    direct = decodeURIComponent(hash)
+  } catch {
+    direct = hash
+  }
   if (isKnownTabId(direct)) return direct
+  if (isKnownTabId(hash)) return hash
 
   const params = new URLSearchParams(direct)
   const fromParam = params.get('tab')
