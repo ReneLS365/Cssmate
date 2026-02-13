@@ -155,7 +155,14 @@ export async function listTeamCasesPage({
   return { rows: pageRows, nextCursor, total }
 }
 
-export async function listTeamCasesDelta({ teamId, since, sinceId = '', limit, userSub = '', isPrivileged = false }) {
+export async function listTeamCasesDelta({
+  teamId,
+  since,
+  sinceId = '',
+  limit,
+  userSub = '',
+  isPrivileged = false,
+}) {
   assertTeamIdUuid(teamId, 'listTeamCasesDelta')
   const params = [teamId]
   let whereClause = 'WHERE c.team_id = $1'
@@ -166,6 +173,10 @@ export async function listTeamCasesDelta({ teamId, since, sinceId = '', limit, u
   } else {
     params.push(since)
     whereClause += ` AND c.last_updated_at > $${params.length}`
+  }
+  if (!isPrivileged) {
+    params.push(userSub)
+    whereClause += ` AND (c.status <> 'kladde' OR c.created_by = $${params.length})`
   }
   params.push(limit)
   const result = await db.query(
