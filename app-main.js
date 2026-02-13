@@ -1153,6 +1153,23 @@ let lastLoensum = 0;
 let lastMaterialSum = 0;
 let lastExportModel = null;
 let lastEkompletData = null;
+
+function hasValidCalculation () {
+  if (typeof window === 'undefined') return false
+  return Boolean(window.__lastCalculationModel)
+}
+
+function setLastCalculationModel (model) {
+  if (typeof window === 'undefined') return
+  window.__lastCalculationModel = model || null
+  const publishBtn = document.getElementById('btn-publish-from-sagsinfo')
+  if (!publishBtn) return
+  if (window.__lastCalculationModel) {
+    publishBtn.removeAttribute('disabled')
+  } else {
+    publishBtn.setAttribute('disabled', 'true')
+  }
+}
 let lastJobSummary = null;
 let recentCasesCache = [];
 
@@ -4250,6 +4267,7 @@ async function resetCurrentJob() {
     lastMaterialSum = 0;
     lastLoensum = 0;
     lastJobSummary = null;
+    setLastCalculationModel(null);
     updateTotals(true);
     validateSagsinfo();
     updateActionHint('Ny sag klar.', 'success');
@@ -4322,6 +4340,7 @@ async function applyImportedAkkordData(data, options = {}) {
   }
 
   markExportModelDirty();
+  setLastCalculationModel(null);
   actionHint('Akkordseddel er importeret. Bekræft arbejdstype og tal.', 'success');
   updateExportButtonsState();
   persistSnapshot({ type: 'import', source: payload?.meta?.source || 'json' });
@@ -4919,7 +4938,8 @@ function beregnLon() {
   showLonOutputSections();
   try {
     if (typeof buildAkkordData === 'function') {
-      buildAkkordData();
+      const model = buildAkkordData();
+      setLastCalculationModel(model);
     }
   } catch (err) {
     console.warn('Kunne ikke opdatere eksportdata', err);
@@ -5847,6 +5867,41 @@ function markAppReady () {
   if (typeof document === 'undefined') return
   document.documentElement.classList.remove('app-booting')
   document.documentElement.classList.add('app-ready')
+
+  try { window.__CSMATE_READY__ = true } catch {}
+}
+
+async function publishCaseFromSagsinfo () {
+  if (!hasValidCalculation()) {
+    window.alert('Du skal først lave en beregning i Løn fanen.')
+    return
+  }
+
+  const { publishSharedCase, resolveTeamId } = await import('./js/shared-ledger.js')
+  const resolvedTeamId = resolveTeamId(typeof window !== 'undefined' ? window.TEAM_ID : undefined)
+  const model = window.__lastCalculationModel
+  const info = model?.info || {}
+  const meta = model?.meta || {}
+  const jobType = String(model?.jobType || meta?.jobType || 'montage').toLowerCase()
+
+  await publishSharedCase({
+    teamId: resolvedTeamId,
+    phaseHint: jobType,
+    phase: jobType,
+    jobNumber: info.sagsnummer || meta.caseNumber || '',
+    caseKind: jobType,
+    system: meta.system || (Array.isArray(meta.systems) ? (meta.systems[0] || '') : ''),
+    status: 'kladde',
+    totals: {
+      materials: model?.totals?.materials || 0,
+      montage: jobType === 'montage' ? model?.totals?.project || 0 : 0,
+      demontage: jobType === 'demontage' ? model?.totals?.project || 0 : 0,
+      total: model?.totals?.project || model?.totals?.akkord || model?.totals?.totalAkkord || 0,
+    },
+    jsonContent: JSON.stringify(model),
+  })
+
+  window.alert('Akkordseddel publiceret.')
 }
 
 async function initApp() {
@@ -5882,6 +5937,18 @@ async function initApp() {
   runWhenIdle(() => ensureSharedCasesPanelLazy().catch(() => {}));
 
   document.getElementById('btnBeregnLon')?.addEventListener('click', () => beregnLon());
+
+  setLastCalculationModel(null);
+  const publishFromSagsinfoBtn = document.getElementById('btn-publish-from-sagsinfo');
+  publishFromSagsinfoBtn?.setAttribute('disabled', 'true');
+  publishFromSagsinfoBtn?.addEventListener('click', async () => {
+    try {
+      await publishCaseFromSagsinfo();
+    } catch (error) {
+      const message = error?.message || 'Publicering fejlede.';
+      window.alert(message);
+    }
+  });
 
   document.getElementById('btnAddWorker')?.addEventListener('click', () => addWorker());
 

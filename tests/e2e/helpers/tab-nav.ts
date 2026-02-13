@@ -9,29 +9,37 @@ export async function gotoApp(page: Page, opts?: { tabId?: string }) {
   await page.goto(`/${query}`, { waitUntil: 'domcontentloaded' })
 }
 
+function toTabSpec(tab: TabSpec | string): TabSpec {
+  if (typeof tab === 'string') {
+    const id = tab.toLowerCase().replace(/\s+/g, '-')
+    return { id, label: tab }
+  }
+  return tab
+}
+
 /**
- * Switch tab in a viewport-agnostic way:
- * - On mobile (<520px) tabs are hidden and #tabSelect is used.
- * - On desktop tabs are visible and role="tab" can be clicked.
+ * Switch tab in a viewport-agnostic and mobile-safe way.
  */
-export async function openTab(page: Page, tab: TabSpec) {
+export async function openTab(page: Page, tab: TabSpec | string) {
+  const tabSpec = toTabSpec(tab)
+  await page.waitForSelector('html.app-ready', { timeout: 60000 })
+
   const select = page.locator('#tabSelect')
 
   if (await select.count()) {
-    if (await select.isVisible()) {
-      await select.selectOption({ value: tab.id }).catch(async () => {
-        await select.selectOption({ label: tab.label })
-      })
-    } else {
-      const button = page.getByRole('tab', { name: tab.label })
-      await expect(button).toBeVisible()
-      await button.click()
-    }
+    await page.waitForFunction(() => {
+      const el = document.getElementById('tabSelect') as HTMLSelectElement | null
+      return Boolean(el && el.options && el.options.length > 0)
+    })
+
+    await select.selectOption({ label: tabSpec.label }).catch(async () => {
+      await select.selectOption({ value: tabSpec.id })
+    })
   } else {
-    const button = page.getByRole('tab', { name: tab.label })
+    const button = page.getByRole('tab', { name: tabSpec.label })
     await expect(button).toBeVisible()
     await button.click()
   }
 
-  await expect(page.locator(`#panel-${tab.id}`)).toBeVisible()
+  await expect(page.locator(`#panel-${tabSpec.id}`)).toBeVisible()
 }

@@ -71,7 +71,7 @@ test('eksport af akkordseddel downloader PDF og JSON', async ({ page }, testInfo
       }
     })
 
-    await page.getByRole('button', { name: 'Beregn løn' }).click()
+    await page.getByRole('button', { name: 'Beregning akkordseddel' }).click()
 
     await page.waitForFunction(() => typeof (window as any).__EXPORT__ === 'function')
     await expect(page.locator('#btn-export-akkord-zip')).toHaveCount(0)

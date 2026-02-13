@@ -113,7 +113,7 @@ async function populateLon(page) {
   await page.waitForSelector('#km')
   await setNumberInput(page.locator('#km'), '5')
   await setNumberInput(page.locator('.worker-row input.worker-hours').first(), '1.5')
-  await page.getByRole('button', { name: 'Beregn løn' }).click()
+  await page.getByRole('button', { name: 'Beregning akkordseddel' }).click()
 }
 
 async function exportPdfAndJson(page, scenarioKey, baseName) {
