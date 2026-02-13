@@ -203,7 +203,9 @@ export async function exportPDFBlob(data, options = {}) {
     if (allowPlaceholder) {
       console.warn('[cssmateExportPDFBlob] Ingen exportmodel – bruger placeholder-akkordseddel.pdf')
 
-      const res = await fetch('/placeholders/placeholder-akkordseddel.pdf')
+      const base = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) || '/'
+      const placeholderUrl = `${base}placeholders/placeholder-akkordseddel.pdf`
+      const res = await fetch(placeholderUrl)
       if (!res.ok) {
         throw new Error(`Kunne ikke hente placeholder-akkordseddel.pdf (status ${res.status})`)
       }

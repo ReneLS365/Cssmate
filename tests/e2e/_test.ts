@@ -5,6 +5,8 @@ export const test = base.extend({
     await page.addInitScript(() => {
       // @ts-ignore
       window.VITE_E2E_BYPASS_AUTH = '1'
+      // @ts-ignore
+      window.VITE_E2E = '1'
     })
 
     await use(page)

@@ -68,20 +68,15 @@ test('export buttons trigger their actions correctly', async t => {
     },
   };
 
-  const akkordDataMock = mock.fn(() => ({
-    meta: { sagsnummer: 'SA-1', kunde: 'Kunde', dato: '2024-05-10' },
-    materials: [],
+  const handleImportAkkordMock = mock.fn();
+  const runExportMock = mock.fn(async () => ({
+    pdf: { blob: new Blob(['pdf']), fileName: 'custom.pdf', baseName: 'custom' },
+    json: { blob: new Blob(['{}']), fileName: 'custom.json' },
   }));
 
-  const pdfBlob = new Blob(['pdf']);
-  const exportPDFBlobMock = mock.fn(() => Promise.resolve({ blob: pdfBlob, fileName: 'custom.pdf' }));
-  const publishSharedCaseMock = mock.fn(() => Promise.resolve({ status: 'kladde' }));
-  const handleImportAkkordMock = mock.fn();
-
   setExportDependencies({
-    buildAkkordData: akkordDataMock,
     handleImportAkkord: handleImportAkkordMock,
-    publishSharedCase: publishSharedCaseMock,
+    runExport: runExportMock,
   });
 
   t.after(() => {
@@ -104,15 +99,12 @@ test('export buttons trigger their actions correctly', async t => {
   assert.deepEqual(actionHints[0], { message: 'Printvindue åbnet.', variant: 'success' });
 
   await buttons['#btn-export-akkord-pdf'].click();
-  assert.equal(akkordDataMock.mock.calls.length, 1, 'akkord data built for export');
-  assert.equal(exportPDFBlobMock.mock.calls.length, 0, 'PDF eksport springes over');
-  assert.equal(publishSharedCaseMock.mock.calls.length, 1, 'sag publiceres til delt ledger');
+  assert.equal(runExportMock.mock.calls.length, 1, 'runExport invoked once');
   const pdfDownload = downloads.find(entry => entry.download.endsWith('.pdf'));
   const jsonDownload = downloads.find(entry => entry.download.endsWith('.json'));
-  assert.ok(!pdfDownload, 'Ingen PDF download');
-  assert.ok(!jsonDownload, 'Ingen JSON download');
-  assert.deepEqual(actionHints[1], { message: 'Publicerer sag til fælles ledger…', variant: 'info' });
-  assert.deepEqual(actionHints[2], { message: 'Kladde gemt privat. Godkend i "Delt sager" for at dele.', variant: 'success' });
+  assert.ok(pdfDownload, 'PDF download findes');
+  assert.ok(jsonDownload, 'JSON download findes');
+  assert.deepEqual(actionHints[1], { message: 'Akkordseddel (PDF + JSON) er gemt.', variant: 'success' });
 
   await buttons['#btn-import-akkord'].click();
   assert.equal(handleImportAkkordMock.mock.calls.length, 1, 'import handler invoked');

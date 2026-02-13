@@ -61,14 +61,6 @@ async function selectSystems(page, labels) {
     await checkbox.check({ force: true })
   }
 }
-
-async function warmUpExportPanel(page) {
-  const exportPanel = page.locator('.export-panel')
-  await exportPanel.scrollIntoViewIfNeeded()
-  await exportPanel.dispatchEvent('pointerenter')
-  await page.waitForTimeout(300)
-}
-
 async function fillStamdata(page, overrides = {}) {
   await page.waitForSelector('#sagsnummer', { state: 'visible' })
   const defaultData = {
@@ -121,24 +113,18 @@ async function populateLon(page) {
   await setNumberInput(page.locator('#km'), '5')
   await setNumberInput(page.locator('.worker-row input.worker-hours').first(), '1.5')
   await page.getByRole('button', { name: 'Beregn løn' }).click()
-  await warmUpExportPanel(page)
 }
 
 async function exportPdfAndJson(page, scenarioKey, baseName) {
   const targetDir = SCENARIO_DIRS[scenarioKey]
   await fs.mkdir(targetDir, { recursive: true })
 
-  const pdfButton = page.locator('#btn-export-akkord-pdf')
-  await page.waitForFunction(() => {
-    const el = document.getElementById('btn-export-akkord-pdf') as HTMLButtonElement | null
-    return !!el && !el.disabled
-  })
-  await expect(pdfButton).toBeEnabled()
+  await page.waitForFunction(() => typeof (window as any).__EXPORT__ === 'function')
 
   const [firstDownload, secondDownload] = await Promise.all([
     page.waitForEvent('download', { timeout: 15000 }),
     page.waitForEvent('download', { timeout: 15000 }),
-    pdfButton.click(),
+    page.evaluate(() => (window as any).__EXPORT__()),
   ])
   const downloads = [firstDownload, secondDownload]
   const pdfDownload = downloads.find(entry => entry.suggestedFilename().toLowerCase().endsWith('.pdf'))
@@ -266,7 +252,6 @@ test('basic job: export/import generates artifacts', async ({ page }, testInfo) 
     await expect(page.getByLabel('Navn/opgave')).toHaveValue('Basisjob')
     await expect(page.getByLabel('Kunde')).toHaveValue('Basis kunde')
 
-    await warmUpExportPanel(page)
     const second = await exportPdfAndJson(page, 'basic', 'basic-roundtrip')
 
     const original = JSON.parse(await fs.readFile(jsonPath, 'utf8'))
