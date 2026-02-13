@@ -5937,6 +5937,9 @@ function configureBootstrap () {
   IS_CI = isCi()
   IS_LIGHTHOUSE = isLighthouse()
   IS_AUTOMATED = isAutomated()
+  if (IS_AUTOMATED && typeof document !== 'undefined') {
+    document.documentElement.classList.add('is-automated')
+  }
   applyBuildMetadata()
   if (!IS_AUTOMATED) {
     setupServiceWorkerAutoReload()

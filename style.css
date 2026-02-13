@@ -136,6 +136,8 @@ header .ttl{font-weight:700;font-size:1.4rem;line-height:1.1;margin:0}
 .ui-scale-reset{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--panel-soft);color:var(--text);font-weight:600}
 .ui-scale-popover[hidden]{display:none}
 .tabs{display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;padding:0.25rem 0;border-radius:0.75rem;max-width:100%;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:var(--accent) transparent;scrollbar-gutter:stable}
+html.is-automated .tabs{display:flex!important}
+html.is-automated .tab{visibility:visible}
 .materials-list,
 .table-wrapper,
 .scroll-area{overscroll-behavior:auto}

@@ -1,4 +1,5 @@
 const DRAFT_KEY = 'csmate:draftJob:v1'
+const LEGACY_DRAFT_KEY = 'cssmate:draftJob:v1'
 const SCHEMA_VERSION = 1
 
 function getStorage () {
@@ -11,15 +12,23 @@ export function loadDraft () {
   if (!storage) return null
   try {
     const raw = storage.getItem(DRAFT_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
+    const legacyRaw = raw ? null : storage.getItem(LEGACY_DRAFT_KEY)
+    const sourceRaw = raw || legacyRaw
+    if (!sourceRaw) return null
+    const parsed = JSON.parse(sourceRaw)
     if (!parsed || parsed.schemaVersion !== SCHEMA_VERSION || !parsed.data) {
       storage.removeItem(DRAFT_KEY)
+      storage.removeItem(LEGACY_DRAFT_KEY)
       return null
+    }
+    if (legacyRaw) {
+      storage.setItem(DRAFT_KEY, sourceRaw)
+      storage.removeItem(LEGACY_DRAFT_KEY)
     }
     return parsed.data
   } catch (error) {
     storage.removeItem(DRAFT_KEY)
+    storage.removeItem(LEGACY_DRAFT_KEY)
     return null
   }
 }
@@ -44,5 +53,6 @@ export function clearDraft () {
   if (!storage) return
   try {
     storage.removeItem(DRAFT_KEY)
+    storage.removeItem(LEGACY_DRAFT_KEY)
   } catch {}
 }
