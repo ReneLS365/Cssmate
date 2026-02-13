@@ -962,23 +962,21 @@ input.csm-name{
 }
 
 @media (max-width:767px){
-  :root{font-size:15px}
+  #panel-optaelling{
+    font-size:15px;
+  }
 
-  button,
-  .btn,
-  .tab{
+  #panel-optaelling button,
+  #panel-optaelling .btn,
+  #panel-optaelling .tab{
     padding:0.45rem 0.75rem;
   }
 
-  input,
-  select,
-  textarea{
+  #panel-optaelling input,
+  #panel-optaelling select,
+  #panel-optaelling textarea{
     padding:0.45rem 0.6rem;
   }
-}
-
-@media (min-width:768px){
-  :root{font-size:16px}
 }
 
 #panel-optaelling .material-row,
