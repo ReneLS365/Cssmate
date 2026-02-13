@@ -183,7 +183,17 @@ function resolveExportAction ({ phaseHint, caseKind }) {
   return 'EXPORT_MONTAGE'
 }
 
-function canAccessCase () {
+function canAccessCase ({ status, createdBy, userSub, isPrivileged }) {
+  const normalizedStatus = normalizeCaseStatus(status)
+
+  if (isPrivileged) return true
+
+  if (normalizedStatus === CASE_STATUS.DRAFT) {
+    return Boolean(createdBy && userSub && createdBy === userSub)
+  }
+
+  if (normalizedStatus === CASE_STATUS.DELETED) return false
+
   return true
 }
 
@@ -1399,6 +1409,8 @@ async function handleCaseList (event, teamSlug) {
       since: sinceIso,
       sinceId,
       limit,
+      userSub: user.id,
+      isPrivileged: user.isPrivileged,
     })
     const rows = delta.rows || []
     const items = rows.map(serializeCaseDeltaRow)
@@ -1422,6 +1434,8 @@ async function handleCaseList (event, teamSlug) {
     from,
     to,
     includeDeleted,
+    userSub: user.id,
+    isPrivileged: user.isPrivileged,
   })
   const items = page.rows.map(serializeCaseRow)
   const nextCursor = page.nextCursor
