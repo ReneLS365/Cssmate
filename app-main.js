@@ -1170,6 +1170,10 @@ function setLastCalculationModel (model) {
     publishBtn.setAttribute('disabled', 'true')
   }
 }
+
+function invalidateLastCalculationModel () {
+  setLastCalculationModel(null)
+}
 let lastJobSummary = null;
 let recentCasesCache = [];
 
@@ -2050,6 +2054,7 @@ function renderOptaelling() {
 function handleOptaellingInput(event) {
   const target = event.target;
   if (!target || !target.classList) return;
+  invalidateLastCalculationModel();
   if (target.classList.contains('qty')) {
     handleQuantityChange(event);
   } else if (target.classList.contains('price')) {
@@ -3693,6 +3698,7 @@ function collectJobType() {
 }
 
 function handleJobTypeChange(event) {
+  invalidateLastCalculationModel();
   const selectedType = (event?.target?.value || collectJobType() || '').toLowerCase();
   if (selectedType === 'demontage') {
     const boringField = document.getElementById('antalBoringHuller');
@@ -5877,18 +5883,31 @@ async function publishCaseFromSagsinfo () {
     return
   }
 
+  const sagsinfoValidity = computeSagsinfoValidity()
+  if (!sagsinfoValidity.isValid) {
+    validateSagsinfo()
+    window.alert('Udfyld alle felter i Sagsinfo før publicering.')
+    return
+  }
+
   const { publishSharedCase, resolveTeamId } = await import('./js/shared-ledger.js')
   const resolvedTeamId = resolveTeamId(typeof window !== 'undefined' ? window.TEAM_ID : undefined)
   const model = window.__lastCalculationModel
-  const info = model?.info || {}
+  const info = { ...(model?.info || {}), ...collectSagsinfo() }
   const meta = model?.meta || {}
   const jobType = String(model?.jobType || meta?.jobType || 'montage').toLowerCase()
+  const jobNumber = String(info.sagsnummer || meta.caseNumber || '').trim()
+
+  if (!jobNumber) {
+    window.alert('Sagsnummer mangler. Udfyld Sagsnummer før publicering.')
+    return
+  }
 
   await publishSharedCase({
     teamId: resolvedTeamId,
     phaseHint: jobType,
     phase: jobType,
-    jobNumber: info.sagsnummer || meta.caseNumber || '',
+    jobNumber,
     caseKind: jobType,
     system: meta.system || (Array.isArray(meta.systems) ? (meta.systems[0] || '') : ''),
     status: 'kladde',
@@ -5968,18 +5987,24 @@ async function initApp() {
   ['traelleloeft35', 'traelleloeft50'].forEach(id => {
     const input = document.getElementById(id);
     if (input) {
-      input.addEventListener('input', () => updateTotals());
-      input.addEventListener('change', () => updateTotals(true));
+      input.addEventListener('input', () => { invalidateLastCalculationModel(); updateTotals(); });
+      input.addEventListener('change', () => { invalidateLastCalculationModel(); updateTotals(true); });
     }
   });
 
   ['antalBoringHuller', 'antalLukHuller', 'antalBoringBeton', 'antalOpskydeligt', 'km', 'slaebePct'].forEach(id => {
     const input = document.getElementById(id);
     if (input) {
-      input.addEventListener('input', () => updateTotals());
-      input.addEventListener('change', () => updateTotals(true));
+      input.addEventListener('input', () => { invalidateLastCalculationModel(); updateTotals(); });
+      input.addEventListener('change', () => { invalidateLastCalculationModel(); updateTotals(true); });
     }
   });
+
+  const workersContainer = document.getElementById('workers');
+  if (workersContainer) {
+    workersContainer.addEventListener('input', () => invalidateLastCalculationModel());
+    workersContainer.addEventListener('change', () => invalidateLastCalculationModel());
+  }
 
   const jobTypeSelect = document.getElementById('jobType');
   if (jobTypeSelect) {
@@ -5995,8 +6020,8 @@ async function initApp() {
   sagsinfoFieldIds.forEach(id => {
     const el = document.getElementById(id);
     if (el) {
-      el.addEventListener('input', () => { validateSagsinfo(); scheduleDraftSave(); });
-      el.addEventListener('change', () => { validateSagsinfo(); scheduleDraftSave(); });
+      el.addEventListener('input', () => { invalidateLastCalculationModel(); validateSagsinfo(); scheduleDraftSave(); });
+      el.addEventListener('change', () => { invalidateLastCalculationModel(); validateSagsinfo(); scheduleDraftSave(); });
     }
   });
 
