@@ -938,6 +938,51 @@ input.csm-name{
 
 #panel-delte-sager .shared-header-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 #panel-delte-sager .shared-header-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+/* --- Optælling: én tydelig scroll-surface + mobil-kompakt baseline --- */
+#panel-optaelling{
+  min-height:0;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+}
+
+#panel-optaelling .materials-scroll,
+#panel-optaelling .materials-list,
+#panel-optaelling #optaellingContainer,
+#panel-optaelling [data-materials-scroll]{
+  min-height:0;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
+}
+
+#panel-optaelling,
+#panel-optaelling *{
+  touch-action:pan-y;
+}
+
+@media (max-width:767px){
+  #panel-optaelling{
+    font-size:15px;
+  }
+
+  #panel-optaelling button,
+  #panel-optaelling .btn,
+  #panel-optaelling .tab{
+    padding:0.45rem 0.75rem;
+  }
+
+  #panel-optaelling input,
+  #panel-optaelling select,
+  #panel-optaelling textarea{
+    padding:0.45rem 0.6rem;
+  }
+}
+
+#panel-optaelling .material-row,
+#panel-optaelling .row{
+  line-height:1.2;
+}
 #panel-delte-sager .shared-header-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 #panel-delte-sager .shared-header-meta{font-size:.85rem;color:var(--muted)}
 #panel-delte-sager .shared-header-count{font-size:.9rem;color:var(--muted);background:var(--panel-soft);border-radius:999px;padding:4px 10px}
