@@ -258,6 +258,15 @@ function resolveAppState (appState) {
   return { returnTo: returnTarget }
 }
 
+function createE2EBypassClient () {
+  return createFallbackClient({
+    isAuthenticated: true,
+    user: BYPASS_USER,
+    token: 'e2e-token',
+    idTokenClaims: {},
+  })
+}
+
 function createMissingConfigError () {
   const error = new Error('Auth0 mangler VITE_AUTH0_DOMAIN eller VITE_AUTH0_CLIENT_ID.')
   error.code = 'AUTH0_CONFIG_MISSING'
@@ -276,12 +285,7 @@ export async function getClient () {
 
       if (isE2eBypassEnabled()) {
         console.info('[auth0] E2E Bypass aktiv: bruger fallback-klient')
-        return createFallbackClient({
-          isAuthenticated: true,
-          user: BYPASS_USER,
-          token: 'e2e-token',
-          idTokenClaims: {},
-        })
+        return createE2EBypassClient()
       }
 
       installOrgDebugHooks()
