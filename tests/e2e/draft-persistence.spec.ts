@@ -19,6 +19,13 @@ async function fillSagsinfo (page, data) {
   await page.getByLabel('Navn/opgave').fill(data.navn)
   await page.getByLabel('Adresse').fill(data.adresse)
   await page.getByLabel('Kunde').fill(data.kunde)
+  await page.getByLabel('Dato').fill(data.dato)
+  await page.getByLabel('Montørnavne').fill(data.montoer)
+
+  const kundeField = page.getByLabel('Kunde')
+  await kundeField.dispatchEvent('change')
+  await kundeField.press('Tab')
+  await page.waitForTimeout(120)
 }
 
 function expectSagsinfoValues (page, data) {
@@ -41,7 +48,9 @@ test.describe('Draft persistence', () => {
       sagsnummer: '9001',
       navn: 'Autosave demo',
       adresse: 'Draftvej 12',
-      kunde: 'Testkunde'
+      kunde: 'Testkunde',
+      dato: '2025-01-01',
+      montoer: 'Tester 1'
     }
 
     try {
@@ -64,7 +73,9 @@ test.describe('Draft persistence', () => {
       sagsnummer: '1200',
       navn: 'Nulstil demo',
       adresse: 'Sletvej 3',
-      kunde: 'Demo kunde'
+      kunde: 'Demo kunde',
+      dato: '2025-02-01',
+      montoer: 'Tester 2'
     }
 
     try {

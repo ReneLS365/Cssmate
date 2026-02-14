@@ -4,6 +4,14 @@ import fs from 'node:fs/promises'
 import { createConsoleCollector } from './helpers/console-collector'
 import { gotoApp, openTab } from './helpers/tab-nav'
 
+
+async function warmUpExportPanel(page) {
+  await openTab(page, { id: 'sagsinfo', label: 'Sagsinfo' })
+  const exportPanel = page.locator('.export-panel')
+  await expect(exportPanel).toBeVisible()
+  await exportPanel.scrollIntoViewIfNeeded()
+}
+
 const ARTIFACT_ROOT = path.resolve('release-artifacts/v2025.12.10')
 const SCENARIO_DIRS = {
   basic: path.join(ARTIFACT_ROOT, 'basic'),
@@ -120,6 +128,7 @@ async function exportPdfAndJson(page, scenarioKey, baseName) {
   const targetDir = SCENARIO_DIRS[scenarioKey]
   await fs.mkdir(targetDir, { recursive: true })
 
+  await warmUpExportPanel(page)
   await page.waitForFunction(() => typeof (window as any).__EXPORT__ === 'function')
 
   const [firstDownload, secondDownload] = await Promise.all([
