@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test'
 import { gotoApp, openTab } from './helpers/tab-nav'
 
+test.skip(process.env.VITE_E2E_DISABLE_NUMPAD === '1', 'Numpad disabled in this E2E run')
+
 test('numpad closes on tab switch', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await gotoApp(page, { tabId: 'lon' })

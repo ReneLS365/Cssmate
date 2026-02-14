@@ -4,6 +4,14 @@ import path from 'node:path'
 import { createConsoleCollector } from './helpers/console-collector'
 import { gotoApp, openTab } from './helpers/tab-nav'
 
+
+async function warmUpExportPanel(page) {
+  await openTab(page, { id: 'sagsinfo', label: 'Sagsinfo' })
+  const exportPanel = page.locator('.export-panel')
+  await expect(exportPanel).toBeVisible()
+  await exportPanel.scrollIntoViewIfNeeded()
+}
+
 async function persistDownload(download, testInfo, fallbackName) {
   const suggested = download.suggestedFilename() || fallbackName
   const targetPath = testInfo.outputPath(path.basename(suggested))
@@ -73,6 +81,7 @@ test('eksport af akkordseddel downloader PDF og JSON', async ({ page }, testInfo
 
     await page.getByRole('button', { name: 'Beregning akkordseddel' }).click()
 
+    await warmUpExportPanel(page)
     await page.waitForFunction(() => typeof (window as any).__EXPORT__ === 'function')
     await expect(page.locator('#btn-export-akkord-zip')).toHaveCount(0)
     await expect(page.locator('#btn-export-akkord-demontage')).toHaveCount(0)

@@ -499,6 +499,54 @@ input.csm-name{
   }
 }
 
+
+/* Optælling — dense defaults (flere rækker pr skærm) */
+#panel-optaelling .material-row,
+#panel-optaelling .csm-row {
+  padding: 6px 8px;
+  column-gap: 6px;
+  row-gap: 6px;
+  min-height: 34px;
+}
+
+#panel-optaelling .material-name,
+#panel-optaelling .csm-name,
+#panel-optaelling .mat-name {
+  font-size: 0.9rem;
+  line-height: 1.15;
+  min-height: 34px;
+}
+
+#panel-optaelling input[type="number"],
+#panel-optaelling input[type="text"].csm-qty,
+#panel-optaelling .material-total,
+#panel-optaelling .csm-sum,
+#panel-optaelling .mat-sum {
+  height: 34px;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 520px) {
+  #panel-optaelling .material-row,
+  #panel-optaelling .csm-row {
+    padding: 5px 6px;
+    min-height: 32px;
+  }
+
+  #panel-optaelling .material-name,
+  #panel-optaelling .csm-name,
+  #panel-optaelling .mat-name,
+  #panel-optaelling input[type="number"],
+  #panel-optaelling input[type="text"].csm-qty,
+  #panel-optaelling .material-total,
+  #panel-optaelling .csm-sum,
+  #panel-optaelling .mat-sum {
+    font-size: 0.85rem;
+    height: 32px;
+    min-height: 32px;
+  }
+}
+
 .csm-row--custom { display:block; }
 
 .empty-state{margin:0;padding:16px;border:1px dashed var(--border);border-radius:12px;text-align:center;color:var(--muted);background:rgba(255,255,255,0.03)}

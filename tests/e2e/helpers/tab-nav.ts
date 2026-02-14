@@ -25,8 +25,9 @@ export async function openTab(page: Page, tab: TabSpec | string) {
   await page.waitForSelector('html.app-ready', { timeout: 60000 })
 
   const select = page.locator('#tabSelect')
+  const selectVisible = await select.isVisible().catch(() => false)
 
-  if (await select.count()) {
+  if (selectVisible) {
     await page.waitForFunction(() => {
       const el = document.getElementById('tabSelect') as HTMLSelectElement | null
       return Boolean(el && el.options && el.options.length > 0)

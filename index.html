@@ -28,7 +28,6 @@
   <link rel="modulepreload" href="/main.js">
   <link rel="manifest" href="/manifest.webmanifest" crossorigin="anonymous">
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
-  <link rel="icon" href="/favicon.ico">
   <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg">
   <link rel="canonical" href="https://sscaff.netlify.app/">
 </head>
@@ -73,7 +72,7 @@
               <button id="tab-team" class="tab" type="button" role="tab" data-tab-id="team" aria-controls="panel-team" aria-selected="false">Team</button>
               <button id="tab-hjaelp" class="tab" type="button" role="tab" data-tab-id="hjaelp" aria-controls="panel-hjaelp" aria-selected="false">Hjælp</button>
             </nav>
-            <div class="tab-select-wrap" aria-label="Navigation">
+            <div class="tab-select-wrap">
               <label class="sr-only" for="tabSelect">Vælg fane</label>
               <select id="tabSelect" class="tab-select"></select>
             </div>
@@ -169,6 +168,20 @@
         Publicér akkordseddel til Delt sager
       </button>
     </div>
+
+    <section class="lon-section lon-export no-print export-panel">
+      <fieldset>
+        <legend>Eksport &amp; deling</legend>
+        <div class="export-actions" role="group" aria-label="Eksport muligheder">
+          <button id="btn-print-akkord" type="button" disabled data-role="primary">Print</button>
+          <button id="btn-export-akkord-pdf" type="button">Eksporter akkordseddel</button>
+        </div>
+      </fieldset>
+      <fieldset class="export-comment">
+        <legend>Kommentar</legend>
+        <textarea id="akkordComment" name="comment" rows="4" placeholder="Tilføj noter til akkorden…"></textarea>
+      </fieldset>
+    </section>
   </section>
 
   <section
@@ -323,21 +336,7 @@
       </div>
     </section>
 
-    <section class="lon-section lon-export no-print export-panel" data-lon-output hidden>
-      <fieldset>
-        <legend>Eksport &amp; deling</legend>
-        <div class="export-actions" role="group" aria-label="Eksport muligheder">
-          <button id="btn-print-akkord" type="button" disabled data-role="primary">Print</button>
-          <button id="btn-export-akkord-pdf" type="button">Eksporter akkordseddel</button>
-        </div>
-      </fieldset>
-      <fieldset class="export-comment">
-        <legend>Kommentar</legend>
-        <textarea id="akkordComment" name="comment" rows="4" placeholder="Tilføj noter til akkorden…"></textarea>
-      </fieldset>
-    </section>
 
-      
   </section>
 
     <section
