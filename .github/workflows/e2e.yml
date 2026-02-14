@@ -37,8 +37,8 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      - name: Start preview server
-        run: npm run preview &
+      - name: Start Netlify-like E2E server
+        run: npm run e2e:serve &
         env:
           PORT: 4173
           CSSMATE_IS_CI: '1'

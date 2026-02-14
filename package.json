@@ -50,7 +50,8 @@
     "verify:build-and-tests": "npm run clean --if-present && npm ci && npm run build && npm run lint --if-present && npm run typecheck --if-present && npm run test --if-present && npm run test:integration --if-present && npm run test:exports --if-present && npm run test:e2e --if-present && npm run perf:bundle --if-present",
     "test:lh": "bash scripts/run-lhci.sh",
     "verify:perf": "npm run build && npm run test:lh",
-    "verify:deploy": "npm run verify:build-and-tests && npm run verify:perf"
+    "verify:deploy": "npm run verify:build-and-tests && npm run verify:perf",
+    "e2e:serve": "netlify dev --dir .netlify_publish --functions netlify/functions --port 4173 --offline --silent"
   },
   "dependencies": {
     "@auth0/auth0-spa-js": "^2.15.0",
@@ -70,7 +71,8 @@
     "linkinator": "^7.5.3",
     "pdf-lib": "^1.17.1",
     "size-limit": "^12.0.0",
-    "terser": "^5.46.0"
+    "terser": "^5.46.0",
+    "netlify-cli": "^23.6.0"
   },
   "size-limit": [
     {
