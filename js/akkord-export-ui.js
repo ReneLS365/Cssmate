@@ -297,9 +297,16 @@ export async function exportAkkordJsonAndPdf(options = {}) {
   }
 }
 
-function handlePrintAkkord(event) {
+async function handlePrintAkkord(event) {
   const button = event?.currentTarget;
   const done = setBusy(button, true, { busyText: 'Åbner print…', doneText: 'Klar' });
+  window.__cssmateSetActiveTab?.('lon');
+  await new Promise((resolve) => {
+    const nextTick = typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
+      ? window.requestAnimationFrame.bind(window)
+      : (callback) => setTimeout(callback, 0);
+    nextTick(() => resolve());
+  });
   window.print();
   notifyAction('Printvindue åbnet.', 'success');
   done();
