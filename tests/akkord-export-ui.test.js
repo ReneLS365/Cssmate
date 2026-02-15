@@ -40,11 +40,13 @@ test('export buttons trigger their actions correctly', async t => {
   const originalRevokeObjectURL = URL.revokeObjectURL;
 
   const printSpy = mock.fn();
+  const setActiveTabSpy = mock.fn();
   URL.createObjectURL = mock.fn(() => 'blob:mock-url');
   URL.revokeObjectURL = mock.fn();
 
   globalThis.window = {
     print: printSpy,
+    __cssmateSetActiveTab: setActiveTabSpy,
     cssmateUpdateActionHint: (message, variant) => {
       actionHints.push({ message, variant });
     },
@@ -102,6 +104,8 @@ test('export buttons trigger their actions correctly', async t => {
   assert.equal(buttons['#btn-import-akkord'].listenerCount(), 1, 'import button is bound');
 
   await buttons['#btn-print-akkord'].click();
+  assert.equal(setActiveTabSpy.mock.calls.length, 1, 'print forces Løn tab before opening browser print');
+  assert.deepEqual(setActiveTabSpy.mock.calls[0].arguments, ['lon']);
   assert.equal(printSpy.mock.calls.length, 1, 'print called once');
   assert.deepEqual(actionHints[0], { message: 'Printvindue åbnet.', variant: 'success' });
 
