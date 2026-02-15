@@ -55,6 +55,9 @@ test.describe('Draft persistence', () => {
 
     try {
       await fillSagsinfo(page, draft)
+      await page.keyboard.press('Tab')
+      await page.keyboard.press('Tab')
+      await page.waitForTimeout(120)
 
       await expect.poll(() => page.evaluate(() => localStorage.getItem('csmate:draftJob:v1')))
         .not.toBeNull()
@@ -80,6 +83,9 @@ test.describe('Draft persistence', () => {
 
     try {
       await fillSagsinfo(page, draft)
+      await page.keyboard.press('Tab')
+      await page.keyboard.press('Tab')
+      await page.waitForTimeout(120)
 
       await expect.poll(() => page.evaluate(() => localStorage.getItem('csmate:draftJob:v1')))
         .not.toBeNull()

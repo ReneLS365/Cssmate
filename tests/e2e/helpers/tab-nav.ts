@@ -25,22 +25,32 @@ export async function openTab(page: Page, tab: TabSpec | string) {
   await page.waitForSelector('html.app-ready', { timeout: 60000 })
 
   const select = page.locator('#tabSelect')
-  const selectVisible = await select.isVisible().catch(() => false)
+  const selectExists = (await select.count().catch(() => 0)) > 0
 
-  if (selectVisible) {
+  if (selectExists) {
     await page.waitForFunction(() => {
       const el = document.getElementById('tabSelect') as HTMLSelectElement | null
       return Boolean(el && el.options && el.options.length > 0)
+    }, undefined, { timeout: 10000 }).catch(() => {})
+
+    await select.selectOption({ label: tabSpec.label }, { timeout: 10000 }).catch(async () => {
+      await select.selectOption({ value: tabSpec.id }, { timeout: 10000 })
     })
 
-    await select.selectOption({ label: tabSpec.label }).catch(async () => {
-      await select.selectOption({ value: tabSpec.id })
-    })
-  } else {
-    const button = page.getByRole('tab', { name: tabSpec.label })
-    await expect(button).toBeVisible()
-    await button.click()
+    const panel = page.locator(`#panel-${tabSpec.id}`)
+    const isPanelVisible = await panel.isVisible().catch(() => false)
+    if (!isPanelVisible) {
+      const tabButton = page.getByRole('tab', { name: tabSpec.label })
+      await expect(tabButton).toBeVisible()
+      await tabButton.click()
+    }
+
+    await expect(panel).toBeVisible()
+    return
   }
 
+  const tabButton = page.getByRole('tab', { name: tabSpec.label })
+  await expect(tabButton).toBeVisible()
+  await tabButton.click()
   await expect(page.locator(`#panel-${tabSpec.id}`)).toBeVisible()
 }
