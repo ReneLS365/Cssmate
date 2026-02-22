@@ -37,9 +37,9 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      - name: Start preview server
+      - name: Start Netlify E2E server
         run: |
-          npm run preview -- --host 127.0.0.1 --port 4173 > preview.log 2>&1 &
+          npm run e2e:serve > preview.log 2>&1 &
           echo $! > preview.pid
         env:
           PORT: 4173
