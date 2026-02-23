@@ -190,6 +190,32 @@ function decodeBase64 (value) {
   return Buffer.from(padded, 'base64').toString('utf-8')
 }
 
+function toBase64Url (input) {
+  const normalizedInput = typeof input === 'string' ? input : JSON.stringify(input)
+  if (typeof btoa === 'function') {
+    const base64 = btoa(unescape(encodeURIComponent(normalizedInput)))
+    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+  }
+  return Buffer.from(normalizedInput, 'utf-8').toString('base64url')
+}
+
+function createFakeE2eJwt (payloadOverrides = {}) {
+  const now = Math.floor(Date.now() / 1000)
+  const header = { alg: 'HS256', typ: 'JWT' }
+  const payload = {
+    sub: 'e2e|local',
+    name: 'E2E Admin',
+    email: 'e2e@local.test',
+    permissions: ['admin:app'],
+    'https://sscaff.app/roles': ['sscaff_admin'],
+    iat: now,
+    exp: now + (24 * 60 * 60),
+    ...payloadOverrides,
+  }
+
+  return `${toBase64Url(header)}.${toBase64Url(payload)}.sig`
+}
+
 function parseJwtPayload (token) {
   if (!token || typeof token !== 'string') return null
   const parts = token.split('.')
@@ -259,25 +285,15 @@ function resolveAppState (appState) {
 }
 
 function createE2EBypassClient () {
-  const now = Math.floor(Date.now() / 1000)
-  const encodeSegment = (value) => {
-    const json = typeof value === 'string' ? value : JSON.stringify(value)
-    if (typeof btoa === 'function') {
-      return btoa(json).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
-    }
-    return Buffer.from(json, 'utf-8').toString('base64url')
-  }
   const tokenPayload = {
-    sub: BYPASS_USER.sub,
-    email: BYPASS_USER.email,
-    name: BYPASS_USER.name,
+    sub: 'e2e|local',
+    email: 'e2e@local.test',
+    name: 'E2E Admin',
     permissions: ['admin:app'],
     'https://sscaff.app/roles': ['sscaff_admin'],
     org_id: 'org_e2e',
-    iat: now,
-    exp: now + (24 * 60 * 60),
   }
-  const fakeJwt = `${encodeSegment({ alg: 'none', typ: 'JWT' })}.${encodeSegment(tokenPayload)}.e2e`
+  const fakeJwt = createFakeE2eJwt(tokenPayload)
 
   return createFallbackClient({
     isAuthenticated: true,

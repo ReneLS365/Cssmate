@@ -1,7 +1,21 @@
-import { expect, test } from '@playwright/test'
-import { openTab } from './helpers/tab-nav'
+import { expect, test, type Page } from '@playwright/test'
 
-async function assertTabNavigation(page) {
+async function openAdminTab(page: Page, tabId: string, mobileLabel: string) {
+  const desktopTab = page.locator(`[role="tab"][data-tab-id="${tabId}"]`)
+  if (await desktopTab.count()) {
+    const visible = await desktopTab.first().isVisible().catch(() => false)
+    if (visible) {
+      await desktopTab.first().click()
+      return
+    }
+  }
+
+  const combo = page.getByRole('combobox', { name: /vælg fane/i })
+  await expect(combo).toBeVisible()
+  await combo.selectOption({ label: mobileLabel })
+}
+
+async function assertTabNavigation(page: Page) {
   const tabIds = ['optaelling', 'lon', 'team', 'hjaelp']
   const tabLabels: Record<string, string> = {
     optaelling: 'Optælling',
@@ -22,7 +36,7 @@ async function assertTabNavigation(page) {
   })
 
   for (const tabId of tabIds) {
-    await openTab(page, { id: tabId, label: tabLabels[tabId] })
+    await openAdminTab(page, tabId, tabLabels[tabId])
     await expect(page.locator(`[data-tab-panel="${tabId}"]`)).toBeVisible()
     const snapshot = await page.evaluate(() => window.__tabDebug?.snapshot?.())
     expect(snapshot?.activeTab).toBe(tabId)
