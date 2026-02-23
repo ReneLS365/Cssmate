@@ -15,7 +15,7 @@ Denne runbook beskriver, hvordan "Delt sager" drives sikkert med privat adgang, 
   - `caseId` (uuid), `jobNumber`, `caseKind`, `system`, `totals`, `status`
   - `createdAt`, `updatedAt`, `lastUpdatedAt`
   - `createdBy`, `createdByEmail`, `createdByName`, `updatedBy`
-  - `attachments.json` (eksport payload), `attachments.pdf` (placeholder)
+  - `attachments.json` (eksport payload), `attachments.pdf.<phase>` metadata (`key`, `exported_at`, `sha256`, `size`, `contentType`)
   - `deletedAt`, `deletedBy` (soft delete – må ikke hard-deletes før mindst 5 år)
 - **Audit** (append-only)
   - `eventId` (`_id`), `caseId`, `action` (`CREATE|STATUS|DELETE|RESTORE|RESTORE_CONFLICT`),
@@ -50,3 +50,11 @@ Denne runbook beskriver, hvordan "Delt sager" drives sikkert med privat adgang, 
 1. Uden login: Åbn “Delt sager” → se login-krav, ingen data vises.
 2. Login som member: se sager, skift status på egne sager, prøv soft delete (ingen hard delete).
 3. Login som admin: kør “Eksporter backup”, importer filen igen, bekræft at data stadig vises. Konflikter skal give `RESTORE_CONFLICT` i audit.
+
+## PDF storage (Netlify Blobs + metadata i Neon)
+- PDF bytes lagres i Netlify Blobs (`cssmate-cases`) med key format: `cases/<teamSlug>/<caseId>/pdf/<phase>.pdf`.
+- Neon/Postgres gemmer kun metadata i `team_cases.attachments.pdf.<phase>`.
+- Upload endpoint: `POST /api/teams/:teamId/cases/:caseId/pdf` (kræver auth + team adgang + production context).
+- Download endpoint: `GET /api/teams/:teamId/cases/:caseId/pdf?phase=montage|demontage` (kræver auth + team adgang).
+- Preview/branch deploy write-lock gælder også PDF upload: svarer `403 { code: "preview_writes_disabled" }`.
+- Maks størrelse styres af `MAX_CASE_PDF_BYTES` (default 10 MB).

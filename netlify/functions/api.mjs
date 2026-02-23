@@ -2,6 +2,8 @@ import { db, ensureDbReady } from './_db.mjs'
 import { collectDriftWarnings, getDbConfigStatus, runDeepHealthChecks } from './_health.mjs'
 import { getTeamCase, getTeamCaseByJobNumber, listTeamCasesDelta, listTeamCasesPage, softDeleteTeamCase, upsertTeamCase } from './_team-cases.mjs'
 import { generateToken, getAuth0Config, hashToken, secureCompare, verifyToken } from './_auth.mjs'
+import crypto from 'node:crypto'
+import { getStore } from '@netlify/blobs'
 import { logJson, makeRequestId, safeError } from './_log.mjs'
 import { getDeployContext, isProd } from './_context.mjs'
 import { assertTeamIdUuid, getTeamById, isUuidV4, resolveTeamId } from './_team.mjs'
@@ -21,6 +23,7 @@ const DEFAULT_CASES_LIMIT = 100
 const MAX_CASES_LIMIT = 500
 const DEFAULT_AUDIT_LIMIT = 50
 const MAX_AUDIT_LIMIT = 100
+const MAX_CASE_PDF_BYTES = Number.parseInt(process.env.MAX_CASE_PDF_BYTES || '10000000', 10) || 10000000
 const ROLE_CLAIM = 'https://sscaff.app/roles'
 const ORG_CLAIM = 'https://sscaff.app/org_id'
 const ALLOWED_ROLES = new Set(['sscaff_owner', 'sscaff_admin', 'sscaff_member', 'sscaff_user'])
@@ -96,6 +99,41 @@ function parseBooleanParam (value) {
   if (value === undefined || value === null) return false
   const normalized = String(value).trim().toLowerCase()
   return ['1', 'true', 'yes', 'on'].includes(normalized)
+}
+
+function getCasesStore () {
+  return getStore('cssmate-cases')
+}
+
+function normalizePdfPhase (value) {
+  const normalized = String(value || '').trim().toLowerCase()
+  return normalized === 'demontage' ? 'demontage' : 'montage'
+}
+
+function buildPdfKey (teamSlug, caseId, phase) {
+  const safeTeam = String(teamSlug || '').trim().toLowerCase() || DEFAULT_TEAM_SLUG
+  const safeCaseId = String(caseId || '').trim()
+  const safePhase = normalizePdfPhase(phase)
+  return `cases/${safeTeam}/${safeCaseId}/pdf/${safePhase}.pdf`
+}
+
+function sha256HexBuffer (buffer) {
+  return crypto.createHash('sha256').update(buffer).digest('hex')
+}
+
+function decodeBase64ToBuffer (value) {
+  const normalized = String(value || '').trim().replace(/\s+/g, '')
+  if (!normalized) {
+    throw createError('pdfBase64 mangler.', 400)
+  }
+  if (!/^[A-Za-z0-9+/=]+$/.test(normalized)) {
+    throw createError('Ugyldig pdfBase64.', 400)
+  }
+  try {
+    return Buffer.from(normalized, 'base64')
+  } catch {
+    throw createError('Ugyldig pdfBase64.', 400)
+  }
 }
 
 function requireProductionWrites (event, action = 'write') {
@@ -1464,6 +1502,105 @@ async function handleCaseGet (event, teamSlug, caseId) {
   return jsonResponse(200, serializeCaseRow(row))
 }
 
+async function getAccessibleCaseRow ({ teamId, caseId, user }) {
+  const row = await getTeamCase({ teamId, caseId })
+  if (!row) {
+    throw createError('Sag findes ikke.', 404)
+  }
+  if (!canAccessCase({ status: row.status, createdBy: row.created_by, userSub: user.id, isPrivileged: user.isPrivileged })) {
+    throw createError('Sag findes ikke.', 404)
+  }
+  return row
+}
+
+async function handleCasePdfUpload (event, teamSlug, caseId) {
+  requireProductionWrites(event, 'case_pdf_upload')
+  await requireDbReady(event)
+  const { team, user } = await requireCaseTeamContext(event, teamSlug)
+  const row = await getAccessibleCaseRow({ teamId: team.id, caseId, user })
+  const body = parseBody(event)
+  const phase = normalizePdfPhase(body.phase)
+  const expectedUpdatedAt = parseIfMatchUpdatedAt(body.ifMatchUpdatedAt)
+  if (expectedUpdatedAt && row.last_updated_at && expectedUpdatedAt.toISOString() !== new Date(row.last_updated_at).toISOString()) {
+    throw createError('Konflikt: sagen er ændret siden sidste visning.', 409)
+  }
+  const buffer = decodeBase64ToBuffer(body.pdfBase64)
+  if (!buffer.length) {
+    throw createError('PDF er tom.', 400)
+  }
+  if (buffer.length > MAX_CASE_PDF_BYTES) {
+    throw createError(`PDF er for stor (max ${MAX_CASE_PDF_BYTES} bytes).`, 413, {}, 'pdf_too_large')
+  }
+  const teamLabel = team?.slug || teamSlug
+  const key = buildPdfKey(teamLabel, caseId, phase)
+  const sha256 = sha256HexBuffer(buffer)
+  const contentType = 'application/pdf'
+  const store = getCasesStore()
+  await store.set(key, buffer, { contentType })
+  const exportedAt = new Date().toISOString()
+  const pdfMeta = {
+    key,
+    exported_at: exportedAt,
+    sha256,
+    size: buffer.length,
+    contentType,
+  }
+  assertTeamIdUuid(team.id, 'handleCasePdfUpload')
+  await db.query(
+    guardTeamCasesSql(
+      `UPDATE public.team_cases
+       SET attachments = jsonb_set(
+         COALESCE(attachments, '{}'::jsonb),
+         ARRAY['pdf', $1],
+         $2::jsonb,
+         true
+       ),
+       updated_at = NOW(),
+       last_updated_at = NOW(),
+       updated_by = $3,
+       last_editor_sub = $3
+       WHERE team_id = $4 AND case_id = $5`,
+      'handleCasePdfUpload'
+    ),
+    [phase, JSON.stringify(pdfMeta), user.id, team.id, caseId]
+  )
+  await writeCaseAuditLog({
+    teamId: team.id,
+    caseId,
+    actor: buildAuditActor(user),
+    action: 'case_pdf_uploaded',
+    summary: `Uploadede ${phase}-PDF for sag ${row.job_number || caseId}`,
+  })
+  return jsonResponse(200, { ok: true, pdf: { phase, ...pdfMeta } })
+}
+
+async function handleCasePdfDownload (event, teamSlug, caseId) {
+  await requireDbReady(event)
+  const { team, user } = await requireCaseTeamContext(event, teamSlug)
+  const row = await getAccessibleCaseRow({ teamId: team.id, caseId, user })
+  const phase = normalizePdfPhase(event.queryStringParameters?.phase)
+  const attachments = row.attachments && typeof row.attachments === 'object' ? row.attachments : {}
+  const meta = attachments?.pdf && typeof attachments.pdf === 'object' ? attachments.pdf[phase] : null
+  const key = meta?.key || buildPdfKey(team?.slug || teamSlug, caseId, phase)
+  const store = getCasesStore()
+  const file = await store.get(key, { type: 'arrayBuffer' })
+  if (!file) {
+    return jsonResponse(404, { error: 'PDF findes ikke.', code: 'pdf_missing' })
+  }
+  const contentBuffer = Buffer.from(file)
+  const safeJob = normalizeJobNumber(row.job_number).replace(/[^\w.-]+/g, '-')
+  return {
+    statusCode: 200,
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${safeJob}-${phase}.pdf"`,
+      'Cache-Control': 'private, max-age=0, no-store',
+    },
+    isBase64Encoded: true,
+    body: contentBuffer.toString('base64'),
+  }
+}
+
 async function handleCaseAudit (event, teamSlug, caseId) {
   await requireDbReady(event)
   const { team, user } = await requireCaseTeamContext(event, teamSlug)
@@ -2061,6 +2198,10 @@ export async function handler (event) {
 
     const caseAuditMatch = path.match(/^\/teams\/([^/]+)\/cases\/([^/]+)\/audit$/)
     if (caseAuditMatch && method === 'GET') return respond('/teams/:teamId/cases/:caseId/audit', handleCaseAudit(event, caseAuditMatch[1], caseAuditMatch[2]))
+
+    const casePdfMatch = path.match(/^\/teams\/([^/]+)\/cases\/([^/]+)\/pdf$/)
+    if (casePdfMatch && method === 'POST') return respond('/teams/:teamId/cases/:caseId/pdf', handleCasePdfUpload(event, casePdfMatch[1], casePdfMatch[2]))
+    if (casePdfMatch && method === 'GET') return respond('/teams/:teamId/cases/:caseId/pdf', handleCasePdfDownload(event, casePdfMatch[1], casePdfMatch[2]))
 
     const caseStatusMatch = path.match(/^\/teams\/([^/]+)\/cases\/([^/]+)\/status$/)
     if (caseStatusMatch && method === 'PATCH') return respond('/teams/:teamId/cases/:caseId/status', handleCaseStatus(event, caseStatusMatch[1], caseStatusMatch[2]))

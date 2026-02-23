@@ -1,4 +1,4 @@
-import { listSharedCasesPage, listSharedCasesDelta, downloadCaseJson, importCasePayload, approveSharedCase, deleteSharedCase, getSharedCase, getSharedCaseAudit, formatTeamId, PermissionDeniedError, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG, setSharedCaseContext, updateSharedCaseStatus, purgeSharedCases } from './shared-ledger.js';
+import { listSharedCasesPage, listSharedCasesDelta, downloadCaseJson, downloadCasePdf, importCasePayload, uploadCasePdf, approveSharedCase, deleteSharedCase, getSharedCase, getSharedCaseAudit, formatTeamId, PermissionDeniedError, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG, setSharedCaseContext, updateSharedCaseStatus, purgeSharedCases } from './shared-ledger.js';
 import { exportPDFBlob } from './export-pdf.js';
 import { buildExportModel } from './export-model.js';
 import { downloadBlob } from './utils/downloadBlob.js';
@@ -1683,6 +1683,35 @@ async function handleJsonDownload(caseId) {
   downloadBlob(result.blob, result.fileName);
 }
 
+
+function isSharedPdfAttachmentEnabled() {
+  if (typeof window === 'undefined') return false;
+  const runtimeEnv = window.__ENV__ || {};
+  const raw = String(runtimeEnv.VITE_SHARED_PDF_ATTACHMENTS || '').trim().toLowerCase();
+  return raw === '1' || raw === 'true';
+}
+
+function resolvePdfMeta(entry, phase) {
+  const normalized = phase === 'demontage' ? 'demontage' : 'montage';
+  return entry?.attachments?.pdf && typeof entry.attachments.pdf === 'object'
+    ? entry.attachments.pdf[normalized] || null
+    : null;
+}
+
+function mergeLocalPdfAttachment(entry, phase, pdfMeta) {
+  if (!entry || !pdfMeta) return;
+  const normalized = phase === 'demontage' ? 'demontage' : 'montage';
+  const attachments = entry.attachments && typeof entry.attachments === 'object' ? entry.attachments : {};
+  const pdf = attachments.pdf && typeof attachments.pdf === 'object' ? attachments.pdf : {};
+  entry.attachments = {
+    ...attachments,
+    pdf: {
+      ...pdf,
+      [normalized]: { ...pdfMeta },
+    },
+  };
+}
+
 function resolveAttachmentPayload(value) {
   if (!value) return null;
   if (typeof value === 'object' && value && 'payload' in value) {
@@ -1787,6 +1816,25 @@ async function handlePdfDownload(entry) {
   await handlePdfDownloadFromContent(content, entry);
 }
 
+async function persistCasePdfAttachment(entry, { phase, blob }) {
+  if (!isSharedPdfAttachmentEnabled()) return;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+  try {
+    const team = ensureTeamSelected();
+    const payload = await uploadCasePdf(team, entry.caseId, {
+      pdfBlob: blob,
+      phase,
+      ifMatchUpdatedAt: entry?.lastUpdatedAt || entry?.updatedAt || '',
+    });
+    if (payload?.pdf) {
+      mergeLocalPdfAttachment(entry, phase, payload.pdf);
+    }
+  } catch (error) {
+    handleActionError(error, 'Kunne ikke gemme PDF centralt', { teamContext: teamId });
+    showToast('PDF downloadet, men kunne ikke gemmes centralt.', { variant: 'info' });
+  }
+}
+
 async function handlePdfDownloadFromContent(content, entry, suffix) {
   let parsed;
   try {
@@ -1798,7 +1846,9 @@ async function handlePdfDownloadFromContent(content, entry, suffix) {
   const model = buildExportModel(parsed, { exportedAt: new Date().toISOString() });
   const payload = await exportPDFBlob(parsed, { model, customSagsnummer: entry.jobNumber });
   const label = suffix ? `-${suffix}` : '';
-  downloadBlob(payload.blob, `${entry.jobNumber || 'akkord'}-${entry.caseId}${label}.pdf`);
+  const fileName = `${entry.jobNumber || 'akkord'}-${entry.caseId}${label}.pdf`;
+  downloadBlob(payload.blob, fileName);
+  await persistCasePdfAttachment(entry, { phase: suffix || 'montage', blob: payload.blob });
 }
 
 function safeNumber(value) {
@@ -2477,6 +2527,13 @@ function createCaseActions(entry, userId, onChange) {
               ? {
                 label: 'PDF montage',
                 onClick: async () => {
+                  const serverMeta = resolvePdfMeta(entry, 'montage');
+                  if (serverMeta) {
+                    const result = await downloadCasePdf(ensureTeamSelected(), entry.caseId, { phase: 'montage' });
+                    downloadBlob(result.blob, result.fileName);
+                    showToast('PDF montage er hentet.', { variant: 'success' });
+                    return;
+                  }
                   await handlePdfDownloadFromContent(montageContent, entry, 'montage');
                   showToast('PDF montage er genereret.', { variant: 'success' });
                 },
@@ -2486,6 +2543,13 @@ function createCaseActions(entry, userId, onChange) {
               ? {
                 label: 'PDF demontage',
                 onClick: async () => {
+                  const serverMeta = resolvePdfMeta(entry, 'demontage');
+                  if (serverMeta) {
+                    const result = await downloadCasePdf(ensureTeamSelected(), entry.caseId, { phase: 'demontage' });
+                    downloadBlob(result.blob, result.fileName);
+                    showToast('PDF demontage er hentet.', { variant: 'success' });
+                    return;
+                  }
                   await handlePdfDownloadFromContent(demontageContent, entry, 'demontage');
                   showToast('PDF demontage er genereret.', { variant: 'success' });
                 },
@@ -2495,8 +2559,16 @@ function createCaseActions(entry, userId, onChange) {
           ].filter(Boolean),
         });
       } else {
-        await handlePdfDownload(entry);
-        showToast('PDF er genereret.', { variant: 'success' });
+        const serverMeta = resolvePdfMeta(entry, entry?.phase === 'demontage' ? 'demontage' : 'montage');
+        if (serverMeta) {
+          const phase = entry?.phase === 'demontage' ? 'demontage' : 'montage';
+          const result = await downloadCasePdf(ensureTeamSelected(), entry.caseId, { phase });
+          downloadBlob(result.blob, result.fileName);
+          showToast('PDF er hentet.', { variant: 'success' });
+        } else {
+          await handlePdfDownload(entry);
+          showToast('PDF er genereret.', { variant: 'success' });
+        }
       }
     } catch (error) {
       console.error('PDF fejlede', error);
@@ -4786,4 +4858,6 @@ export const __test = {
   resolveEntryBucket,
   WORKFLOW_STATUS,
   openCaseDetails,
+  isSharedPdfAttachmentEnabled,
+  resolvePdfMeta,
 };
