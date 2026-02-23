@@ -1,6 +1,23 @@
 import { getDeployContext, isProd } from './_context.mjs'
 import { getPoolRaw, isDbReady } from './_db.mjs'
 
+const REQUIRED_TABLES = ['teams', 'team_members', 'team_cases', 'team_audit']
+const REQUIRED_TEAM_CASE_COLUMNS = [
+  'attachments',
+  'phase',
+  'last_editor_sub',
+  'last_updated_at',
+  'status',
+  'totals',
+]
+const REQUIRED_INDEXES = [
+  'team_cases_team_created_idx',
+  'team_cases_team_updated_idx',
+  'team_cases_team_status_created_idx',
+  'team_cases_team_creator_status_idx',
+  'team_cases_team_updated_at_idx',
+]
+
 function parseHostList (value) {
   if (!value) return new Set()
   return new Set(
@@ -48,6 +65,42 @@ export function collectDriftWarnings () {
   return warnings
 }
 
+async function collectSchemaDrift (pool) {
+  const [tablesRes, columnsRes, indexesRes] = await Promise.all([
+    pool.query(
+      `SELECT tablename
+       FROM pg_tables
+       WHERE schemaname='public'`
+    ),
+    pool.query(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_schema='public' AND table_name='team_cases'`
+    ),
+    pool.query(
+      `SELECT indexname
+       FROM pg_indexes
+       WHERE schemaname='public' AND tablename='team_cases'`
+    ),
+  ])
+
+  const tableSet = new Set(tablesRes.rows.map((row) => row.tablename))
+  const columnSet = new Set(columnsRes.rows.map((row) => row.column_name))
+  const indexSet = new Set(indexesRes.rows.map((row) => row.indexname))
+
+  return {
+    tables: REQUIRED_TABLES.filter((table) => !tableSet.has(table)),
+    columns: REQUIRED_TEAM_CASE_COLUMNS
+      .filter((column) => !columnSet.has(column))
+      .map((column) => `team_cases.${column}`),
+    indexes: REQUIRED_INDEXES.filter((indexName) => !indexSet.has(indexName)),
+  }
+}
+
+function hasSchemaDrift (missing) {
+  return missing.tables.length > 0 || missing.columns.length > 0 || missing.indexes.length > 0
+}
+
 export async function runDeepHealthChecks () {
   const dbStatus = {
     configured: false,
@@ -55,16 +108,23 @@ export async function runDeepHealthChecks () {
     ready: false,
     latencyMs: null,
   }
-  const warnings = []
+  const warnings = collectDriftWarnings()
   const config = getDbConfigStatus()
+  let code = null
+  let missing = { tables: [], columns: [], indexes: [] }
+  let status = 'ok'
   dbStatus.configured = config.configured
 
   if (!dbStatus.configured) {
     warnings.push('Database ikke konfigureret.')
+    status = 'degraded'
     return {
       ok: false,
+      status,
+      code: 'DB_NOT_CONFIGURED',
       db: dbStatus,
       warnings,
+      missing,
       deployContext: getDeployContext(),
     }
   }
@@ -76,14 +136,32 @@ export async function runDeepHealthChecks () {
     dbStatus.select1Ok = true
     dbStatus.latencyMs = Math.max(0, Date.now() - started)
     dbStatus.ready = await isDbReady()
+    if (dbStatus.select1Ok) {
+      missing = await collectSchemaDrift(pool)
+    }
+    if (hasSchemaDrift(missing)) {
+      code = 'DB_SCHEMA_DRIFT'
+      status = 'degraded'
+      warnings.push('Database schema drift registreret.')
+    }
   } catch (error) {
+    code = 'DB_UNAVAILABLE'
+    status = 'degraded'
     warnings.push('Database check fejlede.')
   }
 
+  if (!dbStatus.ready && !code) {
+    code = 'DB_NOT_READY'
+    status = 'degraded'
+  }
+
   return {
-    ok: Boolean(dbStatus.select1Ok && dbStatus.ready),
+    ok: Boolean(dbStatus.select1Ok && dbStatus.ready && !hasSchemaDrift(missing)),
+    status,
+    code,
     db: dbStatus,
     warnings,
+    missing,
     deployContext: getDeployContext(),
   }
 }

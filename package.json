@@ -53,7 +53,9 @@
     "verify:deploy": "npm run verify:build-and-tests && npm run verify:perf",
     "e2e:serve": "netlify dev --dir .netlify_publish --functions netlify/functions --port 4173 --offline --silent",
     "verify:neon": "node scripts/verify-neon-contract.mjs",
-    "verify:drift": "npm run verify:env && npm run verify:neon"
+    "verify:drift": "npm run verify:env && npm run verify:neon",
+    "db:migrate": "node scripts/run-neon-migrations.mjs",
+    "db:verify": "node scripts/verify-db-schema.mjs"
   },
   "dependencies": {
     "@auth0/auth0-spa-js": "^2.16.0",

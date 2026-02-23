@@ -1914,9 +1914,12 @@ async function handleHealthDeep (event) {
   const result = await runDeepHealthChecks()
   return jsonResponse(200, {
     ok: result.ok,
+    status: result.status,
+    code: result.code,
     requestId: event.__requestId || '',
     db: result.db,
     warnings: result.warnings,
+    missing: result.missing,
   }, {
     'Cache-Control': 'no-store',
   })
