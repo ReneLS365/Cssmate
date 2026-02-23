@@ -99,8 +99,7 @@ function parseBooleanParam (value) {
 }
 
 function requireProductionWrites (event, action = 'write') {
-  const context = String(process.env.CONTEXT || process.env.NETLIFY_CONTEXT || 'unknown').toLowerCase()
-  if (context === 'production') return
+  if (isProd()) return
 
   const allowLocal = String(process.env.ALLOW_LOCAL_WRITES || '').toLowerCase()
   const isLocal = !process.env.DEPLOY_URL && !process.env.URL && !process.env.DEPLOY_PRIME_URL

@@ -22,6 +22,16 @@ function makeEvent (method, path, body = null) {
   }
 }
 
+
+function setProductionUrlOnlyContext () {
+  delete process.env.CONTEXT
+  delete process.env.NETLIFY_CONTEXT
+  delete process.env.ALLOW_LOCAL_WRITES
+  process.env.URL = 'https://cssmate.netlify.app'
+  delete process.env.DEPLOY_URL
+  delete process.env.DEPLOY_PRIME_URL
+}
+
 function setPreviewContext () {
   process.env.CONTEXT = 'deploy-preview'
   process.env.NETLIFY_CONTEXT = 'deploy-preview'
@@ -36,6 +46,14 @@ test.after(() => {
     if (value === undefined) delete process.env[key]
     else process.env[key] = value
   }
+})
+
+
+test('production inferred from URL does not trip write gate', async () => {
+  setProductionUrlOnlyContext()
+  const res = await handler(makeEvent('POST', '/teams/hulmose/members/self', {}))
+  const payload = JSON.parse(res.body)
+  assert.notEqual(payload.code, 'preview_writes_disabled')
 })
 
 test('preview blocks case create write', async () => {
