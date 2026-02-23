@@ -1,5 +1,5 @@
 import { getAuthContext, waitForAuthReady } from './shared-auth.js'
-import { apiJson } from '../src/api/client.js'
+import { apiFetch, apiJson } from '../src/api/client.js'
 import { updateTeamDebugState } from '../src/state/debug.js'
 import { sha256Hex } from '../src/lib/sha256.js'
 import { getDeployContext, getPreviewWriteDisabledMessage } from '../src/lib/deploy-context.js'
@@ -24,6 +24,24 @@ const BACKUP_SCHEMA_VERSION = 2
 const SHARED_CASES_QUEUE_KEY = 'cssmate:shared-cases:queue:v1'
 const SHARED_CASES_QUEUE_MAX = 30
 const SHARED_CASE_CONTEXT_KEY = 'cssmate:shared-case:context:v1'
+
+const MAX_CASE_PDF_BYTES = 10000000
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
+  }
+  return btoa(binary)
+}
+
+function readAttachmentFileName(response, fallback) {
+  const header = response?.headers?.get ? response.headers.get('content-disposition') : ''
+  const match = header ? /filename="?([^";]+)"?/i.exec(header) : null
+  return match?.[1] || fallback
+}
 
 const CASE_ID_NAMESPACE = 'cssmate:shared-case'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -853,6 +871,39 @@ function resolveCasePayloadForImport(entry) {
   return legacyPayload || null
 }
 
+
+export async function uploadCasePdf(teamId, caseId, { pdfBlob, phase = 'montage', ifMatchUpdatedAt } = {}) {
+  ensureWritesAllowed('uploadCasePdf')
+  if (!pdfBlob || typeof pdfBlob.arrayBuffer !== 'function') {
+    throw new Error('Ugyldig PDF blob')
+  }
+  const { teamId: resolvedTeamId } = await getTeamContext(teamId)
+  const arrayBuffer = await pdfBlob.arrayBuffer()
+  if (arrayBuffer.byteLength > MAX_CASE_PDF_BYTES) {
+    const error = new Error(`PDF er for stor (max ${MAX_CASE_PDF_BYTES} bytes).`)
+    error.code = 'pdf_too_large'
+    throw error
+  }
+  const pdfBase64 = arrayBufferToBase64(arrayBuffer)
+  return apiJson(`/api/teams/${resolvedTeamId}/cases/${caseId}/pdf`, {
+    method: 'POST',
+    body: JSON.stringify({
+      pdfBase64,
+      phase: normalizePhase(phase),
+      ifMatchUpdatedAt: ifMatchUpdatedAt || undefined,
+    }),
+  })
+}
+
+export async function downloadCasePdf(teamId, caseId, { phase = 'montage' } = {}) {
+  const { teamId: resolvedTeamId } = await getTeamContext(teamId)
+  const normalizedPhase = normalizePhase(phase)
+  const response = await apiFetch(`/api/teams/${resolvedTeamId}/cases/${caseId}/pdf?phase=${encodeURIComponent(normalizedPhase)}`)
+  const blob = await response.blob()
+  const fileName = readAttachmentFileName(response, `${caseId}-${normalizedPhase}.pdf`)
+  return { blob, fileName }
+}
+
 export async function downloadCaseJson(teamId, caseId) {
   const entry = await getSharedCase(teamId, caseId)
   const content = resolveCasePayloadForImport(entry)
@@ -934,4 +985,6 @@ export const __test = {
   normalizeStatusValue,
   resolveCasePayloadForImport,
   WORKFLOW_STATUS,
+  arrayBufferToBase64,
+  readAttachmentFileName,
 }
