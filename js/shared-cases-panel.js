@@ -1813,7 +1813,8 @@ async function handleImport(entry, { phase } = {}) {
 async function handlePdfDownload(entry) {
   const content = await importCasePayload(ensureTeamSelected(), entry.caseId);
   if (!content) throw new Error('Ingen JSON vedhæftet');
-  await handlePdfDownloadFromContent(content, entry);
+  const phase = resolvePhaseForEntry(entry);
+  await handlePdfDownloadFromContent(content, entry, phase);
 }
 
 async function persistCasePdfAttachment(entry, { phase, blob }) {

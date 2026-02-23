@@ -117,6 +117,15 @@ function buildPdfKey (teamSlug, caseId, phase) {
   return `cases/${safeTeam}/${safeCaseId}/pdf/${safePhase}.pdf`
 }
 
+function resolveCasePdfKeyFromMeta ({ teamSlug, caseId, phase, metaKey }) {
+  const expectedKey = buildPdfKey(teamSlug, caseId, phase)
+  if (typeof metaKey !== 'string' || !metaKey.trim()) {
+    return expectedKey
+  }
+  const trimmedKey = metaKey.trim()
+  return trimmedKey === expectedKey ? trimmedKey : expectedKey
+}
+
 function sha256HexBuffer (buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex')
 }
@@ -1581,7 +1590,12 @@ async function handleCasePdfDownload (event, teamSlug, caseId) {
   const phase = normalizePdfPhase(event.queryStringParameters?.phase)
   const attachments = row.attachments && typeof row.attachments === 'object' ? row.attachments : {}
   const meta = attachments?.pdf && typeof attachments.pdf === 'object' ? attachments.pdf[phase] : null
-  const key = meta?.key || buildPdfKey(team?.slug || teamSlug, caseId, phase)
+  const key = resolveCasePdfKeyFromMeta({
+    teamSlug: team?.slug || teamSlug,
+    caseId,
+    phase,
+    metaKey: meta?.key,
+  })
   const store = getCasesStore()
   const file = await store.get(key, { type: 'arrayBuffer' })
   if (!file) {
