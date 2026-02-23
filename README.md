@@ -172,7 +172,7 @@ npm run verify:drift
 **/api/health/deep (token-beskyttet i production):**
 - Kræver `HEALTHCHECK_TOKEN` i production og header `x-healthcheck-token`.
 - I non-prod er token kun nødvendig hvis du selv har sat `HEALTHCHECK_TOKEN`.
-- Udfører DB checks uden migrations og svarer med `ok` baseret på DB-tilstanden.
+- Udfører DB checks inkl. schema-kontrakt og returnerer eksplicit drift-status (`code`) + `missing` lister ved schema drift.
 
 **X-Request-Id:**
 - Alle API-responses inkluderer `X-Request-Id`.
@@ -199,21 +199,19 @@ Sørg for at Netlify Functions har adgang til databasen via env var:
 - `DATABASE_URL` (primær)
 - `DATABASE_URL_UNPOOLED` (direkte/uden pool)
 
-Kør migrations manuelt mod Neon/Postgres (idempotent):
+Kør migrations deterministisk mod Neon/Postgres (idempotent):
 
 ```bash
-psql "$DATABASE_URL" -f netlify/functions/migrations/001_init.sql
-psql "$DATABASE_URL" -f netlify/functions/migrations/002_add_team_slug.sql
-psql "$DATABASE_URL" -f netlify/functions/migrations/003_auth0_invites.sql
-psql "$DATABASE_URL" -f netlify/functions/migrations/004_add_team_member_login.sql
-psql "$DATABASE_URL" -f netlify/functions/migrations/005_cases_indexes.sql
-psql "$DATABASE_URL" -f netlify/functions/migrations/006_cases_defaults.sql
-psql "$DATABASE_URL" -f netlify/functions/migrations/007_cases_workflow.sql
-psql "$DATABASE_URL" -f netlify/functions/migrations/008_auth0_member_profile.sql
-psql "$DATABASE_URL" -f netlify/functions/migrations/009_cases_attachments.sql
-psql "$DATABASE_URL" -f netlify/functions/migrations/010_cases_legacy_columns.sql
-psql "$DATABASE_URL" -f netlify/functions/migrations/011_cases_workflow_v2.sql
+npm run db:migrate
 ```
+
+Verificér schema-kontrakten (read-only):
+
+```bash
+npm run db:verify
+```
+
+Se også: `docs/DB_SCHEMA_CONTRACT.md`.
 
 Valgfri: kør migrations via Netlify Function (one-off):
 
