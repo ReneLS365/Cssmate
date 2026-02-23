@@ -20,6 +20,48 @@ const REQUIRED_INDEXES = [
   'team_cases_team_updated_at_idx',
 ]
 
+function parseBoolean (value) {
+  if (!value) {
+    return null
+  }
+  const normalized = String(value).trim().toLowerCase()
+  if (['1', 'true', 'yes', 'on', 'require'].includes(normalized)) {
+    return true
+  }
+  if (['0', 'false', 'no', 'off', 'disable'].includes(normalized)) {
+    return false
+  }
+  return null
+}
+
+function parseSslMode (urlString) {
+  try {
+    const url = new URL(urlString)
+    const sslmode = url.searchParams.get('sslmode')
+    if (!sslmode) {
+      return null
+    }
+    if (sslmode.toLowerCase() === 'disable') {
+      return false
+    }
+    return true
+  } catch {
+    return null
+  }
+}
+
+function resolveSslSetting (connectionString) {
+  const envSetting = parseBoolean(process.env.DATABASE_SSL)
+  if (envSetting !== null) {
+    return envSetting
+  }
+  const urlSetting = parseSslMode(connectionString)
+  if (urlSetting !== null) {
+    return urlSetting
+  }
+  return false
+}
+
 async function main () {
   const conn = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL
   if (!conn) {
@@ -27,7 +69,11 @@ async function main () {
     process.exit(1)
   }
 
-  const client = new Client({ connectionString: conn, ssl: { rejectUnauthorized: false } })
+  const useSsl = resolveSslSetting(conn)
+  const client = new Client({
+    connectionString: conn,
+    ...(useSsl ? { ssl: { rejectUnauthorized: false } } : {}),
+  })
   await client.connect()
 
   try {
