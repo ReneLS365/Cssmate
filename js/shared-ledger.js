@@ -827,9 +827,35 @@ export async function purgeSharedCases(teamId) {
   })
 }
 
+function resolveCasePayloadForImport(entry) {
+  if (!entry) return null
+  const status = (entry.status || '').toLowerCase()
+  const phase = (entry.phase || '').toLowerCase()
+
+  const pickPayload = (attachment) => {
+    if (!attachment) return null
+    if (typeof attachment === 'object' && Object.prototype.hasOwnProperty.call(attachment, 'payload')) {
+      return attachment.payload
+    }
+    return attachment
+  }
+
+  const preferDemontage = phase === 'demontage' || status === WORKFLOW_STATUS.DEMONTAGE || status === WORKFLOW_STATUS.DONE
+  const canonicalPayload = preferDemontage
+    ? (pickPayload(entry.attachments?.demontage) || pickPayload(entry.attachments?.montage))
+    : (pickPayload(entry.attachments?.montage) || pickPayload(entry.attachments?.demontage))
+
+  if (canonicalPayload) {
+    return typeof canonicalPayload === 'string' ? canonicalPayload : JSON.stringify(canonicalPayload)
+  }
+
+  const legacyPayload = entry?.attachments?.json?.data
+  return legacyPayload || null
+}
+
 export async function downloadCaseJson(teamId, caseId) {
   const entry = await getSharedCase(teamId, caseId)
-  const content = entry?.attachments?.json?.data
+  const content = resolveCasePayloadForImport(entry)
   if (!content) return null
   const blob = new Blob([content], { type: 'application/json' })
   return { blob, fileName: `${entry.jobNumber || 'akkord'}-${entry.caseId}.json` }
@@ -837,7 +863,7 @@ export async function downloadCaseJson(teamId, caseId) {
 
 export async function importCasePayload(teamId, caseId) {
   const entry = await getSharedCase(teamId, caseId)
-  const content = entry?.attachments?.json?.data
+  const content = resolveCasePayloadForImport(entry)
   if (!content) return null
   return content
 }
@@ -906,5 +932,6 @@ export const __ledgerVersion = LEDGER_VERSION
 export const __test = {
   mapTeamCaseRow,
   normalizeStatusValue,
+  resolveCasePayloadForImport,
   WORKFLOW_STATUS,
 }

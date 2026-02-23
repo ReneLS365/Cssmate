@@ -834,9 +834,6 @@ function serializeCaseRow (row) {
   const updatedAt = row.updated_at ? new Date(row.updated_at).toISOString() : createdAt
   const lastUpdatedAt = row.last_updated_at ? new Date(row.last_updated_at).toISOString() : updatedAt
   const storedAttachments = row.attachments && typeof row.attachments === 'object' ? row.attachments : {}
-  const jsonAttachment = row.json_content
-    ? { data: row.json_content, createdAt }
-    : storedAttachments.json || null
   const jobNumber = row.job_number || ''
   const workflowStatus = normalizeCaseStatus(row.status)
   const storedPhase = normalizeStoredPhase(row.phase, workflowStatus)
@@ -846,6 +843,16 @@ function serializeCaseRow (row) {
     attachments: storedAttachments,
   })
   const normalizedAttachments = normalizeCaseAttachments(storedAttachments, createdAt)
+  const prefersDemontagePayload = storedPhase === CASE_PHASE.DEMONTAGE || [CASE_STATUS.DEMONTAGE, CASE_STATUS.DONE].includes(workflowStatus)
+  const preferredPayload = prefersDemontagePayload
+    ? (resolveAttachmentPayload(normalizedAttachments.demontage) || resolveAttachmentPayload(normalizedAttachments.montage))
+    : (resolveAttachmentPayload(normalizedAttachments.montage) || resolveAttachmentPayload(normalizedAttachments.demontage))
+  const jsonData = preferredPayload
+    ? (typeof preferredPayload === 'string' ? preferredPayload : JSON.stringify(preferredPayload))
+    : (row.json_content || null)
+  const jsonAttachment = jsonData
+    ? { data: jsonData, createdAt: createdAt || null }
+    : (storedAttachments.json || null)
   return {
     caseId: row.case_id,
     teamId: row.team_id,
@@ -1934,6 +1941,7 @@ export const __test = {
   normalizeCasePhase,
   resolveCaseTransition,
   resolveExportAction,
+  serializeCaseRow,
 }
 
 export async function handler (event) {
