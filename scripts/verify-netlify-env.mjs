@@ -1,8 +1,8 @@
 import process from 'node:process'
 
 function hasPlaceholder(value) {
-  const v = String(value || '')
-  return v.includes('${') || v.includes('}') || v.toLowerCase() === 'undefined' || v.toLowerCase() === 'null'
+  const v = String(value || '').trim()
+  return /\$\{[^}]+\}/.test(v) || v.toLowerCase() === 'undefined' || v.toLowerCase() === 'null'
 }
 
 function requireEnv(keys, { allowEmpty = false } = {}) {
