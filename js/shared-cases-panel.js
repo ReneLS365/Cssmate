@@ -220,6 +220,20 @@ function getPerfCaseCount() {
   return Math.min(Math.max(Math.floor(value), 1), 5000);
 }
 
+
+function isE2eModeEnabled() {
+  if (typeof window === 'undefined') return false;
+  const params = new URLSearchParams(window.location.search || '');
+  if (params.get('e2e') === '1') return true;
+  const runtimeEnv = window.__ENV__ || {};
+  const value = String(
+    window.VITE_E2E_BYPASS_AUTH
+    || runtimeEnv.VITE_E2E_BYPASS_AUTH
+    || ''
+  ).trim().toLowerCase();
+  return value === '1' || value === 'true';
+}
+
 function startLoading() {
   loadingCount += 1;
   isLoading = loadingCount > 0;
@@ -4250,6 +4264,10 @@ function updatePollingState() {
     stopDeltaPolling('perf mode');
     return;
   }
+  if (isE2eModeEnabled()) {
+    stopDeltaPolling('e2e mode');
+    return;
+  }
   syncState.online = isOnline();
   if (!requireAuth()) {
     stopDeltaPolling('ingen adgang');
@@ -4273,6 +4291,7 @@ function updatePollingState() {
 async function runDeltaSync() {
   if (deltaInFlight || isLoading) return;
   if (isPerfModeEnabled()) return;
+  if (isE2eModeEnabled()) return;
   if (!sharedCasesContainer) return;
   if (!requireAuth()) return;
   if (!isOnline()) return;

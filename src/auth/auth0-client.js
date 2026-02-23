@@ -259,11 +259,36 @@ function resolveAppState (appState) {
 }
 
 function createE2EBypassClient () {
+  const now = Math.floor(Date.now() / 1000)
+  const encodeSegment = (value) => {
+    const json = typeof value === 'string' ? value : JSON.stringify(value)
+    if (typeof btoa === 'function') {
+      return btoa(json).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+    }
+    return Buffer.from(json, 'utf-8').toString('base64url')
+  }
+  const tokenPayload = {
+    sub: BYPASS_USER.sub,
+    email: BYPASS_USER.email,
+    name: BYPASS_USER.name,
+    permissions: ['admin:app'],
+    'https://sscaff.app/roles': ['sscaff_admin'],
+    org_id: 'org_e2e',
+    iat: now,
+    exp: now + (24 * 60 * 60),
+  }
+  const fakeJwt = `${encodeSegment({ alg: 'none', typ: 'JWT' })}.${encodeSegment(tokenPayload)}.e2e`
+
   return createFallbackClient({
     isAuthenticated: true,
-    user: BYPASS_USER,
-    token: 'e2e-token',
-    idTokenClaims: {},
+    user: {
+      ...BYPASS_USER,
+      permissions: tokenPayload.permissions,
+      'https://sscaff.app/roles': tokenPayload['https://sscaff.app/roles'],
+      org_id: tokenPayload.org_id,
+    },
+    token: fakeJwt,
+    idTokenClaims: tokenPayload,
   })
 }
 

@@ -24,6 +24,13 @@ export async function openTab(page: Page, tab: TabSpec | string) {
   const tabSpec = toTabSpec(tab)
   await page.waitForSelector('html.app-ready', { timeout: 60000 })
 
+  const desktopTab = page.locator(`[role=\"tab\"][data-tab-id=\"${tabSpec.id}\"]`)
+  if (await desktopTab.isVisible().catch(() => false)) {
+    await desktopTab.click()
+    await expect(page.locator(`#panel-${tabSpec.id}`)).toBeVisible()
+    return
+  }
+
   const select = page.locator('#tabSelect')
   const selectExists = (await select.count().catch(() => 0)) > 0
 
