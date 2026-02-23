@@ -66,7 +66,6 @@ const SEARCH_INDEX_CACHE = new Map();
 const DATE_TS_CACHE = new Map();
 let renderScheduled = false;
 let scheduledRenderPayload = null;
-let boardEventBound = false;
 let virtualScrollBound = false;
 const VIRTUAL_OVERSCAN = 10;
 const VIRTUAL_DEFAULT_HEIGHT = 92;
@@ -671,7 +670,15 @@ async function handleConflictError(error, previousEntry, onChange, { retryAction
         }
         const fresh = await getSharedCase(ensureTeamSelected(), resolvedCaseId);
         if (fresh) {
-          updateCaseEntry({ ...fresh, __syncing: false });
+          const next = { ...fresh, __syncing: false };
+          if (typeof onChange === 'function') {
+            onChange({ updatedCase: next });
+          } else {
+            updateCaseEntry(next);
+            if (sharedCasesContainer) {
+              scheduleRender(sharedCasesContainer, sessionState?.user?.uid || 'offline-user', { full: true });
+            }
+          }
         }
         if (typeof discardAction === 'function') discardAction(fresh);
         updateSharedStatus('Synkroniseret');
@@ -2836,6 +2843,11 @@ function openCaseDetails(entry, userId, onChange, { focusReturnEl } = {}) {
   if (activeCaseDetail?.close) {
     activeCaseDetail.close();
   }
+  if (typeof document !== 'undefined') {
+    document.querySelectorAll('.shared-case-detail-modal').forEach((modal) => {
+      if (modal?.parentNode) modal.parentNode.removeChild(modal);
+    });
+  }
   const overlay = document.createElement('div');
   overlay.className = 'shared-case-detail-modal';
   overlay.setAttribute('role', 'dialog');
@@ -4400,10 +4412,10 @@ async function fetchCasesPage({ reset = false, prepend = false, requestId = null
 
 function bindBoardInteractions(container, board, userId, onChange) {
   if (!container || !board) return;
-  if (!boardEventBound) {
+  if (container.dataset.boardBound !== 'true') {
     container.addEventListener('click', handleBoardClick);
     container.addEventListener('keydown', handleBoardKeydown);
-    boardEventBound = true;
+    container.dataset.boardBound = 'true';
   }
   const lists = Array.from(board.querySelectorAll('.shared-board-list'));
   lists.forEach(list => {
