@@ -98,6 +98,21 @@ function parseBooleanParam (value) {
   return ['1', 'true', 'yes', 'on'].includes(normalized)
 }
 
+function requireProductionWrites (event, action = 'write') {
+  if (isProd()) return
+
+  const allowLocal = String(process.env.ALLOW_LOCAL_WRITES || '').toLowerCase()
+  const isLocal = !process.env.DEPLOY_URL && !process.env.URL && !process.env.DEPLOY_PRIME_URL
+  if (isLocal && ['1', 'true', 'yes', 'on'].includes(allowLocal)) return
+
+  const error = {
+    error: 'Writes er slået fra i deploy preview/branch deploy. Åbn production-linket for at kunne dele.',
+    code: 'preview_writes_disabled',
+    action,
+  }
+  throw createError(error.error, 403, { action }, error.code)
+}
+
 function clampCasesLimit (value) {
   const parsed = Number.parseInt(value, 10)
   if (Number.isNaN(parsed) || parsed <= 0) return DEFAULT_CASES_LIMIT
@@ -375,30 +390,6 @@ function decodeCursor (value) {
   } catch {
     return null
   }
-}
-
-function isWriteRequest (event) {
-  const method = (event.httpMethod || 'GET').toUpperCase()
-  if (method === 'GET' || method === 'HEAD') return false
-  const path = getRoutePath(event)
-  const writeRoutes = [
-    { method: 'POST', pattern: /^\/teams\/[^/]+\/cases$/ },
-    { method: 'DELETE', pattern: /^\/teams\/[^/]+\/cases\/[^/]+$/ },
-    { method: 'PATCH', pattern: /^\/teams\/[^/]+\/cases\/[^/]+\/status$/ },
-    { method: 'POST', pattern: /^\/teams\/[^/]+\/cases\/[^/]+\/approve$/ },
-    { method: 'POST', pattern: /^\/admin\/teams\/[^/]+\/purge$/ },
-    { method: 'POST', pattern: /^\/teams\/[^/]+\/backup$/ },
-    { method: 'POST', pattern: /^\/teams\/[^/]+\/members\/self$/ },
-    { method: 'POST', pattern: /^\/teams\/[^/]+\/bootstrap$/ },
-    { method: 'PATCH', pattern: /^\/teams\/[^/]+\/members\/[^/]+$/ },
-    { method: 'DELETE', pattern: /^\/teams\/[^/]+\/members\/[^/]+$/ },
-    { method: 'PATCH', pattern: /^\/team\/members\/[^/]+$/ },
-    { method: 'DELETE', pattern: /^\/team\/members\/[^/]+$/ },
-    { method: 'POST', pattern: /^\/invites/ },
-    { method: 'PATCH', pattern: /^\/invites/ },
-    { method: 'DELETE', pattern: /^\/invites/ },
-  ]
-  return writeRoutes.some(route => route.method === method && route.pattern.test(path))
 }
 
 function normalizeEmail (email) {
@@ -1085,6 +1076,7 @@ async function handleTeamMemberDeleteRoot (event, memberSub) {
 }
 
 async function handleInviteCreate (event, teamSlug) {
+  requireProductionWrites(event, 'invite_create')
   await requireDbReady(event)
   const user = await requireAuth(event)
   const body = parseBody(event)
@@ -1131,6 +1123,7 @@ async function handleInviteCreate (event, teamSlug) {
 }
 
 async function handleTeamMemberSelfUpsert (event, teamSlug) {
+  requireProductionWrites(event, 'member_self_upsert')
   await requireDbReady(event)
   const user = await requireAuth(event)
   const body = parseBody(event)
@@ -1175,6 +1168,7 @@ async function handleInviteList (event, teamSlug) {
 }
 
 async function handleInviteRevoke (event, inviteId) {
+  requireProductionWrites(event, 'invite_revoke')
   await requireDbReady(event)
   const user = await requireAuth(event)
   const inviteResult = await db.query('SELECT id, team_id, email FROM team_invites WHERE id = $1', [inviteId])
@@ -1187,6 +1181,7 @@ async function handleInviteRevoke (event, inviteId) {
 }
 
 async function handleInviteResend (event, inviteId) {
+  requireProductionWrites(event, 'invite_resend')
   await requireDbReady(event)
   const user = await requireAuth(event)
   const inviteResult = await db.query(
@@ -1228,6 +1223,7 @@ async function handleInviteResend (event, inviteId) {
 }
 
 async function handleInviteAccept (event) {
+  requireProductionWrites(event, 'invite_accept')
   await requireDbReady(event)
   const user = await requireAuth(event)
   const body = parseBody(event)
@@ -1282,6 +1278,7 @@ async function handleInviteAccept (event) {
 }
 
 async function handleCaseCreate (event, teamSlug) {
+  requireProductionWrites(event, 'case_create')
   await requireDbReady(event)
   const { user, team } = await requireCaseTeamContext(event, teamSlug)
   const body = parseBody(event)
@@ -1497,6 +1494,7 @@ async function handleCaseAudit (event, teamSlug, caseId) {
 }
 
 async function handleCaseDelete (event, teamSlug, caseId) {
+  requireProductionWrites(event, 'case_delete')
   await requireDbReady(event)
   const { user, team } = await requireCaseTeamContext(event, teamSlug)
   assertTeamIdUuid(team.id, 'handleCaseDelete')
@@ -1524,6 +1522,7 @@ async function handleCaseDelete (event, teamSlug, caseId) {
 }
 
 async function handleCaseStatus (event, teamSlug, caseId) {
+  requireProductionWrites(event, 'case_status')
   await requireDbReady(event)
   const { user, team } = await requireCaseTeamContext(event, teamSlug)
   const body = parseBody(event)
@@ -1635,6 +1634,7 @@ async function handleCaseStatus (event, teamSlug, caseId) {
 }
 
 async function handleCaseApprove (event, teamSlug, caseId) {
+  requireProductionWrites(event, 'case_approve')
   await requireDbReady(event)
   const { user, team } = await requireCaseTeamContext(event, teamSlug)
   if (!user.isPrivileged) {
@@ -1708,6 +1708,7 @@ async function handleCaseApprove (event, teamSlug, caseId) {
 }
 
 async function handleAdminPurge (event, teamSlug) {
+  requireProductionWrites(event, 'admin_purge')
   await requireDbReady(event)
   const { user, team } = await requireCaseTeamContext(event, teamSlug, { requireAdmin: true })
   assertTeamIdUuid(team.id, 'handleAdminPurge')
@@ -1801,6 +1802,7 @@ async function handleBackupExport (event, teamSlug) {
 }
 
 async function handleBackupImport (event, teamSlug) {
+  requireProductionWrites(event, 'backup_import')
   await requireDbReady(event)
   const { user, team } = await requireCaseTeamContext(event, teamSlug, { requireAdmin: true })
   assertTeamIdUuid(team.id, 'handleBackupImport')
@@ -1953,7 +1955,6 @@ export async function handler (event) {
   const method = event.httpMethod || 'GET'
   const path = getRoutePath(event)
   const isProduction = isProd()
-  const isWriteMethod = isWriteRequest(event)
   let routePath = ''
   const deployContext = getDeployContext()
   const withTiming = (response) => applyServerTiming(event, applyRequestId(response, requestId), handlerStart)
@@ -1975,8 +1976,29 @@ export async function handler (event) {
   }
   const respond = async (matchedRoute, responsePromise) => {
     routePath = matchedRoute
-    const response = await responsePromise
-    return finalizeResponse(response)
+    try {
+      const response = await responsePromise
+      return finalizeResponse(response)
+    } catch (error) {
+      const status = error?.status || 500
+      const message = error?.message || 'Serverfejl'
+      logJson('error', 'request.error', {
+        requestId,
+        method,
+        path,
+        status,
+        routePath: routePath || path,
+        deployContext,
+        isProd: isProduction,
+        error: safeError(error),
+      })
+      return finalizeResponse(jsonResponse(status, {
+        error: message,
+        ...(error?.code ? { code: error.code } : {}),
+        ...(error?.action ? { action: error.action } : {}),
+        ...(error?.invitedEmail ? { invitedEmail: error.invitedEmail } : {}),
+      }))
+    }
   }
 
   logJson('info', 'request.start', {
@@ -1989,9 +2011,6 @@ export async function handler (event) {
   })
 
   try {
-    if (!isProduction && isWriteMethod) {
-      return finalizeResponse(jsonResponse(403, { error: 'Writes disabled in preview deployments.' }))
-    }
     if (method === 'GET' && path === '/health') return respond('/health', handleHealth(event))
     if (method === 'GET' && path === '/health/deep') return respond('/health/deep', handleHealthDeep(event))
     if (method === 'GET' && path === '/me') return respond('/me', handleMe(event))
@@ -2065,6 +2084,7 @@ export async function handler (event) {
     return finalizeResponse(jsonResponse(status, {
       error: message,
       ...(error?.code ? { code: error.code } : {}),
+      ...(error?.action ? { action: error.action } : {}),
       ...(error?.invitedEmail ? { invitedEmail: error.invitedEmail } : {}),
     }))
   }
