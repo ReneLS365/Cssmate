@@ -260,6 +260,9 @@ Kræver env var i Netlify:
 
 ## Shared cases API (kort)
 
+> Server-side sikkerhed: Write-endpoints i Netlify Functions er låst til `CONTEXT=production`.
+> Deploy previews/branch deploys er read-only og returnerer `403` med `code=preview_writes_disabled` ved write-forsøg.
+
 - `GET /api/teams/:team/cases` → `{ data, cursor, hasMore, total }`
 - `GET /api/teams/:team/cases?since=...&sinceId=...` → `{ data, deleted, cursor }`
 - `POST /api/teams/:team/cases` → opret/opfdater via `job_number`
