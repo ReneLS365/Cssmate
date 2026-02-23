@@ -1,7 +1,14 @@
 import { expect, test } from '@playwright/test'
+import { openTab } from './helpers/tab-nav'
 
 async function assertTabNavigation(page) {
   const tabIds = ['optaelling', 'lon', 'team', 'hjaelp']
+  const tabLabels: Record<string, string> = {
+    optaelling: 'Optælling',
+    lon: 'Løn',
+    team: 'Team',
+    hjaelp: 'Hjælp',
+  }
 
   const initialSnapshot = await page.evaluate(() => window.__tabDebug?.snapshot?.())
   expect(initialSnapshot?.tabCount).toBeGreaterThan(0)
@@ -15,9 +22,7 @@ async function assertTabNavigation(page) {
   })
 
   for (const tabId of tabIds) {
-    const tabButton = page.locator(`[role="tab"][data-tab-id="${tabId}"]`)
-    await expect(tabButton).toBeVisible()
-    await tabButton.click()
+    await openTab(page, { id: tabId, label: tabLabels[tabId] })
     await expect(page.locator(`[data-tab-panel="${tabId}"]`)).toBeVisible()
     const snapshot = await page.evaluate(() => window.__tabDebug?.snapshot?.())
     expect(snapshot?.activeTab).toBe(tabId)

@@ -54,6 +54,18 @@ function matchesPath(request: Request, regex: RegExp) {
   return regex.exec(url.pathname)
 }
 
+function isSharedCasesMockDebugEnabled(page: Page): boolean {
+  const envValue = process.env.E2E_SHARED_CASES_MOCK_DEBUG
+  if (envValue === '1' || envValue === 'true') return true
+  return page.url().includes('e2eMockDebug=1')
+}
+
+function logUnmatchedRequest(page: Page, request: Request) {
+  if (!isSharedCasesMockDebugEnabled(page)) return
+  const message = `[shared-cases-mock] unmatched ${request.method()} ${request.url()}`
+  console.warn(message)
+}
+
 export function loadSharedCasesFixture(): SharedCasesFixture {
   return loadFixtureFile()
 }
@@ -64,6 +76,25 @@ export async function installSharedCasesMock(page: Page, options: MockOptions = 
   const store = new Map(entries.map(entry => [entry.caseId, entry]))
   let conflictCaseId = options.conflictCaseId || ''
   let conflictUsed = false
+
+  await page.route('**/api/admin/teams/**', async (route: Route, request: Request) => {
+    const method = request.method()
+    const purgeMatch = matchesPath(request, /^\/api\/admin\/teams\/[^/]+\/purge$/)
+    if (purgeMatch && method === 'POST') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, deleted: 0 }),
+      })
+    }
+
+    logUnmatchedRequest(page, request)
+    return route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'Unknown admin endpoint' }),
+    })
+  })
 
   await page.route('**/api/teams/**', async (route: Route, request: Request) => {
     const url = new URL(request.url())
@@ -181,6 +212,7 @@ export async function installSharedCasesMock(page: Page, options: MockOptions = 
       return route.fulfill({ status: 204, body: '' })
     }
 
+    logUnmatchedRequest(page, request)
     return route.fulfill({
       status: 404,
       contentType: 'application/json',
