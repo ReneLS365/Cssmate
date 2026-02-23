@@ -155,6 +155,14 @@ Bemærk: Ændringer til disse værdier kræver et fresh deploy, så `auth0-confi
 - Netlify Functions undgår `import.meta` så bundling til CJS ikke advarer.
 - `MaxListenersExceededWarning` og `wasm streaming compile failed` fra Netlify tooling/redirector er kendt build-noise og påvirker ikke runtime.
 
+## Drift contract checks (Neon + ENV)
+
+Kør før deploy / ved fejlsøgning:
+
+```bash
+npm run verify:drift
+```
+
 ## Observability
 
 **/api/health (public):**
