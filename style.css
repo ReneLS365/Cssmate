@@ -1100,6 +1100,12 @@ input.csm-name{
 #panel-delte-sager .shared-admin-tools__header{display:flex;align-items:center;gap:8px;font-size:0.85rem;color:var(--text)}
 #panel-delte-sager .shared-admin-tools__hint{font-size:0.75rem;color:var(--text-muted,#94a3b8)}
 #panel-delte-sager .shared-admin-tools__button{align-self:flex-start}
+#panel-delte-sager .shared-admin-tools__backup{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--panel-soft)}
+#panel-delte-sager .shared-admin-tools__check{display:flex;align-items:center;gap:8px;font-size:0.85rem;color:var(--muted)}
+#panel-delte-sager .shared-admin-tools__row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+#panel-delte-sager #sharedBackupImportFile{max-width:100%;font-size:0.8rem}
+#panel-delte-sager .shared-admin-tools__status{font-size:0.75rem;color:var(--text-muted,#94a3b8)}
+#panel-delte-sager .shared-admin-tools__status[data-state="error"]{color:#fca5a5}
 #panel-delte-sager .shared-perf-panel{margin-top:12px;padding:10px;border-radius:12px;border:1px dashed var(--border);background:var(--panel-soft);display:flex;flex-direction:column;gap:8px}
 #panel-delte-sager .shared-perf-panel__row{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:0.85rem;color:var(--muted)}
 #panel-delte-sager .shared-perf-panel__actions{display:flex;flex-wrap:wrap;gap:8px}

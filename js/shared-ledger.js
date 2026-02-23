@@ -935,6 +935,29 @@ export function validateBackupSchema(payload) {
   return payload
 }
 
+export function buildBackupDownloadFileName(teamId, timestamp = new Date()) {
+  const normalizedTeam = formatTeamId(teamId || DEFAULT_TEAM_SLUG)
+  const date = timestamp instanceof Date ? timestamp : new Date(timestamp)
+  const safeDate = Number.isNaN(date.getTime())
+    ? new Date()
+    : date
+  const day = `${safeDate.getFullYear()}-${String(safeDate.getMonth() + 1).padStart(2, '0')}-${String(safeDate.getDate()).padStart(2, '0')}`
+  return `cssmate-backup-${normalizedTeam}-${day}.json`
+}
+
+export function summarizeBackupPayload(payload) {
+  const validated = validateBackupSchema(payload)
+  const cases = Array.isArray(validated.cases) ? validated.cases.length : 0
+  const audit = Array.isArray(validated.audit) ? validated.audit.length : 0
+  return {
+    schemaVersion: validated.schemaVersion,
+    teamId: validated.teamId || '',
+    exportedAt: validated.exportedAt || '',
+    cases,
+    audit,
+  }
+}
+
 export async function importSharedBackup(teamId, payload) {
   ensureWritesAllowed('importSharedBackup')
   const { teamId: resolvedTeamId } = await getTeamContext(teamId, { requireAdmin: true })
