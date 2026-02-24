@@ -467,6 +467,21 @@
               <strong>Admin tools</strong>
               <span class="shared-admin-tools__hint">Kræver admin</span>
             </div>
+            <div class="shared-admin-tools__backup">
+              <strong>Backup</strong>
+              <label class="shared-admin-tools__check" for="sharedBackupIncludeDeleted">
+                <input id="sharedBackupIncludeDeleted" type="checkbox">
+                <span>Inkludér slettede</span>
+              </label>
+              <div class="shared-admin-tools__row">
+                <button id="sharedBackupExportBtn" class="shared-admin-tools__button" type="button">Eksporter backup</button>
+              </div>
+              <div class="shared-admin-tools__row">
+                <input id="sharedBackupImportFile" type="file" accept="application/json,.json">
+                <button id="sharedBackupImportBtn" class="shared-admin-tools__button" type="button">Importer backup</button>
+              </div>
+              <small id="sharedBackupStatus" class="shared-admin-tools__status" aria-live="polite">Import kræver production.</small>
+            </div>
             <button id="sharedCasesPurgeBtn" class="shared-admin-tools__button" type="button">Purge slettede sager</button>
           </div>
         </div>

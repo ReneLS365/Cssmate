@@ -23,6 +23,7 @@ type SharedCasesFixture = {
 type MockOptions = {
   fixture?: SharedCasesFixture
   conflictCaseId?: string
+  role?: 'owner' | 'admin' | 'member'
 }
 
 function loadFixtureFile(): SharedCasesFixture {
@@ -76,6 +77,7 @@ export async function installSharedCasesMock(page: Page, options: MockOptions = 
   const store = new Map(entries.map(entry => [entry.caseId, entry]))
   let conflictCaseId = options.conflictCaseId || ''
   let conflictUsed = false
+  const role = options.role || 'member'
 
   await page.route('**/api/admin/teams/**', async (route: Route, request: Request) => {
     const method = request.method()
@@ -107,7 +109,30 @@ export async function installSharedCasesMock(page: Page, options: MockOptions = 
         contentType: 'application/json',
         body: JSON.stringify({
           team: { id: 'hulmose', name: 'hulmose' },
+          member: { role },
         }),
+      })
+    }
+
+    const backupMatch = matchesPath(request, /^\/api\/teams\/[^/]+\/backup$/)
+    if (backupMatch && method === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          schemaVersion: 2,
+          teamId: 'hulmose',
+          exportedAt: new Date().toISOString(),
+          cases: Array.from(store.values()),
+          audit: [],
+        }),
+      })
+    }
+    if (backupMatch && method === 'POST') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true }),
       })
     }
 

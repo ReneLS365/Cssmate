@@ -1,4 +1,4 @@
-import { listSharedCasesPage, listSharedCasesDelta, downloadCaseJson, downloadCasePdf, importCasePayload, uploadCasePdf, approveSharedCase, deleteSharedCase, getSharedCase, getSharedCaseAudit, formatTeamId, PermissionDeniedError, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG, setSharedCaseContext, updateSharedCaseStatus, purgeSharedCases } from './shared-ledger.js';
+import { listSharedCasesPage, listSharedCasesDelta, downloadCaseJson, downloadCasePdf, importCasePayload, uploadCasePdf, approveSharedCase, deleteSharedCase, getSharedCase, getSharedCaseAudit, formatTeamId, PermissionDeniedError, getDisplayTeamId, MembershipMissingError, DEFAULT_TEAM_SLUG, setSharedCaseContext, updateSharedCaseStatus, purgeSharedCases, exportSharedBackup, importSharedBackup, validateBackupSchema, buildBackupDownloadFileName, summarizeBackupPayload } from './shared-ledger.js';
 import { exportPDFBlob } from './export-pdf.js';
 import { buildExportModel } from './export-model.js';
 import { downloadBlob } from './utils/downloadBlob.js';
@@ -38,6 +38,8 @@ let isLoading = false;
 let loadingCount = 0;
 let loadMoreBtn;
 let listSharedCasesPageFn = listSharedCasesPage;
+let exportSharedBackupFn = exportSharedBackup;
+let importSharedBackupFn = importSharedBackup;
 let refreshCases = async () => {};
 let deltaTimer = null;
 let deltaInFlight = false;
@@ -116,6 +118,7 @@ let pendingDeepLinkCaseId = '';
 let deepLinkHandled = false;
 let lastRenderUserId = '';
 let lastRenderOnChange = null;
+let backupBusy = false;
 let sharedCapabilities = {
   role: 'member',
   canApprove: false,
@@ -123,6 +126,7 @@ let sharedCapabilities = {
   canComplete: false,
   canDelete: false,
   canPurge: false,
+  canBackup: false,
   canEditDraft: false,
 };
 
@@ -189,6 +193,11 @@ function getSharedCasesElements() {
     lastUpdatedEl: findElementByIds('sharedCasesLastUpdated'),
     adminToolsEl: findElementByIds('sharedAdminTools'),
     purgeBtn: findElementByIds('sharedCasesPurgeBtn'),
+    backupIncludeDeletedEl: findElementByIds('sharedBackupIncludeDeleted'),
+    backupExportBtn: findElementByIds('sharedBackupExportBtn'),
+    backupImportFileEl: findElementByIds('sharedBackupImportFile'),
+    backupImportBtn: findElementByIds('sharedBackupImportBtn'),
+    backupStatusEl: findElementByIds('sharedBackupStatus'),
   };
 }
 
@@ -580,6 +589,7 @@ function buildCapabilities(state = sessionState) {
     canComplete: isAdmin || role === 'member',
     canDelete: isAdmin,
     canPurge: isAdmin,
+    canBackup: isAdmin,
     canEditDraft: isAdmin,
   };
 }
@@ -605,12 +615,119 @@ function updateAdminControls() {
     focusEl.value = '';
   }
   if (adminToolsEl) {
-    adminToolsEl.hidden = !getCapabilities().canPurge;
+    adminToolsEl.hidden = !getCapabilities().canBackup;
   }
 }
 
 function isAdminUser () {
   return sharedCapabilities.role === 'admin' || sharedCapabilities.role === 'owner';
+}
+
+function getBackupErrorMessage(error) {
+  const code = (error?.code || '').toString().toLowerCase();
+  const action = (error?.payload?.action || '').toString().toLowerCase();
+  const message = (error?.message || '').toString().toLowerCase();
+  if (code === 'preview-disabled' || action === 'backup_import' || message.includes('preview')) {
+    return 'Kun muligt i production';
+  }
+  if (error?.status === 403 && (action === 'backup_import' || action === 'backup_export')) {
+    return 'Kun muligt i production';
+  }
+  return error?.message || 'Backup handling fejlede.';
+}
+
+function updateBackupStatus(text, { isError = false } = {}) {
+  const { backupStatusEl } = getSharedCasesElements();
+  if (!backupStatusEl) return;
+  backupStatusEl.dataset.state = isError ? 'error' : 'ok';
+  const timestamp = formatTimeShort(new Date());
+  backupStatusEl.textContent = text ? `${timestamp} · ${text}` : 'Import kræver production.';
+}
+
+function setBackupBusyState(isBusy) {
+  backupBusy = Boolean(isBusy);
+  const { backupExportBtn, backupImportBtn, backupImportFileEl } = getSharedCasesElements();
+  if (backupExportBtn) backupExportBtn.disabled = backupBusy;
+  if (backupImportBtn) backupImportBtn.disabled = backupBusy;
+  if (backupImportFileEl) backupImportFileEl.disabled = backupBusy;
+}
+
+async function readSelectedBackupFile(fileInput) {
+  const file = fileInput?.files?.[0];
+  if (!file) throw new Error('Vælg en backupfil først.');
+  if (file.size > 20 * 1024 * 1024) {
+    throw new Error('Backupfilen er for stor (max 20 MB).');
+  }
+  const raw = await file.text();
+  let payload = null;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    throw new Error('Kunne ikke læse JSON-filen.');
+  }
+  return validateBackupSchema(payload);
+}
+
+async function handleExportBackup() {
+  const caps = getCapabilities();
+  if (!caps.canBackup) {
+    showToast('Du har ikke adgang til denne handling.', { variant: 'error' });
+    return;
+  }
+  const { backupIncludeDeletedEl } = getSharedCasesElements();
+  const includeDeleted = Boolean(backupIncludeDeletedEl?.checked);
+  setBackupBusyState(true);
+  try {
+    const payload = await exportSharedBackupFn(ensureTeamSelected(), { includeDeleted });
+    const validatedPayload = validateBackupSchema(payload);
+    const fileName = buildBackupDownloadFileName(teamId, new Date());
+    const blob = new Blob([JSON.stringify(validatedPayload, null, 2)], { type: 'application/json' });
+    downloadBlob(blob, fileName);
+    updateBackupStatus('Backup downloadet.');
+    showToast('Backup downloadet.', { variant: 'success' });
+  } catch (error) {
+    const message = getBackupErrorMessage(error);
+    updateBackupStatus(message, { isError: true });
+    showToast(message, { variant: 'error' });
+  } finally {
+    setBackupBusyState(false);
+  }
+}
+
+async function handleImportBackup() {
+  const caps = getCapabilities();
+  if (!caps.canBackup) {
+    showToast('Du har ikke adgang til denne handling.', { variant: 'error' });
+    return;
+  }
+  const { backupImportFileEl } = getSharedCasesElements();
+  setBackupBusyState(true);
+  try {
+    const payload = await readSelectedBackupFile(backupImportFileEl);
+    const summary = summarizeBackupPayload(payload);
+    const activeTeam = formatTeamId(teamId || DEFAULT_TEAM_SLUG);
+    const payloadTeam = formatTeamId(summary.teamId || activeTeam);
+    const mismatchWarning = payloadTeam !== activeTeam
+      ? `\nADVARSEL: Filens team (${payloadTeam}) matcher ikke aktivt team (${activeTeam}).`
+      : '';
+    const shouldImport = window.confirm(
+      `Importer backup?\nSchema: v${summary.schemaVersion}\nTeam: ${summary.teamId || 'ukendt'}\nEksporteret: ${summary.exportedAt || 'ukendt'}\nSager: ${summary.cases}\nAudit: ${summary.audit}${mismatchWarning}`
+    );
+    if (!shouldImport) {
+      updateBackupStatus('Import annulleret.');
+      return;
+    }
+    await importSharedBackupFn(ensureTeamSelected(), payload);
+    updateBackupStatus('Backup importeret. Konflikter logges i audit.');
+    showToast('Backup importeret.', { variant: 'success' });
+    await refreshCases({ prepend: false });
+  } catch (error) {
+    const message = getBackupErrorMessage(error);
+    updateBackupStatus(message, { isError: true });
+    showToast(message, { variant: 'error' });
+  } finally {
+    setBackupBusyState(false);
+  }
 }
 
 function shouldIncludeDeleted(filters) {
@@ -807,6 +924,11 @@ function normalizeStoredStatusFilter(value, { allowDeleted = false } = {}) {
 
 function setListSharedCasesPage(fn) {
   listSharedCasesPageFn = typeof fn === 'function' ? fn : listSharedCasesPage;
+}
+
+function setBackupHandlersForTest({ exportFn, importFn } = {}) {
+  exportSharedBackupFn = typeof exportFn === 'function' ? exportFn : exportSharedBackup;
+  importSharedBackupFn = typeof importFn === 'function' ? importFn : importSharedBackup;
 }
 
 function setRefreshHandler(fn) {
@@ -4651,6 +4773,9 @@ export function initSharedCasesPanel() {
     lastUpdatedEl,
     adminToolsEl,
     purgeBtn,
+    backupExportBtn,
+    backupImportBtn,
+    backupStatusEl,
   } = getSharedCasesElements();
   refreshBtn = refreshBtnEl;
   const filters = [searchEl, fromEl, toEl, focusEl, kindEl, sortEl].filter(Boolean);
@@ -4667,7 +4792,10 @@ export function initSharedCasesPanel() {
     });
   }
   if (adminToolsEl) {
-    adminToolsEl.hidden = !getCapabilities().canPurge;
+    adminToolsEl.hidden = !getCapabilities().canBackup;
+  }
+  if (backupStatusEl) {
+    updateBackupStatus('Import kræver production.');
   }
   if (lastUpdatedEl) {
     updateSharedLastUpdatedLabel(sharedCasesUI.lastUpdatedLabel);
@@ -4784,6 +4912,16 @@ export function initSharedCasesPanel() {
       }
     });
   }
+  if (backupExportBtn) {
+    backupExportBtn.addEventListener('click', () => {
+      handleExportBackup().catch(() => {});
+    });
+  }
+  if (backupImportBtn) {
+    backupImportBtn.addEventListener('click', () => {
+      handleImportBackup().catch(() => {});
+    });
+  }
   filters.forEach(input => {
     const isServerInput = [
       'sharedCasesSearch',
@@ -4853,12 +4991,18 @@ export const __test = {
   handleExportedEvent,
   resetCaseState,
   setRefreshHandler,
+  setBackupHandlersForTest,
   setListSharedCasesPage,
   setTestState,
   deriveBoardStatus,
   resolveEntryBucket,
+  getCapabilities,
+  updateAdminControls,
   WORKFLOW_STATUS,
   openCaseDetails,
   isSharedPdfAttachmentEnabled,
   resolvePdfMeta,
+  handleExportBackup,
+  handleImportBackup,
+  readSelectedBackupFile,
 };
