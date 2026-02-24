@@ -42,11 +42,31 @@ const DB_NOT_MIGRATED_MESSAGE = 'DB er ikke migreret. Kør netlify/functions/mig
 let cachedMgmtToken = ''
 let cachedMgmtTokenExpiry = 0
 
+function resolveErrorCode (statusCode) {
+  if (statusCode === 400) return 'bad_request'
+  if (statusCode === 401) return 'unauthorized'
+  if (statusCode === 403) return 'forbidden'
+  if (statusCode === 404) return 'not_found'
+  if (statusCode === 409) return 'conflict'
+  if (statusCode === 410) return 'gone'
+  if (statusCode === 429) return 'rate_limited'
+  if (statusCode === 503) return 'service_unavailable'
+  if (statusCode >= 500) return 'server_error'
+  return 'request_failed'
+}
+
 function jsonResponse (statusCode, payload, extraHeaders = {}) {
+  const isError = statusCode >= 400 || Boolean(payload?.error)
+  const responsePayload = isError
+    ? {
+        ...(payload || {}),
+        code: payload?.code || resolveErrorCode(statusCode),
+      }
+    : (payload ?? {})
   return {
     statusCode,
     headers: { ...JSON_HEADERS, ...extraHeaders },
-    body: JSON.stringify(payload ?? {}),
+    body: JSON.stringify(responsePayload),
   }
 }
 
@@ -2120,6 +2140,24 @@ export async function handler (event) {
   const finalizeResponse = (response) => {
     const finalized = withTiming(response)
     const status = finalized?.statusCode || 200
+    if (status >= 400 && finalized?.body) {
+      try {
+        const payload = JSON.parse(finalized.body)
+        if (!payload.requestId || !payload.code) {
+          finalized.body = JSON.stringify({
+            ...payload,
+            code: payload.code || resolveErrorCode(status),
+            requestId: payload.requestId || requestId,
+          })
+        }
+      } catch {
+        finalized.body = JSON.stringify({
+          error: 'Serverfejl',
+          code: resolveErrorCode(status),
+          requestId,
+        })
+      }
+    }
     const durationMs = Math.max(0, Date.now() - handlerStart)
     logJson('info', 'request.finish', {
       requestId,
@@ -2153,6 +2191,7 @@ export async function handler (event) {
       })
       return finalizeResponse(jsonResponse(status, {
         error: message,
+        requestId,
         ...(error?.code ? { code: error.code } : {}),
         ...(error?.action ? { action: error.action } : {}),
         ...(error?.invitedEmail ? { invitedEmail: error.invitedEmail } : {}),
@@ -2246,6 +2285,7 @@ export async function handler (event) {
     })
     return finalizeResponse(jsonResponse(status, {
       error: message,
+      requestId,
       ...(error?.code ? { code: error.code } : {}),
       ...(error?.action ? { action: error.action } : {}),
       ...(error?.invitedEmail ? { invitedEmail: error.invitedEmail } : {}),

@@ -86,6 +86,7 @@ export async function apiFetch (path, options = {}) {
       error.status = response.status
       error.payload = payload || errorText
       error.code = payload?.code || ''
+      error.requestId = payload?.requestId || response.headers.get('x-request-id') || ''
       if (debugEnabled) {
         debugLog(`${label} error`, { requestId, status: response.status, code: error.code })
       }
@@ -107,6 +108,10 @@ export async function apiJson (path, options = {}) {
   try {
     return JSON.parse(text)
   } catch {
-    return null
+    const error = new Error('Ugyldigt JSON-svar fra serveren')
+    error.code = 'invalid_json_response'
+    error.status = response.status
+    error.requestId = response.headers.get('x-request-id') || ''
+    throw error
   }
 }
