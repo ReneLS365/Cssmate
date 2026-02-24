@@ -8,6 +8,8 @@ const shouldStartServer = !process.env.PLAYWRIGHT_SKIP_WEBSERVER
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  workers: process.env.CI ? 1 : undefined,
   timeout: 60_000,
   retries: process.env.CI ? 1 : 0,
   expect: {

@@ -149,9 +149,10 @@ function formatDetailsItem(item) {
   }
 }
 
-function collectBestPracticesFailures(report) {
-  const bpCategory = report?.categories?.['best-practices'];
-  const auditRefs = bpCategory?.auditRefs ?? [];
+
+function collectCategoryFailures(report, categoryKey) {
+  const category = report?.categories?.[categoryKey];
+  const auditRefs = category?.auditRefs ?? [];
   const audits = report?.audits ?? {};
 
   const failing = auditRefs
@@ -170,6 +171,10 @@ function collectBestPracticesFailures(report) {
     const scoreB = Number.isFinite(b.score) ? b.score : 1;
     return scoreA - scoreB;
   });
+}
+
+function collectBestPracticesFailures(report) {
+  return collectCategoryFailures(report, 'best-practices');
 }
 
 async function writeLighthouseArtifacts(report) {
@@ -292,6 +297,21 @@ async function main() {
     console.log(`- best-practices: ${categoryScores['best-practices']}`);
     console.log(`- seo: ${categoryScores.seo}`);
     console.log(`- pwa: ${categoryScores.pwa}`);
+
+    const accessibilityFailures = collectCategoryFailures(sampleReport, 'accessibility');
+    if (accessibilityFailures.length) {
+      console.log('Accessibility failing audits:');
+      accessibilityFailures.forEach(audit => {
+        const score = Number.isFinite(audit.score) ? audit.score.toFixed(2) : 'N/A';
+        const displayValue = audit.displayValue ?? 'N/A';
+        console.log(`- ${audit.id}: ${audit.title} | score=${score} | displayValue=${displayValue}`);
+        if (audit.detailsItems.length) {
+          audit.detailsItems.forEach((item, index) => {
+            console.log(`  item ${index + 1}: ${formatDetailsItem(item)}`);
+          });
+        }
+      });
+    }
 
     const bestPracticesFailures = collectBestPracticesFailures(sampleReport);
     if (bestPracticesFailures.length) {

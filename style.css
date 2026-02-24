@@ -1343,3 +1343,18 @@ img,svg{max-width:100%;height:auto}
     padding: 4px 6px;
   }
 }
+
+
+input::placeholder,
+textarea::placeholder{
+  color:color-mix(in srgb, var(--text) 72%, transparent);
+  opacity:1;
+}
+
+#panel-delte-sager .shared-header-meta,
+#panel-delte-sager .case-menu__hint,
+#panel-delte-sager .shared-admin-tools__hint,
+.hint,
+.job-history__hint{
+  color:color-mix(in srgb, var(--text) 78%, transparent);
+}
