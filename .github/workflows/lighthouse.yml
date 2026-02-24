@@ -57,7 +57,7 @@ jobs:
       - name: Run Lighthouse (PR fast path)
         if: github.event_name == 'pull_request'
         env:
-          CSSMATE_LH_RUNS: "1"
+          CSSMATE_LH_RUNS: "3"
         run: node tools/run-lh-mobile-3x.mjs
 
       - name: Enforce Lighthouse thresholds (PR fast path)
