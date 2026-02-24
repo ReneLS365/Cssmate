@@ -66,3 +66,14 @@ This matrix documents env vars referenced in the repo, grouped by runtime target
 | `CSSMATE_LH_LCP_MAX_MS` | Optional | `3000` | `tools/check-lighthouse-perfect.mjs` | LCP threshold. |
 | `CSSMATE_LH_CLS_MAX` | Optional | `0.01` | `tools/check-lighthouse-perfect.mjs` | CLS threshold. |
 | `LIGHTHOUSE` | Optional | `1` | `src/config/runtime-modes.js` | Runtime flag for LH mode. |
+
+## CI requirements (GitHub Actions)
+- Node version is pinned via `.nvmrc` (currently `22`) for deterministic `npm run build`, `npm test`, and tooling parity across jobs.
+- Playwright CI requires browser + system deps installation before E2E (`npx playwright install --with-deps chromium`).
+- E2E auth bypass in CI requires these env vars to be present in the workflow:
+  - `VITE_E2E_BYPASS_AUTH=1`
+  - `VITE_AUTH0_DOMAIN` (non-empty placeholder is acceptable in bypass mode)
+  - `VITE_AUTH0_CLIENT_ID` (non-empty placeholder is acceptable in bypass mode)
+  - `VITE_AUTH0_AUDIENCE` (non-empty placeholder is acceptable in bypass mode)
+  - `VITE_AUTH0_REDIRECT_URI` (non-empty placeholder is acceptable in bypass mode)
+- Deterministic build smoke gate should run with `npm run smoke:build`, which validates both build output and Netlify function module imports.

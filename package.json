@@ -7,9 +7,9 @@
     "node": ">=22 <25"
   },
   "scripts": {
-    "test": "node --test tests/*.test.js",
-    "test:unit": "node --test tests/*.test.js",
-    "test:integration": "node --test tests/integration/*.test.js",
+    "test": "node --import ./tests/test-setup.js --test tests/*.test.js",
+    "test:unit": "node --import ./tests/test-setup.js --test tests/*.test.js",
+    "test:integration": "node --import ./tests/test-setup.js --test tests/integration/*.test.js",
     "lint": "npm run test:html",
     "format": "npm run lint",
     "repo:scan": "node tools/repo-scan.mjs",
@@ -55,7 +55,9 @@
     "verify:neon": "node scripts/verify-neon-contract.mjs",
     "verify:drift": "npm run verify:env && npm run verify:neon",
     "db:migrate": "node scripts/run-neon-migrations.mjs",
-    "db:verify": "node scripts/verify-db-schema.mjs"
+    "db:verify": "node scripts/verify-db-schema.mjs",
+    "smoke:build": "node scripts/smoke-build.mjs",
+    "ci:all": "node scripts/ci-all.mjs"
   },
   "dependencies": {
     "@auth0/auth0-spa-js": "^2.16.0",
