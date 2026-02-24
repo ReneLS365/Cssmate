@@ -797,9 +797,8 @@ export async function getSharedCase(teamId, caseId) {
     const payload = await apiJson(`/api/teams/${resolvedTeamId}/cases/${caseId}`)
     return mapTeamCaseRow(payload)
   } catch (error) {
-    console.warn('Kunne ikke hente sag', error)
-    if (error?.code === 'permission-denied') throw error
-    return null
+    if (error?.status === 404 || error?.code === 'not_found') return null
+    throw error
   }
 }
 
@@ -813,9 +812,10 @@ export async function getSharedCaseAudit(teamId, caseId, { limit = 50 } = {}) {
     const items = Array.isArray(payload?.items) ? payload.items : []
     return { items, unavailable: Boolean(payload?.unavailable) }
   } catch (error) {
-    console.warn('Kunne ikke hente audit log', error)
-    if (error?.code === 'permission-denied') throw error
-    return { items: [], unavailable: true }
+    if (error?.status === 503 || error?.code === 'DB_NOT_MIGRATED' || error?.code === 'DB_SCHEMA_DRIFT') {
+      return { items: [], unavailable: true, error: { code: error.code || '', requestId: error.requestId || '' } }
+    }
+    throw error
   }
 }
 

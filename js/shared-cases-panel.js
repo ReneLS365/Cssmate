@@ -98,7 +98,7 @@ const CURRENCY_FORMATTER_COMPACT = new Intl.NumberFormat('da-DK', { minimumFract
 const HOURS_FORMATTER = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const PREVIEW_WRITE_MESSAGE = getPreviewWriteDisabledMessage();
 const POLL_INTERVAL_MS = 30000;
-const BACKOFF_BASE_MS = 5000;
+const BACKOFF_BASE_MS = 2000;
 const BACKOFF_MAX_MS = 60000;
 const syncState = {
   online: isOnline(),
@@ -108,6 +108,11 @@ const syncState = {
   sinceId: null,
   backoffMs: 0,
   pendingActions: [],
+};
+const sharedCasesRuntimeStatus = {
+  lastError: null,
+  pollFailures: 0,
+  pollBackoffMs: 0,
 };
 let activeCaseMenu = null;
 let activeCaseMenuButton = null;
@@ -501,6 +506,42 @@ function describePermissionError (error, attemptedTeamId) {
   return '';
 }
 
+
+function mapSharedCasesError(error) {
+  const code = (error?.code || '').toString();
+  const requestId = (error?.requestId || '').toString();
+  if (code === 'preview_writes_disabled' || code === 'preview-disabled') {
+    return { code, requestId, message: 'Du er på preview. Åbn production-linket for at kunne dele.' };
+  }
+  if (code === 'auth_missing_token' || code === 'auth_invalid_token') {
+    return { code, requestId, message: 'Log ind igen.' };
+  }
+  if (code === 'team_access_denied') {
+    return { code, requestId, message: 'Du har ikke adgang til teamet.' };
+  }
+  if (code === 'DB_NOT_MIGRATED' || code === 'DB_SCHEMA_DRIFT') {
+    return { code, requestId, message: 'Server mangler DB setup. Kontakt admin.' };
+  }
+  if (code === 'pdf_missing') {
+    return { code, requestId, message: 'PDF findes ikke på serveren.' };
+  }
+  if (error?.status === 409) {
+    return { code: code || 'conflict', requestId, message: 'Konflikt: sagen er opdateret et andet sted.' };
+  }
+  const network = error instanceof TypeError || /network|offline|failed to fetch|load failed/i.test((error?.message || '').toString());
+  if (network) {
+    return { code: code || 'network_offline', requestId, message: 'Offline / ingen forbindelse.' };
+  }
+  return { code: code || 'request_failed', requestId, message: error?.message || 'Kunne ikke opdatere delte sager.' };
+}
+
+function computePollBackoffMs(failures) {
+  const cappedFailures = Math.max(1, Number(failures) || 1);
+  const raw = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * (2 ** (cappedFailures - 1)));
+  const jitter = 1 + ((Math.random() * 0.2) - 0.1);
+  return Math.max(BACKOFF_BASE_MS, Math.min(BACKOFF_MAX_MS, Math.round(raw * jitter)));
+}
+
 function isAccessDeniedError(error) {
   const status = error?.status;
   if (status === 401 || status === 403) return true;
@@ -866,6 +907,10 @@ function appendDebug(message) {
   }
 }
 
+
+function reportAsyncError(context, error) {
+  appendDebug(`${context}: ${error?.message || 'Ukendt fejl'}`);
+}
 function loadUiState() {
   if (typeof window === 'undefined' || !window.localStorage) return {};
   try {
@@ -1735,7 +1780,7 @@ function bindSessionControls(onAuthenticated, onAccessReady) {
       syncState.online = isOnline();
       updateSyncStatus();
       if (syncState.online) {
-        flushPendingActions().catch(() => {});
+        flushPendingActions().catch((error) => reportAsyncError('Pending actions fejl', error));
       }
     }
 
@@ -3253,7 +3298,7 @@ function handleBoardClick(event) {
     closeActiveCaseMenu();
     const handler = CASE_ACTION_CALLBACKS.get(actionKey);
     if (typeof handler === 'function') {
-      handler().catch(() => {});
+      handler().catch((error) => reportAsyncError('Action fejl', error));
     }
     return;
   }
@@ -4437,11 +4482,9 @@ function scheduleNextDelta({ immediate = false } = {}) {
     deltaTimer = null;
   }
   if (!pollingActive) return;
-  const delay = immediate ? 0 : (syncState.backoffMs || POLL_INTERVAL_MS);
+  const delay = immediate ? 0 : (sharedCasesRuntimeStatus.pollBackoffMs || syncState.backoffMs || POLL_INTERVAL_MS);
   deltaTimer = setTimeout(() => {
-    runDeltaSync().catch(() => {
-      // handled in runDeltaSync
-    });
+    runDeltaSync().catch((error) => reportAsyncError('Delta sync fejl', error));
   }, delay);
 }
 
@@ -4551,11 +4594,27 @@ async function runDeltaSync() {
       markDeltaSynced('Synkroniseret');
     }
     syncState.backoffMs = 0;
+    sharedCasesRuntimeStatus.pollFailures = 0;
+    sharedCasesRuntimeStatus.pollBackoffMs = 0;
+    sharedCasesRuntimeStatus.lastError = null;
     syncState.lastSyncAt = new Date().toISOString();
     clearInlineError();
   } catch (error) {
     appendDebug(`Delta sync fejl: ${error?.message || 'Ukendt fejl'}`);
-    syncState.backoffMs = Math.min(syncState.backoffMs ? syncState.backoffMs * 2 : BACKOFF_BASE_MS, BACKOFF_MAX_MS);
+    sharedCasesRuntimeStatus.pollFailures += 1;
+    const mapped = mapSharedCasesError(error);
+    const backoffMs = computePollBackoffMs(sharedCasesRuntimeStatus.pollFailures);
+    sharedCasesRuntimeStatus.pollBackoffMs = backoffMs;
+    sharedCasesRuntimeStatus.lastError = {
+      code: mapped.code,
+      message: mapped.message,
+      requestId: mapped.requestId,
+      at: new Date().toISOString(),
+    };
+    syncState.backoffMs = backoffMs;
+    const retrySec = Math.max(1, Math.round(backoffMs / 1000));
+    const support = mapped.requestId ? ` (ref ${mapped.code}/${mapped.requestId})` : (mapped.code ? ` (ref ${mapped.code})` : '');
+    setInlineError(`Kunne ikke opdatere delte sager: ${mapped.message}. Prøver igen om ${retrySec} sek.${support}`);
   } finally {
     deltaInFlight = false;
     syncState.isSyncing = false;
@@ -4914,12 +4973,12 @@ export function initSharedCasesPanel() {
   }
   if (backupExportBtn) {
     backupExportBtn.addEventListener('click', () => {
-      handleExportBackup().catch(() => {});
+      handleExportBackup().catch((error) => reportAsyncError('Backup export fejl', error));
     });
   }
   if (backupImportBtn) {
     backupImportBtn.addEventListener('click', () => {
-      handleImportBackup().catch(() => {});
+      handleImportBackup().catch((error) => reportAsyncError('Backup import fejl', error));
     });
   }
   filters.forEach(input => {
@@ -4956,15 +5015,15 @@ export function initSharedCasesPanel() {
   // keeps the list in sync without reloading all pages.
   if (typeof window !== 'undefined') {
     window.addEventListener('cssmate:exported', (event) => {
-      handleExportedEvent(event?.detail || {}).catch(() => {});
+      handleExportedEvent(event?.detail || {}).catch((error) => reportAsyncError('Export event fejl', error));
     });
 
     window.addEventListener('online', () => {
       syncState.online = true;
       updateSyncStatus();
-      flushPendingActions().catch(() => {});
+      flushPendingActions().catch((error) => reportAsyncError('Pending actions fejl', error));
       updatePollingState();
-      runDeltaSync().catch(() => {});
+      runDeltaSync().catch((error) => reportAsyncError('Delta sync fejl', error));
     });
 
     window.addEventListener('offline', () => {
@@ -4978,7 +5037,7 @@ export function initSharedCasesPanel() {
     document.addEventListener('visibilitychange', () => {
       updatePollingState();
       if (document.visibilityState === 'visible') {
-        runDeltaSync().catch(() => {});
+        runDeltaSync().catch((error) => reportAsyncError('Delta sync fejl', error));
       }
     });
   }
@@ -5005,4 +5064,6 @@ export const __test = {
   handleExportBackup,
   handleImportBackup,
   readSelectedBackupFile,
+  mapSharedCasesError,
+  computePollBackoffMs,
 };
