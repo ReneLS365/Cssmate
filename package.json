@@ -60,7 +60,7 @@
     "ci:all": "node scripts/ci-all.mjs"
   },
   "dependencies": {
-    "@auth0/auth0-spa-js": "^2.16.0",
+    "@auth0/auth0-spa-js": "^2.17.0",
     "@netlify/blobs": "^10.7.0",
     "jose": "^6.1.3",
     "pg": "^8.18.0"
