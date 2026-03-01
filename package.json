@@ -78,8 +78,7 @@
     "linkinator": "^7.6.1",
     "pdf-lib": "^1.17.1",
     "size-limit": "^12.0.0",
-    "terser": "^5.46.0",
-    "netlify-cli": "^24.0.0"
+    "terser": "^5.46.0"
   },
   "size-limit": [
     {
@@ -102,7 +101,7 @@
     "express": {
       "qs": "6.14.2"
     },
-    "minimatch": "^10.2.3",
-    "rollup": "^4.59.0"
+    "minimatch": "10.2.3",
+    "rollup": "4.59.0"
   }
 }
