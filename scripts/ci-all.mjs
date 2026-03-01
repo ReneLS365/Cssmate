@@ -26,6 +26,8 @@ function run(command, args, { required = true, env = process.env } = {}) {
 }
 
 async function main() {
+  await run('npm', ['run', 'guard:deps']);
+
   if (hasEnv('VITE_AUTH0_DOMAIN') && hasEnv('VITE_AUTH0_CLIENT_ID') && hasEnv('VITE_AUTH0_AUDIENCE') && hasEnv('VITE_AUTH0_REDIRECT_URI') && (hasEnv('DATABASE_URL') || hasEnv('DATABASE_URL_UNPOOLED'))) {
     await run('npm', ['run', 'verify:drift']);
   } else {

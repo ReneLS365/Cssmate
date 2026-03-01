@@ -14,6 +14,7 @@
     "format": "npm run lint",
     "repo:scan": "node tools/repo-scan.mjs",
     "prepare": "node scripts/prepare-playwright.js",
+    "guard:deps": "node tools/guard-dep-versions.mjs",
     "guard:secrets": "node tools/guard-no-keys.mjs",
     "guard:html": "node tools/guard-no-inline-event-handlers.mjs",
     "bump:sw": "node scripts/bump-sw-version.js",
@@ -51,7 +52,7 @@
     "test:lh": "bash scripts/run-lhci.sh",
     "verify:perf": "npm run build && npm run test:lh",
     "verify:deploy": "npm run verify:build-and-tests && npm run verify:perf",
-    "e2e:serve": "netlify dev --dir .netlify_publish --functions netlify/functions --port 4173 --offline --silent",
+    "e2e:serve": "npx --yes netlify-cli@24.0.0 dev --dir .netlify_publish --functions netlify/functions --port 4173 --offline --silent",
     "verify:neon": "node scripts/verify-neon-contract.mjs",
     "verify:drift": "npm run verify:env && npm run verify:neon",
     "db:migrate": "node scripts/run-neon-migrations.mjs",
@@ -77,8 +78,7 @@
     "linkinator": "^7.5.3",
     "pdf-lib": "^1.17.1",
     "size-limit": "^12.0.0",
-    "terser": "^5.46.0",
-    "netlify-cli": "^23.6.0"
+    "terser": "^5.46.0"
   },
   "size-limit": [
     {
@@ -97,6 +97,9 @@
   "overrides": {
     "undici": "7.19.1",
     "tar": "7.5.8",
-    "qs": "6.14.2"
+    "qs": "6.14.2",
+    "express": {
+      "qs": "6.14.2"
+    }
   }
 }
