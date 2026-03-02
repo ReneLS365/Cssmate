@@ -6,7 +6,8 @@ import { SESSION_STATUS } from '../src/auth/session.js'
 import { __test__ as authGateTest } from '../src/auth/auth-gate.js'
 import { login, __test__ as auth0ClientTest } from '../src/auth/auth0-client.js'
 
-const BASE_URL = process.env.AUTH_FLOW_BASE_URL || 'https://sscaff.netlify.app'
+const BASE_URL = process.env.AUTH_FLOW_BASE_URL || ''
+const HAS_AUTH_FLOW_URL = BASE_URL.length > 0
 const LOGIN_USER = process.env.AUTH0_E2E_USERNAME || ''
 const LOGIN_PASS = process.env.AUTH0_E2E_PASSWORD || ''
 let canLaunch = true
@@ -152,7 +153,7 @@ function setupAuthGateFixture() {
   }
 }
 
-test('unauthenticated users sees login overlay', { timeout: 120000 }, async (t) => {
+test('unauthenticated users sees login overlay', { timeout: 120000, skip: !HAS_AUTH_FLOW_URL }, async (t) => {
   if (!canLaunch) {
     t.skip(`Playwright browser not available: ${launchError?.message || 'unknown error'}`)
     return
@@ -165,7 +166,7 @@ test('unauthenticated users sees login overlay', { timeout: 120000 }, async (t) 
   }
 })
 
-test('skipAuthGate param does not bypass login overlay', { timeout: 120000 }, async (t) => {
+test('skipAuthGate param does not bypass login overlay', { timeout: 120000, skip: !HAS_AUTH_FLOW_URL }, async (t) => {
   if (!canLaunch) {
     t.skip(`Playwright browser not available: ${launchError?.message || 'unknown error'}`)
     return
@@ -182,7 +183,7 @@ test('skipAuthGate param does not bypass login overlay', { timeout: 120000 }, as
 
 test('authenticated users reach app after login', {
   timeout: 120000,
-  skip: !(LOGIN_USER && LOGIN_PASS),
+  skip: !(HAS_AUTH_FLOW_URL && LOGIN_USER && LOGIN_PASS),
 }, async (t) => {
   if (!canLaunch) {
     t.skip(`Playwright browser not available: ${launchError?.message || 'unknown error'}`)
