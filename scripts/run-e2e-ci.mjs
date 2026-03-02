@@ -1,10 +1,21 @@
 import { spawn } from 'node:child_process';
 
-const E2E_URL =
-  process.env.E2E_BASE_URL ||
-  process.env.PLAYWRIGHT_BASE_URL ||
-  'http://127.0.0.1:4173';
+const E2E_URL_ENV_KEYS = ['E2E_BASE_URL', 'PLAYWRIGHT_BASE_URL'];
+const DEFAULT_E2E_URL = 'http://127.0.0.1:4173';
+const { e2eUrl: E2E_URL, sourceEnvKey: E2E_URL_SOURCE } = resolveE2EUrl();
+const PLAYWRIGHT_ARGS = process.argv.slice(2);
 const WAIT_TIMEOUT_MS = Number(process.env.E2E_WAIT_TIMEOUT_MS || 120000);
+
+function resolveE2EUrl() {
+  for (const key of E2E_URL_ENV_KEYS) {
+    const value = process.env[key];
+    if (value) {
+      return { e2eUrl: value, sourceEnvKey: key };
+    }
+  }
+
+  return { e2eUrl: DEFAULT_E2E_URL, sourceEnvKey: 'default' };
+}
 
 function run(command, args, { env = process.env, stdio = 'inherit' } = {}) {
   return new Promise((resolve, reject) => {
@@ -39,6 +50,7 @@ async function stopServer(child) {
 }
 
 async function main() {
+  console.log(`[test:e2e] URL source: ${E2E_URL_SOURCE} (${E2E_URL})`);
   console.log('[test:e2e] Step 1/4: Playwright preflight');
   await run('node', ['scripts/playwright-preflight.mjs']);
 
@@ -57,7 +69,7 @@ async function main() {
     await run('node', ['tools/wait-for-url.mjs', E2E_URL, String(WAIT_TIMEOUT_MS)]);
 
     console.log('[test:e2e] Step 4/4: Run Playwright suite');
-    await run('npx', ['playwright', 'test'], {
+    await run('npx', ['playwright', 'test', ...PLAYWRIGHT_ARGS], {
       env: {
         ...process.env,
         E2E_BASE_URL: E2E_URL,
