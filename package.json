@@ -7,9 +7,9 @@
     "node": ">=22 <25"
   },
   "scripts": {
-    "test": "node --import ./tests/test-setup.js --test tests/*.test.js",
-    "test:unit": "node --import ./tests/test-setup.js --test tests/*.test.js",
-    "test:integration": "node --import ./tests/test-setup.js --test tests/integration/*.test.js",
+    "test": "node --import ./tests/test-setup.js --test --test-force-exit tests/*.test.js",
+    "test:unit": "node --import ./tests/test-setup.js --test --test-force-exit tests/*.test.js",
+    "test:integration": "node scripts/run-integration-tests.mjs",
     "lint": "npm run test:html",
     "format": "npm run lint",
     "repo:scan": "node tools/repo-scan.mjs",
@@ -41,7 +41,7 @@
     "test:super": "npm run build && npm run test:html && npm run test:links && npm run test:charset && npm run test:importmap && npm run test:lh:mobile && npm run test:lh:enforce",
     "release:guard": "npm run test:super && node scripts/check-lighthouse-perfect.mjs",
     "test:export": "node tests/export-files.test.js",
-    "test:e2e": "playwright test",
+    "test:e2e": "node scripts/run-e2e-ci.mjs",
     "test:e2e:ui": "playwright test --ui",
     "compare:json": "node scripts/compare-json.js release-artifacts/v2025.12.10/basic/basic.json release-artifacts/v2025.12.10/basic/basic-roundtrip.json",
     "dev:mat-debug": "npx http-server . -p 4174 --silent",
@@ -58,7 +58,9 @@
     "db:migrate": "node scripts/run-neon-migrations.mjs",
     "db:verify": "node scripts/verify-db-schema.mjs",
     "smoke:build": "node scripts/smoke-build.mjs",
-    "ci:all": "node scripts/ci-all.mjs"
+    "ci:all": "node scripts/ci-all.mjs",
+    "test:e2e:raw": "playwright test",
+    "test:e2e:setup": "node scripts/playwright-preflight.mjs"
   },
   "dependencies": {
     "@auth0/auth0-spa-js": "^2.17.0",

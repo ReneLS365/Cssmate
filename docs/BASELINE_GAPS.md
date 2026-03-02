@@ -1,21 +1,35 @@
-# BASELINE GAPS
+# BASELINE GAPS (Task 2 update)
 
-This file tracks baseline-protection gaps found during Task 1 that were not safely fixable without changing runtime/business logic.
+This file tracks remaining verification blockers after baseline hardening.
 
-## Gaps observed
+## Closed gaps
 
-1. `npm run test:integration` currently fails because `tests/integration/*.test.js` does not exist.
-   - Impact: no dedicated integration suite currently runs from that script.
-   - Safe follow-up: either add real integration tests in that folder or update the script contract in a separate maintenance task.
+1. `test:integration` broken path mismatch: **closed**.
+   - Previous broken glob `tests/integration/*.test.js` is replaced by deterministic discovery runner (`scripts/run-integration-tests.mjs`).
+   - Command now reports discovered files or explicit empty-suite state.
 
-2. `npm run test:e2e` cannot run in this container due missing Chromium system dependency (`libatk-1.0.so.0`).
-   - Impact: end-to-end baseline cannot be fully validated in this environment.
-   - Safe follow-up: use CI/container image with Playwright Linux dependencies preinstalled.
+2. `ci:all` ambiguous ordering and silent behavior: **closed**.
+   - `scripts/ci-all.mjs` now logs and executes deterministic ordered steps:
+     - guard/lint
+     - conditional drift/db checks
+     - test
+     - integration
+     - build
+     - smoke build
+     - export test
+     - E2E
+     - optional bundle perf
 
-3. `npm run ci:all` does not complete in this environment because it stalls after `npm run test` phase (process does not naturally return in this shell session).
-   - Impact: full aggregate pipeline status is not available from this run.
-   - Safe follow-up: investigate hanging node-test handle lifecycle in CI script orchestration.
+3. Playwright missing-lib ambiguity: **closed**.
+   - `scripts/playwright-preflight.mjs` now fails fast with explicit guidance and supports `PLAYWRIGHT_INSTALL_WITH_DEPS=1`.
 
-## Guardrail decision
+## Remaining blocker
 
-No runtime/business logic was changed to workaround these gaps. Gaps are documented instead, per baseline safety policy.
+1. E2E server bootstrap (`e2e:serve`) can fail in this container.
+   - Observed: `netlify dev` terminates with `fetch failed` while setting up Edge Functions/plugins, so readiness wait fails.
+   - Impact: `npm run test:e2e` and `npm run ci:all` fail honestly in this environment.
+   - Current safety posture: no skip/bypass added; failures remain explicit.
+
+## Guardrail statement
+
+No business logic/runtime output paths were changed. Task 2 only hardens verification scripts, CI orchestration, test gating for deterministic baseline behavior, and documentation.
