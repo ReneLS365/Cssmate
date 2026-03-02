@@ -1,6 +1,9 @@
 import { spawn } from 'node:child_process';
 
-const E2E_URL = process.env.E2E_BASE_URL || 'http://127.0.0.1:4173';
+const E2E_URL =
+  process.env.E2E_BASE_URL ||
+  process.env.PLAYWRIGHT_BASE_URL ||
+  'http://127.0.0.1:4173';
 const WAIT_TIMEOUT_MS = Number(process.env.E2E_WAIT_TIMEOUT_MS || 120000);
 
 function run(command, args, { env = process.env, stdio = 'inherit' } = {}) {
@@ -58,6 +61,7 @@ async function main() {
       env: {
         ...process.env,
         E2E_BASE_URL: E2E_URL,
+        PLAYWRIGHT_BASE_URL: E2E_URL,
         PLAYWRIGHT_SKIP_WEBSERVER: '1',
         CI: process.env.CI || '1',
       },
